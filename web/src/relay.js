@@ -38,8 +38,13 @@ export class Relay {
     return new Response(null, { status: 101, webSocket: client });
   }
   host(dev) { return this.state.getWebSockets("host:" + dev)[0] || null; }
+  // 在线的 Mac，和现在连着它们的设备（「设备」App 画连线用：哪台 iPad 在用哪台 Mac）
   hosts() {
-    return this.state.getWebSockets("host").map((ws) => { const a = ws.deserializeAttachment() || {}; return { device: a.dev, name: a.name, since: a.since }; });
+    return this.state.getWebSockets("host").map((ws) => {
+      const a = ws.deserializeAttachment() || {};
+      const clients = this.state.getWebSockets("client:" + a.dev).map((c) => { const b = c.deserializeAttachment() || {}; return { cid: b.cid, cname: b.cname, since: b.since }; });
+      return { device: a.dev, name: a.name, since: a.since, clients };
+    });
   }
   toClients(dev, msg) {
     const s = JSON.stringify(msg);

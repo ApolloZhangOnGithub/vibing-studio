@@ -1,0 +1,45 @@
+/* devices.css —— 「设备」App（devices.js）：同 AirPort 实用工具的图——上面账户，下面一排 Mac，再下面挂着在用它们的设备；点一台出卡片 */
+.st-pg-devices { position: relative; font-family: var(--st-ui-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); }
+.dv-wrap { min-height: 100%; padding: 28px 32px 48px; box-sizing: border-box; }
+.dv-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 26px; }
+.dv-head h1 { margin: 0; font-size: 22px; font-weight: 650; color: var(--st-hi); }
+.dv-sub { color: var(--st-dim); font-size: 13px; }
+.dv-map { position: relative; display: flex; flex-direction: column; align-items: center; gap: 46px; }
+.dv-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.dv-lines path { fill: none; stroke: var(--st-line); stroke-width: 1.5; }
+.dv-row { position: relative; display: flex; justify-content: center; align-items: flex-start; gap: 56px; flex-wrap: wrap; }
+.dv-col { display: flex; flex-direction: column; align-items: center; gap: 40px; }
+.dv-loose { flex-direction: row; gap: 40px; }
+.dv-kids { display: flex; gap: 32px; }
+.dv-node { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 132px; padding: 10px 6px; border: 0; border-radius: 12px; background: none; color: var(--st-fg); font: inherit; cursor: pointer; }
+.dv-node:hover, .dv-node:focus-visible { background: var(--st-hover); outline: 0; }
+.dv-acct { cursor: default; }
+.dv-acct:hover { background: none; }
+.dv-ic { position: relative; display: block; width: 56px; height: 56px; color: var(--st-dim); }
+.dv-ic > svg { display: block; width: 100%; height: 100%; }
+.dv-node.on .dv-ic, .dv-acct .dv-ic { color: var(--st-fg); }
+.dv-node.self .dv-ic { color: var(--st-accent, #3b82f6); }
+.dv-dot { position: absolute; right: 2px; bottom: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--st-faint, #888); box-shadow: 0 0 0 2px var(--st-bg); }
+.dv-node.on .dv-dot { background: #34c759; }
+.dv-name { max-width: 100%; font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-st { font-size: 11.5px; color: var(--st-dim); text-align: center; line-height: 1.35; }
+.dv-me { color: var(--st-accent, #3b82f6); font-weight: 600; }
+.dv-hint { margin-top: 12px; color: var(--st-dim); font-size: 13px; }
+/* 卡片（同 AirPort 点一台弹出来的那块） */
+.dv-card { position: absolute; z-index: 5; width: 280px; padding: 14px 16px 12px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-bg2); color: var(--st-fg); box-shadow: 0 12px 34px rgba(0, 0, 0, .32); font-size: 12.5px; animation: dv-in .12s cubic-bezier(.2, 0, 0, 1); }
+html.light .dv-card { box-shadow: 0 12px 34px rgba(0, 0, 0, .14); }
+@keyframes dv-in { from { opacity: 0; transform: translateY(-4px); } }
+.dv-ch { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dv-cic { width: 34px; height: 34px; color: var(--st-fg); flex: none; }
+.dv-cic > svg { width: 100%; height: 100%; }
+.dv-ch b { display: block; font-size: 14px; }
+.dv-ch span { color: var(--st-dim); font-size: 11.5px; }
+.dv-rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 10px; }
+.dv-rows dt { color: var(--st-dim); }
+.dv-rows dd { margin: 0; }
+.dv-sec { margin: 8px 0 4px; color: var(--st-dim); font-size: 11.5px; }
+.dv-appr { list-style: none; margin: 0 0 8px; padding: 0; }
+.dv-appr li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.dv-appr button, .dv-acts button { padding: 4px 10px; border: 1px solid var(--st-line); border-radius: 6px; background: var(--st-bg); color: var(--st-fg); font: inherit; cursor: pointer; }
+.dv-appr button:hover, .dv-acts button:hover { background: var(--st-hover); }
+.dv-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }

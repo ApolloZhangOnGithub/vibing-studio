@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.422", items: {
+      new: [
+        ["新 App「设备」（参考 AirPort 实用工具）：你的设备画成一张图——最上面是账户，下面是 Mac 和别的设备，在用某台 Mac 的 iPad、iPhone 挂在那台下面；绿点是在线。点一台出它的卡片：另一台在线的 Mac 能「在这里使用」，这台能改名，这台 Mac 能开关「允许其他设备使用」、撤销允许过的设备。", "New Devices app, modeled on AirPort Utility: your devices drawn as a map, with your account at the top and your Macs and other devices below it. An iPad or iPhone using a Mac hangs under that Mac, and a green dot means online. Click a device for its card: use another online Mac from here, rename this device, turn sharing of this Mac on or off, and revoke devices you allowed."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.421", items: {
       new: [
         ["终端像 tmux 一样有名字：新建时先在 Agents 视图的「终端」里输名字（同新建文件夹，回车就开）；关掉标签页它照跑（里面的程序不停），在「终端」里点一下接回来；右键能重命名、结束。标签页的标题就是它的名字，不再是「~ — -zsh」。", "Terminals now have names, like tmux sessions. A new terminal first asks for a name in the Terminals section of the Agents view, the way a new folder does, and opens on Return. Closing its tab leaves it running, programs included; click it under Terminals to reattach, or right-click to rename or end it. The tab title is its name instead of “~ — -zsh”."],

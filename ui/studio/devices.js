@@ -94,11 +94,12 @@
     var map = host.querySelector(".dv-map"), svg = host.querySelector(".dv-lines");
     if (!map || !svg) return;
     var mr = map.getBoundingClientRect(), pts = [], at = function (el, edge) { var r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - mr.left, y: (edge === "top" ? r.top : r.bottom) - mr.top }; };
-    var acct = map.querySelector(".dv-acct .dv-ic");
-    var link = function (a, b) { var p = at(a, "bottom"), q = at(b, "top"), my = (p.y + q.y) / 2; pts.push("M" + p.x + " " + p.y + "V" + my + "H" + q.x + "V" + q.y); };
-    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose) > .dv-node .dv-ic").forEach(function (ic) { if (acct) link(acct, ic); });
-    map.querySelectorAll(".dv-loose > .dv-node .dv-ic").forEach(function (ic) { if (acct) link(acct, ic); });
-    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose)").forEach(function (col) { var mic = col.querySelector(":scope > .dv-node .dv-ic"); col.querySelectorAll(".dv-kids > .dv-node .dv-ic").forEach(function (ic) { link(mic, ic); }); });
+    // 从上面那一台的整块（图标 + 名字 + 状态）下沿出发，到下面那一台图标的上沿：线不穿过字
+    var acct = map.querySelector(".dv-acct");
+    var link = function (a, b) { var p = at(a, "bottom"), q = at(b, "top"), my = Math.round(q.y - 18); pts.push("M" + p.x + " " + (p.y + 2) + "V" + my + "H" + q.x + "V" + (q.y - 2)); };
+    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose) > .dv-node").forEach(function (nd) { if (acct) link(acct, nd.querySelector(".dv-ic")); });
+    map.querySelectorAll(".dv-loose > .dv-node").forEach(function (nd) { if (acct) link(acct, nd.querySelector(".dv-ic")); });
+    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose)").forEach(function (col) { var mac = col.querySelector(":scope > .dv-node"); col.querySelectorAll(".dv-kids > .dv-node").forEach(function (nd) { link(mac, nd.querySelector(".dv-ic")); }); });
     svg.setAttribute("width", mr.width); svg.setAttribute("height", mr.height);
     svg.innerHTML = pts.map(function (d) { return '<path d="' + d + '"/>'; }).join("");
   }
