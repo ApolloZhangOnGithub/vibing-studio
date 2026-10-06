@@ -1,0 +1,39 @@
+{
+  "name": "vibing-studio",
+  "productName": "Vibing Studio",
+  "version": "0.2.1",
+  "description": "Vibing Studio for Linux",
+  "homepage": "https://code.paimon.beer",
+  "author": { "name": "Vibing Studio", "email": "hkuzkz@gmail.com" },
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --linux AppImage deb"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.15"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "beer.paimon.terminal",
+    "productName": "Vibing Studio",
+    "executableName": "vibing-studio",
+    "artifactName": "Vibing-Studio-${version}-${arch}.${ext}",
+    "files": ["main.js", "preload.js", "native/**", "bin/**", "icons/**", "package.json"],
+    "extraResources": [{ "from": "ui", "to": "ui" }],
+    "asarUnpack": ["bin/**", "node_modules/@lydell/**"],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development",
+      "icon": "icons",
+      "synopsis": "Claude Code, Codex and terminals in one window",
+      "mimeTypes": ["inode/directory"]
+    },
+    "deb": { "depends": ["libnss3", "libgtk-3-0", "libxss1", "libasound2 | libasound2t64"] }
+  }
+}

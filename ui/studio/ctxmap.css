@@ -1,0 +1,44 @@
+/* ctxmap.css —— 上下文窗口的明细（ctxmap.js）：同 Claude 桌面版的「Context window」卡片。深色为默认，html.light 浅色；.cx-tui 是 TUI 里用的终端样子 */
+.cx { --cx-fg: #e8e8e8; --cx-dim: rgba(232, 232, 232, 0.55); --cx-line: rgba(255, 255, 255, 0.08); --cx-track: rgba(255, 255, 255, 0.08); --cx-free: #2f2f2f; --cx-hover: rgba(255, 255, 255, 0.06);
+  width: 340px; max-width: calc(100vw - 32px); color: var(--cx-fg); font: 13.5px/1.35 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+html.light .cx { --cx-fg: #1f1f1f; --cx-dim: rgba(31, 31, 31, 0.55); --cx-line: rgba(0, 0, 0, 0.08); --cx-track: rgba(0, 0, 0, 0.07); --cx-free: #e3e3e3; --cx-hover: rgba(0, 0, 0, 0.05); }
+.cx-h { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin: 0 0 6px; padding: 0 10px; border: 1px solid var(--cx-line); border-radius: 9px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.cx-h:hover { background: var(--cx-hover); }
+.cx-h:focus-visible { outline: 2px solid #5b8def; outline-offset: 1px; }
+.cx-ht { color: var(--cx-dim); }
+.cx-fill { flex: 1; }
+.cx-sum { font-variant-numeric: tabular-nums; }
+.cx-chev { width: 8px; height: 8px; margin: -3px 2px 0 4px; border: solid var(--cx-dim); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform 0.15s; }
+.cx.folded .cx-chev { transform: rotate(-45deg); margin-top: 1px; }
+.cx-bar { display: flex; gap: 2px; height: 4px; margin: 2px 2px 8px; border-radius: 2px; background: var(--cx-track); overflow: hidden; }
+.cx-bar > i { display: block; height: 100%; border-radius: 1px; }
+.cx.folded .cx-body { display: none; }
+.cx-r, .cx-gh, .cx-gi { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 0 6px; border-radius: 6px; }
+.cx-sq { flex: none; width: 11px; height: 11px; border-radius: 3px; }
+.cx-r.free .cx-sq { background: var(--cx-free) !important; box-shadow: inset 0 0 0 1px var(--cx-line); }
+.cx-r.def { opacity: 0.7; }
+.cx-n { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cx-t { flex: none; min-width: 52px; text-align: right; color: var(--cx-dim); font-variant-numeric: tabular-nums; }
+.cx-p { flex: none; min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+.cx-est { margin-left: 6px; padding: 0 5px; border-radius: 4px; background: var(--cx-track); color: var(--cx-dim); font-size: 11px; font-style: normal; }
+.cx-sep { height: 1px; margin: 6px 4px; background: var(--cx-line); }
+.cx-gh { cursor: pointer; color: var(--cx-dim); }
+.cx-gh:hover { background: var(--cx-hover); color: var(--cx-fg); }
+.cx-gh:focus-visible { outline: 2px solid #5b8def; outline-offset: -2px; }
+.cx-car { flex: none; width: 6px; height: 6px; margin: 0 3px 0 2px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.15s; }
+.cx-g.open .cx-car { transform: rotate(45deg); }
+.cx-gl { padding: 2px 0 4px 22px; }
+.cx-gi { min-height: 22px; font-size: 12.5px; color: var(--cx-dim); }
+.cx-note { margin: 8px 6px 2px; color: var(--cx-dim); font-size: 11.5px; }
+/* 单独的卡片（TUI 的状态行、/context、窗口底部状态栏打开的） */
+.cx-pop { position: fixed; z-index: 100001; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: #262626; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25); animation: cx-in 0.12s ease-out; }
+html.light .cx-pop { border-color: rgba(0, 0, 0, 0.1); background: #fbfbfa; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.08); }
+@keyframes cx-in { from { opacity: 0; transform: translateY(4px); } }
+/* GUI 的上下文弹出层里：卡片占满它；放不下就在里面滚（标题行不动） */
+.gv-pop-ctx .cx { width: 100%; }
+.gv-pop-ctx { max-height: min(600px, calc(100% - 16px)); overflow-y: auto; overscroll-behavior: contain; }
+.cx-pop { max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+/* TUI：终端的样子——等宽字、方角、配色方案的颜色 */
+.cx-pop-tui { border-radius: 0; background: var(--st-canvas, #111); border-color: var(--st-line, #333); box-shadow: var(--st-shadow, 0 8px 24px rgba(0, 0, 0, 0.5)); }
+.cx.cx-tui { --cx-fg: var(--st-fg, #ccc); --cx-dim: var(--st-dim, #888); --cx-line: var(--st-line, #333); font: var(--st-fs, 12px)/1.45 var(--st-mono, Monaco, Menlo, "PingFang SC", monospace); width: 380px; }
+.cx.cx-tui .cx-h, .cx.cx-tui .cx-r, .cx.cx-tui .cx-gh, .cx.cx-tui .cx-gi, .cx.cx-tui .cx-sq, .cx.cx-tui .cx-bar, .cx.cx-tui .cx-est { border-radius: 0; }

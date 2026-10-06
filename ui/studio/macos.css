@@ -1,0 +1,380 @@
+/* macos.css —— 系统风格之三：macOS（html.st-macos，macos.js）。桌面、菜单栏、程序坞来自 desk.js（app.css / desk.css）；
+   这里是：原来铺满的终端窗口（#win）变成桌面上透明的一层，编辑区的每个标签页是一个窗口（.mw）；访达、设置用 macOS 的样子（统一工具栏、侧边栏、
+   System Settings 那种分组卡片和开关）；桌面小组件。深色为默认，html.light 为浅色 */
+html.st-macos {
+  --mac-bar: rgba(44, 44, 48, 0.94); --mac-bar-key: rgba(52, 52, 56, 0.96); --mac-line: rgba(255, 255, 255, 0.09); --mac-fg: #ececef; --mac-dim: #9a9aa0;
+  --mac-side: rgba(40, 40, 44, 0.9); --mac-content: #1e1e20; --mac-card: rgba(255, 255, 255, 0.055); --mac-card-line: rgba(255, 255, 255, 0.07);
+  --mac-hover: rgba(255, 255, 255, 0.07); --mac-sel: rgba(255, 255, 255, 0.13); --mac-accent: #0a84ff; --mac-ctl: rgba(255, 255, 255, 0.1);
+  --mac-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+}
+html.st-macos.light {
+  --mac-bar: rgba(236, 236, 240, 0.95); --mac-bar-key: rgba(242, 242, 245, 0.97); --mac-line: rgba(0, 0, 0, 0.09); --mac-fg: #1d1d1f; --mac-dim: #86868b;
+  --mac-side: rgba(232, 232, 236, 0.92); --mac-content: #ffffff; --mac-card: rgba(0, 0, 0, 0.035); --mac-card-line: rgba(0, 0, 0, 0.06);
+  --mac-hover: rgba(0, 0, 0, 0.05); --mac-sel: rgba(0, 0, 0, 0.09); --mac-accent: #007aff; --mac-ctl: #ffffff;
+}
+
+/* ======== 原来铺满的终端窗口：变成菜单栏下面、铺满桌面的一层透明的底（窗口都在它里面）======== */
+html.st-macos #win { position: fixed !important; left: 0 !important; top: 32px !important; right: 0 !important; bottom: 0 !important; width: auto !important; height: auto !important;
+  transform: none !important; opacity: 1 !important; visibility: visible !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+  min-width: 0 !important; min-height: 0 !important; }
+html.st-macos #win > .body { background: transparent !important; -webkit-mask: none !important; mask: none !important; border-radius: 0 !important; visibility: visible !important; }
+/* 工作台的外壳都不要：标题栏、活动栏、侧栏、面板、状态栏、标签条、面包屑、缩略图 */
+html.st-macos #win > .body > .bar, html.st-macos #win > .body > .tabs, html.st-macos #win .st-act, html.st-macos #win .tside, html.st-macos #win .ts-grip,
+html.st-macos #win .st-grip, html.st-macos #win .st-aside, html.st-macos #win .st-panel, html.st-macos #win .st-status, html.st-macos #win .st-map,
+html.st-macos #win .gtabs, html.st-macos #win .st-crumbs, html.st-macos #win .st-watermark { display: none !important; }
+html.st-macos #win .st-row0, html.st-macos #win .tlab, html.st-macos #win .tmain, html.st-macos #win .st-mid, html.st-macos #win .st-ecol {
+  display: block !important; position: static !important; width: auto !important; height: 100% !important; min-width: 0 !important; padding: 0 !important; margin: 0 !important;
+  border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; overflow: visible !important; }
+html.st-macos #win .panes { position: absolute !important; inset: 0 !important; overflow: visible !important; background: transparent !important; display: block !important; }
+/* 这一层本身不挡点击（点得到墙纸、小组件）；窗口、浮层照常能点 */
+html.st-macos #win, html.st-macos #win > .body, html.st-macos #win .st-row0, html.st-macos #win .tlab, html.st-macos #win .tmain,
+html.st-macos #win .st-mid, html.st-macos #win .st-ecol, html.st-macos #win .panes { pointer-events: none !important; }
+html.st-macos #win > :not(.body), html.st-macos #win > .body > :not(.st-row0):not(.bar), html.st-macos #win .panes > .mw,
+html.st-macos #win .st-mid > :not(.st-ecol), html.st-macos #win .st-ecol > :not(.panes) { pointer-events: auto; }
+html.st-macos #wall { display: none !important; }
+/* 调度中心：程序坞里一个图标（点了是所有窗口的概览） */
+html.st-macos.mw-dragging, html.st-macos.mw-dragging * { cursor: default !important; -webkit-user-select: none !important; user-select: none !important; }
+html.st-macos.mw-dragging #win .mw-body { pointer-events: none; } /* 拖着的时候指针不被里面的内容（网页、终端）吃掉 */
+
+/* ======== 窗口 ======== */
+.mw { position: absolute; display: flex; flex-direction: column; min-width: 380px; min-height: 240px; border-radius: 12px; overflow: hidden; background: var(--st-bg);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 12px 32px rgba(0, 0, 0, 0.3); font-family: var(--mac-font);
+  transition: box-shadow 0.15s; }
+/* 深色的窗口一圈细亮边（同 macOS 深色模式）：黑墙纸、黑内容上也看得出窗口的边；盖在内容上面（内容是黑的也不吃掉它） */
+.mw::after { content: ""; position: absolute; inset: 0; z-index: 60; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.17); pointer-events: none; }
+.mw:not(.mw-key)::after { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); }
+html.light .mw::after { box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.5); }
+html.light .mw { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.22), 0 12px 30px rgba(0, 0, 0, 0.14); }
+.mw.mw-key { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.12), 0 24px 60px rgba(0, 0, 0, 0.5); }
+html.light .mw.mw-key { box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.25), 0 22px 56px rgba(0, 0, 0, 0.26); }
+.mw.mw-min { display: none !important; }
+/* 开、关窗口（同 macOS）：开的时候从 94% 长到原大小、淡入；关的时候缩一点、淡出 */
+.mw.mw-opening { animation: mw-open 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.04); }
+@keyframes mw-open { from { opacity: 0; transform: scale(0.94); } }
+.mw.mw-closing { animation: mw-close 0.17s ease-in forwards; pointer-events: none !important; }
+@keyframes mw-close { to { opacity: 0; transform: scale(0.95); } }
+@media (prefers-reduced-motion: reduce) { .mw.mw-opening, .mw.mw-closing { animation-duration: 0.01s; } }
+.mw.mw-going { transition: transform 0.26s cubic-bezier(0.4, 0, 0.8, 0.4), opacity 0.26s; transform: scale(0.06); opacity: 0; pointer-events: none; }
+.mw-bar { position: relative; flex: none; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 14px; background: var(--mac-bar); color: var(--mac-fg);
+  border-bottom: 1px solid var(--mac-line); font: 13px var(--mac-font); -webkit-user-select: none; user-select: none; cursor: default; }
+.mw.mw-key > .mw-bar { background: var(--mac-bar-key); }
+.mw-lights { flex: none; display: flex; gap: 8px; margin-right: 6px; }
+.mw-lights i { position: relative; display: block; width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2); cursor: default; }
+.mw-lights i:nth-child(2) { background: #febc2e; }
+.mw-lights i:nth-child(3) { background: #28c840; }
+.mw:not(.mw-key) .mw-lights i { background: rgba(128, 128, 134, 0.45); }
+.mw-lights:hover i { background-image: none; }
+.mw-lights i::after { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 9px/1 var(--mac-font); color: rgba(0, 0, 0, 0.6); opacity: 0; }
+.mw-lights:hover i::after { opacity: 1; }
+.mw-lights:hover i[data-a="close"] { background: #ff5f57; } .mw-lights:hover i[data-a="min"] { background: #febc2e; } .mw-lights:hover i[data-a="zoom"] { background: #28c840; }
+.mw-lights i[data-a="close"]::after { content: "\00D7"; font-size: 11px; }
+.mw-lights i[data-a="min"]::after { content: "\2212"; font-size: 11px; }
+.mw-lights i[data-a="zoom"]::after { content: "\2922"; font-size: 8px; }
+.mw-lead { flex: none; display: flex; align-items: center; gap: 2px; }
+.mw-title { position: absolute; left: 50%; top: 0; bottom: 0; transform: translateX(-50%); max-width: calc(100% - 300px); display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-weight: 600; font-size: 13px; color: var(--mac-fg); white-space: nowrap; pointer-events: none; }
+.mw:not(.mw-key) .mw-title { color: var(--mac-dim); }
+.mw-t { overflow: hidden; text-overflow: ellipsis; }
+.mw-ico { display: inline-flex; align-items: center; opacity: 0.85; }
+.mw-ico .st-ico { font-size: 11px; }
+.mw-ico svg { width: 14px; height: 14px; }
+.mw-fill { flex: 1; }
+.mw-tools { flex: none; display: flex; align-items: center; gap: 2px; }
+.mw-tb { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--mac-dim); cursor: default; }
+.mw-tb:hover { background: var(--mac-hover); color: var(--mac-fg); }
+.mw-tb svg { width: 15px; height: 15px; }
+.mw-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; background: var(--st-bg); }
+.mw-body > .tpane { flex: 1 1 auto; min-width: 0; min-height: 0; }
+/* 四边四角拉大小 */
+.mw-rs { position: absolute; z-index: 6; }
+.mw-rs-n, .mw-rs-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; } .mw-rs-n { top: -2px; } .mw-rs-s { bottom: -2px; }
+.mw-rs-e, .mw-rs-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; } .mw-rs-e { right: -2px; } .mw-rs-w { left: -2px; }
+.mw-rs-ne, .mw-rs-nw, .mw-rs-se, .mw-rs-sw { width: 12px; height: 12px; }
+.mw-rs-ne { top: -2px; right: -2px; cursor: nesw-resize; } .mw-rs-sw { bottom: -2px; left: -2px; cursor: nesw-resize; }
+.mw-rs-nw { top: -2px; left: -2px; cursor: nwse-resize; } .mw-rs-se { bottom: -2px; right: -2px; cursor: nwse-resize; }
+/* 平铺的预览：半透明的一块 */
+.mw-snap { position: absolute; border-radius: 12px; background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); pointer-events: none;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: left 0.12s, top 0.12s, width 0.12s, height 0.12s; }
+html.light .mw-snap { background: rgba(0, 122, 255, 0.12); box-shadow: inset 0 0 0 1px rgba(0, 122, 255, 0.4); }
+
+/* ---- 访达的「文件 | Agent」（侧边栏左下角，dash.js 的 .xs-seg）---- */
+html.st-macos .mw .xs-seg { padding: 2px; gap: 2px; border-radius: 9px; background: var(--mac-hover); }
+html.st-macos .mw .xs-seg > button { height: 24px; border-radius: 7px; color: var(--mac-dim); font: 12px var(--mac-font); cursor: default; }
+html.st-macos .mw .xs-seg > button:hover:not(.on) { background: var(--mac-hover); color: var(--mac-fg); }
+html.st-macos .mw .xs-seg > button.on { background: rgba(255, 255, 255, 0.16); color: var(--mac-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+html.st-macos.light .mw .xs-seg > button.on { background: #fff; }
+html.st-macos .mw .xs-scroll { margin: 0 -10px; padding: 0 10px 8px; }
+
+/* ---- 浏览器：前进后退、居中的地址栏 ---- */
+.mw.mw-web .mw-title { pointer-events: auto; width: min(560px, calc(100% - 340px)); max-width: none; }
+.mw-url { width: 100%; height: 26px; box-sizing: border-box; padding: 0 12px; border: 0; border-radius: 8px; background: var(--mac-hover); color: var(--mac-fg); font: 13px var(--mac-font); text-align: center; outline: 0; }
+.mw-url:focus { text-align: left; background: var(--mac-ctl); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+
+/* ======== 统一工具栏的窗口（访达、设置）：没有单独的标题栏，红黄绿落在侧边栏顶上 ======== */
+.mw.mw-uni > .mw-bar { position: absolute; left: 0; top: 0; z-index: 4; width: 212px; height: 52px; padding: 0 0 0 20px; background: transparent !important; border: 0; }
+.mw.mw-uni > .mw-bar > .mw-title, .mw.mw-uni > .mw-bar > .mw-tools { display: none; }
+.mw.mw-uni > .mw-body { background: var(--mac-content); }
+
+/* ---- 访达（资源管理器那一页）：侧边栏 + 统一工具栏 + 图标 / 列表 ---- */
+html.st-macos .mw .xp { font: 13px/1.4 var(--mac-font); background: var(--mac-content); color: var(--mac-fg); }
+html.st-macos .mw .xs { width: 212px; box-sizing: border-box; padding: 52px 10px 14px; background: var(--mac-side); border-right: 1px solid var(--mac-line);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); }
+html.st-macos .mw .xs-h { padding: 8px 8px 4px; font-size: 11px; color: var(--mac-dim); }
+html.st-macos .mw .xs-it { height: 28px; padding: 0 8px; border-radius: 7px; gap: 8px; color: var(--mac-fg); }
+html.st-macos .mw .xs-it:hover { background: var(--mac-hover); }
+html.st-macos .mw .xs-it.on { background: var(--mac-sel); color: var(--mac-fg); }
+html.st-macos .mw .xs-ic { color: var(--mac-accent); }
+html.st-macos .mw .xp-tool { height: 52px; box-sizing: border-box; padding: 0 12px 0 10px; gap: 6px; border-bottom: 1px solid var(--mac-line); background: var(--mac-content); }
+html.st-macos .mw .xp-tb { width: 30px; height: 28px; border-radius: 8px; color: var(--mac-fg); opacity: 0.85; }
+html.st-macos .mw .xp-tb:hover:not([disabled]) { background: var(--mac-hover); opacity: 1; }
+html.st-macos .mw .xp-crumbs { font-size: 14px; font-weight: 600; color: var(--mac-fg); }
+html.st-macos .mw .xp-sep { color: var(--mac-dim); }
+html.st-macos .mw .xp-seg { padding: 2px; gap: 1px; border: 0; border-radius: 9px; background: var(--mac-hover); }
+html.st-macos .mw .xp-seg button { height: 24px; min-width: 32px; padding: 0 8px; border-radius: 7px; color: var(--mac-fg); }
+html.st-macos .mw .xp-seg button + button { border-left: 0; }
+html.st-macos .mw .xp-seg button.on { background: rgba(255, 255, 255, 0.16); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+html.st-macos.light .mw .xp-seg button.on { background: #fff; }
+html.st-macos .mw .xp-q { height: 28px; box-sizing: border-box; width: 170px; padding: 0 10px 0 26px; border: 0; border-radius: 8px; background: var(--mac-hover) no-repeat 8px 50% / 13px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239a9aa0' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='M10.5 10.5l3.5 3.5'/%3E%3C/svg%3E");
+  color: var(--mac-fg); font: 13px var(--mac-font); }
+html.st-macos .mw .xp-q:focus { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+html.st-macos .mw .xp-it.on .xp-name { background: var(--mac-accent); color: #fff; border-radius: 4px; }
+html.st-macos .mw .xp-pane { border-left: 1px solid var(--mac-line); background: var(--mac-content); }
+
+/* ---- 设置（System Settings 的样子）：左边带彩色小方块图标的侧边栏（搜索在最上面）、右边分组卡片，一行一个：名字在左、控件在右 ---- */
+html.st-macos .mw .ss { display: grid; grid-template-columns: 212px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); font: 13px/1.4 var(--mac-font); background: var(--mac-content); color: var(--mac-fg); }
+html.st-macos .mw .ss-cols { display: contents; }
+html.st-macos .mw .ss-top { grid-column: 1; grid-row: 1; padding: 52px 10px 8px; background: var(--mac-side); border-right: 1px solid var(--mac-line);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); }
+html.st-macos .mw .ss-q { height: 28px; border: 0; border-radius: 8px; padding: 0 10px 0 26px; background: var(--mac-hover) no-repeat 8px 50% / 13px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239a9aa0' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='M10.5 10.5l3.5 3.5'/%3E%3C/svg%3E");
+  font: 13px var(--mac-font); color: var(--mac-fg); }
+html.st-macos .mw .ss-q:focus { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+/* 左边的分组：系统设置里组和组之间只是空一点（不写组名）；分区的图标是下面的彩色小方块，不用线条图标 */
+html.st-macos .mw .ss-grp { height: 12px; overflow: hidden; font-size: 0; }
+html.st-macos .mw .ss-grp:first-child { height: 0; }
+html.st-macos .mw .ss-sic { display: none; }
+html.st-macos .mw .ss-toc { grid-column: 1; grid-row: 2; width: auto; padding: 4px 10px 16px; border-right: 1px solid var(--mac-line); background: var(--mac-side);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); }
+html.st-macos .mw .ss-t2, html.st-macos .mw .ss-chev { display: none !important; }
+html.st-macos .mw .ss-ti { height: 30px; gap: 9px; padding: 0 8px; border: 0; border-radius: 7px; color: var(--mac-fg); font-weight: 400; }
+html.st-macos .mw .ss-ti:hover { background: var(--mac-hover); }
+html.st-macos .mw .ss-ti.on { background: var(--mac-accent); color: #fff; font-weight: 400; }
+html.st-macos .mw .ss-t1::before { content: ""; flex: none; width: 20px; height: 20px; border-radius: 5px; background: var(--tile, #8e8e93) var(--glyph, none) center / 13px no-repeat;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12); }
+html.st-macos .mw .ss-t1[data-go="appearance"] { --tile: #8e8e93; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.5' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='2'/%3E%3Cpath d='M8 1.7l1.1 1.6 1.9-.4.4 1.9 1.6 1.1-1 1.7 1 1.7-1.6 1.1-.4 1.9-1.9-.4L8 14.3l-1.1-1.6-1.9.4-.4-1.9-1.6-1.1 1-1.7-1-1.7 1.6-1.1.4-1.9 1.9.4z'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="account"] { --tile: #0a84ff; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Ccircle cx='8' cy='5.6' r='2.8'/%3E%3Cpath d='M2.6 13.6c.8-2.6 2.9-4 5.4-4s4.6 1.4 5.4 4z'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="desktop"] { --tile: #1c1c1e; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.4' stroke-linecap='round'%3E%3Crect x='1.8' y='2.6' width='12.4' height='10.8' rx='1.6'/%3E%3Cpath d='M4.6 10.8h6.8' stroke-width='2'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="terminal"] { --tile: #3a3a3e; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 5l3 3-3 3M8.5 11.5h4'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="paimon"] { --tile: #af52de; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.8c.5 3.6 2.6 5.7 6.2 6.2-3.6.5-5.7 2.6-6.2 6.2-.5-3.6-2.6-5.7-6.2-6.2 3.6-.5 5.7-2.6 6.2-6.2z' fill='white'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="claude"] { --tile: #d97757; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' stroke='white' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M8 2.2v11.6M2.2 8h11.6M3.9 3.9l8.2 8.2M12.1 3.9l-8.2 8.2'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="view"] { --tile: #30b0c7; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.5'%3E%3Crect x='2' y='3' width='12' height='10' rx='1.6'/%3E%3Cpath d='M9.5 3v10'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-t1[data-go="extensions"] { --tile: #34c759; }
+html.st-macos .mw .ss-body { grid-column: 2; grid-row: 1 / 3; padding: 0 30px 48px; background: var(--mac-content); }
+html.st-macos .mw .ss-otp { display: none !important; }
+html.st-macos .mw .ss-sec { max-width: 680px; margin: 0 auto; }
+html.st-macos .mw .ss-h2 { height: 52px; box-sizing: border-box; display: flex; align-items: center; padding: 0; margin: 0 0 4px; font-size: 15px; font-weight: 700; background: var(--mac-content);
+  border-bottom: 0; color: var(--mac-fg); }
+html.st-macos .mw .ss-h3 { position: static; padding: 18px 4px 6px; margin: 0 !important; border: 0; font-size: 13px; font-weight: 600; background: none; color: var(--mac-fg); }
+html.st-macos .mw .ss-sub { display: flow-root; }
+/* 一组：连在一起的一张圆角卡片，行和行之间一道细线 */
+html.st-macos .mw .ss-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "t c" "d c" "x x"; column-gap: 24px; align-items: center; margin: 0; padding: 10px 14px;
+  border-radius: 0; background: var(--mac-card); box-shadow: 0 0 0 0.5px var(--mac-card-line); scroll-margin-top: 60px; }
+html.st-macos .mw .ss-sub > .ss-row:first-of-type, html.st-macos .mw .ss-sec > .ss-sub:first-of-type > .ss-row:first-child { border-top-left-radius: 10px; border-top-right-radius: 10px; }
+html.st-macos .mw .ss-sub > .ss-row:last-child { border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; }
+html.st-macos .mw .ss-row + .ss-row { border-top: 1px solid var(--mac-card-line); }
+html.st-macos .mw .ss-row:hover, html.st-macos .mw .ss-row.on { background: var(--mac-card); }
+html.st-macos .mw .ss-row.flash { background: rgba(10, 132, 255, 0.14); }
+html.st-macos .mw .ss-title { grid-area: t; margin: 0; font-weight: 400; color: var(--mac-fg); }
+html.st-macos .mw .ss-row > .ss-desc, html.st-macos .mw .ss-checkrow > .ss-desc { grid-area: d; margin: 2px 0 0; font-size: 11.5px; color: var(--mac-dim); opacity: 1; max-width: none; }
+html.st-macos .mw .ss-ctl { grid-area: c; justify-self: end; }
+html.st-macos .mw .ss-ctl:has(.ss-checkrow), html.st-macos .mw .ss-checkrow { display: contents; }
+/* 开关（同 macOS）：勾选框画成一个胶囊 */
+html.st-macos .mw .ss-check { grid-area: c; justify-self: end; position: relative; width: 34px; height: 20px; margin: 0; border: 0; border-radius: 10px; background: rgba(120, 120, 128, 0.36);
+  display: block; transition: background 0.15s; }
+html.st-macos .mw .ss-check::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; margin: 0; border: 0; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.35); transform: none; opacity: 1; transition: left 0.15s; }
+html.st-macos .mw .ss-check:checked { background: var(--mac-accent); }
+html.st-macos .mw .ss-check:checked::after { left: 16px; }
+/* 弹出按钮（下拉框） */
+html.st-macos .mw .ss-dd { width: auto; min-width: 120px; max-width: 220px; height: 24px; padding: 0 28px 0 10px; border: 0; border-radius: 6px; background: var(--mac-ctl);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 1px 1.5px rgba(0, 0, 0, 0.2); color: var(--mac-fg); font: 13px var(--mac-font); }
+html.st-macos .mw .ss-dd.open, html.st-macos .mw .ss-dd:focus { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); border-radius: 6px; }
+/* 弹出按钮右边的 ⌃⌄（同 NSPopUpButton），不是一个 ⌄ */
+html.st-macos .mw .ss-dd .ss-ddc { right: 8px; top: 50%; width: 9px; height: 14px; margin-top: -7px; border: 0; transform: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14' fill='none' stroke='%23a1a1a6' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.8 5l2.7-2.7L7.2 5M1.8 9l2.7 2.7L7.2 9'/%3E%3C/svg%3E") center / 9px 14px no-repeat; }
+html.st-macos .mw .ss-dd:hover { filter: brightness(1.08); }
+html.st-macos .mw .ss-row.mod .ss-title::after { content: none; } /* 改过的小圆点：VS Code 才有 */
+html.st-macos .ss-ddlist { border: 0; border-radius: 8px; padding: 4px 0; background: rgba(40, 40, 44, 0.9); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.6), 0 12px 32px rgba(0, 0, 0, 0.4); font: 13px var(--mac-font); color: var(--mac-fg); margin-top: 4px; }
+html.st-macos.light .ss-ddlist { background: rgba(246, 246, 248, 0.92); }
+html.st-macos .ss-ddi { height: 22px; margin: 0 5px; border-radius: 5px; }
+html.st-macos .ss-ddi.on { background: var(--mac-accent); color: #fff; }
+html.st-macos .ss-dddesc { border-top: 1px solid var(--mac-line); color: var(--mac-dim); font-size: 12px; }
+/* 数字、文字、滑块 */
+html.st-macos .mw .ss-input { height: 24px; border: 0; border-radius: 6px; background: var(--mac-ctl); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3); color: var(--mac-fg); font: 13px var(--mac-font); text-align: right; }
+html.st-macos .mw .ss-input:focus { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+html.st-macos .mw .ss-num { width: 72px; }
+html.st-macos .mw .ss-input:not(.ss-num) { width: 180px; text-align: left; }
+html.st-macos .mw .ss-slider { width: 240px; }
+html.st-macos .mw .ss-range { height: 4px; background: linear-gradient(to right, var(--mac-accent) var(--p, 0%), rgba(120, 120, 128, 0.36) var(--p, 0%)); }
+
+/* ======== 程序坞里的几个 App 图标 ======== */
+.mac-ico { padding: 0 !important; overflow: hidden; }
+.mac-ico svg { display: block; width: 100%; height: 100%; }
+.mac-ico-finder { background: #1e8bff; }
+.mac-ico-ide { background: linear-gradient(160deg, #3b3b40, #151517); }
+.mac-ico-settings { background: linear-gradient(160deg, #c7c7cc, #8e8e93); }
+.mac-ico-browser { background: linear-gradient(160deg, #f4f6fb, #d4dae6); }
+.mac-ico-global { background: linear-gradient(160deg, #6b5ae0, #241e52); } /* 全局助手 */
+/* 最小化的窗口：程序坞右边一格——窗口真实的样子（原生拍的）按比例放进去，右下角是它那个 App 的小图标 */
+#dock .mac-min .mt-win i { background: linear-gradient(var(--mac-bar-key) 0 7px, var(--mt-bg, #1e1e20) 7px); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.35); }
+#dock .mac-min .mt-win.mt-shot { display: flex; align-items: center; justify-content: center; padding: 3px 1px; }
+#dock .mac-min .mt-win.mt-shot img { display: block; max-width: 100%; max-height: 100%; border-radius: 4px; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35); }
+
+/* ======== 墙纸（设置 › 墙纸；html 上 data-mac-wall）：要压过 studio.css 里终端 App 铺满的底色（那条带 !important）======== */
+html.termapp.st-macos #desktop { background: #1c1c1e center / cover no-repeat !important; }
+html.termapp.st-macos[data-mac-wall="pub-sunset"] #desktop { background-image: url(pub-sunset.webp), url(img/wall-pub-sunset.webp) !important; }
+html.termapp.st-macos[data-mac-wall="pub-emerald"] #desktop { background-image: url(pub-emerald.webp), url(img/wall-pub-emerald.webp) !important; }
+html.termapp.st-macos[data-mac-wall="graphite"] #desktop { background-image: radial-gradient(120% 90% at 30% 10%, #4a4d55, #2a2c31 55%, #17181b) !important; }
+html.termapp.st-macos[data-mac-wall="black"] #desktop { background: #000 !important; }
+
+/* ======== 调度中心（macos.js missionControl）：窗口本身缩小移开（transform），墙纸压暗一点，每摞下面 App 图标 + 名字，顶上是「桌面」 ======== */
+html.mc-on #win .panes > .mw > * { pointer-events: none !important; }
+html.mc-on #win .panes > .mw { overflow: hidden; }
+html.mc-on #win .panes > .mw.mc-hot { box-shadow: 0 0 0 calc(3px / var(--mcs, 1)) #0a84ff, 0 calc(14px / var(--mcs, 1)) calc(44px / var(--mcs, 1)) rgba(0, 0, 0, 0.5) !important; }
+.mc-dim { position: absolute; inset: -40px; z-index: 5; background: rgba(0, 0, 0, 0.26); opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+html.mc-on .mc-dim { opacity: 1; }
+html.mc-on #mac-widgets { opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.mc-labels { position: absolute; inset: 0; z-index: 100000; pointer-events: none; }
+.mc-lab { position: absolute; display: flex; align-items: center; gap: 6px; max-width: 280px; padding: 3px 10px 3px 4px; border-radius: 9px; transform: translateX(-50%);
+  background: rgba(30, 30, 34, 0.5); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); color: #fff; font: 500 12.5px/20px var(--mac-font);
+  white-space: nowrap; opacity: 0; transition: opacity 0.2s 0.18s, background 0.15s; }
+html.mc-on .mc-lab { opacity: 1; }
+.mc-lab.hot { background: rgba(10, 132, 255, 0.85); }
+.mc-lab .mc-t { overflow: hidden; text-overflow: ellipsis; }
+.mc-spaces { position: absolute; left: 50%; top: 12px; display: flex; gap: 8px; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s 0.1s; }
+html.mc-on .mc-spaces { opacity: 1; }
+.mc-sp { padding: 3px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.16); color: #fff; font: 500 12px/18px var(--mac-font); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.mc-sp.on { background: rgba(255, 255, 255, 0.3); }
+/* 内嵌网页在调度中心里：原生那块藏起来，这里是它的截图 */
+.mc-shot { position: absolute; inset: 0; z-index: 5; width: 100%; height: 100%; object-fit: cover; object-position: top left; pointer-events: none; }
+
+/* ======== 桌面小组件（在窗口下面、墙纸上面）======== */
+#mac-widgets { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+html:not(.st-macos) #mac-widgets { display: none; }
+#mac-widgets[hidden] { display: none; }
+.mwg { position: absolute; width: 168px; box-sizing: border-box; padding: 14px 16px; border-radius: 22px; pointer-events: auto; color: #fff; font-family: var(--mac-font);
+  background: rgba(30, 30, 34, 0.42); -webkit-backdrop-filter: blur(28px) saturate(1.6); backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25), 0 8px 24px rgba(0, 0, 0, 0.18); -webkit-user-select: none; user-select: none; cursor: default; }
+html.light .mwg { background: rgba(255, 255, 255, 0.5); color: #1d1d1f; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.6), 0 8px 24px rgba(0, 0, 0, 0.12); }
+.mwg[hidden] { display: none; }
+.mwg-time { font-size: 44px; font-weight: 700; line-height: 1.05; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.mwg-date { margin-top: 4px; font-size: 13px; font-weight: 600; opacity: 0.8; }
+.mwg-h { margin-bottom: 8px; font-size: 12px; font-weight: 700; opacity: 0.75; }
+.mwg-list { width: 208px; }
+.mwg-row { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 6px; margin: 0 -6px; border-radius: 7px; font-size: 13px; cursor: default; }
+.mwg-row:hover { background: rgba(255, 255, 255, 0.14); }
+html.light .mwg-row:hover { background: rgba(0, 0, 0, 0.06); }
+.mwg-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mwg-row em { flex: none; font-style: normal; font-size: 11px; opacity: 0.65; }
+.mwg-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.45); }
+html.light .mwg-dot { background: rgba(0, 0, 0, 0.25); }
+.mwg-dot.working { background: #30d158; box-shadow: 0 0 6px rgba(48, 209, 88, 0.8); }
+.mwg-big { font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mwg-sub { margin-top: 4px; font-size: 12px; opacity: 0.7; }
+.mwg.neg .mwg-big { color: #ff6961; }
+html.light .mwg.neg .mwg-big { color: #d70015; }
+
+/* 设置窗口：文字输入框（代码字体）和旁边的「…」不挤占说明；范围按钮不折行 */
+html.st-macos .mw .ss-ctl .ss-input:not(.ss-num) { width: 180px !important; max-width: 180px; }
+html.st-macos .mw .ss-ctl:has(.ss-sugbtn) { gap: 6px; }
+/* 只看的值、按钮（系统的圆角按钮）、头像、墙纸的一排缩略图、代码预览 */
+html.st-macos .mw .ss-info { color: var(--mac-dim); font-variant-numeric: tabular-nums; }
+html.st-macos .mw .ss-info.neg { color: #ff6961; }
+html.st-macos .mw .ss-info.pos { color: #30d158; }
+/* 用量：卡片里一行一个限额，右边一长条（系统的蓝色）和百分比；一行字的结论是卡片里淡一点的一行 */
+html.st-macos .mw .ss-row.ss-k-meter { grid-template-columns: minmax(120px, 1fr) minmax(0, 1.3fr); }
+html.st-macos .mw .ss-row.ss-k-meter > .ss-ctl { justify-self: stretch; gap: 10px; }
+html.st-macos .mw .ss-meter { height: 6px; border-radius: 3px; background: rgba(120, 120, 128, 0.28); }
+html.st-macos .mw .ss-meter > i { border-radius: 3px; background: var(--mac-accent); }
+html.st-macos .mw .ss-mt { font-size: 12px; color: var(--mac-dim); }
+html.st-macos .mw .ss-row.ss-k-line { display: block; }
+html.st-macos .mw .ss-row.ss-k-line > .ss-title { color: var(--mac-dim); font-size: 12.5px; }
+html.st-macos .mw .ss-t1[data-go="usage"] { --tile: #34c759; --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M4 12V8.5M8 12V4M12 12V6.5'/%3E%3C/svg%3E"); }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="usage"] { font-size: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 12V8.5M8 12V4M12 12V6.5'/%3E%3C/svg%3E") center / 60% no-repeat, linear-gradient(180deg, #5ad97a, #28a745); }
+html.st-macos .mw .ss-btn { height: 22px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--mac-ctl); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 1px 1.5px rgba(0, 0, 0, 0.2); color: var(--mac-fg); font: 13px var(--mac-font); cursor: default; }
+html.st-macos .mw .ss-btn:active { filter: brightness(1.2); }
+html.st-macos .mw .ss-btn.primary { background: var(--mac-accent); color: #fff; }
+html.st-macos .mw .ss-avatar { width: 32px; height: 32px; }
+html.st-macos .mw .ss-row:has(.ss-swatches) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+html.st-macos .mw .ss-row:has(.ss-swatches) > .ss-ctl { justify-self: stretch; margin-top: 10px; }
+html.st-macos .mw .ss-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; width: 100%; } /* 一排几个跟着窗口宽度走 */
+html.st-macos .mw .ss-sw { min-width: 0; color: var(--mac-fg); font: 11px var(--mac-font); cursor: default; }
+html.st-macos .mw .ss-sw > i { width: 100%; height: auto; aspect-ratio: 16 / 10; border-radius: 6px; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4); }
+html.st-macos .mw .ss-sw > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 分区顶上那张卡片的大图标：通用（灰齿轮）、账号（蓝色的人）、桌面与程序坞（黑色、下面一条程序坞） */
+html.st-macos .mw .ss-hero-ic:is([data-sec-ic="appearance"], [data-sec-ic="account"], [data-sec-ic="desktop"]) { font-size: 0; background-position: center; background-size: 60%; background-repeat: no-repeat; }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="appearance"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.2' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='2'/%3E%3Cpath d='M8 1.7l1.1 1.6 1.9-.4.4 1.9 1.6 1.1-1 1.7 1 1.7-1.6 1.1-.4 1.9-1.9-.4L8 14.3l-1.1-1.6-1.9.4-.4-1.9-1.6-1.1 1-1.7-1-1.7 1.6-1.1.4-1.9 1.9.4z'/%3E%3C/svg%3E"), linear-gradient(180deg, #a1a1a6, #6e6e73); }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="account"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Ccircle cx='8' cy='5.6' r='2.8'/%3E%3Cpath d='M2.6 13.6c.8-2.6 2.9-4 5.4-4s4.6 1.4 5.4 4z'/%3E%3C/svg%3E"), linear-gradient(180deg, #4aa3ff, #0a6cdf); }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="desktop"] { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='1.1' stroke-linecap='round'%3E%3Crect x='1.8' y='2.6' width='12.4' height='10.8' rx='1.6'/%3E%3Cpath d='M4.6 10.8h6.8' stroke-width='1.8'/%3E%3C/svg%3E"), linear-gradient(180deg, #3a3a3c, #0b0b0c); }
+html.st-macos .mw .ss-sw.on > i { box-shadow: 0 0 0 2px var(--mac-card), 0 0 0 4.5px var(--mac-accent); }
+html.st-macos .mw .ss-row > .ss-code { grid-area: auto; grid-column: 1 / -1; margin-top: 10px; border-color: var(--mac-card-line); border-radius: 8px; }
+html.st-macos .mw .ss-opt.na { color: var(--mac-dim); }
+html.st-macos .mw .ss-opt.na::before { opacity: .45; }
+
+/* ======== 设置窗口（系统设置）：一次只看一个分区（左边选，右边换一页）；顶上 ‹ › 一个胶囊；分区最上面一张卡片：大图标、名字、一句说明 ======== */
+html.st-macos .mw .ss-pagedmode .ss-h2 { display: none; }
+html.st-macos .mw .ss-pagehead { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; gap: 12px; height: 52px; margin: 0 -30px 8px; padding: 0 30px; background: color-mix(in srgb, var(--mac-content) 94%, transparent); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); } /* 同系统设置的工具栏：‹ › 和这一区的名字（贴满右边这一栏，下面的内容从它底下过去） */
+html.st-macos .mw .ss-pagehead .ss-pt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 15px/1 var(--mac-font); color: var(--mac-fg); }
+/* 代码外观：两张卡片并排（窄了上下放），每张是一个圆角的组 */
+html.st-macos .mw .ss-sub.ss-halves { display: grid; column-gap: 12px; row-gap: 0; }
+@container (max-width: 820px) { html.st-macos .mw .ss-sub.ss-halves { grid-template-columns: minmax(0, 1fr); row-gap: 12px; } }
+html.st-macos .mw .ss-sub.ss-halves > .ss-row.ss-half { grid-template-columns: minmax(0, 1fr) auto; border-radius: 10px; }
+html.st-macos .mw .ss-row.ss-half .ss-dd { max-width: none; } /* 半张卡片里：名字可以缩，下拉框的字不截 */
+html.st-macos .mw .ss-sub.ss-halves > .ss-row:not(.ss-half) { margin-top: 12px; border-radius: 10px; border-top: 0; }
+html.st-macos .mw .ss-row.ss-half + .ss-row.ss-half { border-top: 0; }
+html.st-macos .mw .ss-row > .ss-code { grid-area: x; margin-top: 10px; border-radius: 8px; font-size: 11.5px; }
+/* 设置窗口窄了（拖小了）：左边那栏放不下——分区变成搜索框下面一排 */
+@container (max-width: 560px) {
+  html.st-macos .mw .ss { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  html.st-macos .mw .ss-top { border-right: 0; padding-bottom: 6px; }
+  html.st-macos .mw .ss-toc { grid-column: 1; grid-row: 2; display: flex; gap: 4px; padding: 0 10px 8px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--mac-line); scrollbar-width: none; }
+  html.st-macos .mw .ss-toc::-webkit-scrollbar { display: none; }
+  html.st-macos .mw .ss-toc .ss-grp { display: none; }
+  html.st-macos .mw .ss-ti { flex: none; }
+  html.st-macos .mw .ss-body { grid-column: 1; grid-row: 3; padding: 0 16px 40px; }
+  html.st-macos .mw .ss-pagehead { margin: 0 -16px 8px; padding: 0 16px; }
+  html.st-macos .mw .ss-sub.ss-halves { grid-template-columns: minmax(0, 1fr); }
+  html.st-macos .mw .ss-row { grid-template-columns: minmax(0, 1fr) auto; }
+}
+html.st-macos .mw .ss-navbar { display: inline-flex; align-items: center; height: 28px; padding: 0 2px; border-radius: 14px; background: var(--mac-ctl); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3); }
+html.st-macos .mw .ss-navbar button { width: 30px; height: 24px; border: 0; background: none; color: var(--mac-fg); font: 20px/1 var(--mac-font); cursor: default; }
+html.st-macos .mw .ss-navbar button + button { border-left: 1px solid var(--mac-card-line); }
+html.st-macos .mw .ss-navbar button:disabled { color: var(--mac-dim); opacity: .45; }
+html.st-macos .mw .ss-hero { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 16px; padding: 22px 24px 20px; border-radius: 12px; background: var(--mac-card); text-align: center; }
+html.st-macos .mw .ss-hero-ic { width: 58px; height: 58px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(180deg, #8e8e93, #636366); color: #fff; font: 700 26px/1 var(--mac-font); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="terminal"] { background: linear-gradient(180deg, #3a3a3c, #1c1c1e); font: 700 20px/1 Menlo, monospace; }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="paimon"] { background: linear-gradient(180deg, #b36bff, #6e3bd6); }
+html.st-macos .mw .ss-hero-ic[data-sec-ic="claude"] { background: linear-gradient(180deg, #e0896b, #c4623f); }
+html.st-macos .mw .ss-hero-t { font: 700 22px/1.2 var(--mac-font); color: var(--mac-fg); }
+html.st-macos .mw .ss-hero-d { max-width: 520px; font: 13px/1.45 var(--mac-font); color: var(--mac-dim); }
+/* 两三个里选一个：一排单选（同系统设置的「温度」「计量系统」） */
+html.st-macos .mw .ss-opts { display: flex; align-items: center; gap: 16px; }
+html.st-macos .mw .ss-opt { display: inline-flex; align-items: center; gap: 7px; height: 22px; padding: 0; border: 0; background: none; color: var(--mac-fg); font: 13px var(--mac-font); cursor: default; white-space: nowrap; }
+html.st-macos .mw .ss-opt::before { content: ""; width: 16px; height: 16px; box-sizing: border-box; border-radius: 50%; background: var(--mac-ctl); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.35); }
+html.st-macos .mw .ss-opt.on::before { background: radial-gradient(circle, #fff 0 3px, #0a84ff 3.5px); box-shadow: none; }
+html.light.st-macos .mw .ss-opt::before { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); background: #fff; }
+
+/* 设置的一行：控件太宽（三个选项的单选）就放到说明下面，不把名字挤成一个字一行 */
+html.st-macos .mw .ss-row { grid-template-columns: minmax(160px, 1fr) auto; }
+html.st-macos .mw .ss-row:has(.ss-opts > .ss-opt:nth-child(3)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+html.st-macos .mw .ss-row:has(.ss-opts > .ss-opt:nth-child(3)) > .ss-ctl { justify-self: start; margin-top: 8px; }
+html.st-macos .mw .ss-opts { flex-wrap: wrap; row-gap: 6px; }
+html.light.st-macos .mw .ss-opt.on::before { background: radial-gradient(circle, #fff 0 3px, #0a84ff 3.5px); box-shadow: none; }
+
+/* 启动台：在整个窗口正中（上下左右都居中） */
+html.st-macos #launchpad { align-items: center; padding-top: 0; padding-bottom: 60px; }
+/* 菜单栏：电量的百分比、Wi‑Fi 没连上时淡一些 */
+html.st-macos #menubar .tray .bat-pct { font: 12px/1 var(--mac-font); margin-right: -4px; opacity: .9; }
+html.st-macos #menubar .tray .wifi-off { opacity: .35; }

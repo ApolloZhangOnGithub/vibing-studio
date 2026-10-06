@@ -1,0 +1,260 @@
+/* clock.css —— 时钟（clock.js）。桌面：.win.clk-win（macOS 的窗口骨架，apps-common）；手机（html.ios）：同一个窗口里的 .clk-io（iOS 的版式，颜色用 ios/apps.css 的 --io-*） */
+
+/* ======== 桌面 ======== */
+.win.clk-win { --clk-land: #414147; --clk-night: rgba(0, 0, 0, 0.36); --clk-card: rgba(255, 255, 255, 0.055); --clk-green: #30d158; --clk-red: #ff453a; --clk-orange: #ff9f0a;
+  --clk-tg: rgba(48, 209, 88, 0.2); --clk-tr: rgba(255, 69, 58, 0.2); --clk-to: rgba(255, 159, 10, 0.2); --clk-tgray: rgba(255, 255, 255, 0.12); min-width: 580px; }
+html.light .win.clk-win { --clk-land: #cdd0d6; --clk-night: rgba(14, 24, 64, 0.15); --clk-card: rgba(0, 0, 0, 0.035); --clk-green: #28a745; --clk-red: #ff3b30; --clk-orange: #f08c00;
+  --clk-tg: rgba(52, 199, 89, 0.16); --clk-tr: rgba(255, 59, 48, 0.13); --clk-to: rgba(255, 149, 0, 0.15); --clk-tgray: rgba(0, 0, 0, 0.07); }
+/* 工具栏：分段控件在窗口正中（工具栏从 92px 起、右边留 10px：往左挪 41px 才是窗口的正中） */
+.win.clk-win .ma-tb .clk-seg { position: absolute; left: calc(50% - 41px); transform: translateX(-50%); }
+.win.clk-win .ma-tb .clk-seg button { min-width: 72px; }
+.win.clk-win .clk-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-top: 52px; box-sizing: border-box; }
+.win.clk-win .clk-pane[hidden] { display: none; }
+.win.clk-win .clk-none { grid-column: 1 / -1; padding: 40px 0; text-align: center; color: var(--ma-dim); font-size: 15px; }
+
+/* 世界时钟：上面地图（昼夜、城市），下面各城市的表盘 */
+.win.clk-win .clk-mapwrap { flex: none; display: flex; justify-content: center; padding: 8px 20px 0; }
+.win.clk-win .clk-map { position: relative; }
+.win.clk-win .clk-map svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.win.clk-win .clk-land { fill: var(--clk-land); }
+.win.clk-win .clk-night { fill: var(--clk-night); }
+.win.clk-win .clk-pin { position: absolute; width: 0; height: 0; }
+.win.clk-win .clk-pin i { position: absolute; left: -3.5px; top: -3.5px; width: 7px; height: 7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4); }
+html.light .win.clk-win .clk-pin i { background: #0a84ff; box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgba(0, 0, 0, 0.3); }
+.win.clk-win .clk-pin span { position: absolute; left: 7px; top: -9px; white-space: nowrap; font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; color: #fff;
+  background: rgba(28, 28, 30, 0.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-variant-numeric: tabular-nums; pointer-events: none; }
+.win.clk-win .clk-pin span b { font-weight: 600; }
+.win.clk-win .clk-tiles { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); align-content: start; gap: 6px 12px; padding: 16px 24px 24px; }
+.win.clk-win .clk-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px 12px; border-radius: 16px; }
+.win.clk-win .clk-tile.sel { background: var(--ma-sel); }
+.win.clk-win .clk-tile svg { width: 116px; height: 116px; margin-bottom: 8px; }
+.win.clk-win .clk-tile b { font-size: 15px; font-weight: 600; }
+.win.clk-win .clk-tile small { font-size: 12px; color: var(--ma-dim); }
+/* 表盘：白天白底黑字，夜里黑底白字 */
+.clk-face .clk-fbg { fill: #fff; stroke: rgba(0, 0, 0, 0.12); stroke-width: 0.6; }
+.clk-face.night .clk-fbg { fill: #1c1c1e; stroke: rgba(255, 255, 255, 0.18); }
+.clk-face .clk-fticks { stroke: rgba(0, 0, 0, 0.32); stroke-width: 0.7; }
+.clk-face.night .clk-fticks { stroke: rgba(255, 255, 255, 0.36); }
+.clk-face .clk-fnum text { font: 500 9.5px -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; text-anchor: middle; fill: #111; }
+.clk-face.night .clk-fnum text { fill: #fff; }
+.clk-face .clk-hh line { stroke: #111; stroke-width: 3.2; stroke-linecap: round; }
+.clk-face .clk-mh line { stroke: #111; stroke-width: 2.2; stroke-linecap: round; }
+.clk-face.night .clk-hh line, .clk-face.night .clk-mh line { stroke: #fff; }
+.clk-face .clk-sh line { stroke: #ff9500; stroke-width: 1; stroke-linecap: round; }
+.clk-face .clk-sh circle { fill: #ff9500; }
+.clk-face .clk-fpin { fill: #fff; }
+
+/* 闹钟：一张张卡片（时间、标签 · 重复、开关） */
+.win.clk-win .clk-alarms { overflow-y: auto; }
+.win.clk-win .clk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; padding: 16px 22px 26px; align-content: start; }
+.win.clk-win .clk-card { padding: 12px 16px 14px 18px; border-radius: 18px; background: var(--clk-card); box-shadow: inset 0 0 0 0.5px var(--ma-line); }
+.win.clk-win .clk-card.sel { box-shadow: inset 0 0 0 2px var(--ma-accent); }
+.win.clk-win .clk-ctop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.win.clk-win .clk-ctime { font: 200 48px/1.1 -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.win.clk-win .clk-csub { margin-top: 3px; font-size: 13px; color: var(--ma-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.clk-win .clk-card.off .clk-ctime, .win.clk-win .clk-card.off .clk-csub { opacity: 0.42; }
+.win.clk-win .clk-alarms .ma-empty { top: 45%; }
+
+/* 圆按钮（同 iOS：淡的底色、同色的字，外面隔一圈再一道细环） */
+.clk-rb { width: 80px; height: 80px; border-radius: 50%; border: 0; font: 15px -apple-system, "PingFang SC", sans-serif; cursor: default; background: var(--t); color: var(--c);
+  box-shadow: 0 0 0 2px var(--ma-bg, #1e1e1e), 0 0 0 4px var(--t); --t: var(--clk-tgray); --c: var(--ma-fg); }
+.clk-rb.green { --t: var(--clk-tg); --c: var(--clk-green); }
+.clk-rb.red { --t: var(--clk-tr); --c: var(--clk-red); }
+.clk-rb.orange { --t: var(--clk-to); --c: var(--clk-orange); }
+.clk-rb:disabled { opacity: 0.45; }
+.clk-rb:active:not(:disabled) { filter: brightness(1.25); }
+
+/* 秒表：大数字、两个圆按钮、计次 */
+.win.clk-win .clk-sw { align-items: center; }
+.win.clk-win .clk-swtop { flex: none; display: flex; flex-direction: column; align-items: center; padding: 36px 0 18px; }
+.win.clk-win .clk-swdig { font: 200 96px/1 -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -2px; }
+.win.clk-win .clk-rbtns { display: flex; gap: 64px; margin-top: 30px; }
+.win.clk-win .clk-laps { flex: 1 1 auto; min-height: 0; width: min(560px, 88%); overflow-y: auto; padding-bottom: 20px; }
+.clk-lap { display: flex; justify-content: space-between; padding: 11px 4px; border-top: 0.5px solid var(--ma-line); font-size: 15px; font-variant-numeric: tabular-nums; }
+.clk-lap.fast { color: var(--clk-green); }
+.clk-lap.slow { color: var(--clk-red); }
+
+/* 计时器：没有在跑的 → 正中是滚轮表单；有 → 卡片（圆环） */
+.win.clk-win .clk-timers { overflow-y: auto; }
+.win.clk-win .clk-tnew { flex: none; display: flex; justify-content: center; }
+.win.clk-win .clk-timers.has .clk-tnew { display: none; }
+.win.clk-win .clk-tcards { flex: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; padding: 16px 24px 10px; align-content: start; }
+.win.clk-win .clk-timers:not(.has) .clk-tcards { display: none; }
+.clk-tcard { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 16px 16px; border-radius: 22px; background: var(--clk-card); box-shadow: inset 0 0 0 0.5px var(--ma-line); }
+.clk-ring { position: relative; width: 150px; height: 150px; }
+.clk-ring svg { width: 100%; height: 100%; display: block; }
+.clk-rbg { fill: none; stroke: var(--ma-field, rgba(128, 128, 128, 0.2)); stroke-width: 4.5; }
+.clk-rfg { fill: none; stroke: var(--clk-orange); stroke-width: 4.5; stroke-linecap: round; transition: stroke-dashoffset 0.9s linear; }
+.clk-tcard.paused .clk-rfg { stroke: var(--ma-dim); }
+.clk-rtxt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.clk-rtxt b { font: 200 34px/1 -apple-system, "SF Pro Display", sans-serif; font-variant-numeric: tabular-nums; }
+.clk-rtxt small { font-size: 12px; color: var(--ma-dim); }
+.clk-tlab { font-size: 13px; color: var(--ma-dim); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-tbtns { display: flex; gap: 10px; }
+.clk-mini { height: 30px; min-width: 30px; padding: 0 14px; border-radius: 15px; border: 0; font: 13px -apple-system, "PingFang SC", sans-serif; background: var(--t); color: var(--c); cursor: default;
+  --t: var(--clk-tgray); --c: var(--ma-fg); }
+.clk-mini.gray { padding: 0; width: 30px; }
+.clk-mini.green { --t: var(--clk-tg); --c: var(--clk-green); }
+.clk-mini.orange { --t: var(--clk-to); --c: var(--clk-orange); }
+.win.clk-win .clk-trec h3 { margin: 18px 26px 8px; font-size: 13px; font-weight: 600; color: var(--ma-dim); }
+.win.clk-win .clk-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 22px; }
+.clk-chip { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 14px; border-radius: 17px; border: 0; background: var(--clk-card); box-shadow: inset 0 0 0 0.5px var(--ma-line); color: inherit; font: 13px -apple-system, "PingFang SC", sans-serif; cursor: default; }
+.clk-chip b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.clk-chip span { color: var(--ma-dim); }
+.clk-chip i { font-style: normal; font-size: 10px; color: var(--clk-green); }
+.clk-chip:hover { background: var(--ma-hover); }
+
+/* 滚轮（桌面、手机共用）：一列数字，中间那一格是选中的 */
+.clk-wheel { position: relative; width: 118px; flex: none; }
+.clk-wl { height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; overscroll-behavior: contain; outline: none; box-sizing: border-box;
+  -webkit-mask: linear-gradient(transparent, #000 30%, #000 70%, transparent); mask: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+.clk-wl::-webkit-scrollbar { display: none; }
+.clk-wl > div { height: var(--ih); line-height: var(--ih); scroll-snap-align: center; text-align: right; padding-right: 62px; font-size: 22px; font-variant-numeric: tabular-nums; cursor: default; }
+.clk-wsuf { position: absolute; top: 50%; left: calc(100% - 56px); transform: translateY(-50%); font-size: 15px; font-weight: 600; pointer-events: none; }
+.clk-wheel:not(:has(.clk-wsuf)) .clk-wl > div { text-align: center; padding-right: 0; }
+.win.clk-win .clk-tform { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 0 10px; width: 380px; }
+.clk-wheels { position: relative; display: flex; justify-content: center; gap: 4px; margin-bottom: 10px; }
+.clk-wheels::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 34px; margin-top: -17px; border-radius: 9px; background: var(--ma-sel, rgba(128, 128, 128, 0.16)); pointer-events: none; }
+.clk-trow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; width: 100%; box-sizing: border-box; }
+.clk-trow label { color: var(--ma-dim); flex: none; }
+.clk-in { flex: 1 1 auto; min-width: 0; max-width: 200px; height: 26px; padding: 0 9px; border: 0; border-radius: 7px; background: var(--ma-field); color: var(--ma-fg); font: 13px -apple-system, "PingFang SC", sans-serif; text-align: right; outline: none; }
+.clk-in:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ma-accent) 40%, transparent); }
+.clk-drop { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: var(--ma-field); color: var(--ma-fg); font: 13px -apple-system, "PingFang SC", sans-serif; cursor: default; box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.2); }
+.clk-drop::after { content: " ⌄"; opacity: 0.6; }
+.clk-tact { display: flex; gap: 40px; margin-top: 18px; }
+/* 浮层：添加城市、闹钟、新计时器 */
+.ma-pop.clk-pop .clk-tform { padding: 16px 18px 14px; width: 380px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ma-pop.clk-pop .clk-tact { margin-top: 12px; }
+.ma-pop.clk-pop .clk-rb { width: 64px; height: 64px; box-shadow: 0 0 0 2px var(--ma-pop), 0 0 0 4px var(--t); --t: rgba(128, 128, 128, 0.2); }
+.ma-pop.clk-pop .clk-rb.green { --t: rgba(48, 209, 88, 0.22); --c: #30d158; }
+.clk-cpick { width: 300px; padding: 12px; box-sizing: border-box; }
+.clk-cptitle, .clk-aetitle { font-weight: 600; text-align: center; margin: 2px 0 10px; }
+.clk-cpick .clk-csearch { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 15px; background: var(--ma-field); color: var(--ma-dim); }
+.clk-cpick .clk-csearch svg { width: 14px; height: 14px; flex: none; }
+.clk-cpick .clk-csearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ma-fg); font: inherit; -webkit-appearance: none; appearance: none; }
+.clk-clist { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+.clk-citem { padding: 6px 10px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clk-citem:hover { background: var(--ma-accent); color: #fff; }
+.clk-cnone { padding: 16px; text-align: center; color: var(--ma-dim); }
+.clk-aedit { width: 320px; padding: 14px 16px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; }
+.clk-aetime { display: flex; justify-content: center; margin-bottom: 8px; }
+.clk-aetime .ma-time { width: 180px; height: 58px; border: 0; border-radius: 12px; background: var(--ma-field); color: var(--ma-fg); text-align: center; outline: none;
+  font: 200 44px/58px -apple-system, "SF Pro Display", sans-serif; font-variant-numeric: tabular-nums; }
+.clk-aetime .ma-time.bad { box-shadow: 0 0 0 2px var(--ma-red); }
+.clk-aebtns { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.clk-aebtns .ma-flex { flex: 1; }
+.clk-aebtns .clk-del { color: var(--ma-red); }
+/* 图标（Dock / 启动台 / 主屏幕）：自己带黑底，铺满 */
+.ico.ico-clockapp { background: #141414; overflow: hidden; }
+.ico.ico-clockapp svg { display: block; width: 100%; height: 100%; }
+
+/* ======== 手机（html.ios）：同一个窗口里换一套界面 ======== */
+html:not(.ios) .clk-io { display: none !important; }
+html.ios .clk-win .ma-root { display: none !important; }
+html.ios .clk-io { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+html.ios .clk-ipage { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--io-bg); }
+html.ios .clk-ipage[hidden] { display: none; }
+html.ios .clk-inav { position: absolute; top: 0; left: 0; right: 0; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 16px; z-index: 3; }
+html.ios .clk-iscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 58px 0 104px; scrollbar-width: none; }
+html.ios .clk-iscroll::-webkit-scrollbar { display: none; }
+html.ios .clk-iempty { padding: 90px 20px 0; text-align: center; font-size: 17px; color: var(--io-fg2); }
+/* 列表的一行：世界时钟（今天，+0小时 / 城市 · 时间）、闹钟（时间 / 标签，重复 · 开关） */
+html.ios .clk-irow { position: relative; display: flex; align-items: center; gap: 12px; min-height: 92px; padding: 8px 20px; box-sizing: border-box; background: var(--io-bg); transition: transform 0.2s; }
+html.ios .clk-irow::after { content: ""; position: absolute; left: 20px; right: 0; bottom: 0; height: 0.5px; background: var(--io-sep); }
+html.ios .clk-irow.drag { z-index: 2; transition: none; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.3); }
+html.ios .clk-icity { flex: 1 1 auto; min-width: 0; }
+html.ios .clk-icity small { display: block; font-size: 15px; color: var(--io-fg2); }
+html.ios .clk-icity b { display: block; margin-top: 2px; font: 400 27px/1.15 var(--io-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.ios .clk-itime { flex: none; font: 200 56px/1 var(--io-font); font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+html.ios .clk-ial { flex: 1 1 auto; min-width: 0; }
+html.ios .clk-ial b { display: block; font: 200 60px/1.05 var(--io-font); font-variant-numeric: tabular-nums; letter-spacing: -1.5px; }
+html.ios .clk-ial small { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.ios .clk-ialarm.off .clk-ial { color: var(--io-fg2); }
+html.ios .clk-iminus, html.ios .clk-igrip, html.ios .clk-ichev, html.ios .clk-idelbtn { display: none; }
+html.ios .clk-iminus { flex: none; width: 26px; height: 26px; padding: 0; border: 0; background: none; }
+html.ios .clk-iminus svg { width: 26px; height: 26px; }
+html.ios .clk-igrip { flex: none; width: 26px; height: 26px; color: var(--io-fg3); touch-action: none; }
+html.ios .clk-igrip svg, html.ios .clk-ichev svg { width: 100%; height: 100%; }
+html.ios .clk-ichev { flex: none; width: 14px; height: 14px; color: var(--io-fg3); }
+html.ios .editing .clk-iminus, html.ios .editing .clk-igrip, html.ios .editing .clk-ichev { display: block; }
+html.ios .editing .clk-itime, html.ios .editing .io-sw { display: none; }
+html.ios .clk-irow.del .clk-idelbtn { display: block; flex: none; height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: var(--io-red); color: #fff; font: 600 17px var(--io-font); }
+html.ios .clk-irow.del .clk-igrip, html.ios .clk-irow.del .clk-ichev { display: none; }
+
+/* 圆按钮（iOS）：启动 / 停止 / 计次 / 复位 / 取消 */
+html.ios .clk-irbtns { flex: none; display: flex; justify-content: space-between; padding: 0 18px; }
+html.ios .clk-irb { width: 84px; height: 84px; border-radius: 50%; border: 0; font: 17px var(--io-font); background: var(--t); color: var(--c); box-shadow: 0 0 0 2px var(--io-bg), 0 0 0 4px var(--t);
+  --t: #333336; --c: #fff; }
+html.ios.light .clk-irb { --t: #e5e5ea; --c: #000; }
+html.ios .clk-irb.green { --t: #0a2a12; --c: #30d158; }
+html.ios.light .clk-irb.green { --t: #d7f5de; --c: #1c8e3a; }
+html.ios .clk-irb.red { --t: #330e0c; --c: #ff453a; }
+html.ios.light .clk-irb.red { --t: #ffe0de; --c: #e0281d; }
+html.ios .clk-irb.orange { --t: #331f00; --c: #ff9f0a; }
+html.ios.light .clk-irb.orange { --t: #ffecd1; --c: #c96f00; }
+html.ios .clk-irb:disabled { opacity: 0.5; }
+html.ios .clk-irb:active:not(:disabled) { filter: brightness(1.3); }
+
+/* 秒表：左右两页（数字 / 表盘）、小圆点、按钮、计次 */
+html.ios .clk-isw { padding-top: 12px; }
+html.ios .clk-ipager { flex: none; display: flex; height: 340px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+html.ios .clk-ipager::-webkit-scrollbar { display: none; }
+html.ios .clk-ipg { flex: none; width: 100%; height: 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; }
+html.ios .clk-isdig { font: 200 86px/1 var(--io-font); font-variant-numeric: tabular-nums; letter-spacing: -2px; }
+html.ios .clk-isdial { position: relative; width: 320px; height: 320px; }
+html.ios .clk-isdial svg { width: 100%; height: 100%; display: block; }
+html.ios .clk-isdd { position: absolute; left: 0; right: 0; top: 64%; text-align: center; font: 400 22px var(--io-font); font-variant-numeric: tabular-nums; }
+.clk-dial .clk-dt line { stroke-linecap: round; }
+.clk-dial .clk-dt line.L { stroke: var(--io-fg, #fff); stroke-width: 0.9; }
+.clk-dial .clk-dt line.M { stroke: var(--io-fg, #fff); stroke-width: 0.45; }
+.clk-dial .clk-dt line.S { stroke: var(--io-fg3, rgba(255, 255, 255, 0.3)); stroke-width: 0.3; }
+.clk-dial .clk-dn text { font: 400 5.6px var(--io-font, sans-serif); fill: var(--io-fg, #fff); text-anchor: middle; }
+.clk-dial .clk-dsub line { stroke: var(--io-fg2, rgba(255, 255, 255, 0.6)); stroke-width: 0.3; }
+.clk-dial .clk-dsn text { font: 400 2.4px var(--io-font, sans-serif); fill: var(--io-fg2, rgba(255, 255, 255, 0.6)); text-anchor: middle; }
+.clk-dial .clk-dmh line { stroke: #ff9f0a; stroke-width: 0.8; stroke-linecap: round; }
+.clk-dial .clk-dsc { fill: #ff9f0a; }
+.clk-dial .clk-dsh line { stroke: #ff9f0a; stroke-width: 0.7; stroke-linecap: round; }
+.clk-dial .clk-dsh circle { fill: #ff9f0a; }
+.clk-dial .clk-dlap line { stroke: #0a84ff; stroke-width: 0.7; stroke-linecap: round; }
+.clk-dial .clk-dcc { fill: var(--io-bg, #000); }
+html.ios .clk-idots { flex: none; display: flex; justify-content: center; gap: 8px; margin: 2px 0 14px; }
+html.ios .clk-idots i { width: 7px; height: 7px; border-radius: 50%; background: var(--io-fg3); }
+html.ios .clk-idots i.on { background: var(--io-fg); }
+html.ios .clk-ilaps { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-top: 18px; padding: 0 18px 104px; scrollbar-width: none; }
+html.ios .clk-ilap { display: flex; justify-content: space-between; padding: 12px 2px; border-top: 0.5px solid var(--io-sep); font-size: 17px; font-variant-numeric: tabular-nums; }
+html.ios .clk-ilap:last-child { border-bottom: 0.5px solid var(--io-sep); }
+html.ios .clk-ilap.fast { color: var(--io-green); }
+html.ios .clk-ilap.slow { color: var(--io-red); }
+
+/* 计时器：滚轮（小时 分钟 秒）、取消 / 启动、标签、计时结束时、在跑的、最近项目 */
+html.ios .clk-itm .clk-iscroll { padding-top: 18px; }
+html.ios .clk-itop { display: flex; justify-content: center; }
+html.ios .clk-iwheels, html.ios .clk-iawheels { position: relative; display: flex; justify-content: center; }
+html.ios .clk-iband { position: absolute; left: 10px; right: 10px; top: 50%; height: 36px; margin-top: -18px; border-radius: 10px; background: var(--io-fill3); pointer-events: none; }
+html.ios .clk-iwheel { width: 112px; }
+html.ios .clk-iwheel .clk-wl > div { font-size: 23px; padding-right: 60px; }
+html.ios .clk-iwheel .clk-wsuf { font-size: 17px; font-weight: 600; left: calc(100% - 54px); }
+html.ios .clk-itbtns { margin: 16px 0 26px; }
+html.ios .clk-iopts, html.ios .clk-iruns-g { margin-bottom: 8px; }
+html.ios .clk-iin { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none; color: var(--io-fg2); font: 17px var(--io-font); text-align: right; }
+html.ios .clk-iruns { margin-top: 18px; }
+html.ios .clk-irl { flex: 1 1 auto; min-width: 0; }
+html.ios .clk-irl b { display: block; font: 200 44px/1.05 var(--io-font); font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+html.ios .clk-irl small { display: block; font-size: 15px; color: var(--io-fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.ios .clk-icircle { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--t); color: var(--c); --t: var(--io-fill3); --c: var(--io-fg); }
+html.ios .clk-icircle svg { width: 20px; height: 20px; }
+html.ios .clk-icircle.green { --t: #0a2a12; --c: #30d158; }
+html.ios.light .clk-icircle.green { --t: #d7f5de; --c: #1c8e3a; }
+html.ios .clk-icircle.orange { --t: #331f00; --c: #ff9f0a; }
+html.ios.light .clk-icircle.orange { --t: #ffecd1; --c: #c96f00; }
+html.ios .clk-irecent .io-gh { margin-top: 26px; }
+/* 面板：闹钟的滚轮、添加城市的搜索框、删除闹钟 */
+html.ios .clk-iawheels { padding: 6px 0 22px; gap: 6px; }
+html.ios .clk-iaw { width: 96px; }
+html.ios .clk-iaw .clk-wl > div { font-size: 28px; }
+html.ios .clk-idel { margin-top: 26px; }
+html.ios .clk-idel .io-rl { color: var(--io-red); text-align: center; }
+html.ios .clk-isearch { display: flex; align-items: center; gap: 6px; margin: 2px 16px 14px; height: 40px; padding: 0 12px; border-radius: 20px; background: var(--io-fill3); color: var(--io-fg2); }
+html.ios .clk-isearch svg { width: 18px; height: 18px; flex: none; }
+html.ios .clk-isearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--io-fg); font: 17px var(--io-font); -webkit-appearance: none; appearance: none; }
+html.ios .clk-icities .io-row { min-height: 46px; }

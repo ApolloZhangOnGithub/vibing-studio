@@ -1,0 +1,48 @@
+/* guimap.css —— 图形界面对话的缩略图（guimap.js）：同终端界面那条（studio.css 的 .st-map）——右边 70px，只盖对话滚动的那块；
+   灰块是看得见的那段（指着深一点）；透明：没有底和边线；仅滚动时显示：浮在上面，手动滚的时候淡入 */
+.gv > .gv-map { position: absolute; right: 0; top: 0; width: 70px; z-index: 5; cursor: pointer; background: var(--st-bg); border-left: 1px solid var(--st-line); overflow: hidden;
+  -webkit-user-select: none; user-select: none; }
+.gv > .gv-map[hidden] { display: none; }
+.gv-map canvas { position: absolute; left: 0; top: 0; }
+.gv-map .gv-view { position: absolute; left: 0; right: 0; background: rgba(127, 127, 127, 0.14); }
+.gv-map:hover .gv-view { background: rgba(127, 127, 127, 0.24); }
+.gv.gv-hasmap > .gv-scroll { margin-right: 71px; } /* 输入框不让：缩略图只到它上面 */
+/* 有缩略图就不要滚动条（缩略图本身就是滚动条：灰块是看得见的那段，能拖）——两个一起是多余的 */
+.gv:is(.gv-hasmap, .gv-mapfloat) > .gv-scroll { scrollbar-width: none; }
+.gv:is(.gv-hasmap, .gv-mapfloat) > .gv-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.gv-map .gv-mtip { position: absolute; right: 74px; max-width: 320px; padding: 4px 8px; border-radius: 6px; background: var(--st-panel, var(--st-bg)); color: var(--st-fg); border: 1px solid var(--st-line);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 6; }
+.gv > .gv-map { overflow: visible; }
+.gv > .gv-map > canvas { clip-path: inset(0); }
+.gv.gv-mapclear > .gv-map { background: transparent; border-left: 0; }
+.gv.gv-mapclear > .gv-map .gv-view { background: transparent; }
+.gv.gv-mapclear > .gv-map:hover .gv-view { background: rgba(127, 127, 127, 0.2); }
+.gv.gv-mapfloat > .gv-map { opacity: 0; pointer-events: none; transition: opacity 0.25s; box-shadow: -6px 0 16px rgba(0, 0, 0, 0.12); }
+.gv.gv-mapfloat > .gv-map.show { opacity: 1; pointer-events: auto; }
+
+/* ======== 时间戳（设置 › 对话 › 时间戳；live.js / gui.js 标上）========
+   终端界面：每一块第一行的右边一个时间——绝对定位、字由 ::after 画（不占排版的宽度、选不中、拷不走）；
+   始终显示：右边让出一列（--tsw 格，中文 6、英文 9），时间放在那一列里；悬停时显示：指着那一问才出来 */
+.tpane .term .blk { position: relative; }
+.tpane .term .tts { position: absolute; right: 0; width: calc(var(--ttu-cell, 8px) * var(--tsw, 6)); text-align: right; color: var(--st-dim, #888); cursor: default; -webkit-user-select: none; user-select: none; }
+.tpane .term .tts::after { content: attr(data-t); }
+.tpane.ts-show .term { padding-right: calc(10px + var(--ttu-cell, 8px) * var(--tsw, 6)); }
+.tpane.ts-show .term .tts { right: calc(var(--ttu-cell, 8px) * var(--tsw, 6) * -1); opacity: 0.7; }
+.tpane.ts-hover .term .tts { opacity: 0; background: var(--st-bg); transition: opacity 0.12s; }
+.tpane.ts-hover .term .blk:hover .tts { opacity: 0.85; }
+/* 图形界面：你的话——气泡左边；别的每一块——右上角（始终显示时让出一列）；换天的地方一条日期 */
+.gv-ts { font-size: 11px; line-height: 16px; color: var(--st-dim); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; -webkit-user-select: none; user-select: none; }
+.gv-user > .gv-ts { align-self: flex-end; margin: 0 8px 3px 0; }
+.gv-tsb { position: relative; }
+.gv-tsb > .gv-ts { position: absolute; right: 0; top: 2px; }
+.gv.gv-ts-show .gv-tsb { padding-right: 56px; }
+.gv.gv-ts-hover .gv-ts { opacity: 0; transition: opacity 0.12s; }
+.gv.gv-ts-hover .gv-tsb > .gv-ts { background: var(--st-bg); padding-left: 6px; }
+.gv.gv-ts-hover .gv-tsb:hover > .gv-ts, .gv.gv-ts-hover .gv-user:hover > .gv-ts { opacity: 1; }
+.gv-day { display: flex; align-items: center; gap: 10px; margin: 18px 0 4px; color: var(--st-dim); font-size: 11.5px; }
+.gv-day::before, .gv-day::after { content: ""; flex: 1; height: 1px; background: var(--st-line); }
+/* 灰底的问（.ask 左右各伸出 10px）：时间对齐到别的行 */
+.tpane.ts-show .term .ask > .tts { right: calc(var(--ttu-cell, 8px) * var(--tsw, 6) * -1 + 10px); }
+.tpane.ts-hover .term .ask > .tts { right: 10px; }
+/* 图形界面：带时间的那一块占满一行（时间都在右边一列上） */
+.gv-ai > .gv-tsb, .gv-turn > .gv-tsb { align-self: stretch; width: 100%; box-sizing: border-box; }

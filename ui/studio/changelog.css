@@ -1,0 +1,33 @@
+/* changelog.css —— 更新内容（changelog.js）：Claude App / Pure Terminal 里是盖在窗口上的卡片（同 Claude 的 What's new），VS Code / macOS 里是一页 */
+.cl-wrap { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 40px 24px; box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.42); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); animation: cl-in 0.16s ease-out; }
+.cl-wrap.out { opacity: 0; transition: opacity 0.16s; }
+@keyframes cl-in { from { opacity: 0; } }
+.cl-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: min(760px, 100%); border-radius: 16px; overflow: hidden;
+  background: #262624; color: #ececeb; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 24px 70px rgba(0, 0, 0, 0.55);
+  font: 14px/1.5 var(--ca-font, var(--mac-font, var(--st-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif))); animation: cl-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+@keyframes cl-pop { from { transform: scale(0.97) translateY(6px); opacity: 0; } }
+html.light .cl-modal { background: #fbfaf8; color: #1f1e1d; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 24px 70px rgba(0, 0, 0, 0.22); }
+.cl-top { flex: none; display: flex; align-items: center; justify-content: space-between; height: 50px; padding: 0 12px 0 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+html.light .cl-top { border-bottom-color: rgba(0, 0, 0, 0.08); }
+.cl-top b { font-size: 15.5px; font-weight: 600; }
+.cl-x { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; color: inherit; opacity: 0.8; cursor: pointer; }
+.cl-x:hover { background: rgba(255, 255, 255, 0.08); opacity: 1; }
+html.light .cl-x:hover { background: rgba(0, 0, 0, 0.06); }
+.cl-x:focus-visible { outline: 2px solid #5b8def; outline-offset: 1px; }
+.cl-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 24px 20px; }
+.cl-rel { padding: 18px 0 6px; }
+.cl-rel + .cl-rel { border-top: 1px solid rgba(128, 128, 128, 0.16); }
+.cl-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.cl-date { font-size: 16px; font-weight: 650; }
+.cl-ver { flex: none; padding: 2px 8px; border-radius: 6px; background: rgba(128, 128, 128, 0.16); font: 12.5px/1.5 var(--st-mono, ui-monospace, "SF Mono", Menlo, monospace); letter-spacing: 0.3px; }
+.cl-sec { margin: 14px 0 4px; font-size: 12.5px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; opacity: 0.55; }
+.cl ul { margin: 0; padding-left: 20px; }
+.cl li { margin: 6px 0; opacity: 0.9; }
+.cl li::marker { color: currentColor; }
+.cl code { padding: 1px 5px; border-radius: 5px; background: rgba(128, 128, 128, 0.18); font: 0.9em var(--st-mono, ui-monospace, "SF Mono", Menlo, monospace); white-space: nowrap; }
+/* 一页（VS Code 的发行说明、macOS 的窗口） */
+.cl-page { box-sizing: border-box; height: 100%; overflow: auto; padding: 28px max(32px, calc(50% - 380px)) 48px; color: var(--st-fg, #ccc); background: var(--st-bg, #1e1e1e);
+  font: 13.5px/1.55 var(--ca-font, var(--mac-font, var(--st-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif))); -webkit-user-select: text; user-select: text; }
+.cl-page h1 { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
+html.st-macos .cl-page { font-family: var(--mac-font); background: var(--mac-content, #1e1e20); color: var(--mac-fg, #ececef); }

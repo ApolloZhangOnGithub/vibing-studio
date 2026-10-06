@@ -1,0 +1,172 @@
+/* apps-common.css —— 提醒事项、日历、备忘录共用的 macOS 26 骨架（apps-common.js 的 TSU_APPKIT.window）：
+   浮起的圆角侧边栏（三个灯落在它上面）、标题栏里的统一工具栏（玻璃胶囊）、浮层、迷你月历、开关、分段控件。深色为默认，html.light 为浅色；类名都带 ma- 前缀 */
+.win.mac-app { --ma-side: 220px; --ma-bg: #1e1e1e; --ma-fg: #f2f2f4; --ma-dim: #98989d; --ma-dim2: #6c6c70; --ma-line: rgba(255, 255, 255, 0.09);
+  --ma-side-bg: rgba(52, 52, 56, 0.72); --ma-side-edge: rgba(255, 255, 255, 0.1); --ma-hover: rgba(255, 255, 255, 0.06); --ma-sel: rgba(255, 255, 255, 0.11);
+  --ma-glass: rgba(58, 58, 62, 0.78); --ma-glass-edge: rgba(255, 255, 255, 0.14); --ma-accent: #0a84ff; --ma-red: #ff453a; --ma-field: rgba(255, 255, 255, 0.07);
+  --ma-pop: rgba(44, 44, 46, 0.9); --ma-knob: #fff;
+  min-width: 460px; min-height: 320px; color: var(--ma-fg); font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+html.light .win.mac-app { --ma-bg: #fff; --ma-fg: #1d1d1f; --ma-dim: #86868b; --ma-dim2: #aeaeb2; --ma-line: rgba(0, 0, 0, 0.09);
+  --ma-side-bg: rgba(238, 238, 242, 0.78); --ma-side-edge: rgba(0, 0, 0, 0.07); --ma-hover: rgba(0, 0, 0, 0.045); --ma-sel: rgba(0, 0, 0, 0.075);
+  --ma-glass: rgba(255, 255, 255, 0.82); --ma-glass-edge: rgba(0, 0, 0, 0.1); --ma-accent: #007aff; --ma-red: #ff3b30; --ma-field: rgba(0, 0, 0, 0.05);
+  --ma-pop: rgba(248, 248, 250, 0.92); }
+.win.mac-app > .body { background: var(--ma-bg); }
+
+/* ---- 标题栏：透明、叠在内容上；三个灯落在侧边栏里；居中的标题不要（同 macOS 26 的这几个 App）---- */
+.win.mac-app .bar { position: absolute; left: 0; right: 0; top: 0; height: 52px; padding: 0 0 0 22px; gap: 8px; z-index: 4; background: transparent; border: 0; }
+.win.mac-app .bar > span { display: none; }
+.win.mac-app .ma-tb { position: absolute; left: calc(var(--ma-side) + 16px); right: 10px; top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.win.mac-app .ma-tb > * { pointer-events: auto; }
+.win.mac-app.ma-noside .ma-tb { left: 92px; }
+.win.mac-app .ma-flex { flex: 1; min-width: 0; pointer-events: none !important; }
+/* 工具栏的按钮：几个一组放进一枚玻璃胶囊 */
+.win.mac-app .ma-grp { display: flex; align-items: center; height: 34px; padding: 0 2px; border-radius: 17px; flex: none;
+  background: var(--ma-glass); box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 1px 6px rgba(0, 0, 0, 0.12);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+html.light .win.mac-app .ma-grp { box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 1px 5px rgba(0, 0, 0, 0.07); }
+.win.mac-app .ma-btn { display: flex; align-items: center; justify-content: center; height: 30px; min-width: 34px; padding: 0 8px; box-sizing: border-box; border: 0;
+  border-radius: 15px; background: none; color: var(--ma-fg); font: inherit; cursor: default; opacity: 0.88; }
+.win.mac-app .ma-btn:hover:not(:disabled) { background: var(--ma-hover); opacity: 1; }
+.win.mac-app .ma-btn:active:not(:disabled) { background: var(--ma-sel); }
+.win.mac-app .ma-btn:disabled { opacity: 0.3; }
+.win.mac-app .ma-btn.on { color: var(--ma-accent); opacity: 1; }
+.win.mac-app .ma-btn svg { width: 17px; height: 17px; display: block; flex: none; }
+.win.mac-app .ma-btn.ma-txt { font-size: 13px; padding: 0 12px; }
+/* 搜索框：胶囊 */
+.win.mac-app .ma-search { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px 0 11px; box-sizing: border-box; border-radius: 17px; flex: 0 1 200px; min-width: 110px;
+  background: var(--ma-glass); box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 1px 6px rgba(0, 0, 0, 0.1); color: var(--ma-dim); cursor: text;
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+.win.mac-app .ma-search:focus-within { box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 0 0 3px color-mix(in srgb, var(--ma-accent) 45%, transparent); }
+.win.mac-app .ma-search svg { width: 15px; height: 15px; flex: none; }
+.win.mac-app .ma-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ma-fg); font: inherit; padding: 0; -webkit-appearance: none; appearance: none; }
+.win.mac-app .ma-search input::-webkit-search-cancel-button { display: none; }
+.win.mac-app .ma-search input::placeholder { color: var(--ma-dim); }
+.win.mac-app .ma-clear { font-style: normal; font-size: 9px; width: 15px; height: 15px; line-height: 15px; text-align: center; border-radius: 50%; background: var(--ma-dim); color: var(--ma-bg);
+  cursor: default; visibility: hidden; flex: none; }
+.win.mac-app .ma-search.has .ma-clear { visibility: visible; }
+/* 侧边栏里的搜索框：铺满、不是玻璃，是一块浅浅的底 */
+.win.mac-app .ma-side .ma-search { flex: none; height: 30px; border-radius: 15px; background: var(--ma-field); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; min-width: 0; }
+/* 分段控件（日 周 月 年）*/
+.win.mac-app .ma-seg { display: flex; align-items: center; height: 34px; padding: 2px; box-sizing: border-box; border-radius: 17px; flex: none; gap: 1px;
+  background: var(--ma-glass); box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 1px 6px rgba(0, 0, 0, 0.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); }
+.win.mac-app .ma-seg button { height: 30px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 15px; background: none; color: var(--ma-fg); font: inherit; cursor: default; }
+.win.mac-app .ma-seg button:hover:not(.on) { background: var(--ma-hover); }
+.win.mac-app .ma-seg button.on { background: var(--ma-sel); font-weight: 600; }
+html.light .win.mac-app .ma-seg button.on { background: rgba(0, 0, 0, 0.08); }
+
+/* ---- 主体：浮起的侧边栏 + 内容 ---- */
+.win.mac-app .ma-root { flex: 1 1 auto; min-height: 0; display: flex; position: relative; user-select: none; -webkit-user-select: none; cursor: default; outline: none; }
+.win.mac-app .ma-side { flex: none; width: var(--ma-side); margin: 8px 0 8px 8px; box-sizing: border-box; border-radius: 18px; display: flex; flex-direction: column; min-height: 0; position: relative;
+  background: var(--ma-side-bg); box-shadow: inset 0 0 0 0.5px var(--ma-side-edge), 0 2px 12px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8); padding-top: 44px; }
+html.light .win.mac-app .ma-side { box-shadow: inset 0 0 0 0.5px var(--ma-side-edge), 0 1px 8px rgba(0, 0, 0, 0.06); }
+.win.mac-app.ma-noside .ma-side { display: none; }
+/* 窄窗口：侧边栏收起；点「显示侧边栏」时浮在内容上 */
+.win.mac-app.ma-narrow:not(.ma-sideover) .ma-side { display: none; }
+.win.mac-app.ma-narrow .ma-tb { left: 92px; }
+.win.mac-app.ma-narrow.ma-sideover .ma-side { display: flex; position: absolute; left: 0; top: 0; bottom: 0; z-index: 3; background: rgba(40, 40, 44, 0.97);
+  box-shadow: inset 0 0 0 0.5px var(--ma-side-edge), 0 12px 40px rgba(0, 0, 0, 0.35); }
+html.light .win.mac-app.ma-narrow.ma-sideover .ma-side { background: rgba(244, 244, 247, 0.97); }
+.win.mac-app.ma-narrow .ma-search { flex: 0 1 150px; }
+.win.mac-app .ma-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.win.mac-app .ma-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
+/* 侧边栏的拖动条（改宽度）*/
+.win.mac-app .ma-split { position: absolute; top: 0; bottom: 0; right: -6px; width: 8px; cursor: col-resize; z-index: 2; }
+
+/* 滚动条：细、圆，不占地方（同 macOS 的浮动滚动条）*/
+.win.mac-app ::-webkit-scrollbar { width: 11px; height: 11px; background: transparent; }
+.win.mac-app ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 8px; background: rgba(255, 255, 255, 0.22) padding-box; }
+html.light .win.mac-app ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.22) padding-box; }
+.win.mac-app ::-webkit-scrollbar-corner { background: transparent; }
+
+/* 常用的小东西 */
+.win.mac-app .ma-empty { position: absolute; left: 0; right: 0; top: 42%; text-align: center; color: var(--ma-dim); font-size: 17px; pointer-events: none; }
+.win.mac-app .ma-empty[hidden] { display: none; }
+.win.mac-app .ma-banner { margin: 6px 16px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, #ff9f0a 16%, transparent); color: var(--ma-fg); font-size: 12px; line-height: 1.5; }
+.win.mac-app .ma-banner code { font: 11.5px ui-monospace, Menlo, monospace; }
+.win.mac-app input.ma-in, .ma-pop input.ma-in, .ma-pop textarea.ma-in { border: 0; outline: 0; background: none; color: inherit; font: inherit; padding: 0; margin: 0; min-width: 0; }
+
+/* ---- 开关（同 macOS 的 Switch）---- */
+.ma-switch { display: inline-block; position: relative; width: 32px; height: 18px; border-radius: 9px; background: rgba(120, 120, 128, 0.36); flex: none; transition: background 0.2s; vertical-align: middle; cursor: default; }
+.ma-switch i { position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.2s; }
+.ma-switch.on { background: var(--ma-accent, #0a84ff); }
+.ma-switch.on i { transform: translateX(14px); }
+
+/* ---- 浮层（带小箭头）：玻璃材质、大圆角 ---- */
+.ma-pop { position: fixed; z-index: 44; min-width: 120px; border-radius: 16px; background: var(--ma-pop, rgba(44, 44, 46, 0.92)); color: var(--ma-fg, #f2f2f4);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 14px 44px rgba(0, 0, 0, 0.42); font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  -webkit-backdrop-filter: blur(40px) saturate(1.8); backdrop-filter: blur(40px) saturate(1.8); animation: ma-pop-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2); user-select: none; -webkit-user-select: none; cursor: default;
+  --ma-fg: #f2f2f4; --ma-dim: #98989d; --ma-line: rgba(255, 255, 255, 0.1); --ma-hover: rgba(255, 255, 255, 0.07); --ma-sel: rgba(255, 255, 255, 0.12); --ma-accent: #0a84ff; --ma-red: #ff453a;
+  --ma-field: rgba(255, 255, 255, 0.08); --ma-pop: rgba(44, 44, 46, 0.92); --ma-bg: #1e1e1e; }
+html.light .ma-pop { --ma-fg: #1d1d1f; --ma-dim: #86868b; --ma-line: rgba(0, 0, 0, 0.09); --ma-hover: rgba(0, 0, 0, 0.045); --ma-sel: rgba(0, 0, 0, 0.075); --ma-accent: #007aff; --ma-red: #ff3b30;
+  --ma-field: rgba(0, 0, 0, 0.05); --ma-pop: rgba(248, 248, 250, 0.94); --ma-bg: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 14px 44px rgba(0, 0, 0, 0.2); }
+.ma-pop.out { opacity: 0; transform: scale(0.97); transition: opacity 0.13s, transform 0.13s; pointer-events: none; }
+@keyframes ma-pop-in { from { opacity: 0; transform: scale(0.94); } }
+.ma-pop-arrow { position: absolute; width: 14px; height: 14px; background: inherit; pointer-events: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ma-pop[data-side="right"] > .ma-pop-arrow { left: -6px; margin-top: -7px; transform: rotate(45deg); clip-path: polygon(0 0, 0 100%, 100% 100%); border-radius: 0 0 0 3px; }
+.ma-pop[data-side="left"] > .ma-pop-arrow { right: -6px; margin-top: -7px; transform: rotate(45deg); clip-path: polygon(0 0, 100% 0, 100% 100%); border-radius: 0 3px 0 0; }
+.ma-pop[data-side="bottom"] > .ma-pop-arrow { top: -6px; margin-left: -7px; transform: rotate(45deg); clip-path: polygon(0 0, 100% 0, 0 100%); border-radius: 3px 0 0 0; }
+.ma-pop[data-side="top"] > .ma-pop-arrow { bottom: -6px; margin-left: -7px; transform: rotate(45deg); clip-path: polygon(100% 0, 100% 100%, 0 100%); border-radius: 0 0 3px 0; }
+.ma-pop[data-side="right"], .ma-pop[data-side="left"] { transform-origin: left center; }
+/* 浮层里常用的：一行「名目 · 值」、按钮、下拉、文本框 */
+.ma-pop .ma-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.ma-pop .ma-row > label, .ma-pop .ma-lab { flex: none; width: 64px; text-align: right; color: var(--ma-dim); }
+.ma-pop .ma-sep { height: 1px; margin: 8px 0; background: var(--ma-line); }
+.ma-pbtn { height: 26px; padding: 0 14px; border: 0; border-radius: 13px; background: var(--ma-field, rgba(128, 128, 128, 0.2)); color: inherit; font: inherit; cursor: default;
+  box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.25); }
+.ma-pbtn:hover { filter: brightness(1.08); }
+.ma-pbtn.default { background: var(--ma-accent, #0a84ff); color: #fff; box-shadow: none; }
+.ma-pop .ma-drop { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 10px; border-radius: 7px; background: var(--ma-field); color: inherit; border: 0; font: inherit;
+  cursor: default; max-width: 100%; box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.2); }
+.ma-pop .ma-drop::after { content: ""; width: 7px; height: 10px; flex: none; opacity: 0.6; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 10'%3E%3Cpath d='M1 3.6 3.5 1 6 3.6M1 6.4 3.5 9 6 6.4' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 10'%3E%3Cpath d='M1 3.6 3.5 1 6 3.6M1 6.4 3.5 9 6 6.4' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+.ma-pop .ma-drop:hover { filter: brightness(1.1); }
+.ma-pop .ma-drop span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ma-pop .ma-field { height: 24px; padding: 0 8px; border-radius: 7px; background: var(--ma-field); box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.2); border: 0; outline: 0; color: inherit; font: inherit; box-sizing: border-box; }
+.ma-pop .ma-field:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ma-accent) 45%, transparent); }
+.ma-link { display: block; margin: 6px auto 0; border: 0; background: none; color: var(--ma-accent, #0a84ff); font: inherit; cursor: default; padding: 2px 6px; }
+.ma-link:hover { text-decoration: underline; }
+.ma-time { width: 52px; height: 24px; padding: 0 6px; border: 0; outline: 0; border-radius: 7px; background: var(--ma-field, rgba(128, 128, 128, 0.15)); color: inherit;
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace; text-align: center; box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.2); box-sizing: border-box; }
+.ma-time:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ma-accent, #0a84ff) 45%, transparent); }
+.ma-time.bad { box-shadow: 0 0 0 2px #ff453a; }
+
+/* ---- 迷你月历 ---- */
+.ma-mini { width: 196px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ma-mini-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 6px 6px; }
+.ma-mini-head b { font-size: 13px; font-weight: 600; }
+.ma-mini-head span { display: flex; }
+.ma-mini-head button { width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: none; color: var(--ma-accent, #0a84ff); cursor: default; }
+.ma-mini-head button:hover { background: var(--ma-hover, rgba(128, 128, 128, 0.12)); }
+.ma-mini-head svg { width: 13px; height: 13px; }
+.ma-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 1px; text-align: center; }
+.ma-mini-grid > i { font-style: normal; color: var(--ma-dim, #8e8e93); font-size: 10px; padding-bottom: 3px; }
+.ma-mini-grid > span { position: relative; height: 24px; line-height: 24px; width: 24px; margin: 0 auto; border-radius: 50%; font-size: 12px; }
+.ma-mini-grid > span:hover { background: var(--ma-hover, rgba(128, 128, 128, 0.12)); }
+.ma-mini-grid > span.out { color: var(--ma-dim2, #6c6c70); opacity: 0.6; }
+.ma-mini-grid > span.today { color: var(--ma-red, #ff453a); font-weight: 600; }
+.ma-mini-grid > span.sel { background: var(--ma-red, #ff453a); color: #fff; font-weight: 600; }
+.ma-mini-grid > span.sel:not(.today) { background: var(--ma-accent, #0a84ff); }
+.ma-mini-grid > span em { position: absolute; left: 50%; bottom: 1px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ma-dim, #8e8e93); }
+.ma-mini-grid > span.sel em { background: #fff; }
+.ma-pick { padding: 12px 12px 10px; }
+.ma-pick-time { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ma-line, rgba(128, 128, 128, 0.2)); }
+
+/* ---- 自定重复 ---- */
+.ma-rule { width: 300px; padding: 14px 16px 12px; }
+.ma-rule .ma-row > label { width: 64px; }
+.ma-rule .ma-num { width: 44px; text-align: center; }
+.ma-rule .ma-chips { display: flex; gap: 4px; margin: 6px 0 4px 74px; }
+.ma-rule .ma-chips button, .ma-rule .ma-daygrid button, .ma-rule .ma-mgrid button { height: 26px; min-width: 26px; padding: 0; border: 0; border-radius: 7px; background: var(--ma-field); color: inherit; font: inherit; cursor: default; }
+.ma-rule .ma-chips button.on, .ma-rule .ma-daygrid button.on, .ma-rule .ma-mgrid button.on { background: var(--ma-accent); color: #fff; }
+.ma-rule .ma-daygrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin: 4px 0 6px 20px; }
+.ma-rule .ma-daygrid button { height: 24px; font-size: 12px; }
+.ma-rule .ma-mgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+.ma-rule .ma-radio > button:first-of-type { display: flex; align-items: center; gap: 6px; border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: default; }
+.ma-rule .ma-radio > button:first-of-type i { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.6); box-sizing: border-box; }
+.ma-rule .ma-radio > button.on:first-of-type i { box-shadow: inset 0 0 0 4.5px var(--ma-accent); background: #fff; }
+.ma-rule .ma-radio > label { width: 0; }
+.ma-rule .ma-drop:disabled { opacity: 0.4; }
+.ma-rule .ma-rule-sum { margin: 10px 0 4px; font-size: 12px; color: var(--ma-dim); line-height: 1.45; }
+.ma-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

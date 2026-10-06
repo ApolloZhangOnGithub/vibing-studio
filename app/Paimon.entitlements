@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 开了 Hardened Runtime：摄像头、麦克风要显式声明（网页桌面里的 App 用）。不开 App Sandbox：要读写「下载」、截屏、辅助功能 -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- 控制别的 App（AppleScript）：开在 iTerm2 里的 Claude Code 会话，这边写的话要请 iTerm2 替你敲进去、读它屏幕上的状态。
+	     Hardened Runtime 下没有这一项，macOS 连问都不问就拒（osascript 发的也算这个 App 的）：时好时坏地报「未获得控制 iTerm2 的权限」 -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

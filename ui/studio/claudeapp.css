@@ -1,0 +1,826 @@
+/* claudeapp.css —— 系统风格「Claude App」（html.st-os-claude）：照 Claude 桌面 App（Code）重画整个窗口，见 claudeapp.js。
+   左边一栏（会话列表 = 竖着的标签页）| 中间（标题行 + 对话 + 输入框）| 右边圆角卡片（终端、后台任务、浏览器）；设置是盖在上面的一张表单。
+   VS Code 的那些（活动栏、侧栏视图、标签条、面包屑、状态栏、地址栏、布局按钮、缩略图）这个风格里都不要 */
+
+/* ---- 别的风格：这些都不出现 ---- */
+.ca-side, .ca-nav, .ca-ttl, .ca-acts, .ca-web { display: none; }
+
+/* ---- 颜色、字体（同 Claude App 的深色 / 浅色）；里面的内容（对话、终端、页面）也用这一套 ---- */
+html.termapp.st-os-claude {
+  --ca-font: -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  --ca-side-nat: min(var(--ca-side-user, 258px), max(258px, 40vw)); --ca-side-w: var(--ca-side-nat); --ca-a: 0px; --ca-b: 0px; /* 边栏拖过的宽度（claudeapp.js 设 --ca-side-user） */
+  /* 深色照 Claude App 本来的颜色取的（截图取色）：侧栏和标题行 #111、对话 #151515、设置表单 #1a1a19、弹出的卡片 #20201f、分隔线 #292929 */
+  --ca-side-bg: #111111; --ca-main-bg: #151515; --ca-card-bg: #171717; --ca-sheet-bg: #1a1a19; --ca-sheet-side: #151515;
+  --ca-line: #292929; --ca-card-line: #2c2c2b; --ca-pill: #262625; --ca-hover: #1e1e1e; --ca-seg-bg: #232322; --ca-seg-on: #333332;
+  --ca-fg: #e6e6e6; --ca-hi: #ffffff; --ca-dim: #9a9a9a; --ca-faint: #6b6b6b; --ca-blue: #3d7bf5; --ca-orange: #d97757;
+}
+html.termapp.st-os-claude.light {
+  --ca-side-bg: #f3f1ea; --ca-main-bg: #faf9f5; --ca-card-bg: #ffffff; --ca-sheet-bg: #faf9f5; --ca-sheet-side: #f3f1ea;
+  --ca-line: #e4e1d8; --ca-card-line: #dedbd1; --ca-pill: #e6e3d8; --ca-hover: #eceae2; --ca-seg-bg: #ebe9e1; --ca-seg-on: #ffffff;
+  --ca-fg: #262624; --ca-hi: #000000; --ca-dim: #73716b; --ca-faint: #a3a19a;
+}
+html.termapp.st-os-claude:not(.light) { --st-bg: #151515 !important; --st-bg2: #111111 !important; --st-bg3: #1e1e1e !important; --st-canvas: #111111 !important; --st-line: #292929 !important; --st-fg: #e6e6e6 !important; --st-hi: #ffffff !important; --st-dim: #9a9a9a !important; --st-hover: #262626 !important; --st-hover2: #2e2e2e !important; --st-active: #2e2e2e !important; --st-focus: #3d7bf5 !important; --st-orange: #d97757 !important; }
+html.termapp.st-os-claude.light { --st-bg: #faf9f5 !important; --st-bg2: #f3f1ea !important; --st-bg3: #ffffff !important; --st-canvas: #f3f1ea !important; --st-line: #e4e1d8 !important; --st-fg: #262624 !important; --st-hi: #000000 !important; --st-dim: #73716b !important; --st-hover: #eceae2 !important; --st-hover2: #e6e3d8 !important; --st-active: #e6e3d8 !important; --st-focus: #3d7bf5 !important; --st-orange: #c96442 !important; }
+html.termapp.st-os-claude, html.termapp.st-os-claude body, html.termapp.st-os-claude #desktop { background: var(--ca-main-bg); }
+
+/* ---- VS Code 的那些：这个风格里都不要 ---- */
+html.termapp.st-os-claude :is(.st-act, .termwin .tside, .termwin .ts-grip, .st-aside, .tlab > .st-grip, .st-status, .st-crumbs, .st-map, .tgroup > .gtabs, .st-panel > .st-ptop, .st-panel > .st-pgrip, .st-pvgrip, .st-pv[data-v="agents"], .st-tlist, .ts-overview) { display: none !important; }
+html.termapp.st-os-claude #win .bar > :not(.ca-nav):not(.ca-ttl):not(.ca-acts) { display: none !important; }
+
+/* ---- 标题栏：一行，左边一段是边栏的底色（红黄绿、边栏开关、← →），右边是中间那一列的：会话名 ⌄、目录；再右边开关卡片的按钮 ---- */
+html.termapp.st-os-claude.ca-side-off { --ca-side-w: 0px; }
+html.termapp.st-os-claude #win .bar { height: 34px !important; gap: 0 !important; border-bottom: 0 !important; background: linear-gradient(to right, var(--ca-side-bg) 0, var(--ca-side-bg) var(--ca-side-w), var(--ca-line) var(--ca-side-w), var(--ca-line) calc(var(--ca-side-w) + 1px), var(--ca-main-bg) calc(var(--ca-side-w) + 1px)) !important; font-family: var(--ca-font) !important; }
+html.termapp.st-os-claude.ca-side-off #win .bar { background: var(--ca-main-bg) !important; }
+html.termapp.st-os-claude .ca-nav { display: flex; align-items: center; gap: 2px; position: relative; z-index: 2; }
+html.termapp.st-os-claude .ca-ttl { display: flex; align-items: center; gap: 8px; position: absolute; top: 0; bottom: 0; left: max(calc(var(--ca-side-w) + 18px), 196px); right: calc(var(--ca-a) + var(--ca-b) + var(--ca-acts-w, 134px) + 24px); min-width: 0; z-index: 2; pointer-events: none; } /* 右边让出开关那一排的宽度（claudeapp.js 量好放在 --ca-acts-w）：标题、小标签不压着按钮 */
+html.termapp.st-os-claude .ca-ttl > * { pointer-events: auto; }
+html.termapp.st-os-claude .ca-acts { display: flex; align-items: center; gap: 4px; position: absolute; top: 0; bottom: 0; right: 12px; z-index: 2; } /* 一直在最右边：卡片开着时在卡片那一列自己的顶上（那一列通到窗口最上面，同 Claude App） */
+.ca-lap { display: inline-flex; flex: none; color: var(--ca-dim); }
+.ca-lap svg { width: 16px; height: 16px; }
+.ca-tbtn { display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 60px; max-width: 100%; padding: 2px 6px; border: 0; border-radius: 6px; background: none; color: var(--ca-fg); font: 400 13.5px/1.2 var(--ca-font); cursor: pointer; } /* 紧凑（同官方）：标题不加粗、小一号 */
+.ca-tt { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-tc { display: inline-flex; flex: none; color: var(--ca-dim); }
+.ca-tc svg { width: 12px; height: 12px; }
+.ca-tbtn:hover { background: var(--ca-hover); }
+.ca-chip { flex: 0 3 auto; min-width: 0; padding: 1px 7px; border-radius: 5px; background: var(--ca-pill); color: var(--ca-dim); font: 12px/1.5 var(--ca-font); white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 按钮（图标）：同 Claude App 的灰色线条图标；开着的卡片按钮是蓝的 ---- */
+.ca-ib { flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: none; color: color-mix(in srgb, var(--ca-fg) 72%, var(--ca-dim)); cursor: pointer; } /* 图标深一点（同官方：灰黑色，不是淡灰） */
+.ca-ib:hover { color: var(--ca-fg); background: var(--ca-hover); }
+.ca-ib:disabled { opacity: .35; cursor: default; background: none; }
+.ca-ib svg { width: 16px; height: 16px; shape-rendering: geometricPrecision; }
+.ca-ib.ca-tog.on, .ca-sh .ca-ib.on { color: var(--ca-fg); background: var(--ca-pill); } /* 开着的卡片：一块灰的底（同官方），不再是蓝的 */
+html.light .ca-ib.ca-tog.on, html.light .ca-sh .ca-ib.on { color: var(--ca-fg); }
+.ca-fill { flex: 1; }
+
+/* ---- 左边一栏 ---- */
+html.termapp.st-os-claude .st-row0 { flex-direction: row !important; }
+html.termapp.st-os-claude .ca-side { display: flex; flex-direction: column; flex: none; width: var(--ca-side-w); min-height: 0; background: var(--ca-side-bg); border-right: 1px solid var(--ca-line); color: var(--ca-fg); font: 14.5px/1.3 var(--ca-font); }
+html.termapp.st-os-claude.ca-side-off .ca-side { display: none; }
+.ca-top { flex: none; padding: 8px 10px 2px; }
+.ca-nav-it { display: flex; align-items: center; gap: 11px; height: 34px; padding: 0 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.ca-nav-it:hover { background: var(--ca-hover); }
+.ca-nav-it > i { display: inline-flex; flex: none; width: 18px; height: 18px; align-items: center; justify-content: center; color: var(--ca-dim); }
+.ca-nav-it > i svg { width: 17px; height: 17px; }
+.ca-nav-it.ca-more > span { color: var(--ca-dim); }
+.ca-find { flex: none; padding: 6px 12px 0; }
+.ca-find[hidden] { display: none; }
+.ca-q { display: block; width: 100%; height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--ca-card-line); border-radius: 8px; background: var(--ca-main-bg); color: var(--ca-fg); font: 13.5px var(--ca-font); outline: 0; }
+.ca-q:focus { border-color: var(--ca-blue); }
+.ca-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 10px 12px; outline: 0; scrollbar-width: thin; }
+.ca-sec { margin-top: 16px; }
+.ca-sh { display: flex; align-items: center; height: 28px; padding: 0 4px 0 10px; color: var(--ca-dim); font-size: 13px; }
+.ca-sh .ca-ib { width: 24px; height: 24px; }
+.ca-sh .ca-ib svg { width: 15px; height: 15px; }
+.ca-it { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: 8px; cursor: pointer; }
+.ca-it:hover { background: var(--ca-hover); }
+.ca-it.on { background: var(--ca-pill); }
+.ca-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); }
+.ca-dot { flex: none; width: 7px; height: 7px; box-sizing: border-box; border-radius: 50%; border: 1.3px solid var(--ca-faint); }
+.ca-dot.working { background: var(--ca-orange); border-color: var(--ca-orange); animation: ca-pulse 1.4s ease-in-out infinite; }
+.ca-dot.waiting { background: var(--ca-dim); border-color: var(--ca-dim); }
+@keyframes ca-pulse { 50% { opacity: .35; } }
+.ca-none { padding: 6px 10px; color: var(--ca-faint); font-size: 13px; }
+.ca-ren { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 1px solid var(--ca-blue); border-radius: 6px; background: var(--ca-main-bg); color: var(--ca-fg); font: inherit; outline: 0; }
+.ca-acct { flex: none; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 8px; border-top: 1px solid var(--ca-line); } /* 紧凑（同官方）：矮一点、头像小一点、字小一号 */
+.ca-me { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 6px; border-radius: 7px; font-size: 13.5px; cursor: pointer; }
+.ca-me:hover { background: var(--ca-hover); }
+.ca-av { flex: none; width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--ca-pill); color: var(--ca-fg); font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+.ca-av img { width: 100%; height: 100%; object-fit: cover; }
+.ca-login { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-plan { flex: none; margin-left: -3px; color: var(--ca-dim); font-size: 12px; }
+.ca-chev { display: inline-flex; color: var(--ca-dim); }
+.ca-chev svg { width: 12px; height: 12px; }
+.ca-star { color: var(--ca-orange); }
+.ca-star svg { width: 18px; height: 18px; }
+.ca-star:hover { color: var(--ca-orange); }
+
+/* ---- 中间 + 右边：一张网格——中间是对话那一列；右边一列是开着的卡片（终端、后台任务、浏览器），卡片之间一张均匀的小网格：
+   1 张占满高度，2 张上下叠，3 张 2×2（第三张占一整行），4 张 2×2；右边那一列的宽度跟着张数（0 张时没有这一列） ---- */
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2) { --ca-a: var(--ca-cw1, clamp(280px, 30vw, 480px)); } /* 拖过的宽度：--ca-cw1（一两张）、--ca-cw2（三张以上） */
+html.termapp.st-os-claude:is(.ca-n3, .ca-n4) { --ca-a: var(--ca-cw2, clamp(440px, 46vw, 920px)); }
+html.termapp.st-os-claude .termwin .tlab.st-grid { display: grid !important; grid-template-columns: minmax(0, 1fr) max(0px, min(var(--ca-a, 0px), calc(100% - 320px))) !important; /* 对话那一列至少留 320px：窗口窄了卡片那一列让 */ grid-template-rows: minmax(0, 1fr) !important; padding: 0 !important; gap: 0 !important; direction: ltr !important; background: var(--ca-main-bg); }
+html.termapp.st-os-claude .termwin .tlab.st-grid > * { direction: ltr !important; }
+html.termapp.st-os-claude .tlab.st-grid > .tmain { grid-column: 1 !important; grid-row: 1 !important; min-width: 0; background: var(--ca-main-bg) !important; border: 0 !important; border-radius: 0 !important; }
+html.termapp.st-os-claude .termwin .tmain .tgroup { border: 0 !important; border-radius: 0 !important; background: var(--ca-main-bg); }
+/* 中间那一列（对话）没有框（同 Claude App）：只有对话的消息往上滚到标题行下面时淡出去（滚动区自己的遮罩，滚动过了才有）；
+   Agent Finder、设置这些页面的顶部不受影响，消息在最上面（刚打开）时也不淡 */
+html.termapp.st-os-claude .tlab.st-grid > .tmain { position: relative; }
+/*   淡出用盖在上面的一层渐变（不是滚动区自己的遮罩：遮罩让整块滚动内容每一帧都要离屏重画，滚动发白、卡） */
+html.termapp.st-os-claude .gv:has(> .gv-scroll.gv-scrolled)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 28px; background: linear-gradient(to bottom, var(--ca-main-bg), transparent); pointer-events: none; z-index: 4; }
+html.termapp.st-os-claude .termwin .panes .divider, html.termapp.st-os-claude .termwin .panes .tgroup:not(.on), html.termapp.st-os-claude .termwin .panes .split:has(.tgroup.on) > .split:not(:has(.tgroup.on)) { display: none !important; }
+html.termapp.st-os-claude .termwin .panes .split:not([data-ca-pair]) > :is(.tgroup.on, .split:has(.tgroup.on)) { flex: 1 1 0 !important; } /* 剩下的那一个占满（拆分的比例不管） */
+/* 拆分视图（会话菜单「打开位置 › 拆分视图」）：并排的两组都显示，中间一条细线能拖；每组顶上一条——名字、✕（收起这一边） */
+html.termapp.st-os-claude.ca-split .termwin .panes .tgroup[data-ca-show] { display: flex !important; }
+html.termapp.st-os-claude.ca-split .termwin .panes .split[data-ca-pair] { display: flex !important; }
+html.termapp.st-os-claude.ca-split .termwin .panes .split[data-ca-pair] > .divider { display: block !important; width: 1px; background: var(--ca-line) !important; }
+html.termapp.st-os-claude.ca-split .termwin .panes .split[data-ca-pair] > .divider::before { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; } /* 好抓一点 */
+.ca-splith { display: none; }
+html.termapp.st-os-claude.ca-split .tgroup[data-ca-show] > .ca-splith { display: flex; align-items: center; gap: 6px; flex: none; height: 36px; padding: 0 8px 0 18px; border-bottom: 1px solid var(--ca-line); color: var(--ca-dim); font: 500 13.5px/1 var(--ca-font); -webkit-user-select: none; user-select: none; }
+html.termapp.st-os-claude.ca-split .tgroup[data-ca-show] > .ca-splith.on { color: var(--ca-fg); }
+.ca-splitt { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-splith .ca-ib { width: 26px; height: 26px; }
+.ca-splith .ca-ib svg { width: 14px; height: 14px; }
+/* 右边：面板在这个风格里是那一列卡片的底（浏览器卡片也放进来：claudeapp.js 挪进 .st-pviews），每张右上角 ⤢ ✕ */
+html.termapp.st-os-claude .tlab.st-grid > .st-panel { display: none !important; grid-column: 2 !important; grid-row: 1 !important; height: auto !important; margin: 0 !important; padding: 8px 8px 10px 0; border: 0 !important; border-radius: 0 !important; background: transparent !important; min-width: 0; overflow: hidden; z-index: 1; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4) .tlab.st-grid > .st-panel { display: flex !important; }
+html.termapp.st-os-claude .st-panel .st-pviews { display: grid !important; flex: 1 1 auto; min-height: 0; min-width: 0; grid-template-columns: minmax(0, 1fr); grid-auto-rows: minmax(0, 1fr); gap: 8px; }
+html.termapp.st-os-claude:is(.ca-n3, .ca-n4) .st-panel .st-pviews { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+html.termapp.st-os-claude.ca-n3 .st-panel .st-pviews > [data-ca-slot="2"] { grid-column: 1 / -1; }
+html.termapp.st-os-claude .st-panel .st-pv { display: none !important; flex: none !important; position: relative; min-height: 0; min-width: 0; border: 1px solid var(--ca-card-line) !important; border-radius: 12px; background: var(--ca-card-bg); overflow: hidden; }
+html.termapp.st-os-claude.ca-c-term .st-panel .st-pv[data-v="term"], html.termapp.st-os-claude.ca-c-tasks .st-panel .st-pv[data-v="tasks"] { display: flex !important; flex-direction: column; }
+html.termapp.st-os-claude .st-panel .st-pv.folded .st-pvb { display: flex !important; }
+html.termapp.st-os-claude .st-panel .st-pv > .st-pvb { flex: 1 1 auto !important; min-height: 0; height: auto !important; }
+/* 后台任务那张卡：按内容高（不再占满固定的一格、下面的「子 Agent」被截掉），最高到这一栏的高度，超出才在卡里滚 */
+html.termapp.st-os-claude .st-panel .st-pv[data-v="tasks"] { align-self: start; max-height: 100%; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-max-tasks) .st-panel .st-pv[data-v="tasks"] { align-self: stretch; max-height: none; } /* 只有这一张、或者放大了：占满整个高度（用户：一张卡片默认就是全高） */
+html.termapp.st-os-claude .st-pv[data-v="term"] .st-caret { display: none !important; } /* 终端卡片：只要 +，不要旁边的 ⌄ */
+html.termapp.st-os-claude .st-panel .st-pv[data-v="tasks"] > .st-pvb { display: flex !important; flex-direction: column; flex: 0 1 auto !important; min-height: 0; }
+html.termapp.st-os-claude .st-panel .st-pv[data-v="tasks"] .st-plist { flex: 0 1 auto; min-height: 0; overflow: auto; }
+/* 卡片的标题行：一行——名字（放不下省略）、它的 + ⌄、空、右边 ⋮ ⤢ ✕（都是 28px 的方块、4px 间隔、不叠）；卡片窄了 + ⌄ 收进 ⋮，✕ 总在 */
+html.termapp.st-os-claude .st-panel .st-pv, html.termapp.st-os-claude :is(.ca-web, .ca-files) { container-type: inline-size; }
+html.termapp.st-os-claude .st-panel .st-pvh { display: flex !important; align-items: center; flex: none; height: 44px !important; min-width: 0; padding: 0 8px 0 16px !important; gap: 4px; overflow: hidden; border: 0 !important; background: none !important; color: var(--ca-fg) !important; font: 500 14.5px/44px var(--ca-font) !important; cursor: default !important; }
+html.termapp.st-os-claude .st-panel .st-pvh .st-pvt { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 2px; }
+html.termapp.st-os-claude .st-panel .st-pvh .st-split-btn { display: inline-flex; flex: none; gap: 2px; }
+html.termapp.st-os-claude .st-panel .st-pvh .st-hbtn { display: inline-flex; flex: none; align-items: center; justify-content: center; }
+html.termapp.st-os-claude .st-panel .st-pvh :is(.ts-chev, .st-pvi, .st-fill) { display: none !important; }
+html.termapp.st-os-claude .st-panel .st-pvh .st-hbtn { width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--ca-dim); }
+html.termapp.st-os-claude .st-panel .st-pvh .st-hbtn:hover { background: var(--ca-hover); color: var(--ca-fg); }
+html.termapp.st-os-claude .st-panel .st-pvb { border-top: 0; font-family: var(--ca-font); }
+html.termapp.st-os-claude .st-panel .st-pv[data-v="term"] .st-pbody { margin: 0 8px 8px; }
+html.termapp.st-os-claude .st-panel .st-plist { padding: 0 14px 12px; color: var(--ca-dim); font: 14px/1.5 var(--ca-font) !important; overflow: auto; }
+.ca-cardacts { display: none; }
+html.termapp.st-os-claude .ca-cardacts { display: inline-flex; flex: none; align-items: center; gap: 4px; margin-left: auto; }
+.ca-cardacts .ca-ib, .ca-cardh .ca-ib { width: 28px; height: 28px; }
+.ca-cmore { display: none !important; }
+@container (max-width: 250px) {
+  html.termapp.st-os-claude .st-panel .st-pvh .st-split-btn, html.termapp.st-os-claude .ca-cardh .ca-hplus { display: none !important; }
+  html.termapp.st-os-claude .st-pvh:has(.st-split-btn) .ca-cmore, html.termapp.st-os-claude .ca-web .ca-cardh .ca-cmore { display: inline-flex !important; }
+}
+@container (max-width: 150px) {
+  html.termapp.st-os-claude :is(.st-pvh, .ca-cardh) [data-k="max"], html.termapp.st-os-claude .ca-cardh [data-w="max"], html.termapp.st-os-claude .ca-cardh [data-f="max"] { display: none !important; } /* 再窄：⤢ 也让出来，✕ 总在 */
+}
+/* 文件卡片：文件树自己的一排按钮（新建、刷新、折叠、···）在卡片标题行里（claudeapp.js 搬过去），不要它的标题（上面已经有了） */
+html.termapp.st-os-claude.ca-c-files .st-panel .st-pviews > .ca-files { display: flex; }
+/* 全局助手卡片（globalagent.js 那一块：它的对话和输入框）：同文件卡片的样子；5 张卡片时 2×2 加最下面一整行；⤢ 时占满右边 */
+html.termapp.st-os-claude.ca-c-global .st-panel .st-pviews > .ca-gcard { display: flex; }
+.ca-gcard { display: none; position: relative; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--ca-card-line); border-radius: 12px; background: var(--ca-card-bg); color: var(--ca-fg); font: 14px/1.4 var(--ca-font); overflow: hidden; container-type: inline-size; }
+.ca-gbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ca-gbody > .tpane { flex: 1 1 auto; min-height: 0; }
+html.termapp.st-os-claude.ca-n5 { --ca-a: var(--ca-cw2, clamp(440px, 46vw, 920px)); }
+html.termapp.st-os-claude.ca-n5 .tlab.st-grid > .st-panel { display: flex !important; }
+html.termapp.st-os-claude.ca-n5 .st-panel .st-pviews { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+html.termapp.st-os-claude.ca-n5 .st-panel .st-pviews > [data-ca-slot="4"] { grid-column: 1 / -1; }
+html.termapp.st-os-claude.ca-max-global .tlab.st-grid > .st-panel { grid-column: 1 / -1 !important; z-index: 6; padding-left: 8px; background: var(--ca-main-bg) !important; }
+html.termapp.st-os-claude.ca-max-global .st-panel .st-pviews { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+html.termapp.st-os-claude.ca-max-global .st-panel .st-pviews > :not(.ca-gcard) { display: none !important; }
+html.termapp.st-os-claude.ca-max-global .st-panel .st-pviews > * { grid-column: 1 !important; grid-row: 1 !important; }
+.ca-files { display: none; position: relative; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--ca-card-line); border-radius: 12px; background: var(--ca-card-bg); color: var(--ca-fg); font: 14px/1.4 var(--ca-font); overflow: hidden; }
+.ca-filesbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ca-files .st-fview { padding: 0 !important; margin: 0 !important; font-family: var(--ca-font) !important; }
+.ca-cardh > .st-shdr.ca-vacts { flex: none; display: flex; align-items: center; gap: 2px; height: auto; margin: 0; padding: 0 !important; border: 0 !important; background: none !important; overflow: visible; }
+.ca-cardh > .ca-vacts .st-ftitle, .ca-cardh > .ca-vacts .st-fill { display: none !important; }
+.ca-cardh > .ca-vacts .st-hbtn { width: 28px; height: 28px; border-radius: 7px; color: var(--ca-dim); }
+.ca-cardh > .ca-vacts .st-hbtn:hover { background: var(--ca-hover); color: var(--ca-fg); }
+@container (max-width: 330px) { html.termapp.st-os-claude .ca-cardh > .ca-vacts .st-hbtn:not([data-f="more"]) { display: none; } } /* 窄了：只留 ···（新建、刷新、折叠都在它里面） */
+.ca-files .st-flist { padding: 0 6px 8px; }
+/* 空的卡片（没有后台任务……）：一句灰字，放在正中间 */
+html.termapp.st-os-claude .st-panel .st-pv[data-v="tasks"] .st-plist:not(:has(> :not(.st-dim):not(.st-empty))) { display: flex !important; align-items: center; justify-content: center; text-align: center; color: var(--ca-faint); font-size: 13.5px !important; }
+/* 浏览器卡片（在上面那张网格里） */
+html.termapp.st-os-claude.ca-c-web .st-panel .st-pviews > .ca-web { display: flex; }
+html.termapp.st-os-claude .ca-web { position: relative; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--ca-card-line); border-radius: 12px; background: var(--ca-card-bg); color: var(--ca-fg); font: 14px/1.4 var(--ca-font); overflow: hidden; }
+.ca-cardh { flex: none; display: flex; align-items: center; gap: 4px; height: 44px; min-width: 0; padding: 0 8px 0 16px; overflow: hidden; font-size: 14.5px; font-weight: 500; }
+.ca-cardh > .ca-webt { flex: 0 1 auto; max-width: none; margin-right: 2px; }
+.ca-webt { min-width: 0; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-webnav { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 10px 8px 8px; }
+.ca-url { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--ca-card-line); border-radius: 8px; background: var(--ca-main-bg); color: var(--ca-fg); font: 13.5px var(--ca-font); outline: 0; -webkit-user-select: text; user-select: text; }
+.ca-url:focus { border-color: var(--ca-blue); }
+.ca-url::placeholder { color: var(--ca-faint); }
+.ca-webbody { flex: 1; min-height: 0; position: relative; border-top: 1px solid var(--ca-line); }
+.ca-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.ca-web.has .ca-frame { z-index: 1; }
+.ca-webempty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 24px; text-align: center; color: var(--ca-faint); font-size: 13.5px; z-index: 2; }
+.ca-webempty[hidden] { display: none; }
+.ca-webempty b { color: var(--ca-dim); font-weight: 500; font-size: 14px; margin-top: 8px; }
+.ca-webempty p { margin: 0; max-width: 240px; line-height: 1.45; }
+.ca-wico { color: var(--ca-faint); }
+.ca-wico svg { width: 22px; height: 22px; }
+.ca-wdev { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.ca-wdev a { color: var(--ca-dim); cursor: pointer; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+.ca-wdev a:hover { color: var(--ca-fg); }
+/* 卡片放大（⤢）：那一张盖住中间那一列，别的藏起来 */
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files) .tlab.st-grid > .st-panel { grid-column: 1 / -1 !important; z-index: 6; padding-left: 8px; background: var(--ca-main-bg) !important; }
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files) .st-panel .st-pviews { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+html.termapp.st-os-claude.ca-max-term .st-panel .st-pviews > :not([data-v="term"]), html.termapp.st-os-claude.ca-max-tasks .st-panel .st-pviews > :not([data-v="tasks"]), html.termapp.st-os-claude.ca-max-web .st-panel .st-pviews > :not(.ca-web), html.termapp.st-os-claude.ca-max-files .st-panel .st-pviews > :not(.ca-files) { display: none !important; }
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files) .st-panel .st-pviews > * { grid-column: 1 !important; grid-row: 1 !important; }
+
+/* 界面上的字不能选（输入框、网址照常） */
+html.termapp.st-os-claude :is(.ca-side, .ca-nav, .ca-ttl, .ca-acts, .ca-cardh, .ca-webnav, .ca-webempty, .ca-cardacts, .st-panel .st-pvh), html.termapp.st-os-claude :is(.ca-side, .ca-nav, .ca-ttl, .ca-acts, .ca-cardh, .ca-webnav, .ca-webempty) * { -webkit-user-select: none; user-select: none; }
+html.termapp.st-os-claude :is(.ca-q, .ca-ren, .ca-url) { -webkit-user-select: text; user-select: text; }
+
+/* ---- 边栏「更多」：收着 ⌄ 更多，展开了 ⌃ 收起——箭头转过去、下面一段滑出来 ---- */
+.ca-disc svg { transition: transform .15s ease; }
+.ca-more.open .ca-disc svg { transform: rotate(180deg); }
+.ca-subs { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .18s ease; }
+.ca-subs.open { grid-template-rows: 1fr; }
+.ca-subs-in { min-height: 0; overflow: hidden; }
+.ca-subs:not(.open) .ca-subs-in { visibility: hidden; transition: visibility 0s .18s; }
+.ca-nav-it.on { background: var(--ca-pill); }
+/* 会话行：右边多久以前（筛选里「显示时间」）；归档的淡一点；在别的设备上跑着的点是蓝的 */
+.ca-when { flex: none; color: var(--ca-faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+/* 行右边的 ⋮（会话菜单）：指着这一行、或菜单开着时才有，占多久以前那一格 */
+.ca-it { position: relative; }
+.ca-rowmore { display: none; flex: none; width: 26px; height: 26px; margin-right: -6px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--ca-dim); cursor: pointer; }
+.ca-rowmore svg { width: 15px; height: 15px; }
+.ca-rowmore:hover { background: color-mix(in srgb, var(--ca-fg) 10%, transparent); color: var(--ca-fg); }
+.ca-it.ca-mopen .ca-rowmore { display: inline-flex; }
+@media (hover: hover) { .ca-it:hover .ca-rowmore { display: inline-flex; } } /* 只在有悬停的设备上：手指点的设备第一下会被当成悬停，要点两次 */
+.ca-it.ca-mopen .ca-when { display: none; }
+@media (hover: hover) { .ca-it:hover .ca-when { display: none; } } /* 只在有悬停的设备上：手指点的设备第一下会被当成悬停，要点两次 */
+.ca-it.ca-mopen { background: var(--ca-hover); }
+.ca-it:has(.ca-ren) .ca-rowmore { display: none; }
+/* 未读：名字粗一点、亮一点；点是蓝的（在跑的还是橙色在闪） */
+.ca-it.unread .ca-name { color: var(--ca-hi); font-weight: 600; }
+.ca-it.unread .ca-dot:not(.working) { background: var(--ca-blue); border-color: var(--ca-blue); }
+.ca-it.arch .ca-name { color: var(--ca-dim); }
+.ca-it.dimt .ca-name { color: var(--ca-dim); } /* 标题是目录名 + 时间（会话里只有 /exit 这种） */
+.ca-dot.remote { border-color: var(--ca-blue); background: color-mix(in srgb, var(--ca-blue) 45%, transparent); }
+
+/* ---- 菜单（这个风格里都是自己画的，同 Claude App：圆角深色面板、一圈细边、行两边留空、悬停圆角底色；右边灰字是现在的值；
+        勾在右边（蓝）；复选框在左边；子菜单 ›；不显示快捷键） ---- */
+html.st-os-claude .st-menu { min-width: 232px; max-width: 420px; padding: 4px; border: 1px solid var(--ca-card-line); border-radius: 12px; background: #2a2a2a; color: var(--ca-fg); box-shadow: 0 14px 36px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .25); font: 13px/1 var(--ca-font) !important; }
+html.st-os-claude.light .st-menu { background: #ffffff; box-shadow: 0 14px 36px rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .08); }
+html.st-os-claude .st-mrow { gap: 0; height: 24px; line-height: 24px; padding: 0 10px 0 9px; border-radius: 6px; color: var(--ca-fg); cursor: pointer; } /* 24px 一行、13px 字：同 Claude App 的菜单（img385，按 2x 量出来的） */
+html.st-os-claude .st-mrow.dim { color: var(--ca-dim); } /* 账户菜单最上面的账号：灰字，从最左边开始（不留图标那一格） */
+.ca-av.ca-av2 { width: 24px; height: 24px; background: none; overflow: visible; }
+.ca-av.ca-av2 .st-av { font-weight: 600; letter-spacing: .02em; } /* 字母头像：字重一点（同官方） */ /* 头像是 STUDIO.avatarHtml 画的：它自己带圆和底色 */
+html.st-os-claude .st-mrow.dim.on { color: var(--ca-fg); }
+html.st-os-claude .st-mrow.on { background: #3a3a3a; color: var(--ca-hi); }
+html.st-os-claude.light .st-mrow.on { background: #efede6; }
+html.st-os-claude .st-mrow.off { color: var(--ca-faint); cursor: default; }
+html.st-os-claude .st-mrow.off.on { background: none; }
+html.st-os-claude .st-mrow .st-mchk { order: 8; width: auto; min-width: 0; margin-left: 14px; color: var(--ca-blue); font-size: 13px; }
+html.st-os-claude .st-mrow .st-mchk:empty { display: none; }
+html.st-os-claude .st-mrow.box .st-mchk { order: -1; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; margin: 0 11px 0 0; box-sizing: border-box; border: 1.5px solid var(--ca-faint); border-radius: 5px; color: transparent; font-size: 12px; line-height: 1; }
+html.st-os-claude .st-mrow.box.chk .st-mchk { background: var(--ca-blue); border-color: var(--ca-blue); color: #fff; }
+html.st-os-claude .st-mico { margin-right: 10px; color: var(--ca-dim); }
+html.st-os-claude .st-mico svg { width: 15px; height: 15px; }
+html.st-os-claude .st-mlab { overflow: hidden; text-overflow: ellipsis; }
+html.st-os-claude .st-mval { margin-left: 28px; color: var(--ca-dim); font-size: 13px; }
+html.st-os-claude .st-mkey { display: none; }
+html.st-os-claude .st-marr { order: 9; margin-left: 10px; color: var(--ca-dim); font-size: 16px; line-height: 1; }
+html.st-os-claude .st-msep { height: 1px; margin: 4px 8px; background: rgba(255, 255, 255, .09); } /* 分隔线看得见（同 Claude：两边同文字对齐，上下各 4px） */
+html.st-os-claude.light .st-msep { background: rgba(0, 0, 0, .09); }
+html.st-os-claude .st-mhead { padding: 7px 12px 3px; color: var(--ca-faint); font-size: 13px; line-height: 1.4; }
+html.st-os-claude .st-mrow.two { height: auto; min-height: 34px; padding-top: 6px; padding-bottom: 6px; line-height: 1.3; }
+html.st-os-claude .st-msub { margin-top: 1px; color: var(--ca-dim); font-size: 12.5px; }
+html.st-os-claude .st-macc { order: 8; margin-left: 28px; color: var(--ca-faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+html.st-os-claude .st-mrow.on .st-macc { color: var(--ca-dim); }
+html.st-os-claude .st-mrow.dan { color: #f0605a; }
+html.st-os-claude.light .st-mrow.dan { color: #cf3b32; }
+html.st-os-claude .st-mrow.dan .st-macc { color: color-mix(in srgb, currentColor 60%, transparent); }
+
+/* ---- 对话框（代替系统的 alert / confirm / prompt）：窗口变暗，中间一张圆角卡片；主按钮亮、危险的红 ---- */
+.ca-dlgdim { position: fixed; inset: 0; z-index: 420; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0); transition: background .14s ease; }
+.ca-dlgdim.in { background: rgba(0, 0, 0, .45); }
+html.light .ca-dlgdim.in { background: rgba(0, 0, 0, .22); }
+.ca-dlgdim.out { background: rgba(0, 0, 0, 0); pointer-events: none; }
+.ca-dlg { width: min(440px, calc(100vw - 48px)); box-sizing: border-box; padding: 22px 22px 18px; border: 1px solid var(--ca-card-line); border-radius: 14px; background: var(--ca-sheet-bg, #1f1f1f); color: var(--ca-fg, #e6e6e6); font: 14.5px/1.45 var(--ca-font, -apple-system, system-ui, sans-serif); box-shadow: 0 24px 64px rgba(0, 0, 0, .45); opacity: 0; transform: scale(.97); transition: opacity .14s ease, transform .14s ease; }
+.ca-dlgdim.in .ca-dlg { opacity: 1; transform: none; }
+.ca-dlgdim.out .ca-dlg { opacity: 0; transform: scale(.98); }
+.ca-dlgt { color: var(--ca-hi, #fff); font-size: 16px; font-weight: 600; }
+.ca-dlgx { margin-top: 6px; color: var(--ca-dim); white-space: pre-wrap; }
+.ca-dlgin { display: block; width: 100%; height: 38px; box-sizing: border-box; margin-top: 14px; padding: 0 12px; border: 1px solid var(--ca-card-line); border-radius: 10px; background: var(--ca-main-bg); color: var(--ca-fg); font: 14.5px var(--ca-font); outline: 0; -webkit-user-select: text; user-select: text; }
+.ca-dlgin:focus { border-color: var(--ca-blue); }
+.ca-dlgb { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.ca-btn { height: 34px; padding: 0 16px; border: 0; border-radius: 9px; background: var(--ca-pill); color: var(--ca-fg); font: 500 14px var(--ca-font); cursor: pointer; outline: 0; }
+.ca-btn:hover { background: color-mix(in srgb, var(--ca-pill) 80%, var(--ca-fg) 20%); }
+.ca-btn.pri { background: var(--ca-fg); color: var(--ca-main-bg); }
+.ca-btn.pri:hover { background: var(--ca-hi); }
+.ca-btn.dan { background: #c9453a; color: #fff; }
+.ca-btn.dan:hover { background: #d9544a; }
+.ca-btn:focus-visible { box-shadow: 0 0 0 2px var(--ca-main-bg), 0 0 0 4px color-mix(in srgb, var(--ca-blue) 70%, transparent); }
+
+/* ---- 新会话（草稿）：左上问候 + 用量卡片；下面在哪跑 / 哪个文件夹、输入框、权限 / 模型 / 推理强度（同 Claude App 的 New session） ---- */
+.st-pg:has(> .ca-new) { padding: 0 !important; overflow: hidden !important; height: 100%; box-sizing: border-box; }
+.ca-new { display: flex; flex-direction: column; height: 100%; max-width: 880px; margin: 0 auto; padding: 34px 28px 14px; box-sizing: border-box; color: var(--ca-fg); font: 14.5px/1.45 var(--ca-font); }
+.ca-new-top { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: none; }
+.ca-new-hi { display: flex; align-items: center; gap: 10px; color: var(--ca-fg); font-size: 22px; font-weight: 400; letter-spacing: -.01em; }
+.ca-new-star { display: inline-flex; flex: none; width: 22px; height: 22px; color: var(--ca-orange); }
+.ca-new-star svg { width: 22px; height: 22px; }
+.ca-new-stats { margin-top: 18px; }
+.ca-new-stats:empty { display: none; }
+.ca-new-bot { flex: none; padding-top: 12px; }
+.ca-new-chips { display: flex; align-items: center; gap: 6px; margin: 0 0 8px 2px; }
+.ca-nchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 260px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--ca-pill); color: var(--ca-dim); font: 13px var(--ca-font); white-space: nowrap; }
+.ca-nchip span { overflow: hidden; text-overflow: ellipsis; }
+.ca-nchip svg { flex: none; width: 14px; height: 14px; }
+button.ca-nchip { cursor: pointer; }
+button.ca-nchip:hover { color: var(--ca-fg); background: color-mix(in srgb, var(--ca-pill) 82%, var(--ca-fg) 18%); }
+.ca-nchip[hidden], .ca-naddf[hidden] { display: none; }
+.ca-naddf { width: 28px; height: 28px; }
+.ca-new-box { position: relative; padding: 13px 54px 12px 16px; border: 1px solid var(--ca-card-line); border-radius: 18px; background: color-mix(in srgb, var(--ca-card-bg) 88%, var(--ca-fg) 4%); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); transition: border-color .12s; }
+.ca-new-box:focus-within { border-color: color-mix(in srgb, var(--ca-card-line) 55%, var(--ca-fg) 45%); }
+.ca-new-ta { display: block; width: 100%; min-height: 46px; max-height: 280px; box-sizing: border-box; margin: 0; padding: 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--ca-fg); font: 15px/1.5 var(--ca-font); -webkit-user-select: text; user-select: text; }
+.ca-new-ta::placeholder { color: var(--ca-faint); }
+.ca-new-send { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--ca-pill); color: var(--ca-faint); cursor: default; transition: background .12s, color .12s; }
+.ca-new-send svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.ca-new-send.ready { background: var(--ca-orange); color: #fff; cursor: pointer; }
+.ca-new-send.ready:hover { filter: brightness(1.08); }
+.ca-new-att { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ca-new-att[hidden] { display: none; }
+.ca-natt { position: relative; width: 56px; height: 56px; border-radius: 9px; overflow: hidden; border: 1px solid var(--ca-card-line); }
+.ca-natt img { width: 100%; height: 100%; object-fit: cover; }
+.ca-natt button { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; font-size: 12px; line-height: 18px; cursor: pointer; }
+.ca-new-bar { display: flex; align-items: center; gap: 2px; margin-top: 7px; }
+.ca-nb { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; border: 0; border-radius: 8px; background: none; color: var(--ca-dim); font: 13.5px var(--ca-font); white-space: nowrap; cursor: pointer; }
+.ca-nb:hover { background: var(--ca-hover); color: var(--ca-fg); }
+.ca-nb svg { flex: none; width: 14px; height: 14px; }
+.ca-nb > svg:last-child { width: 12px; height: 12px; opacity: .7; }
+.ca-nplus { width: 30px; padding: 0; justify-content: center; }
+.ca-nplus svg { width: 16px !important; height: 16px !important; opacity: 1 !important; }
+
+/* ---- 访达（中间那一列）：这个风格里不要交错的底色和下面那些空着的占位行 ---- */
+html.st-os-claude .xp-fill, html.st-os-claude .xp-tr.xp-blank { display: none !important; }
+html.st-os-claude .xp-tr.alt:not(.on):not(:hover) { background: none; } /* 不交错；只去掉交错那一层（不然选中的、指着的奇数行也没了底色：上下键走起来一行有一行没有） */
+
+/* ======== 设置：盖在整个窗口上的一张表单（同 Claude App）——外面变暗；左边搜索、范围、分区；右边一行一项，控件在右边 ======== */
+/* 同 Claude App（#374）：后面的窗口变暗、变模糊（毛玻璃）；表单本身是一块半透明的深色玻璃，一圈细线、12px 圆角、软的影子。点后面那层、Esc 关掉 */
+html.termapp.st-os-claude .st-modal-float { background: rgba(10, 10, 9, .44); -webkit-backdrop-filter: blur(16px) saturate(1.1); backdrop-filter: blur(16px) saturate(1.1); animation: st-fdim-in .18s ease; }
+html.termapp.st-os-claude.light .st-modal-float { background: rgba(48, 44, 36, .2); }
+@keyframes st-fdim-in { from { opacity: 0; } }
+html.termapp.st-os-claude .st-float { z-index: 300 !important; border: 1px solid rgba(255, 255, 255, .09) !important; border-radius: var(--st-win-r, 18px) !important; background: color-mix(in srgb, var(--ca-sheet-bg) 86%, transparent) !important; -webkit-backdrop-filter: blur(40px) saturate(1.4); backdrop-filter: blur(40px) saturate(1.4); box-shadow: 0 28px 80px rgba(0, 0, 0, .5), 0 2px 10px rgba(0, 0, 0, .28) !important; overflow: hidden !important; }
+html.termapp.st-os-claude.light .st-float { border-color: rgba(0, 0, 0, .1) !important; background: color-mix(in srgb, var(--ca-sheet-bg) 90%, transparent) !important; box-shadow: 0 28px 80px rgba(0, 0, 0, .2), 0 2px 10px rgba(0, 0, 0, .1) !important; }
+html.termapp.st-os-claude .st-float > .st-fbar { position: absolute !important; top: 14px; right: 14px; z-index: 5; height: auto !important; padding: 0 !important; border: 0 !important; background: none !important; }
+html.termapp.st-os-claude .st-float > .st-fbar > :not(.st-facts), html.termapp.st-os-claude .st-float .st-facts > :not([data-f="close"]) { display: none !important; }
+html.termapp.st-os-claude .st-float .st-facts > [data-f="close"] { width: 30px; height: 30px; border-radius: 8px; color: var(--ca-dim); }
+html.termapp.st-os-claude .st-float .st-facts > [data-f="close"]:hover { background: var(--ca-hover); color: var(--ca-fg); }
+html.termapp.st-os-claude .st-float .st-facts svg { width: 16px; height: 16px; }
+html.termapp.st-os-claude .st-float > .st-fbox { flex: 1; min-height: 0; border: 0 !important; }
+
+html.st-os-claude .ss { display: grid !important; grid-template-columns: 232px minmax(0, 1fr); /* 分区名都短：232px（270 显得空）*/ grid-template-rows: auto minmax(0, 1fr); background: transparent; color: var(--ca-fg); font: 14.5px/1.45 var(--ca-font) !important; }
+html.st-os-claude .st-pg-settings:not(.st-float .st-pg-settings) .ss { background: var(--ca-sheet-bg); } /* 不在表单里（不该有，保险）：不透明 */
+html.st-os-claude .ss-top { grid-column: 1; grid-row: 1; padding: 18px 16px 4px; background: color-mix(in srgb, var(--ca-sheet-side) 72%, transparent); border-right: 1px solid var(--ca-line); }
+html.st-os-claude .ss-q { height: 40px !important; max-width: none !important; padding: 0 12px 0 38px !important; border: 1px solid var(--ca-card-line) !important; border-radius: 10px !important; background: var(--ca-main-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238f8f8f' stroke-width='1.4' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='M10.4 10.4l3.4 3.4'/%3E%3C/svg%3E") no-repeat 13px center / 16px !important; color: var(--ca-fg) !important; font: 15px var(--ca-font) !important; }
+html.st-os-claude .ss-q:focus { border-color: var(--ca-blue) !important; }
+html.st-os-claude .ss-cols { display: contents !important; }
+html.st-os-claude .ss-toc { display: block !important; grid-column: 1; grid-row: 2; width: auto !important; min-height: 0; overflow-y: auto; padding: 0 12px 24px !important; background: color-mix(in srgb, var(--ca-sheet-side) 72%, transparent); border-right: 1px solid var(--ca-line); }
+/* 右边：顶上一条（页名；第二级「分区 › 这一页」，点分区回去）不滚，下面是内容；内容到底就到底（下面只留一点点） */
+html.st-os-claude .ss-main { grid-column: 2; grid-row: 1 / 3; min-height: 0; }
+html.st-os-claude .ss-head { max-width: calc(var(--ss-w) + 92px); padding: 24px 48px 8px 44px; gap: 14px; background: none; } /* 同下面的内容一栏对齐 */
+html.st-os-claude :is(.ss-ht, .ss-hc) { font: 600 22px/1.3 var(--ca-font); color: var(--ca-hi); }
+html.st-os-claude .ss-ht.ss-up { color: var(--ca-dim); }
+html.st-os-claude .ss-ht.ss-up:hover { color: var(--ca-hi); }
+html.st-os-claude .ss-hc::before { color: var(--ca-faint); }
+html.st-os-claude .ss-body { min-height: 0; padding: 10px 48px 24px 44px !important; }
+/* 同 Claude App：小节下面直接一行一行（没有卡片的框），行和行之间一道细线 */
+html.st-os-claude .ss-card { border: 0; border-radius: 0; background: none; padding: 0; overflow: visible; }
+html.st-os-claude .ss-card > .ss-row + .ss-row { border-top: 0; }
+html.st-os-claude .ss-found > .ss-h2 { font-size: 16px !important; padding-top: 18px !important; }
+/* 去第二级的一行：右边现在的样子（灰）和 ›；指着时名字和 › 亮一点 */
+html.st-os-claude .ss-navv { color: var(--ca-dim); font-size: 15px; }
+html.st-os-claude .ss-navc { border-color: var(--ca-faint); }
+html.st-os-claude .ss-row.ss-k-nav:hover > .ss-title { color: var(--ca-hi) !important; }
+html.st-os-claude .ss-row.ss-k-nav:hover .ss-navc { border-color: var(--ca-fg); }
+html.st-os-claude .ss-otp { display: none !important; }
+/* 左边：分组的小标题（设置 / 这个系统风格 / Agent）；分区是图标 + 名字，小节不列出来 */
+html.st-os-claude .ss-grp { display: block; padding: 18px 12px 6px; color: var(--ca-dim); font-size: 13.5px; }
+html.st-os-claude .ss-grp:first-child { padding-top: 12px; }
+html.st-os-claude .ss-ti.ss-t1 { height: 40px !important; gap: 12px !important; padding: 0 12px !important; border: 0 !important; border-radius: 9px !important; color: var(--ca-fg) !important; font: 15px var(--ca-font) !important; font-weight: 400 !important; transition: background-color .12s; }
+html.st-os-claude .ss-ti.ss-t1:hover { background: var(--ca-hover); }
+html.st-os-claude .ss-ti.ss-t1.on { background: var(--ca-pill) !important; }
+html.st-os-claude .ss-ti .ss-chev, html.st-os-claude .ss-ti.ss-t2 { display: none !important; }
+html.st-os-claude .ss-sic { display: inline-flex; flex: none; width: 18px; height: 18px; align-items: center; justify-content: center; color: var(--ca-fg); opacity: .85; }
+html.st-os-claude .ss-sic svg { width: 18px; height: 18px; }
+/* 右边：标题；一行一项（名字、灰色的说明在左，控件在右），行和行之间一道细线 */
+html.st-os-claude .ss-h2 { position: static !important; margin: 0 0 4px !important; padding: 0 0 8px !important; border: 0 !important; background: none !important; font: 600 22px/1.3 var(--ca-font) !important; color: var(--ca-hi) !important; } /* 三级：分区名 22 > 小节 17 > 一项 15 */
+html.st-os-claude .ss-h3 { position: static !important; margin: 0 !important; padding: 28px 0 4px !important; border: 0 !important; background: none !important; font: 500 17px/1.3 var(--ca-font) !important; color: var(--ca-hi) !important; }
+/* 分区一开头就是小节（外观、个人资料……）：不再写一遍分区的名字（同 Claude App），第一个小节顶上不空 */
+html.st-os-claude .ss-pagedmode .ss-sec:has(> .ss-sub:first-of-type > .ss-h3) > .ss-h2 { display: none !important; }
+html.st-os-claude .ss-pagedmode .ss-sec > .ss-sub:first-of-type > .ss-h3 { padding-top: 0 !important; }
+html.st-os-claude .ss-sec { max-width: none !important; }
+html.st-os-claude .ss-sub { margin-bottom: 0; } /* 小节和小节之间：只靠下一个小节标题上面的空 */
+html.st-os-claude .ss-sec + .ss-sec { margin-top: 30px; }
+html.st-os-claude .ss-note { color: var(--ca-dim); }
+/* 一行：名字（t）、说明（d）在左，控件（c）在右跨这两行居中；代码预览（x）在下面一整行。没有说明时 d 是空的，控件就和名字对齐 */
+html.st-os-claude .ss-row { display: grid !important; grid-template-columns: minmax(min(170px, 45%), 1fr) auto; grid-template-areas: "t c" "d c" "x x"; column-gap: 32px; row-gap: 0; align-items: center; min-height: 34px; margin: 0 !important; padding: 16px 0 !important; border-radius: 0 !important; border-bottom: 1px solid var(--ca-line); background: none !important; box-shadow: none !important; }
+html.st-os-claude .ss-card > .ss-row:last-child { border-bottom: 0; } /* 一张卡片的最后一行下面不画线 */
+html.st-os-claude .ss-row:not(:has(.ss-desc)) { grid-template-areas: "t c" "x x"; } /* 没有说明：名字和控件上下对齐 */
+/* 视图预设（设置 › 对话）：名字在上，下面一排卡片；卡片同 Claude 的卡片（圆角、淡边），选中的蓝边 */
+html.st-os-claude .ss-row.ss-k-cards, html.st-os-claude .ss-row.ss-k-cards:not(:has(.ss-desc)) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+html.st-os-claude .ss-row.ss-k-cards > .ss-ctl { justify-self: stretch; margin-top: 12px; }
+html.st-os-claude .ss .ss-pcard { border-color: var(--ca-card-line); border-radius: 10px; background: var(--ca-main-bg); color: var(--ca-fg); font: 14px/1.35 var(--ca-font); }
+html.st-os-claude .ss .ss-pcard > b { font-weight: 500; color: var(--ca-hi); }
+html.st-os-claude .ss .ss-pcard > span { font-size: 13px; color: var(--ca-dim); }
+html.st-os-claude .ss .ss-pcard.on { border-color: var(--ca-blue); box-shadow: inset 0 0 0 1px var(--ca-blue); background: color-mix(in srgb, var(--ca-blue) 6%, var(--ca-main-bg)); }
+html.st-os-claude .ss-row.flash { background: color-mix(in srgb, var(--ca-blue) 10%, transparent) !important; }
+html.st-os-claude .ss-row.mod .ss-title::after { content: none; } /* 改过的小圆点：VS Code 才有 */
+html.st-os-claude .ss-row > .ss-title { grid-area: t; margin: 0 !important; color: var(--ca-fg) !important; font: 400 15px/1.35 var(--ca-font) !important; }
+html.st-os-claude .ss-row > .ss-desc, html.st-os-claude .ss-row .ss-checkrow > .ss-desc { grid-area: d; margin: 4px 0 0 !important; max-width: 860px; color: var(--ca-dim) !important; font-size: 14px; line-height: 1.5; opacity: 1 !important; }
+html.st-os-claude .ss-row > .ss-ctl { grid-area: c; justify-self: end; }
+html.st-os-claude .ss-row:has(.ss-checkrow) > .ss-ctl, html.st-os-claude .ss-row .ss-checkrow { display: contents !important; }
+html.st-os-claude .ss-row:has(.ss-checkrow) .ss-check { grid-area: c; justify-self: end; }
+/* 开关（同 Claude App：蓝色的开关） */
+html.st-os-claude .ss .ss-check { position: relative; width: 44px !important; height: 26px !important; margin: 0 !important; border: 0 !important; border-radius: 13px !important; background: #4a4a4a !important; cursor: pointer; transition: background-color .18s ease; display: block !important; }
+html.light.st-os-claude .ss .ss-check { background: #d4d1c7 !important; }
+html.st-os-claude .ss .ss-check:hover { filter: brightness(1.08); }
+html.st-os-claude .ss .ss-check::after { content: "" !important; position: absolute; left: 3px; top: 3px; width: 20px !important; height: 20px !important; margin: 0 !important; border: 0 !important; border-radius: 50% !important; background: #fff !important; transform: none !important; opacity: 1 !important; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: left .18s cubic-bezier(.3, .8, .4, 1), width .12s; }
+html.st-os-claude .ss .ss-check:active::after { width: 24px !important; } /* 按住时拉长一点（同系统的开关） */
+html.st-os-claude .ss .ss-check:checked:active::after { left: 17px; }
+html.st-os-claude .ss .ss-check:checked { background: var(--ca-blue) !important; }
+html.st-os-claude .ss .ss-check:checked::after { left: 21px; }
+html.st-os-claude .ss .ss-check:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ca-blue) 45%, transparent); }
+html.st-os-claude .ss .ss-check:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+html.st-os-claude .ss .ss-check:disabled:active::after { width: 20px !important; }
+html.st-os-claude .ss .ss-check:checked:disabled:active::after { left: 21px; }
+/* 下拉（同 Claude App 的「Anthropic Serif ⌄」）：只是值和一个 ⌄，没有框；指着、开着时一块浅底；开着时 ⌄ 转成 ⌃ */
+html.st-os-claude .ss .ss-dd { width: auto !important; max-width: 340px !important; height: 34px !important; padding: 0 32px 0 12px !important; border: 0 !important; border-radius: 9px !important; background: transparent !important; color: var(--ca-fg) !important; font: 15px var(--ca-font) !important; transition: background-color .12s; }
+html.st-os-claude .ss .ss-dd:hover, html.st-os-claude .ss .ss-dd.open { background: var(--ca-hover) !important; }
+html.st-os-claude .ss .ss-dd:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ca-blue) 45%, transparent); }
+html.st-os-claude .ss .ss-ddc { right: 13px; width: 7px; height: 7px; margin-top: -6px; border-color: var(--ca-dim); border-width: 0 1.4px 1.4px 0; transition: transform .16s ease, margin-top .16s ease; }
+html.st-os-claude .ss .ss-dd.open .ss-ddc { margin-top: -2px; transform: rotate(-135deg); }
+/* 弹出来的列表：框下面一张圆角小卡片（右边对齐），选中的那项右边一个蓝色的 ✓ */
+html.termapp.st-os-claude { --ca-pop-bg: #20201f; --ca-pop-line: #30302f; --ca-pop-hi: #2b2b2a; } /* 弹出的卡片：同 Claude App 的 #20201f */
+html.termapp.st-os-claude.light { --ca-pop-bg: #ffffff; --ca-pop-line: #dedbd1; --ca-pop-hi: #f0eee6; }
+html.st-os-claude .ss-ddlist.ss-pop { padding: 5px; border: 1px solid var(--ca-pop-line) !important; border-radius: 12px !important; background: var(--ca-pop-bg) !important; color: var(--ca-fg); font: 15px var(--ca-font) !important; box-shadow: 0 14px 36px rgba(0, 0, 0, .34), 0 2px 8px rgba(0, 0, 0, .18); transform-origin: top right; animation: ss-pop-in .14s cubic-bezier(.2, .8, .3, 1); }
+html.st-os-claude .ss-pop .ss-ddrows { padding: 0; }
+html.st-os-claude .ss-pop .ss-ddi { height: 38px; margin: 0; padding: 0 10px 0 14px; gap: 18px; border-radius: 8px; color: var(--ca-fg); }
+html.st-os-claude .ss-pop .ss-ddi.on { background: var(--ca-pop-hi); color: var(--ca-hi); }
+html.st-os-claude .ss-pop .ss-ddi > em { font-style: normal; font-size: 12.5px; color: var(--ca-faint); }
+html.st-os-claude .ss-pop .ss-ddi.na { color: var(--ca-faint); cursor: default; }
+html.st-os-claude .ss-pop .ss-ddk { flex: none; width: 16px; height: 16px; }
+html.st-os-claude .ss-pop .ss-ddi.cur .ss-ddk { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%233d7bf5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.2 8.4l3 3 6.6-6.8'/%3E%3C/svg%3E") center / 16px no-repeat; }
+@keyframes ss-pop-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+html.st-os-claude .ss .ss-input { width: min(300px, 32vw) !important; height: 36px !important; padding: 0 12px !important; border: 1px solid var(--ca-card-line) !important; border-radius: 9px !important; background: var(--ca-main-bg) !important; color: var(--ca-fg) !important; font: 14.5px var(--ca-font) !important; transition: border-color .12s; }
+html.st-os-claude .ss .ss-input:hover { border-color: color-mix(in srgb, var(--ca-card-line) 60%, var(--ca-dim)) !important; }
+html.st-os-claude .ss .ss-input:focus { border-color: var(--ca-blue) !important; }
+html.st-os-claude .ss .ss-num { width: 96px !important; text-align: right; }
+html.st-os-claude .ss .ss-sugbtn { width: 36px; height: 36px; border-radius: 9px; border-color: var(--ca-card-line); background: var(--ca-main-bg); }
+html.st-os-claude .ss .ss-sugbtn:hover { background: var(--ca-hover); }
+html.st-os-claude .ss .ss-slider { width: 300px; }
+html.st-os-claude .ss .ss-range { background: linear-gradient(to right, var(--ca-blue) var(--p, 0%), var(--ca-card-line) var(--p, 0%)) !important; }
+/* 只看的值（账户名、余额）、按钮（登录 / 退出登录）、头像 */
+html.st-os-claude .ss-info { color: var(--ca-dim); font-size: 15px; font-variant-numeric: tabular-nums; }
+html.st-os-claude .ss-info.neg { color: #e5534b; }
+html.st-os-claude .ss-info.pos { color: #4caf6e; }
+/* 设置 › 外观（Claude App 自己的）：主题是三个图标的分段控件；对话字体用在 GUI 对话上；动画「减少」时什么都不播（跟随系统时看系统的「减少动态效果」） */
+html.st-os-claude .ss .ss-opts.ss-icons > .ss-opt { display: inline-flex; align-items: center; justify-content: center; padding: 6px 11px; }
+html.st-os-claude .ss .ss-opts.ss-icons > .ss-opt svg { width: 18px; height: 18px; }
+html.st-os-claude .gv { font-family: var(--ca-chat-font, inherit); }
+/* 代码外观的两张预览：底色用 Claude App 自己的（深色 #1b1b1a、浅色白底），不是 VS Code 配色方案的底色 */
+html.st-os-claude .ss-code-dark { --cb: #1b1b1a !important; --cl: #2c2c2b !important; }
+html.st-os-claude .ss-code-light { --cb: #ffffff !important; --cl: #dedbd1 !important; }
+html.st-os-claude.st-reduced *, html.st-os-claude.st-reduced *::before, html.st-os-claude.st-reduced *::after { animation-duration: .001ms !important; animation-delay: 0s !important; transition-duration: .001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  html.st-os-claude *, html.st-os-claude *::before, html.st-os-claude *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+/* 用量（同 Claude 的 Settings › Usage）：名字和「x 小时后重置」在左，右边一长条和百分比；结论是一行正文 */
+html.st-os-claude .ss-row.ss-k-meter { grid-template-columns: minmax(170px, 1fr) minmax(0, 1.7fr); }
+html.st-os-claude .ss-row.ss-k-meter > .ss-ctl { justify-self: stretch; gap: 16px; }
+html.st-os-claude .ss-meter { height: 6px; background: var(--ca-seg-bg); }
+/* 用量的卡片：这里也是一张张圆角卡片（别处 Claude App 不要卡片的框）；卡片里行和行之间不画线、挨得紧 */
+html.st-os-claude .ss-sub.ss-ucard { margin-bottom: 14px; }
+html.st-os-claude .ss-sub.ss-ucard > .ss-card { border: 0; border-radius: 0; background: none; padding: 0 2px 10px; } /* 用量不再一块块装在框里（用户：四个底框太丑）：同设置别处，没有框，一节一节之间一道细线 */
+html.st-os-claude .ss-sub.ss-ucard + .ss-sub.ss-ucard { border-top: 1px solid var(--ca-line); padding-top: 4px; }
+html.st-os-claude .ss-sub.ss-ucard > .ss-card > .ss-row { padding: 5px 0 !important; min-height: 0; border-bottom: 0; }
+html.st-os-claude .ss-sub.ss-ucard > .ss-card > .ss-row.ss-uhead { padding: 12px 0 6px !important; }
+html.st-os-claude .ss-row.ss-uhead > .ss-title { font-weight: 500 !important; color: var(--ca-hi) !important; }
+html.st-os-claude .ss-row.ss-k-line.dim > .ss-title { color: var(--ca-dim) !important; font-size: 14px !important; }
+html.st-os-claude .ss-row.ss-k-line.warn > .ss-title { color: #d97745 !important; font-size: 14px !important; }
+html.st-os-claude .ss-row.ss-k-stat > .ss-title { font: 500 22px/1.25 var(--ca-font) !important; color: var(--ca-hi) !important; }
+html.st-os-claude .ss-row.ss-k-stat.neg > .ss-title { color: #e5534b !important; }
+html.st-os-claude .ss-row.ss-k-stat > .ss-desc { margin-top: 2px !important; font-size: 13.5px; }
+html.st-os-claude .ss-ubar { background: var(--ca-seg-bg); }
+html.st-os-claude .ss-ubar > i { background: var(--ca-blue); }
+html.st-os-claude .ss-ubar.warn > i { background: #d97745; }
+html.st-os-claude .ss-upct, html.st-os-claude .ss-prs { color: var(--ca-dim); font-size: 13.5px; }
+html.st-os-claude .ss-pr b { color: var(--ca-fg); }
+html.st-os-claude .ss-row.ss-k-pairs { display: block !important; } /* 几对「名字 值」：左对齐排一行 */
+html.st-os-claude .ss-meter > i { background: var(--ca-blue); }
+html.st-os-claude .ss-mt { min-width: 6ch; color: var(--ca-dim); font-size: 14px; }
+html.st-os-claude .ss-row.ss-k-line { display: block !important; padding: 14px 0 !important; }
+html.st-os-claude .ss-row.ss-k-line > .ss-title { color: var(--ca-fg) !important; font: 400 15px/1.5 var(--ca-font) !important; }
+html.st-os-claude .ss-btn { height: 34px; padding: 0 16px; border: 1px solid var(--ca-card-line); border-radius: 9px; background: transparent; color: var(--ca-fg); font: 14.5px var(--ca-font); cursor: pointer; transition: background-color .12s; }
+html.st-os-claude .ss-btn:hover { background: var(--ca-hover); }
+html.st-os-claude .ss-btn.primary { border-color: transparent; background: var(--ca-hi); color: var(--ca-main-bg); }
+html.st-os-claude .ss-btn.primary:hover { opacity: .88; background: var(--ca-hi); }
+html.st-os-claude .ss-avatar { display: inline-grid; place-items: center; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: var(--ca-pill); color: var(--ca-fg); font: 600 14px var(--ca-font); }
+html.st-os-claude .ss-avatar img { width: 100%; height: 100%; object-fit: cover; }
+/* 墙纸之类的一排缩略图（Claude App 里用不到，留着同样子） */
+html.st-os-claude .ss-swatches { display: flex; gap: 12px; }
+/* 高亮配色下面：一段带增删的代码 */
+html.st-os-claude .ss-row > .ss-code { grid-area: x; margin-top: 14px; padding: 12px 0; border-radius: 12px; font: 13px/1.7 var(--st-mono, Monaco, monospace); } /* 底色、字色、边框：预览自己那个模式的（studio.css 里的 --cb / --cf / --cl） */
+/* 代码外观：两个下拉并排、各自下面一张预览；这一组的两行之间不画线 */
+html.st-os-claude .ss-sub.ss-halves > .ss-card { column-gap: 28px; }
+html.st-os-claude .ss-half .ss-dd { border: 1px solid var(--ca-card-line) !important; } /* 代码外观的两个下拉：同 Claude App，带框的选择框 */
+html.st-os-claude .ss-avshuf { background: var(--ca-pill); color: var(--ca-fg); }
+html.st-os-claude .ss-avbtn:has(.st-av-img) .ss-avshuf { background: rgba(0, 0, 0, .45); color: #fff; }
+html.st-os-claude .ss-sub.ss-halves > .ss-card > .ss-half + .ss-half { border-left: 0; }
+@container (max-width: 980px) { html.st-os-claude .ss-sub.ss-halves > .ss-card { grid-template-columns: minmax(0, 1fr); } }
+
+/* 设置开在中间那一列里（标签页，不是表单）、地方窄：一列——不要左边那列，控件放到说明下面 */
+@container (max-width: 760px) {
+  html.st-os-claude .ss { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto auto minmax(0, 1fr); }
+  html.st-os-claude .ss-top { grid-column: 1; border-right: 0; padding: 14px 16px 8px; }
+  /* 左边那列放不下：分区变成搜索框下面一排（能横着滚），组名不要 */
+  html.st-os-claude .ss-toc { display: flex !important; grid-column: 1; grid-row: 2; gap: 4px; padding: 0 12px 8px !important; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--ca-line); scrollbar-width: none; }
+  html.st-os-claude .ss-toc::-webkit-scrollbar { display: none; }
+  html.st-os-claude .ss-toc .ss-grp { display: none; }
+  html.st-os-claude .ss-ti.ss-t1 { flex: none; height: 34px !important; padding: 0 12px !important; gap: 8px !important; font-size: 14px !important; }
+  html.st-os-claude .ss-main { grid-column: 1; grid-row: 3; }
+  html.st-os-claude .ss-head { padding: 12px 18px 4px; }
+  html.st-os-claude :is(.ss-ht, .ss-hc) { font-size: 19px; }
+  html.st-os-claude .ss-body { padding: 8px 18px 20px !important; }
+  html.st-os-claude .ss-toc { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  /* 大的控件（下拉、输入框、分段）放到名字下面；小的（开关、数字、按钮、只看的值、头像）还在右边 */
+  html.st-os-claude .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+  html.st-os-claude .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) > .ss-ctl { justify-self: start; margin-top: 10px; max-width: 100%; }
+  html.st-os-claude .ss .ss-input { width: min(300px, 100%) !important; }
+  html.st-os-claude .ss .ss-opts { flex-wrap: wrap; }
+}
+/* 一区一页：只有标题（macOS 那种大图标的标题块、← → 翻页不要）；两三个短选项：分段控件（滑动的那块 seg.js 画，这里是停着时的样子） */
+html.st-os-claude .ss .ss-pagehead, html.st-os-claude .ss .ss-hero { display: none !important; }
+html.st-os-claude .ss .ss-sec .ss-h2 { display: block !important; }
+html.st-os-claude .ss .ss-opts { display: inline-flex !important; flex-wrap: nowrap; gap: 2px !important; padding: 3px !important; border: 0 !important; border-radius: 11px !important; background: var(--ca-seg-bg) !important; }
+html.st-os-claude .ss .ss-opts > .ss-opt { height: auto; padding: 7px 16px; border: 0; border-radius: 8px; background: none; color: var(--ca-dim); font: 400 14.5px/1.2 var(--ca-font); box-shadow: none; white-space: nowrap; cursor: pointer; transition: color .15s, background-color .15s; }
+html.st-os-claude .ss .ss-opts > .ss-opt:hover:not(.on):not(:disabled) { color: var(--ca-hi); background: transparent; } /* 同 Claude：指着只是字亮一点 */
+html.st-os-claude .ss .ss-opts > .ss-opt.on { background: var(--ca-seg-on); color: var(--ca-hi); box-shadow: 0 1px 2px rgba(0, 0, 0, .28); }
+html.st-os-claude .ss .ss-opts > .ss-opt.na { color: var(--ca-faint); cursor: not-allowed; }
+html.st-os-claude .ss .ss-opts > .ss-opt.na:hover { background: none; }
+
+/* ---- 侧栏紧凑（同 Claude App 的尺寸，不是 ChatGPT 那种大字大行距）：14px 字、一行 28px、分组标题 12.5px；数字用系统字体的比例数字，名字常规字重 ---- */
+html.termapp.st-os-claude .ca-side { font: 400 14px/1.25 var(--ca-font); font-variant-numeric: proportional-nums lining-nums; -webkit-font-smoothing: antialiased; }
+html.termapp.st-os-claude .ca-top { padding: 6px 8px 0; }
+html.termapp.st-os-claude .ca-nav-it { height: 30px; gap: 10px; padding: 0 9px; border-radius: 7px; }
+html.termapp.st-os-claude .ca-nav-it > i { width: 16px; height: 16px; }
+html.termapp.st-os-claude .ca-nav-it > i svg { width: 16px; height: 16px; }
+html.termapp.st-os-claude .ca-list { padding: 0 8px 10px; }
+html.termapp.st-os-claude .ca-sec { margin-top: 14px; }
+html.termapp.st-os-claude .ca-sh { height: 26px; padding: 0 2px 0 9px; font-size: 12.5px; }
+html.termapp.st-os-claude .ca-it { height: 28px; gap: 10px; padding: 0 9px; border-radius: 7px; }
+html.termapp.st-os-claude .ca-name { font-weight: 400; color: color-mix(in srgb, var(--ca-fg) 92%, transparent); }
+html.termapp.st-os-claude .ca-it.on .ca-name, html.termapp.st-os-claude .ca-it:hover .ca-name { color: var(--ca-fg); }
+html.termapp.st-os-claude .ca-dot { width: 6px; height: 6px; border-width: 1.2px; }
+html.termapp.st-os-claude .ca-when { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---- 连接器的小图标（边栏每一行前面、标题栏的小标签、新会话的「在哪跑」、菜单里）：Claude Code 橙色的星、Codex 单色的结、Paimon 紫色的 ✦ ---- */
+html.termapp.st-os-claude { --ca-k-cc: #d97757; --ca-k-cx: #d6d6d3; --ca-k-pm: #a78bfa; --ca-amber: #e0a33e; }
+html.termapp.st-os-claude.light { --ca-k-cc: #c96442; --ca-k-cx: #3b3b38; --ca-k-pm: #7c5ce0; --ca-amber: #c4841d; }
+.ca-ico { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-style: normal; line-height: 0; }
+.ca-ico svg { display: block; width: 14px; height: 14px; }
+.ca-k-cc { color: var(--ca-k-cc, #d97757); }
+.ca-k-cx { color: var(--ca-k-cx, #d6d6d3); }
+.ca-k-cx svg { width: 13.5px; height: 13.5px; }
+.ca-k-pm { color: var(--ca-k-pm, #a78bfa); }
+.ca-k-pm svg { width: 13px; height: 13px; }
+.ca-ico > img.pm-av { width: 15px; height: 15px; vertical-align: 0; } /* Paimon：派蒙的头像 */
+.ca-it.arch .ca-ico { filter: grayscale(1); opacity: .55; }
+/* 状态：图标右下角一个小点，外面一圈是这一行的底色（指着、选中时跟着变）——在跑橙色一闪一闪、等着你琥珀、未读蓝、在别的设备上跑蓝圈、在别的终端里开着灰 */
+.ca-it { --ca-rowbg: var(--ca-side-bg); }
+.ca-it:hover, .ca-it.ca-mopen { --ca-rowbg: var(--ca-hover); }
+.ca-it.on { --ca-rowbg: var(--ca-pill); }
+.ca-bdg { position: absolute; right: -2px; bottom: -2px; width: 7px; height: 7px; box-sizing: border-box; border-radius: 50%; background: var(--ca-dim); box-shadow: 0 0 0 1.5px var(--ca-rowbg, var(--ca-side-bg)); }
+.ca-ico.s-working .ca-bdg { background: var(--ca-orange); } /* 在跑：一颗橙色的灯就够了（用户：不要转圈、不要呼吸） */
+.ca-ico.s-waiting .ca-bdg { background: var(--ca-amber); }
+.ca-ico.s-unread .ca-bdg { background: var(--ca-blue); }
+.ca-ico.s-remote .ca-bdg { background: var(--ca-rowbg, var(--ca-side-bg)); border: 1.5px solid var(--ca-blue); }
+.ca-ico.s-live .ca-bdg { background: var(--ca-faint); }
+/* 在跑：图标不再转、不再一闪一闪（用户：有灯就够了）——只有右下角那颗橙色的灯 */
+@keyframes ca-spin { to { transform: rotate(360deg); } }
+@keyframes ca-twinkle { 50% { transform: scale(.74); opacity: .75; } }
+html.st-reduced .ca-ico svg, html.st-reduced .ca-bdg { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .ca-ico svg, .ca-bdg { animation: none !important; } }
+
+/* ---- 列表上面的标题行：「会话」、搜索、筛选（不跟着列表滚；分段的标题上不再放这两个按钮） ---- */
+.ca-lhead { display: none; }
+html.termapp.st-os-claude .ca-lhead { flex: none; display: flex; align-items: center; height: 28px; margin: 12px 8px 0; padding: 0 2px 0 9px; color: var(--ca-dim); font-size: 12.5px; }
+.ca-lht { font-weight: 500; }
+.ca-lhead .ca-ib { width: 24px; height: 24px; }
+.ca-lhead .ca-ib svg { width: 15px; height: 15px; }
+.ca-lhead .ca-ib.on { color: #6ea1ff; background: color-mix(in srgb, var(--ca-blue) 22%, transparent); }
+html.light .ca-lhead .ca-ib.on { color: var(--ca-blue); }
+html.termapp.st-os-claude .ca-find { padding-top: 4px; }
+
+/* ---- 分段：标题（箭头、名字、几个；连接器的段指着时右边一个 +）；点标题收起 / 展开——箭头转过去、下面那一段滑上去；一段太长时最后一行「还有 N 个」 ---- */
+html.termapp.st-os-claude .ca-list > .ca-sec:first-child { margin-top: 4px; }
+html.termapp.st-os-claude .ca-shx { gap: 5px; padding-left: 3px; border-radius: 7px; cursor: pointer; outline: 0; -webkit-user-select: none; user-select: none; }
+html.termapp.st-os-claude .ca-shx:hover { color: var(--ca-fg); }
+.ca-shx:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ca-blue) 55%, transparent); }
+.ca-fchev { display: inline-flex; flex: none; width: 14px; height: 14px; align-items: center; justify-content: center; color: var(--ca-faint); }
+.ca-fchev svg { width: 12px; height: 12px; transition: transform .15s ease; }
+.ca-sec.folded .ca-fchev svg { transform: rotate(-90deg); }
+.ca-shx:hover .ca-fchev { color: var(--ca-dim); }
+.ca-shl { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-cnt { flex: none; margin-left: 3px; color: var(--ca-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.ca-shadd, .ca-shflt { opacity: 0; transition: opacity .12s; }
+.ca-shx:hover :is(.ca-shadd, .ca-shflt), .ca-shx:focus-within :is(.ca-shadd, .ca-shflt), .ca-shflt.on { opacity: 1; } /* 漏斗开着的一直看得见（知道这一段是筛过的） */
+.ca-sbody { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .18s ease; }
+.ca-sec.folded .ca-sbody { grid-template-rows: 0fr; }
+.ca-sbody-in { min-height: 0; overflow: hidden; }
+.ca-sec.folded .ca-sbody-in { visibility: hidden; transition: visibility 0s .18s; }
+.ca-smore { display: flex; align-items: center; height: 26px; margin-top: 1px; padding: 0 9px 0 35px; border-radius: 7px; color: var(--ca-dim); font-size: 12.5px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.ca-smore:hover { background: var(--ca-hover); color: var(--ca-fg); }
+
+/* ---- 标题栏的小标签：哪个连接器（图标 + 名字）· 在哪个目录 ---- */
+.ca-chip.ca-cchip { display: inline-flex; align-items: center; gap: 5px; max-width: 320px; min-width: 30px; } /* 窄了：先省略目录、名字，至少留下图标 */
+.ca-cchip .ca-ico { width: 14px; height: 14px; }
+.ca-cchip .ca-ico svg { width: 12px; height: 12px; }
+.ca-cchip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ca-cchip > .ca-cn, .ca-cchip > .ca-csep { flex: none; }
+.ca-csep { color: var(--ca-faint); }
+/* 新会话的「在哪个连接器上开」 */
+.ca-nconn .ca-ico { width: 15px; height: 15px; }
+.ca-nconn .ca-ico svg { width: 13px; height: 13px; }
+.ca-nconn > svg:last-child { width: 11px !important; height: 11px !important; opacity: .7; }
+html.termapp.st-os-claude .ca-nchip[hidden], html.termapp.st-os-claude .ca-nb[hidden] { display: none !important; }
+
+/* ---- 拖宽窄的缝：边栏的右边、卡片那一列的左边（看不见，指着是左右箭头；停一会儿一条细蓝线）；拖的时候不选字、光标一直是左右箭头 ---- */
+.ca-sash { display: none; }
+html.termapp.st-os-claude .ca-side { position: relative; }
+html.termapp.st-os-claude:not(.ca-side-off) .ca-side > .ca-sash-side { display: block; position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 6; cursor: col-resize; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(.ca-max-term):not(.ca-max-tasks):not(.ca-max-web):not(.ca-max-files):not(.ca-max-global) .tlab.st-grid > .ca-sash-cards { display: block; position: relative; grid-column: 2; grid-row: 1; justify-self: start; width: 8px; margin-left: -4px; z-index: 8; cursor: col-resize; }
+.ca-sash::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3.5px; width: 1px; background: transparent; transition: background .12s; }
+.ca-sash:hover::after { background: color-mix(in srgb, var(--ca-blue) 70%, transparent); transition-delay: .3s; }
+.ca-sash.drag::after { background: var(--ca-blue); transition-delay: 0s; }
+html.ca-resizing, html.ca-resizing * { cursor: col-resize !important; -webkit-user-select: none !important; user-select: none !important; }
+html.ca-resizing iframe { pointer-events: none; }
+
+/* ---- 边栏收起来时：它还在（不是 display: none——里面滚到哪儿、搜的字都留着），只是移到左边外面藏着；偷看时浮出来盖在上面（不挤中间），
+        右边圆角、有影子、同边栏的底色；180ms 滑进来 + 淡入 ---- */
+html.termapp.st-os-claude .st-row0 { position: relative; }
+html.termapp.st-os-claude.ca-side-off .ca-side { display: flex; position: absolute; left: 0; top: 0; bottom: 0; z-index: 60; width: var(--ca-side-nat); border-right: 0; border-radius: 0 12px 12px 0;
+  transform: translateX(-104%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform .18s ease-out, opacity .18s ease-out, visibility 0s linear .18s; }
+html.termapp.st-os-claude.ca-side-off.ca-peek .ca-side { transform: none; opacity: 1; visibility: visible; pointer-events: auto; transition: transform .18s ease-out, opacity .18s ease-out, visibility 0s;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .3), 0 0 0 1px var(--ca-card-line); }
+html.termapp.st-os-claude.light.ca-side-off.ca-peek .ca-side { box-shadow: 0 16px 48px rgba(0, 0, 0, .16), 0 2px 8px rgba(0, 0, 0, .08), 0 0 0 1px var(--ca-card-line); }
+/* 浮出来的边栏一直通到窗口最上面（同 Claude：标题栏左边那一段也是它的）——内容还在原来的高度（上面空出标题栏那么高）；
+   红黄绿、边栏开关、← → 留在它上面（标题栏的那一组抬高一层）；中间的标题被它盖住 */
+html.termapp.st-os-claude.ca-side-off .ca-side { top: -34px; padding-top: 34px; }
+html.termapp.st-os-claude.ca-side-off.ca-peek .ca-nav { z-index: 61; }
+html.st-reduced .ca-side, html.st-reduced .ca-sbody, html.st-reduced .ca-fchev svg { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { html.termapp.st-os-claude .ca-side, .ca-sbody, .ca-fchev svg { transition: none !important; } }
+/* 窗口最左边那一条（标题栏下面，6px）：边栏收着时指着它就偷看 */
+.ca-edge { display: none; }
+html.termapp.st-os-claude.ca-side-off:not(.ca-peek) .ca-edge { display: block; position: fixed; left: 0; top: 34px; bottom: 0; width: 6px; z-index: 59; }
+
+/* ---- 右边卡片那一列「通天」（同 Claude App）：卡片开着时这一列是一整条——从窗口最上面到最下面，同边栏的底色、左边一道细线；
+        标题栏里它那一段是这一列自己的顶（开关卡片的按钮在这里，能拖窗口）；中间那一列的标题行到这一列的左边为止。
+        --ca-col-w 是这一列现在实际多宽（claudeapp.js 量的：拖过、被窗口挤窄了都对得上） ---- */
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5) #win .bar { background: linear-gradient(to right, var(--ca-side-bg) 0, var(--ca-side-bg) var(--ca-side-w), var(--ca-line) var(--ca-side-w), var(--ca-line) calc(var(--ca-side-w) + 1px), var(--ca-main-bg) calc(var(--ca-side-w) + 1px), var(--ca-main-bg) calc(100% - var(--ca-col-w, 0px)), var(--ca-line) calc(100% - var(--ca-col-w, 0px)), var(--ca-line) calc(100% - var(--ca-col-w, 0px) + 1px), var(--ca-side-bg) calc(100% - var(--ca-col-w, 0px) + 1px)) !important; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5) .ca-ttl { right: calc(var(--ca-col-w, var(--ca-a)) + 12px); }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5) .tlab.st-grid > .st-panel { background: var(--ca-side-bg) !important; border-left: 1px solid var(--ca-line) !important; padding: 8px 8px 10px 8px; }
+/* 卡片那一列真的通到窗口最上面（同 Claude App）：第一排卡片的顶就在标题栏里，卡片的标题行和开关那一排在同一条线上（标题栏 34px 的正中）；
+   开关那一排挪到这一列的左边，中间那一列的标题让出这两段 */
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global)) .tlab.st-grid > .st-panel { margin: -34px 0 0 !important; padding-top: 2px; position: relative; z-index: 3; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global)) .ca-acts { right: calc(var(--ca-col-w, var(--ca-a)) + 6px); }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global)) .ca-ttl { right: calc(var(--ca-col-w, var(--ca-a)) + var(--ca-acts-w, 134px) + 18px); }
+html.termapp.st-os-claude .st-panel .st-pvh { height: 30px !important; font: 500 14px/30px var(--ca-font) !important; }
+html.termapp.st-os-claude .st-panel .st-pvh .st-hbtn, html.termapp.st-os-claude .ca-cardh .ca-ib, html.termapp.st-os-claude .ca-cardh > .ca-vacts .st-hbtn { width: 26px !important; height: 26px !important; }
+html.termapp.st-os-claude .ca-cardh { height: 30px; font-size: 14px; }
+/* 卡片不会被挤扁：那一列至少 280px（三张以上两列：560px）；先挤中间那一列、访达自己的预览栏收起来（下面的容器查询），窗口实在太窄时边栏自己收起来（claudeapp.js） */
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2) .termwin .tlab.st-grid { grid-template-columns: minmax(0, 1fr) max(min(280px, 100%), min(var(--ca-a), calc(100% - 320px))) !important; }
+html.termapp.st-os-claude:is(.ca-n3, .ca-n4, .ca-n5) .termwin .tlab.st-grid { grid-template-columns: minmax(0, 1fr) max(min(560px, 100%), min(var(--ca-a), calc(100% - 320px))) !important; }
+html.termapp.st-os-claude .tlab.st-grid > .tmain { container: ca-main / inline-size; }
+@container ca-main (max-width: 720px) { html.st-os-claude .xp-pane { display: none !important; } } /* 中间窄了：访达的预览栏先让出来 */
+/* 中间那一列没有框（同 Claude App：标题行下面直接是对话）：studio 给编辑区的圆角框（.st-ecol 的边线、圆角）这个风格里不要——
+   不然它的上边线横在标题行下面、右上角的圆角贴着右边那一列的竖线，两块像断开的 */
+html.termapp.st-os-claude .st-mid > .st-ecol { border: 0 !important; border-radius: 0 !important; background: var(--ca-main-bg) !important; }
+
+/* ---- 「有新版本」卡片（边栏最上面、「新建」上面）：左边一幅手绘的小画、两行字；点它重新载入；× 这个版本不再提；进来时淡入、往下滑一点 ---- */
+.ca-upd { position: relative; display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 8px 26px 8px 8px; border: 1px solid var(--ca-card-line); border-radius: 10px; background: var(--ca-card-bg); cursor: pointer; animation: ca-upd-in .18s ease-out; -webkit-user-select: none; user-select: none; }
+.ca-upd:hover { border-color: color-mix(in srgb, var(--ca-orange) 45%, var(--ca-card-line)); }
+html.termapp.st-os-claude.light .ca-upd { background: #fffdf8; }
+.ca-upd-art { flex: none; display: inline-flex; width: 40px; height: 40px; color: color-mix(in srgb, var(--ca-orange) 88%, var(--ca-fg)); }
+.ca-upd-art svg { width: 40px; height: 40px; }
+.ca-upd-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; line-height: 1.2; }
+.ca-upd-tx b { color: var(--ca-fg); font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ca-upd-sub { display: flex; align-items: baseline; gap: 5px; min-width: 0; color: var(--ca-dim); font-size: 12px; white-space: nowrap; }
+.ca-upd-sub > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ca-upd-dot { flex: none; color: var(--ca-faint); }
+.ca-upd-log { flex: none; color: var(--ca-dim); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.ca-upd-log:hover { color: var(--ca-fg); }
+.ca-upd-x { position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ca-faint); cursor: pointer; }
+.ca-upd-x svg { width: 11px; height: 11px; }
+.ca-upd-x:hover { background: var(--ca-hover); color: var(--ca-fg); }
+@keyframes ca-upd-in { from { opacity: 0; transform: translateY(-4px); } }
+html.st-reduced .ca-upd { animation: none; }
+
+/* ---- 会话列表的颜色和松紧（同 Claude App 的边栏）：会话名是偏灰的次要字色（浅色 #5f5e5a、深色 #a09f9b），指着、选中才变深 / 亮；
+        分段标题更淡；一行 27px、左边空得少；状态点小（6px）：在跑、未读是实心的点，别的是细的空心圈 ---- */
+html.termapp.st-os-claude { --ca-name: #a09f9b; --ca-sh-c: #75746f; }
+html.termapp.st-os-claude.light { --ca-name: #5f5e5a; --ca-sh-c: #97958f; }
+html.termapp.st-os-claude .ca-it { height: 27px; gap: 9px; padding: 0 8px; }
+html.termapp.st-os-claude .ca-name { color: var(--ca-name); }
+html.termapp.st-os-claude :is(.ca-it.on, .ca-it:hover, .ca-it.ca-mopen) .ca-name { color: var(--ca-fg); }
+html.termapp.st-os-claude .ca-it.unread .ca-name { color: var(--ca-fg); font-weight: 600; }
+html.termapp.st-os-claude :is(.ca-sh, .ca-lhead) { color: var(--ca-sh-c); }
+html.termapp.st-os-claude .ca-shx:hover { color: var(--ca-dim); }
+html.termapp.st-os-claude .ca-smore { padding-left: 33px; color: var(--ca-sh-c); }
+html.termapp.st-os-claude .ca-k-cx { color: var(--ca-name); } /* Codex 的结：同会话名的灰（单色的，不抢眼） */
+html.termapp.st-os-claude .ca-bdg { width: 6px; height: 6px; right: -1.5px; bottom: -1.5px; }
+html.termapp.st-os-claude .ca-ico.s-waiting .ca-bdg { background: var(--ca-rowbg, var(--ca-side-bg)); border: 1.2px solid var(--ca-amber); }
+html.termapp.st-os-claude .ca-ico.s-live .ca-bdg { background: var(--ca-rowbg, var(--ca-side-bg)); border: 1.2px solid color-mix(in srgb, var(--ca-name) 70%, transparent); }
+html.termapp.st-os-claude .ca-ico.s-remote .ca-bdg { border-width: 1.2px; }
+
+/* ---- 面板的「Agent 那一层」（studio.js 的 .st-pagent：VS Code 风格里 agent 的底部）这个风格里没有：右边那一列只放卡片。
+        从别的风格换过来时它可能还开着（studio 每秒才同步一次、窗口在后台时不同步）——不让它挤在卡片上面 ---- */
+html.termapp.st-os-claude .st-panel > .st-pagent { display: none !important; }
+/* 卡片里的内容（任务、后台任务……）展开得比卡片高：在卡片里面滚，不盖到下面的东西 */
+html.termapp.st-os-claude .st-panel .st-pv > .st-pvb { overflow-y: auto !important; overscroll-behavior: contain; }
+
+/* ---- 浏览器卡片（同 Claude 的浏览器，见 claudeapp.js）：标题行是一排标签页和 +（只有一个时就是一行标题，同 Claude 的「New tab +」），右边 版式 ⋮ ⤢ ✕；
+        下面 ← → ⟳、网址框、手机宽度，底边一条加载进度；内容区里 .ca-webvp 是网页那一块（原生的网页视图照它放；藏起来时底下垫着它刚才的样子） ---- */
+.ca-web .ca-webh { height: 40px; gap: 2px; padding: 0 8px 0 10px; }
+.ca-tabs { position: relative; display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.ca-tabs::-webkit-scrollbar { display: none; }
+.ca-tab { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 28px; padding: 0 4px 0 8px; border-radius: 7px; color: var(--ca-dim); font-size: 13.5px; font-weight: 400; white-space: nowrap; cursor: pointer; }
+.ca-web.multi .ca-tab { min-width: 46px; }
+.ca-web.multi .ca-tab:hover { background: var(--ca-hover); color: var(--ca-fg); }
+.ca-web.multi .ca-tab.on { background: var(--ca-pill); color: var(--ca-fg); }
+.ca-web:not(.multi) .ca-tab { padding: 0 2px 0 6px; color: var(--ca-fg); font-size: 14px; cursor: default; }
+.ca-tabt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ca-tabx { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--ca-faint); cursor: pointer; opacity: 0; }
+.ca-tabx svg { width: 11px; height: 11px; }
+.ca-web.multi .ca-tab:hover .ca-tabx, .ca-web.multi .ca-tab.on .ca-tabx { opacity: 1; }
+.ca-tabx:hover { background: var(--ca-hover); color: var(--ca-fg); }
+.ca-web:not(.multi) .ca-tabx { display: none; }
+.ca-fav { display: inline-flex; flex: none; width: 14px; height: 14px; align-items: center; justify-content: center; color: var(--ca-faint); }
+.ca-fav img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
+.ca-fav svg { width: 13px; height: 13px; }
+.ca-favld::before { content: ""; width: 10px; height: 10px; box-sizing: border-box; border: 1.5px solid color-mix(in srgb, var(--ca-faint) 55%, transparent); border-top-color: var(--ca-blue); border-radius: 50%; animation: ca-spin .75s linear infinite; }
+.ca-web .ca-webh .ca-ib { width: 28px; height: 28px; }
+.ca-web .ca-webh .ca-hplus { margin-left: 2px; }
+html.termapp.st-os-claude.ca-max-web .ca-web [data-w="wide"] { display: none; } /* 全屏时「加宽」没有意义 */
+@container (max-width: 300px) { html.termapp.st-os-claude .ca-web .ca-webh [data-w="wide"] { display: none; } } /* 窄了：加宽收进 ⋮ */
+.ca-web .ca-webnav { position: relative; gap: 1px; padding: 0 8px 7px 6px; }
+.ca-web .ca-webnav .ca-ib svg { width: 15px; height: 15px; }
+.ca-web .ca-url { height: 28px; margin: 0 4px; border-radius: 7px; font-size: 13px; }
+/* 加载进度：网址框下面（内容区的上边线上）一条 2px 的蓝线，走完淡出 */
+.ca-webload { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .35s ease .12s; }
+.ca-webload::before { content: ""; display: block; width: calc(var(--p, 0) * 100%); height: 100%; background: var(--ca-blue); border-radius: 0 2px 2px 0; transition: width .25s ease-out; }
+.ca-webload.on { opacity: 1; transition: opacity 0s; }
+/* 网页那一块；手机宽度：390px 居中、上下留一点、一圈细边和影子，两边是那一列的底色 */
+.ca-webvp { position: absolute; inset: 0; background: var(--ca-card-bg) no-repeat left top / 100% auto; }
+.ca-webvp > .ca-frame[hidden] { display: none; }
+.ca-web.dev .ca-webbody { background: var(--ca-side-bg); }
+.ca-web.dev .ca-webvp { left: 0; right: 0; top: 12px; bottom: 12px; width: min(390px, calc(100% - 24px)); margin: 0 auto; box-shadow: 0 0 0 1px var(--ca-card-line), 0 10px 30px rgba(0, 0, 0, .22); }
+html.termapp.st-os-claude.light .ca-web.dev .ca-webvp { box-shadow: 0 0 0 1px var(--ca-card-line), 0 10px 30px rgba(0, 0, 0, .08); }
+/* 新标签页：手绘的小画、一句话；这台 Mac 上的开发服务器、最近去过的网站（一行一个，点了就开）；长了在里面滚 */
+.ca-web .ca-webempty { justify-content: flex-start; overflow-y: auto; padding: 0 16px; }
+.ca-wnew { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 320px; margin: auto; padding: 28px 0; }
+.ca-wart { color: var(--ca-faint); }
+.ca-wart svg { width: 46px; height: 46px; }
+.ca-wart .o { stroke: var(--ca-orange); }
+.ca-wart .f { fill: var(--ca-orange); stroke: none; }
+.ca-web .ca-wnew > b { margin-top: 10px; color: var(--ca-fg); font-size: 14px; font-weight: 500; }
+.ca-web .ca-wnew > p { margin: 3px 0 0; max-width: 260px; color: var(--ca-faint); font-size: 13px; line-height: 1.45; }
+.ca-web .ca-wnew > p.ca-wurl { margin-top: 6px; font-size: 12px; word-break: break-all; }
+.ca-wsec { align-self: stretch; margin: 18px 0 4px; padding: 0 8px; color: var(--ca-faint); font-size: 12px; text-align: left; }
+.ca-wit { display: flex; align-items: center; gap: 9px; align-self: stretch; height: 30px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--ca-fg); font: 13px var(--ca-font); text-align: left; cursor: pointer; }
+.ca-wit:hover { background: var(--ca-hover); }
+.ca-witn { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ca-wits { flex: none; margin-left: auto; max-width: 45%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ca-faint); font-size: 12px; }
+.ca-wnote { color: var(--ca-faint); }
+.ca-wnew .ca-wdev { margin-top: 16px; font-size: 12.5px; }
+html.termapp.st-os-claude :is(.ca-webnav, .ca-webempty) :is(.ca-wit, .ca-wit *) { -webkit-user-select: none; user-select: none; }
+
+/* ---- 卡片全屏（⤢，每张卡片都有）：那一张盖住中间和右边那一列——从窗口最上面（标题栏里中间那一段也归它，中间的标题藏起来）到最下面；⤡ 或 Esc 退出 ---- */
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global) .tlab.st-grid > .st-panel { border-left: 0 !important; }
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global) #win .bar { background: linear-gradient(to right, var(--ca-side-bg) 0, var(--ca-side-bg) var(--ca-side-w), var(--ca-line) var(--ca-side-w), var(--ca-line) calc(var(--ca-side-w) + 1px), var(--ca-side-bg) calc(var(--ca-side-w) + 1px)) !important; }
+html.termapp.st-os-claude:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global) .ca-ttl { visibility: hidden; }
+
+/* ---- 浏览器加宽（版式按钮）：它占整个右边那一列（别的卡片收在后面，点它们的按钮就回到叠放），那一列宽到对话只剩 420px ---- */
+html.termapp.st-os-claude.ca-wide-web .termwin .tlab.st-grid { grid-template-columns: minmax(0, 1fr) max(min(280px, 100%), calc(100% - 420px)) !important; }
+html.termapp.st-os-claude.ca-wide-web .st-panel .st-pviews { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+html.termapp.st-os-claude.ca-wide-web .st-panel .st-pviews > :not(.ca-web) { display: none !important; }
+html.termapp.st-os-claude.ca-wide-web .st-panel .st-pviews > .ca-web { grid-column: 1 !important; grid-row: 1 !important; }
+html.termapp.st-os-claude.ca-wide-web .tlab.st-grid > .ca-sash-cards { display: none !important; }
+
+/* ---- 文件卡片里的文件面板（filepanel.js）：占满卡片（卡片的圆角、细边照旧），它那一排就是卡片的标题行 ---- */
+.ca-files.ca-fpcard > .ca-fpbox { flex: 1 1 auto; min-width: 0; min-height: 0; }
+
+/* ---- 对话底下那一条（agent 的底栏）这个风格里没有：不另铺底色、没有上边线；能拖高矮的那道只在指着时出现；那里的「···」不要（同 Claude：输入框直接在对话下面） ---- */
+html.termapp.st-os-claude .gv:not(.gv-dock) > .gv-bottom { background: transparent !important; border-top: 0 !important; }
+html.termapp.st-os-claude .gv-bottom > .gv-fsash::after { opacity: 0; }
+html.termapp.st-os-claude .gv-bottom > .gv-fsash:is(:hover, .on, .hot)::after { opacity: 1; }
+html.termapp.st-os-claude .gv-bottom > .gv-fmore { display: none !important; }
+/* ---- 右边那一列卡片（照 Claude App 的截图取色、量的，06.17.36）：这一列没有自己的底色、左边没有分隔线——卡片直接浮在对话的底（#151515）上，
+   离窗口的上、右、下边和离左边都是 7px（四边一样宽）；卡片 #1a1a19、1px 的边 #2b2b2b、10px 圆角、外面一圈很淡的影子。拖宽窄的那条（.ca-sash-cards）照旧在 ---- */
+html.termapp.st-os-claude:not(.light) { --ca-card-bg: #1a1a19; --ca-card-line: #2b2b2b; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5) .tlab.st-grid > .st-panel { background: transparent !important; border-left: 0 !important; padding: 7px !important; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global)) .tlab.st-grid > .st-panel { padding-top: 7px !important; }
+html.termapp.st-os-claude:is(.ca-n1, .ca-n2, .ca-n3, .ca-n4, .ca-n5):not(:is(.ca-max-term, .ca-max-tasks, .ca-max-web, .ca-max-files, .ca-max-global)) #win .bar { background: linear-gradient(to right, var(--ca-side-bg) 0, var(--ca-side-bg) var(--ca-side-w), var(--ca-line) var(--ca-side-w), var(--ca-line) calc(var(--ca-side-w) + 1px), var(--ca-main-bg) calc(var(--ca-side-w) + 1px)) !important; }
+html.termapp.st-os-claude .st-panel .st-pviews { gap: 7px; }
+html.termapp.st-os-claude .st-panel .st-pv, html.termapp.st-os-claude :is(.ca-web, .ca-files, .ca-gcard) { border-radius: 10px !important; }
+html.termapp.st-os-claude:not(.light) .st-panel .st-pv, html.termapp.st-os-claude:not(.light) :is(.ca-web, .ca-files, .ca-gcard) { box-shadow: 0 0 8px rgba(0, 0, 0, .14); }
+
+/* ---- 手机那么窄（iPhone）：对话占满整个宽；侧栏收着，点左上角的按钮从左边盖在对话上面拉出来（点了会话就收回）；
+   顶栏只留侧栏按钮、标题、「···」——前进后退、终端、浏览器这些放进「···」里，不挤在一起、叠在一起 ---- */
+@media (max-width: 600px) {
+  html.termapp.st-os-claude { --ca-side-w: 0px !important; }
+  html.termapp.st-os-claude:not(.ca-side-off) .ca-side { display: flex; position: absolute; z-index: 60; left: 0; top: 34px; bottom: 0; width: min(300px, 86vw) !important; box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
+  html.termapp.st-os-claude .ca-nav [data-b="back"], html.termapp.st-os-claude .ca-nav [data-b="fwd"] { display: none; }
+  html.termapp.st-os-claude .ca-acts .ca-tog { display: none; }
+  html.termapp.st-os-claude .ca-ttl { left: 48px; right: 52px; }
+  html.termapp.st-os-claude .ca-ttl .ca-lap, html.termapp.st-os-claude .ca-ttl .ca-chip { display: none; }
+}

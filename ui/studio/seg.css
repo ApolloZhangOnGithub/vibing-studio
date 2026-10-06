@@ -1,0 +1,24 @@
+/* seg.css —— 分段控件（class 里有 st-seg）的滑块，配 seg.js：
+   选中那一格的底色由容器的 ::before 画（颜色、圆角照抄原来 .on 的），换选项时它平平地滑过去（短、不回弹）；
+   样子同 Claude App 的分段控件：略亮的实色圆角块 + 一圈细边，没有玻璃、高光、拉伸（所有风格都一样）。
+   没选中的几格：指着只是字亮一点，不加底色。 */
+.st-seg { isolation: isolate; }
+.st-seg > button, .st-seg > [role="radio"], .st-seg > [role="tab"] { position: relative; z-index: 1; transition: color 0.15s; }
+.st-seg.seg-on::before {
+  content: ""; position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
+  width: var(--seg-w, 0); height: var(--seg-h, 0);
+  transform: translate(var(--seg-x, 0), var(--seg-y, 0));
+  border-radius: var(--seg-r, 6px);
+  background-color: var(--seg-bg, rgba(128, 128, 128, 0.22));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+html.light .st-seg.seg-on::before { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 1.5px rgba(0, 0, 0, 0.05); }
+/* 原来 .on 自己的底色、阴影去掉（由上面那块代替） */
+.st-seg.seg-on > .on { background-color: transparent !important; background-image: none !important; box-shadow: none !important; }
+.st-seg.seg-anim::before { transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), width 0.2s cubic-bezier(0.2, 0, 0, 1), height 0.2s cubic-bezier(0.2, 0, 0, 1); }
+/* 没选中的：指着字亮一点 */
+.st-seg > button:not(.on):not(:disabled):hover, .st-seg > [role="radio"]:not(.on):not([aria-disabled="true"]):hover { background-color: transparent; color: var(--st-hi); }
+@media (prefers-reduced-motion: reduce) { .st-seg.seg-anim::before { transition: none; } }
+/* Claude App 风格：选中块用它自己的颜色 */
+html.st-os-claude .st-seg.seg-on::before { background-color: var(--ca-seg-on, #353534); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+html.st-os-claude.light .st-seg.seg-on::before { background-color: #ffffff; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.11), 0 1px 1.5px rgba(0, 0, 0, 0.05); }

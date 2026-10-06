@@ -1,0 +1,28 @@
+#!/bin/sh
+# open —— Linux 上替 macOS 的 open（界面里「在文件管理器中显示」「用默认应用打开」照常能用）：
+#   open <文件 | 网址>…   用默认的程序打开（xdg-open）
+#   open -R <文件>…      在文件管理器里选中它（org.freedesktop.FileManager1：Nautilus、Dolphin、Nemo、Thunar……）；不支持的打开它所在的文件夹
+#   -a <程序>：指定的程序打开（找得到这个命令就用它，找不到照旧 xdg-open）；别的选项（-g -n -W ……）不管
+reveal=0; app=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -R) reveal=1; shift ;;
+    -a) app="$2"; shift 2 ;;
+    --) shift; break ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+uri() { python3 -c 'import sys, pathlib; print(pathlib.Path(sys.argv[1]).resolve().as_uri())' "$1" 2>/dev/null || printf 'file://%s' "$(realpath "$1")"; }
+for p in "$@"; do
+  if [ "$reveal" = 1 ]; then
+    u=$(uri "$p")
+    gdbus call --session --dest org.freedesktop.FileManager1 --object-path /org/freedesktop/FileManager1 --method org.freedesktop.FileManager1.ShowItems "['$u']" "" >/dev/null 2>&1 ||
+      dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems "array:string:$u" "string:" >/dev/null 2>&1 ||
+      (xdg-open "$(dirname "$p")" >/dev/null 2>&1 &)
+  elif [ -n "$app" ] && command -v "$app" >/dev/null 2>&1; then
+    ("$app" "$p" >/dev/null 2>&1 &)
+  else
+    (xdg-open "$p" >/dev/null 2>&1 &)
+  fi
+done

@@ -1,0 +1,32 @@
+/* files.css —— 文件（同 VS Code 的资源管理器）：主侧栏里一棵文件树；行高、悬停、选中、缩进同 Agent 树（等宽字，一层缩两格） */
+.st-fview { flex: 1; min-height: 0; display: flex; flex-direction: column; white-space: normal; color: var(--st-fg); font-size: var(--st-fs); --ttu-font-size: var(--st-fs); }
+.st-fview[hidden] { display: none; }
+html.termapp .st-fview.terminal-style-ui { padding: 0; } /* 和 Agents、搜索、扩展一样贴边：标题行、树的左右对齐 */
+code.st-ftitle { padding: 0; background: none; } /* 标题：「文件」/「Explorer」自己换（不走词典，「文件」在菜单栏里是 File） */
+.st-flist { flex: 1; min-height: 0; overflow: auto; padding: 2px var(--ts-rgap, 8px) 14px 10px; outline: 0; }
+/* 一行（同访达列表看法里展开的文件夹）：固定高；每一层缩进一样（一个展开箭头的宽 --ft-step）；前面一格展开箭头（文件夹 › / ⌄，文件空着）、
+   一格图标，名字从同一列开始；选中、悬停是整行一样的圆角、上下不叠。类名 st-ft-*（studio.css 里另有 .st-frow，别撞上） */
+.st-ft-row { --ft-step: 16px; display: flex; align-items: center; height: 22px; box-sizing: border-box; margin: 0; padding: 0 6px 0 calc(var(--d, 0) * var(--ft-step) + 2px); gap: 0; border-radius: 5px; line-height: 22px; white-space: nowrap; cursor: pointer; }
+.st-ft-row:hover { background: var(--st-hover); }
+.st-ft-row.sel { background: var(--st-active); }
+.st-flist:focus .st-ft-row.sel { box-shadow: inset 0 0 0 1px var(--st-hover2); }
+.st-ft-row.root { font-weight: 700; color: var(--st-hi); }
+.st-ft-row.root:hover { background: none; }
+.st-ft-row.dot .st-fname { color: var(--st-dim); }
+.st-ft-dis { flex: none; width: var(--ft-step); height: 16px; display: flex; align-items: center; justify-content: center; color: var(--st-dim); }
+.st-ft-dis .ts-chev { width: 12px; height: 12px; vertical-align: 0; }
+.st-ft-ic { flex: none; width: 16px; height: 16px; margin: 0 6px 0 1px; display: flex; align-items: center; justify-content: center; color: var(--st-dim); }
+.st-ft-ic svg { width: 15px; height: 15px; }
+.st-ft-row.dir .st-ft-ic, .st-ft-row.dir-y .st-ft-ic { color: var(--st-blue, #5b8def); }
+.st-ft-ic .st-ico { font-size: 0.78em; letter-spacing: -0.03em; line-height: 1; }
+.st-ft-row.root .st-ft-dis { margin-right: 2px; }
+.st-fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+/* 名字放不下时的提示（files.js）：在这一行下面 */
+.st-ft-tip { position: fixed; z-index: 400; max-width: min(520px, calc(100vw - 8px)); box-sizing: border-box; padding: 3px 8px; border: 1px solid var(--st-line); border-radius: 5px; background: var(--st-canvas, var(--st-bg2)); color: var(--st-fg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22); font: calc(12px * var(--st-fk, 1))/1.4 var(--st-guifont, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.st-finfo { cursor: default; color: var(--st-dim); }
+.st-finfo:hover { background: none; }
+/* 新建、重命名：就地一个输入框；重名之类的提示贴在下面（同 VS Code） */
+.st-fedit:hover { background: none; }
+.st-finput { flex: 1; min-width: 0; height: 1.3em; margin: 0 2px 0 0; padding: 0 3px; box-sizing: border-box; border: 1px solid var(--st-blue); border-radius: 3px; background: var(--st-bg); color: var(--st-hi); font: inherit; outline: 0; }
+.st-ferr { margin: 1px 2px 3px calc(var(--d, 0) * 16px + 41px); padding: 3px 6px; border: 1px solid var(--st-red); border-radius: 3px; background: color-mix(in srgb, var(--st-red) 14%, var(--st-bg)); color: var(--st-fg); white-space: normal; line-height: 1.45; }

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="termapp">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Vibing Studio</title>
+<!-- iPad：添加到主屏幕后像 App 一样全屏打开（remote.js 连到你的 Mac） -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vibing Studio">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta name="robots" content="noindex">
+<!-- 启动不闪白、不闪黑：第一帧就是 App 自己的底色——上次记下的（深、浅各一个；跟随系统时按现在系统是深是浅），界面搭好之前整个藏着，
+     搭好了（live.js 恢复完窗口时叫 TSU_BOOT.done()）淡入。底色记在 localStorage 的 tsu-boot，也交给 App 当原生窗口的底色（下次一开窗就是它）。
+     放在所有样式表前面：不用等它们下载完就先定下来 -->
+<style>
+  html.termapp.boot, html.termapp.boot body { background: var(--boot-bg) !important; }
+  html.termapp.boot #desktop { opacity: 0; }
+  html.termapp.boot-in #desktop { transition: opacity .22s cubic-bezier(.2, 0, 0, 1); }
+</style>
+<script>
+(function () {
+  var root = document.documentElement, rec = {};
+  try { rec = JSON.parse(localStorage.getItem("tsu-boot") || "{}") || {}; } catch (e) { rec = {}; }
+  var sysLight = matchMedia("(prefers-color-scheme: light)").matches, old = localStorage.getItem("tsu-theme");
+  var light = rec.mode === "light" || rec.mode === "dark" ? rec.mode === "light" : rec.mode === "auto" || !old ? sysLight : old === "light"; // 没记过：以前记的深浅（tsu-theme），再没有就跟系统
+  root.classList.toggle("light", light);
+  root.style.setProperty("--boot-bg", rec[light ? "light" : "dark"] || (light ? "#ffffff" : "#000000"));
+  // 字号：第一帧就是上次用的（对话、终端、界面），不先按默认的画再换
+  var fs0 = +localStorage.getItem("tsu-font") || 12;
+  root.style.setProperty("--tsu-fs", fs0 + "px");
+  root.style.setProperty("--st-fs", Math.max(10, Math.min(18, fs0 - 1)) + "px");
+  root.style.setProperty("--st-fk", String(fs0 / 12));
+  root.classList.add("boot");
+  var hex = function (c) { var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(c || ""); if (!m || (m[4] !== undefined && +m[4] < 0.5)) return null; return "#" + [m[1], m[2], m[3]].map(function (x) { return ("0" + (+x).toString(16)).slice(-2); }).join(""); };
+  var lastSent = "", tm = 0, done = false;
+  // 记下现在真的在用的底色（设置里正预览着别的风格、配色时不记）：mode = auto（跟随系统）/ dark / light，dark、light 各一个颜色
+  function save() {
+    if (root.classList.contains("boot")) return;
+    var S = window.STUDIO, pv = S && S.previewOf;
+    if (pv && ["os", "colorScheme", "claudeTheme"].some(function (k) { return pv(k) !== undefined; })) return;
+    var bg = hex(getComputedStyle(root).backgroundColor);
+    if (!bg) return;
+    var lt = root.classList.contains("light"), r = {};
+    try { r = JSON.parse(localStorage.getItem("tsu-boot") || "{}") || {}; } catch (e) { r = {}; }
+    var get = function (k) { return S && S.get ? S.get(k, true) : undefined; }, os = get("os") || "vscode", cs = get("colorScheme");
+    r.mode = (os === "claude" ? !/^(light|dark)$/.test(get("claudeTheme") || "") : !cs || cs === "auto") ? "auto" : lt ? "light" : "dark";
+    r[lt ? "light" : "dark"] = bg;
+    var s = JSON.stringify(r);
+    if (s !== localStorage.getItem("tsu-boot")) try { localStorage.setItem("tsu-boot", s); } catch (e) { /* 满了 */ }
+    var N = window.nadosNative;
+    // mode 同 native.js：跟随系统时是 auto（不定死窗口的深浅，不然网页读到的系统深浅也被定死，macOS 换深浅色就没反应了）
+    if (N && N.call && s !== lastSent) { lastSent = s; N.call("window.appearance", { mode: r.mode === "auto" ? "auto" : lt ? "light" : "dark", bg: bg, boot: r }).catch(function () {}); }
+  }
+  new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(save, 400); }).observe(root, { attributes: true, attributeFilter: ["class", "style"] });
+  window.TSU_BOOT = {
+    // 界面搭好了：再等两帧（排版、画完）淡入
+    done: function () {
+      if (done) return;
+      done = true;
+      requestAnimationFrame(function () { requestAnimationFrame(function () {
+        root.classList.add("boot-in");
+        root.classList.remove("boot");
+        root.style.removeProperty("--boot-bg");
+        setTimeout(function () { root.classList.remove("boot-in"); save(); }, 300);
+      }); });
+    },
+  };
+  setTimeout(function () { window.TSU_BOOT.done(); }, 8000); // 万一没叫到（脚本出错）：也要露出来
+})();
+</script>
+<!-- 图标：同 App 图标（apps/macos/Icon/terminal-logo.png）；小图只取脸 -->
+<link rel="icon" type="image/png" href="terminal-icon.png">
+<!-- Paimon Terminal（apps/macos 用 MODE=terminal 编出来的 App）的页面：只有终端（标签页、分屏、agent），没有网页桌面的别的 App。
+     shell 和 agent 的工具跑在这台 Mac 上（local.js ↔ 原生的桥），不经过服务器的沙盒；在浏览器里打开就是个只有终端的页面（shell 走服务器的沙盒） -->
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="terminal.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="panes.css">
+<link rel="stylesheet" href="desk.css">
+<link rel="stylesheet" href="studio/browser.css">
+<link rel="stylesheet" href="studio/studio.css">
+<link rel="stylesheet" href="studio/gui.css">
+<link rel="stylesheet" href="studio/guimap.css">
+<link rel="stylesheet" href="studio/vsplit.css">
+<link rel="stylesheet" href="studio/dash.css">
+<link rel="stylesheet" href="studio/files.css">
+<link rel="stylesheet" href="studio/webview.css">
+<link rel="stylesheet" href="studio/extview.css">
+<link rel="stylesheet" href="studio/apps.css">
+<link rel="stylesheet" href="studio/overview.css">
+<link rel="stylesheet" href="studio/macos.css">
+<link rel="stylesheet" href="studio/claudeapp.css">
+<link rel="stylesheet" href="studio/seg.css">
+<link rel="stylesheet" href="studio/stats.css">
+<link rel="stylesheet" href="studio/ctxmap.css">
+<link rel="stylesheet" href="studio/changelog.css">
+<link rel="stylesheet" href="studio/guide.css">
+<link rel="stylesheet" href="studio/askpop.css">
+<link rel="stylesheet" href="studio/tdrawer.css">
+<link rel="stylesheet" href="studio/filepanel.css">
+<link rel="stylesheet" href="studio/fonts.css"> <!-- 两种字的分工（界面字 / 代码字），放最后：VS Code 风格里盖掉别处写死的字体 -->
+<style>
+  /* 整个窗口就是终端（同 iTerm）：桌面的菜单栏、Dock、墙纸都不要；终端窗口铺满，红黄绿用 App 自己的（网页里的藏起来，标题栏左边让出位置）。
+     系统风格选 macOS（html.st-macos，macos.js）时反过来：菜单栏、Dock、墙纸都要，编辑区里的每个标签页是桌面上的一个窗口 */
+  html.termapp:not(.st-macos), html.termapp:not(.st-macos) body, html.termapp:not(.st-macos) #desktop { background: #000; }
+  html.termapp.light:not(.st-macos), html.termapp.light:not(.st-macos) body, html.termapp.light:not(.st-macos) #desktop { background: #fff; }
+  html.termapp:not(.st-macos) #menubar, html.termapp:not(.st-macos) #dock, html.termapp #wall, html.termapp:not(.st-macos) #settings { display: none !important; }
+  html.termapp:not(.st-macos) #win { position: fixed !important; left: 0 !important; top: 0 !important; width: 100vw !important; height: 100vh !important; transform: none !important; border-radius: 0 !important; box-shadow: none !important; }
+  html.termapp:not(.st-macos) #win > .body { border-radius: 0 !important; }
+  html.termapp.native-app #win .bar > i { visibility: hidden; }
+  html.termapp.native-app #win .bar { padding-left: var(--nados-pad, 78px); }
+  /* 滚到顶、到底不回弹（macOS 触控板那种橡皮筋）：设置、列表、对话哪里都不要，停在边上就是停住 */
+  html.termapp, html.termapp * { overscroll-behavior: none; }
+</style>
+</head>
+<body>
+<div id="desktop">
+<video id="wall" muted loop playsinline preload="none"></video>
+<div id="menubar"><span class="apple">✻</span><b id="appname">终端</b><span class="sp"></span><span class="tray"><span class="ime">拼</span><svg viewBox="0 0 20 15" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 5.5a11.5 11.5 0 0 1 16 0"/><path d="M5 8.8a7 7 0 0 1 10 0"/><circle cx="10" cy="12.3" r="1.3" fill="currentColor" stroke="none"/></svg><svg viewBox="0 0 28 14" width="27" height="13"><rect x="1" y="1" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.2"/><rect x="3" y="3" width="18" height="8" rx="2" fill="currentColor"/><path d="M24.5 5v4a2 2 0 0 0 0-4z" fill="currentColor" fill-opacity=".45"/><path d="M13.2 2.6 9.5 7.6h3l-1.3 3.8 3.9-5.2h-3z" class="bolt"/></svg><svg viewBox="0 0 20 16" width="18" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="1.5" width="18" height="5.5" rx="2.75"/><circle cx="4.2" cy="4.25" r="1.6" fill="currentColor" stroke="none"/><rect x="1" y="9" width="18" height="5.5" rx="2.75"/><circle cx="15.8" cy="11.75" r="1.6" fill="currentColor" stroke="none"/></svg></span><span id="clock"></span></div>
+<div class="win" id="win"><div class="body">
+  <div class="bar"><i data-act="close" title="关闭"></i><i data-act="min" title="最小化"></i><i data-act="full" title="全屏"></i><span id="title">Vibing Studio</span><button id="readall" hidden>≡</button><button id="toggle" title="终端外观">◐</button></div>
+  <div class="tabs" hidden></div>
+  <div class="panes"></div>
+</div></div>
+<div class="win closed" id="settings"><div class="body"><div class="bar"><i data-act="close"></i><i data-act="min"></i><i class="off"></i><span>设置</span></div><div class="pane"></div></div></div>
+<div id="dock">
+  <a class="app running" data-app="win" title="终端"><span class="ico sq ico-term">&gt;_</span></a>
+</div>
+</div>
+<noscript><p class="noscript">需要 JavaScript。</p></noscript>
+<script src="remote.js"></script><!-- iPad 端：浏览器里选了「用我的 Mac」就把 nadosNative 换成经中转连到 Mac 的一份（要在别的脚本之前） -->
+<script src="studio/perf.js"></script><!-- 最先：量谁占着主线程（perf.json） -->
+<script src="ttu-core.js"></script>
+<script src="sync.js"></script>
+<script src="studio/local.js"></script>
+<script src="studio/ext.js"></script>
+<script src="sandbox.js"></script>
+<script src="native.js"></script>
+<script src="studio/i18n.js"></script>
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-unicode11.js"></script>
+<script src="vendor/xterm/addon-webgl.js"></script>
+<script src="xterm-gl.js"></script>
+<script src="vendor/xterm/addon-web-links.js"></script>
+<script src="agents.js"></script>
+<script src="studio/translate.js"></script>
+<script src="studio/claude.js"></script>
+<script src="studio/codex.js"></script>
+<script src="hl.js"></script>
+<script src="studio/overview.js"></script>
+<script src="studio/seti.js"></script><!-- 文件图标的数据（VS Code 的 Seti，MIT） -->
+<script src="studio/ficons.js"></script>
+<script src="studio/studio.js"></script>
+<script src="studio/trace.js"></script>
+<script src="studio/browser.js"></script>
+<script src="live.js"></script>
+<script src="studio/gui.js"></script>
+<script src="studio/guimap.js"></script>
+<script src="studio/vsplit.js"></script>
+<script src="studio/dash.js"></script>
+<script src="studio/files.js"></script>
+<script src="studio/webview.js"></script>
+<script src="studio/extview.js"></script>
+<script src="studio/apps.js"></script>
+<script src="desk.js"></script>
+<script src="studio/globalagent.js"></script>
+<script src="studio/macos.js"></script>
+<script src="studio/claudeapp.js"></script>
+<script src="studio/stats.js"></script>
+<script src="studio/ctxmap.js"></script>
+<script src="studio/changelog.js"></script>
+<script src="studio/welcome.js"></script>
+<script src="studio/guide.js"></script>
+<script src="studio/askpop.js"></script>
+<script src="studio/tdrawer.js"></script>
+<script src="studio/filepanel.js"></script>
+<script src="studio/seg.js"></script>
+<script src="studio/remote-host.js"></script><!-- App 里：让 iPad 借这台 Mac 用（设置 › 通用，默认关） -->
+<script src="studio/vsnative.js"></script><script src="studio/vsisland.js"></script><!-- iPhone App：灵动岛 / 锁屏的实时活动 --><!-- iPad App 的「iPad Native」界面：页面只画当前这段对话，列表、输入框、顶栏是 App 原生画的 -->
+</body>
+</html>

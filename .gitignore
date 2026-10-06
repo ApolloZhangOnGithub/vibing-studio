@@ -1,0 +1,19 @@
+# 系统、编辑器
+.DS_Store
+*.swp
+# 编译产物、依赖、缓存（不进仓库；Linux 版的依赖和产物在 ~/Library/Caches/VibingStudio/linux*）
+node_modules/
+app/build/
+ios/build/
+ios/DerivedData/
+xcuserdata/
+*.xcuserstate
+linux/dist/
+# 密钥、本地开发状态（web/.dev.vars 是本地开发用的密钥：绝不提交）
+web/.dev.vars
+web/.wrangler/
+.env
+.env.*
+*.pem
+*.p12
+*.mobileprovision

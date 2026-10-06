@@ -1,0 +1,389 @@
+/* finder.css —— 访达窗口（.win.finder，可以有好几个）、它们的快速查看面板（.fd-ql）、「简介」小窗口（.win.fd-infowin）：
+   统一工具栏 + 侧边栏 + 标签页栏 + 图标 / 列表 / 分栏 / 画廊 + 预览面板。深色为默认，html.light 为浅色；类名都带 fd- 前缀，避免与终端、设置、别的 App 撞名 */
+:is(.win.finder, .win.fd-infowin) { --fd-side: 184px; --fd-bg: #1e1e1e; --fd-fg: #e6e6e6; --fd-dim: #8d8d92; --fd-line: rgba(255, 255, 255, 0.08); --fd-odd: rgba(255, 255, 255, 0.035);
+  --fd-sel: #0a64d6; --fd-sel-off: rgba(255, 255, 255, 0.12); --fd-hover: rgba(255, 255, 255, 0.06); --fd-btn: rgba(255, 255, 255, 0.1);
+  --fd-side-bg: rgba(38, 38, 42, 0.94); --fd-accent: #3b9cff;
+  --fd-tabs-bg: #151515; min-width: 520px; min-height: 320px; color: var(--fd-fg); font: 13px -apple-system, "PingFang SC", sans-serif; }
+html.light :is(.win.finder, .win.fd-infowin) { --fd-tabs-bg: #e3e3e6; --fd-bg: #fff; --fd-fg: #1d1d1f; --fd-dim: #86868b; --fd-line: rgba(0, 0, 0, 0.08); --fd-odd: rgba(0, 0, 0, 0.028);
+  --fd-sel-off: rgba(0, 0, 0, 0.09); --fd-hover: rgba(0, 0, 0, 0.045); --fd-btn: rgba(0, 0, 0, 0.06); --fd-side-bg: rgba(236, 236, 240, 0.95); --fd-accent: #0a7aff; }
+.win.finder > .body { background: transparent; }
+
+/* ---- 标题栏 = 工具栏：左边一截跟侧边栏同色（三个灯落在侧边栏上方），右边是内容区的底色 ---- */
+.win.finder .bar { height: 52px; padding: 0 12px 0 20px; gap: 8px; border-bottom: 0; color: var(--fd-fg);
+  background: linear-gradient(to right, var(--fd-side-bg) 0 var(--fd-side), var(--fd-bg) var(--fd-side));
+  -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); }
+.win.finder .bar > span { display: none; } /* 居中的标题换成工具栏里靠左的标题（同访达） */
+.win.finder .fd-tb span { position: static; text-align: left; pointer-events: auto; }
+.win.finder .fd-tb { position: absolute; left: var(--fd-side); right: 12px; top: 0; bottom: 0; display: flex; align-items: center; gap: 4px; padding-left: 10px;
+  border-bottom: 1px solid var(--fd-line); }
+.win.finder .fd-tb button { display: flex; align-items: center; justify-content: center; flex: none; height: 28px; min-width: 30px; padding: 0 6px; border: 0; border-radius: 8px;
+  background: none; color: var(--fd-fg); opacity: 0.85; cursor: default; font: inherit; }
+.win.finder .fd-tb button:hover:not(:disabled) { background: var(--fd-hover); opacity: 1; }
+.win.finder .fd-tb button:disabled { opacity: 0.3; }
+.win.finder .fd-tb > button.fd-on { background: var(--fd-sel-off); opacity: 1; } /* 开着的：分组、预览面板 */
+.win.finder .fd-tb svg { width: 16px; height: 16px; display: block; }
+.win.finder .fd-tb svg.fd-wide { width: 22px; }
+.win.finder .fd-nav { display: flex; flex: none; }
+.win.finder .fd-title { font-size: 14px; font-weight: 600; margin: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.win.finder .fd-flex { flex: 1; }
+/* 四种显示：macOS 的分段控件 */
+.win.finder .fd-seg { display: flex; flex: none; padding: 2px; gap: 1px; border-radius: 9px; background: var(--fd-hover); margin-right: 4px; }
+.win.finder .fd-seg button { height: 24px; min-width: 32px; border-radius: 7px; }
+.win.finder .fd-seg button.fd-on { background: rgba(255, 255, 255, 0.16); opacity: 1; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+html.light .win.finder .fd-seg button.fd-on { background: #fff; }
+.win.finder .fd-search { display: flex; align-items: center; gap: 5px; height: 28px; flex: 0 1 170px; min-width: 90px; margin-left: 4px; padding: 0 8px; box-sizing: border-box;
+  border-radius: 8px; background: var(--fd-hover); color: var(--fd-dim); cursor: text; }
+.win.finder .fd-search:focus-within { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+.win.finder .fd-search svg { width: 13px; height: 13px; flex: none; }
+.win.finder .fd-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--fd-fg); font: inherit; padding: 0; -webkit-appearance: none; appearance: none; }
+.win.finder .fd-search input::-webkit-search-cancel-button { display: none; }
+.win.finder .fd-search input::placeholder { color: var(--fd-dim); }
+.win.finder .fd-clear { font-style: normal; font-size: 9px; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 7px; background: var(--fd-dim); color: var(--fd-bg);
+  cursor: default; visibility: hidden; }
+.win.finder .fd-search.fd-has .fd-clear { visibility: visible; }
+/* 窗口窄了：收起侧边栏，工具栏从三个灯后面开始 */
+.win.finder.fd-narrow { --fd-side: 86px; }
+.win.finder.fd-narrow .bar { background: var(--fd-bg); }
+.win.finder.fd-narrow .fd-side { display: none; }
+.win.finder.fd-narrow .fd-tb [data-a="newdir"], .win.finder.fd-narrow .fd-tb [data-a="tag"] { display: none; } /* 窄了先藏次要按钮，给标题让地方 */
+.win.finder.fd-narrow .fd-search { flex-basis: 120px; }
+
+/* ---- 主体：侧边栏 | 内容 | 预览面板 ---- */
+.win.finder .fd { flex: 1 1 auto; min-height: 0; display: flex; position: relative; user-select: none; -webkit-user-select: none; cursor: default; }
+.win.finder .fd-side { flex: none; width: var(--fd-side); box-sizing: border-box; padding: 4px 10px; overflow-y: auto; background: var(--fd-side-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); border-right: 1px solid var(--fd-line); }
+.win.finder .fd-side h4 { margin: 10px 8px 4px; font-size: 11px; font-weight: 600; color: var(--fd-dim); }
+.win.finder .fd-side h4:first-child { margin-top: 6px; }
+.win.finder .fd-place { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 7px; }
+.win.finder .fd-place svg { width: 16px; height: 16px; flex: none; color: var(--fd-accent); }
+.win.finder .fd-place span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-place:hover { background: var(--fd-hover); }
+.win.finder .fd-place.fd-on { background: var(--fd-sel-off); }
+.win.finder .fd-right { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--fd-bg); }
+.win.finder .fd-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.win.finder .fd-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--fd-bg); }
+.win.finder .fd-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; position: relative; }
+.win.finder .fd-empty { position: absolute; left: 0; right: 0; top: 42%; text-align: center; color: var(--fd-dim); pointer-events: none; }
+.win.finder .fd-empty[hidden] { display: none; }
+.win.finder .fd-hidden { opacity: 0.55; }
+
+/* ---- 图标、缩略图（访达与快速查看共用）---- */
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-svg { display: block; width: 100%; height: 100%; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-appico { position: relative; display: inline-block; flex: none; vertical-align: middle; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-appico > span { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-appraw { display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 12px;
+  background: linear-gradient(#8e8e93, #5a5a5f); color: #fff; font: 600 24px -apple-system, "PingFang SC", sans-serif; }
+/* 一页纸：TTU 按终端的样子排好再缩小；白纸（浅色）/ 黑底（深色），底下写扩展名 */
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-page { position: relative; display: inline-block; flex: none; overflow: hidden; vertical-align: middle; border-radius: 3px; background: #fff;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.16); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-page.fd-page-dark { background: #1e1e1e; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.24), 0 1px 4px rgba(0, 0, 0, 0.5); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-page > pre { text-align: left; position: absolute; left: 0; top: 0; margin: 0; box-sizing: border-box; transform-origin: 0 0; overflow: hidden; pointer-events: none; background: transparent; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-page-ext { position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); padding: 1px 3px; border-radius: 2px; font: 700 8px/1 -apple-system, sans-serif;
+  font-style: normal; letter-spacing: 0.02em; color: #7c7c80; background: rgba(255, 255, 255, 0.9); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-page-dark .fd-page-ext { color: #a9a9ae; background: rgba(0, 0, 0, 0.75); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-bigico { display: inline-block; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-bigico .fd-svg { height: auto; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-bigimg { display: block; max-width: 100%; object-fit: contain; border-radius: 4px; }
+.win.finder .fd-img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+/* 标签：几个彩色圆点叠在一起 */
+.win.finder .fd-dots { display: inline-flex; flex: none; margin-left: 6px; }
+.win.finder .fd-dots i { width: 9px; height: 9px; border-radius: 50%; margin-left: -3px; box-shadow: 0 0 0 1.2px var(--fd-bg); }
+.win.finder .fd-dots i:first-child { margin-left: 0; }
+
+/* ---- 分组：组名加粗，下面一条细线 ---- */
+.win.finder .fd-grp { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 8px 4px; padding: 0 2px 5px; border-bottom: 1px solid var(--fd-line);
+  font-size: 12px; }
+.win.finder .fd-items > .fd-grp:first-child { margin-top: 4px; }
+.win.finder .fd-grp b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-grp-all { flex: none; border: 0; padding: 0; background: none; color: var(--fd-accent); font: inherit; cursor: default; }
+.win.finder .fd-grp-all[hidden] { display: none; }
+
+/* ---- 列表：名称 / 修改日期 / 大小 / 种类；隔行浅纹，选中是蓝条（失焦时变灰） ---- */
+.win.finder .fd-head { display: none; }
+.win.finder .fd-v-list .fd-head { display: grid; }
+.win.finder .fd-head, .win.finder .fd-v-list .fd-it { grid-template-columns: minmax(160px, 1fr) 150px 80px 120px; column-gap: 10px; padding: 0 14px 0 12px; }
+.win.finder .fd-head { flex: none; height: 26px; align-items: center; font-size: 12px; color: var(--fd-dim); border-bottom: 1px solid var(--fd-line); }
+.win.finder .fd-head span { position: relative; padding-left: 6px; white-space: nowrap; }
+.win.finder .fd-head span + span { border-left: 1px solid var(--fd-line); }
+.win.finder .fd-head span:first-child { padding-left: 24px; }
+.win.finder .fd-head .fd-sorted { color: var(--fd-fg); font-weight: 500; }
+.win.finder .fd-head .fd-sorted::after { content: attr(data-dir); margin-left: 5px; font-size: 8px; opacity: 0.7; vertical-align: 1px; }
+.win.finder .fd-v-list .fd-items { padding: 4px 6px; }
+.win.finder .fd-v-list .fd-it { display: grid; align-items: center; height: 24px; border-radius: 6px; padding-left: 6px; padding-right: 8px; }
+.win.finder .fd-v-list .fd-it.fd-odd { background: var(--fd-odd); }
+.win.finder .fd-v-list .fd-it > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px; }
+.win.finder .fd-v-list .fd-c-date, .win.finder .fd-v-list .fd-c-size, .win.finder .fd-v-list .fd-c-kind { color: var(--fd-dim); }
+.win.finder .fd-v-list .fd-c-size { text-align: right; padding-right: 8px; font-variant-numeric: tabular-nums; }
+.win.finder .fd-v-list .fd-c-name { display: flex; align-items: center; gap: 6px; padding-left: 0 !important; }
+.win.finder .fd-v-list .fd-c-name .fd-ico { flex: none; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-v-list .fd-nm { overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-loc { color: var(--fd-dim); font-size: 11px; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-v-list .fd-it.fd-on { background: var(--fd-sel-off); }
+.win.finder .fd-v-list .fd-scroll:focus .fd-it.fd-on { background: var(--fd-sel); color: #fff; }
+.win.finder .fd-v-list .fd-scroll:focus .fd-it.fd-on > span, .win.finder .fd-v-list .fd-scroll:focus .fd-it.fd-on .fd-loc { color: #fff; }
+
+/* ---- 图标：网格；选中时图标衬一块灰、名字变蓝色胶囊。分组时每组一行（横着滚），「显示全部」后铺成网格 ---- */
+.win.finder .fd-v-icons .fd-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px 4px; padding: 14px 12px; align-items: start; }
+.win.finder .fd-v-icons.fd-grouped .fd-items { display: block; padding: 4px 10px 14px; }
+.win.finder .fd-grow { display: flex; gap: 6px 4px; overflow-x: auto; overflow-y: hidden; padding: 6px 2px; scrollbar-width: none; overscroll-behavior-x: contain; }
+.win.finder .fd-grow::-webkit-scrollbar { display: none; }
+.win.finder .fd-grow > .fd-it { flex: none; width: 96px; box-sizing: border-box; }
+.win.finder .fd-grow.fd-open { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); overflow: visible; }
+.win.finder .fd-grow.fd-open > .fd-it { width: auto; }
+.win.finder .fd-v-icons .fd-it { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 2px; min-width: 0; }
+.win.finder .fd-v-icons .fd-it .fd-ico { width: 64px; height: 64px; padding: 3px; box-sizing: border-box; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-v-icons .fd-dir .fd-ico svg { height: auto; }
+/* 名字最多两行；标签圆点排在名字前面（同一行里）；选中时名字衬一块圆角底（折行时每行都有） */
+.win.finder .fd-v-icons .fd-cap { max-width: 100%; font-size: 12px; line-height: 17px; text-align: center; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.win.finder .fd-v-icons .fd-cap .fd-dots { margin: 0 3px 0 0; vertical-align: -0.5px; }
+.win.finder .fd-v-icons .fd-nm { padding: 1px 5px; border-radius: 5px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.win.finder .fd-v-icons .fd-it.fd-on .fd-ico { background: var(--fd-sel-off); }
+.win.finder .fd-v-icons .fd-it.fd-on .fd-nm { background: var(--fd-sel-off); }
+.win.finder .fd-v-icons .fd-scroll:focus .fd-it.fd-on .fd-nm { background: var(--fd-sel); color: #fff; }
+
+/* ---- 分栏：一层一栏，横着滚；每栏右边一条能拖的分隔（底部有个小把手）；最右是预览栏 ---- */
+.win.finder .fd-v-columns .fd-scroll { overflow-x: auto; overflow-y: hidden; }
+.win.finder .fd-v-columns .fd-items { display: flex; height: 100%; width: max-content; min-width: 100%; }
+.win.finder .fd-colw { position: relative; flex: none; height: 100%; box-sizing: border-box; border-right: 1px solid var(--fd-line); }
+.win.finder .fd-col { height: 100%; box-sizing: border-box; overflow-y: auto; padding: 4px 6px; }
+.win.finder .fd-col .fd-grp { margin: 8px 2px 3px; }
+.win.finder .fd-col .fd-grp:first-child { margin-top: 2px; }
+.win.finder .fd-colw .fd-it { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px 0 8px; border-radius: 6px; }
+.win.finder .fd-colw .fd-ico { flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-colw .fd-nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-colw .fd-dots { margin-left: 0; }
+.win.finder .fd-chev { flex: none; width: 6px; height: 6px; margin: 0 4px 0 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); opacity: 0.45; }
+.win.finder .fd-colw .fd-it.fd-on, .win.finder .fd-colw .fd-it.fd-path { background: var(--fd-sel-off); }
+.win.finder .fd-v-columns .fd-scroll:focus .fd-col-act .fd-it.fd-on { background: var(--fd-sel); color: #fff; }
+.win.finder .fd-v-columns .fd-scroll:focus .fd-col-act .fd-it.fd-on .fd-chev { opacity: 0.9; }
+.win.finder .fd-grip { position: absolute; top: 0; bottom: 0; right: -4px; width: 8px; z-index: 2; cursor: col-resize; }
+.win.finder .fd-grip::after { content: ""; position: absolute; left: 1px; bottom: 6px; width: 3px; height: 11px; border-left: 1px solid var(--fd-dim); border-right: 1px solid var(--fd-dim); opacity: 0.5; }
+.win.finder .fd-colpv { flex: 1 0 280px; min-width: 280px; border-right: 0; }
+.win.finder .fd-pv { height: 100%; box-sizing: border-box; overflow-y: auto; padding: 24px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.win.finder .fd-pv-name { margin-top: 14px; font-size: 14px; font-weight: 600; word-break: break-all; }
+.win.finder .fd-pv-kind { margin-top: 3px; color: var(--fd-dim); font-size: 12px; }
+.win.finder .fd-pv .fd-kv { width: 100%; max-width: 320px; margin-top: 14px; text-align: left; }
+
+/* ---- 画廊：上面一张大图，名字与种类，底下一排缩略图 ---- */
+.win.finder .fd-v-gallery .fd-scroll { overflow: hidden; }
+.win.finder .fd-v-gallery .fd-items { height: 100%; }
+.win.finder .fd-gal { height: 100%; display: flex; flex-direction: column; }
+.win.finder .fd-gal-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding-top: 16px; box-sizing: border-box; overflow: hidden; }
+.win.finder .fd-gal-cap { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 16px 6px; }
+.win.finder .fd-gal-cap .fd-nm { font-size: 14px; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-gal-cap .fd-rn { flex: none; width: 260px; text-align: center; }
+.win.finder .fd-gal-kind { color: var(--fd-dim); font-size: 12px; }
+.win.finder .fd-gal-strip { flex: none; display: flex; gap: 6px; height: 78px; box-sizing: border-box; padding: 8px 14px 10px; overflow-x: auto; overflow-y: hidden;
+  justify-content: safe center; border-top: 1px solid var(--fd-line); scrollbar-width: none; }
+.win.finder .fd-gal-strip::-webkit-scrollbar { display: none; }
+.win.finder .fd-gal-strip .fd-it { flex: none; width: 60px; height: 60px; box-sizing: border-box; padding: 3px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-gal-strip .fd-ico { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-gal-strip .fd-dir .fd-ico svg { height: auto; }
+.win.finder .fd-gal-strip .fd-it.fd-on { box-shadow: inset 0 0 0 2.5px var(--fd-sel-off); }
+.win.finder .fd-v-gallery .fd-scroll:focus .fd-gal-strip .fd-it.fd-on { box-shadow: inset 0 0 0 2.5px #0a84ff; }
+
+/* ---- 改名输入框 ---- */
+.win.finder .fd-rn { min-width: 0; flex: 1; font: inherit; color: var(--fd-fg); background: var(--fd-bg); border: 0; outline: 0; border-radius: 4px; padding: 1px 4px;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.55); user-select: text; -webkit-user-select: text; }
+.win.finder .fd-v-icons .fd-rn { display: inline-block; width: 90px; text-align: center; font-size: 12px; }
+
+/* ---- 拖放：落到文件夹上高亮那一项；落在空白处给整个内容区描一圈 ---- */
+.win.finder .fd-it.fd-drop-on, .win.finder .fd-place.fd-drop-on, .win.finder .fd-crumb.fd-drop-on { background: rgba(10, 132, 255, 0.3) !important; box-shadow: inset 0 0 0 2px #0a84ff; }
+.win.finder .fd-colw.fd-drop-on { background: rgba(10, 132, 255, 0.12); }
+.win.finder .fd-v-icons .fd-it.fd-drop-on { border-radius: 10px; }
+.win.finder .fd.fd-dropping .fd-main { box-shadow: inset 0 0 0 3px rgba(10, 132, 255, 0.7); }
+
+/* ---- 底部路径栏 + 项数 / 提示 ---- */
+.win.finder .fd-status { flex: none; display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 12px; font-size: 11.5px; color: var(--fd-dim); border-top: 1px solid var(--fd-line); }
+.win.finder .fd-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; white-space: nowrap; }
+.win.finder .fd-crumbs i { font-style: normal; opacity: 0.6; padding: 0 2px; }
+.win.finder .fd-crumb { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; }
+.win.finder .fd-crumb:not(.fd-crumb-file):hover { background: var(--fd-hover); color: var(--fd-fg); }
+.win.finder .fd-crumb .fd-ico { width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; color: var(--fd-accent); }
+.win.finder .fd-crumb .fd-ico svg { width: 13px; height: 13px; }
+.win.finder .fd-count { flex: none; }
+.win.finder .fd-count.fd-warn { color: #ff9f0a; }
+
+/* ---- 预览面板（右侧）：大缩略图、名字、种类 - 大小；信息（左灰名目、右对齐的值）、标签；底下「打开」「更多…」 ---- */
+.win.finder .fd-insp { position: relative; flex: none; width: 268px; box-sizing: border-box; border-left: 1px solid var(--fd-line); background: var(--fd-bg); }
+.win.finder .fd-insp-in { height: 100%; box-sizing: border-box; overflow-y: auto; padding: 16px; }
+.win.finder .fd-insp-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; z-index: 2; cursor: col-resize; }
+.win.finder .fd-insp[hidden] { display: none; }
+.win.finder .fd-insp-none { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--fd-dim); }
+/* 真的预览（预览面板顶上、分栏的预览栏）：文稿是一块终端样子的底（深色黑、浅色白），上面空一整行，高度是整行数、按整行滚；图片按框缩放 */
+.win.finder .fd-live { width: 100%; flex: none; box-sizing: border-box; margin-bottom: 14px; border-radius: 8px; }
+.win.finder .fd-live.fd-live-text { overflow-x: hidden; overflow-y: auto; overscroll-behavior: none; scrollbar-width: none; background: #0b0b0b;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16); cursor: text; }
+html.light .win.finder .fd-live.fd-live-text { background: #fff; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.16); }
+.win.finder .fd-live.fd-live-text::-webkit-scrollbar { display: none; }
+.win.finder .fd-live-pre { margin: 0; box-sizing: border-box; background: transparent; text-align: left; overflow: visible; user-select: text; -webkit-user-select: text; }
+.win.finder .fd-live.fd-live-img { display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-live.fd-live-img img { display: block; max-width: 100%; object-fit: contain; border-radius: 4px; }
+.win.finder .fd-live.fd-live-ico { display: flex; align-items: center; justify-content: center; min-height: 160px; }
+.win.finder .fd-pv .fd-live { max-width: 760px; }
+.win.finder .fd-insp-name { font-size: 15px; font-weight: 600; line-height: 1.3; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.win.finder .fd-insp-kind { margin-top: 3px; color: var(--fd-dim); font-size: 12px; }
+.win.finder .fd-insp section { margin-top: 18px; }
+.win.finder .fd-insp h5 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-kv > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0; font-size: 12px; border-bottom: 0.5px solid var(--fd-line, rgba(127, 127, 127, 0.2)); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-kv > div:last-child { border-bottom: 0; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-kv > div > span:first-child { flex: none; color: var(--fd-dim, #8d8d92); }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-kv > div > span:last-child { min-width: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.win.finder .fd-insp-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 2px; }
+.win.finder .fd-chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 4px 0 7px; border-radius: 10px; background: var(--fd-hover); font-size: 12px; }
+.win.finder .fd-chip i { width: 9px; height: 9px; border-radius: 50%; }
+.win.finder .fd-chip b { font-weight: 400; font-size: 9px; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 7px; opacity: 0; }
+.win.finder .fd-chip:hover b { opacity: 0.7; }
+.win.finder .fd-chip b:hover { opacity: 1; background: var(--fd-sel-off); }
+.win.finder .fd-link { border: 0; padding: 2px 0; background: none; color: var(--fd-accent); font: inherit; font-size: 12px; cursor: default; }
+.win.finder .fd-insp-act { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 22px; }
+.win.finder .fd-insp-act button { height: 26px; max-width: 100%; padding: 0 14px; border: 0; border-radius: 7px; background: var(--fd-btn); color: var(--fd-fg); font: 13px -apple-system, "PingFang SC", sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.win.finder .fd-insp-act button:hover { background: var(--fd-sel-off); }
+.win.finder .fd-insp-act button[data-a="open"] { background: #0a84ff; color: #fff; }
+.win.finder .fd-insp-act button[data-a="open"]:hover { background: #2a93ff; }
+
+/* ---- 快速查看：大圆角的浮动面板；访达在前台时浮在所有窗口上面，别的 App 在前台时藏起来（叠放、藏在 desk.js 的 syncPanels） ---- */
+.fd-ql { position: absolute; border-radius: 18px; color: #e6e6e6; font: 13px -apple-system, "PingFang SC", sans-serif;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.14); transition: opacity 0.16s, transform 0.16s; }
+.fd-ql[hidden] { display: none; }
+.fd-ql.fd-qlp-in { opacity: 0; transform: scale(0.97); }
+html.light .fd-ql { color: #1d1d1f; box-shadow: 0 30px 90px rgba(30, 40, 90, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.14); }
+.fd-ql > .fd-qlp-body { --r: 26px; position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; background: #1e1e1e; }
+.fd-ql > .fd-qlp-body.fd-qlp-text { background: #1e1e1e; } /* 同 macOS 深色模式的文本底色（快速查看、预览面板里的文本都是 rgb(30,30,30)，不是纯黑） */
+html.light .fd-ql > .fd-qlp-body { background: #f5f5f7; }
+html.light .fd-ql > .fd-qlp-body.fd-qlp-text { background: #fff; }
+.fd-ql .fd-qlp-bar { flex: none; position: relative; z-index: 1; height: 48px; display: flex; align-items: center; gap: 4px; padding: 0 12px; box-sizing: border-box;
+  background: rgba(40, 40, 44, 0.96); border-bottom: 1px solid rgba(255, 255, 255, 0.07); user-select: none; -webkit-user-select: none; cursor: default; }
+html.light .fd-ql .fd-qlp-bar { background: rgba(246, 246, 248, 0.97); border-bottom-color: rgba(0, 0, 0, 0.08); }
+.fd-ql .fd-qlp-bar button { display: flex; align-items: center; justify-content: center; flex: none; height: 28px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 8px;
+  background: none; color: inherit; font: inherit; opacity: 0.85; cursor: default; }
+.fd-ql .fd-qlp-bar button:hover { background: rgba(127, 127, 127, 0.18); opacity: 1; }
+.fd-ql .fd-qlp-bar svg { width: 16px; height: 16px; display: block; }
+.fd-ql .fd-qlp-name { flex: 1; min-width: 0; padding: 0 10px; text-align: center; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd-ql .fd-qlp-open { display: flex; align-items: stretch; flex: none; height: 28px; margin-left: 4px; border-radius: 14px; background: rgba(127, 127, 127, 0.22); overflow: hidden; }
+.fd-ql .fd-qlp-open[hidden], .fd-ql .fd-qlp-open button[hidden] { display: none; }
+.fd-ql .fd-qlp-open button { border-radius: 0; opacity: 1; }
+.fd-ql .fd-qlp-open button:hover { background: rgba(127, 127, 127, 0.2); }
+.fd-ql .fd-qlp-open [data-q="open"] { padding: 0 14px; font-size: 13px; }
+.fd-ql .fd-qlp-open [data-q="with"] { min-width: 24px; padding: 0 6px 0 5px; border-left: 1px solid rgba(127, 127, 127, 0.3); }
+.fd-ql .fd-qlp-open [data-q="with"] svg { width: 12px; height: 12px; }
+/* 预览内容：终端式整行滚动（finder.js 的 rowScroll），不显示滚动条、滚到头不回弹 */
+.fd-ql .fd-qlp-view { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; position: relative; overscroll-behavior: none; scrollbar-width: none; }
+.fd-ql .fd-qlp-view::-webkit-scrollbar { display: none; }
+.fd-ql .fd-qlp-pre { margin: 0; overflow: visible; box-sizing: border-box; background: transparent; user-select: text; -webkit-user-select: text; cursor: text; }
+.fd-note { color: #8d8d92; }
+/* App、文件夹、看不了内容的文件：一张小卡片（同 macOS）——顶栏透明、不写名字；左边大图标，右边名称（粗）+ 几行灰字 */
+html .fd-ql.fd-qlp-cardmode .fd-qlp-bar { position: absolute; left: 0; right: 0; top: 0; background: transparent; border-bottom: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.fd-ql.fd-qlp-cardmode .fd-qlp-name { visibility: hidden; }
+.fd-ql.fd-qlp-cardmode .fd-qlp-view { overflow: hidden; }
+.fd-ql.fd-qlp-cardmode > .fd-qlp-body { background: #242426; }
+html.light .fd-ql.fd-qlp-cardmode > .fd-qlp-body { background: #fff; }
+.fd-ql .fd-qlp-bar button:disabled { opacity: 0.3; }
+.fd-ql .fd-qlp-bar button:disabled:hover { background: none; }
+.fd-ql .fd-qlc { height: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 30px; padding: 40px 36px 20px 40px; }
+.fd-ql .fd-qlc-ico { flex: none; width: 196px; height: 196px; display: flex; align-items: center; justify-content: center; }
+.fd-ql .fd-qlc-info { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.fd-ql .fd-qlc-info b { margin-bottom: 4px; font-size: 21px; font-weight: 700; line-height: 1.25; word-break: break-all; }
+.fd-ql .fd-qlc-info span { font-size: 13px; color: #8d8d92; }
+.fd-ql .fd-qlp-img { box-sizing: border-box; height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.fd-ql .fd-qlp-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.fd-ql.fd-qlp-full { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; box-shadow: none; }
+.fd-ql.fd-qlp-full > .fd-qlp-body { -webkit-mask: none; mask: none; }
+.fd-ql.fd-qlp-full > .rs { display: none; }
+@media (max-width: 600px) {
+  .fd-ql { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; z-index: 20; border-radius: 0; box-shadow: none; }
+  .fd-ql > .fd-qlp-body { -webkit-mask: none; mask: none; }
+}
+
+/* ---- 标签页栏（两个以上标签页时出现在工具栏下面）：每个标签一样宽，当前的跟内容区同色；指着时左边出 ✕；最右「+」---- */
+.win.finder .fd-tabs { flex: none; display: flex; align-items: stretch; height: 28px; background: var(--fd-tabs-bg); border-bottom: 1px solid var(--fd-line); }
+.win.finder .fd-tabs[hidden] { display: none; }
+.win.finder .fd-tab { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 26px; font-size: 12px;
+  color: var(--fd-dim); border-left: 1px solid var(--fd-line); }
+.win.finder .fd-tab:first-child { border-left: 0; }
+.win.finder .fd-tab:hover { background: var(--fd-hover); }
+.win.finder .fd-tab.fd-on { background: var(--fd-bg); color: var(--fd-fg); }
+.win.finder .fd-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-tab-x { position: absolute; left: 6px; top: 50%; width: 16px; height: 16px; margin-top: -8px; border-radius: 4px; display: none; align-items: center; justify-content: center; font-style: normal; }
+.win.finder .fd-tab:hover .fd-tab-x { display: flex; }
+.win.finder .fd-tab-x:hover { background: var(--fd-sel-off); }
+.win.finder .fd-tab-x svg { width: 10px; height: 10px; }
+.win.finder .fd-tab.fd-drop-on { background: rgba(10, 132, 255, 0.3) !important; box-shadow: inset 0 0 0 2px #0a84ff; }
+.win.finder .fd-tab-add { flex: none; width: 30px; padding: 0; border: 0; border-left: 1px solid var(--fd-line); background: none; color: var(--fd-dim); display: flex;
+  align-items: center; justify-content: center; cursor: default; }
+.win.finder .fd-tab-add:hover { background: var(--fd-hover); color: var(--fd-fg); }
+.win.finder .fd-tab-add svg { width: 12px; height: 12px; }
+
+/* ---- 废纸篓：内容上面一条「废纸篓 …… 清倒」；图标同 Dock 上那个 ---- */
+.win.finder .fd-trashbar { flex: none; display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--fd-line); }
+.win.finder .fd-trashbar[hidden] { display: none; }
+.win.finder .fd-trashbar b { font-size: 13px; font-weight: 600; }
+.win.finder .fd-trashbar button { height: 22px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--fd-btn); color: var(--fd-fg); font: inherit; font-size: 12px; cursor: default; }
+.win.finder .fd-trashbar button:hover:not(:disabled) { background: var(--fd-sel-off); }
+.win.finder .fd-trashbar button:disabled { opacity: 0.4; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-trashico { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; }
+:is(.win.finder, .fd-ql, .win.fd-infowin) .fd-trashico svg { display: block; width: 100%; height: 100%; }
+
+/* ---- 简介（⌘I）：窄窄的一个窗口；头上图标 + 名字 + 大小，一排标签色点，下面几段信息 ---- */
+.win.fd-infowin { min-width: 250px; min-height: 240px; }
+.win.fd-infowin > .body { background: var(--fd-bg); }
+.win.fd-infowin .fd-info { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 16px 18px; user-select: none; -webkit-user-select: none; cursor: default; }
+.win.fd-infowin .fd-info-head { display: flex; align-items: center; gap: 10px; }
+.win.fd-infowin .fd-info-ico { flex: none; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+.win.fd-infowin .fd-info-ico > .fd-svg, .win.fd-infowin .fd-info-ico > .fd-img { max-width: 44px; max-height: 44px; }
+.win.fd-infowin .fd-info-head > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.win.fd-infowin .fd-info-head b { font-size: 14px; font-weight: 600; word-break: break-all; }
+.win.fd-infowin .fd-info-head span { color: var(--fd-dim); font-size: 12px; }
+.win.fd-infowin .fd-info-date { margin-top: 6px; color: var(--fd-dim); font-size: 11.5px; }
+.win.fd-infowin .fd-info-tags { display: flex; gap: 9px; margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--fd-hover); }
+.win.fd-infowin .fd-info-tags button { width: 14px; height: 14px; padding: 0; border: 0; border-radius: 50%; cursor: default; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
+.win.fd-infowin .fd-info-tags button:hover { transform: scale(1.18); }
+.win.fd-infowin .fd-info-tags button.on { box-shadow: 0 0 0 2px var(--fd-bg), 0 0 0 3.5px var(--fd-fg); }
+.win.fd-infowin section { margin-top: 16px; }
+.win.fd-infowin h5 { margin: 0 0 4px; font-size: 12px; font-weight: 600; }
+.win.fd-infowin .fd-kv > div > span:last-child { overflow-wrap: anywhere; }
+.win.fd-infowin .fd-info-name { width: 100%; box-sizing: border-box; height: 24px; padding: 0 7px; border: 0; border-radius: 6px; outline: 0; background: var(--fd-hover);
+  color: var(--fd-fg); font: inherit; user-select: text; -webkit-user-select: text; }
+.win.fd-infowin .fd-info-name:focus { box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.45); }
+.win.fd-infowin .fd-info-name:disabled { opacity: 0.55; }
+
+/* 开了真沙盒：侧边栏底下一句「● 真沙盒 这台 Mac / Docker」 */
+.win.finder .fd-where { display: flex; align-items: center; gap: 6px; margin: 16px 8px 6px; font-size: 11.5px; color: var(--fd-dim); cursor: default; }
+.win.finder .fd-where i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #30d158; box-shadow: 0 0 0 2px rgba(48, 209, 88, 0.18); }
+.win.finder .fd-where span { color: var(--fd-fg); font-weight: 500; }
+.win.finder .fd-where-wait i { background: #ff9f0a; box-shadow: 0 0 0 2px rgba(255, 159, 10, 0.18); }
+.win.finder .fd-where small { font-size: 11px; }
+/* 前往文件夹（⇧⌘G）：浮在窗口上面的输入框 + 能去的地方 */
+.win.finder .fd-goto { position: absolute; z-index: 40; top: 10px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 40px)); box-sizing: border-box; padding: 8px;
+  border-radius: 12px; background: rgba(44, 44, 46, 0.97); color: var(--fd-fg); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.6), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 18px 50px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); }
+html.light .win.finder .fd-goto { background: rgba(248, 248, 250, 0.97); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 18px 50px rgba(0, 0, 0, 0.22); }
+.win.finder .fd-goto[hidden] { display: none; }
+.win.finder .fd-goto-f { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 8px; background: var(--fd-btn); }
+.win.finder .fd-goto-f svg { flex: none; width: 17px; height: 17px; color: var(--fd-accent); }
+.win.finder .fd-goto-f input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fd-fg); font: inherit; font-size: 14px; }
+.win.finder .fd-goto-list { margin-top: 6px; max-height: 312px; overflow-y: auto; }
+.win.finder .fd-goto-list:empty { display: none; }
+.win.finder .fd-goto-h { padding: 4px 10px 3px; font-size: 11px; font-weight: 600; color: var(--fd-dim); }
+.win.finder .fd-goto-it { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border-radius: 6px; white-space: nowrap; }
+.win.finder .fd-goto-it .fd-ico { flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+.win.finder .fd-goto-it .fd-ico :is(svg, img) { max-width: 16px; max-height: 16px; }
+.win.finder .fd-goto-p { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.win.finder .fd-goto-p i { font-style: normal; color: var(--fd-dim); }
+.win.finder .fd-goto-it.fd-on { background: var(--fd-sel); color: #fff; }
+.win.finder .fd-goto-it.fd-on .fd-goto-p i { color: rgba(255, 255, 255, 0.72); }
+.win.finder .fd-goto-err { padding: 6px 10px 2px; font-size: 12px; color: #ff6961; }
+.win.finder .fd-goto-err[hidden] { display: none; }
+.win.finder .fd-goto.fd-shake { animation: fd-shake 0.36s; }
+@keyframes fd-shake { 20%, 60% { transform: translateX(calc(-50% - 7px)); } 40%, 80% { transform: translateX(calc(-50% + 7px)); } }
+/* 拖动框选 */
+.win.finder .fd-col { position: relative; }
+.win.finder .fd-band { position: absolute; z-index: 6; pointer-events: none; box-sizing: border-box; border: 1px solid rgba(170, 170, 176, 0.75); background: rgba(170, 170, 176, 0.2); }
+html.light .win.finder .fd-band { border-color: rgba(110, 110, 118, 0.6); background: rgba(110, 110, 118, 0.14); }
+/* Office 文稿的缩略图、预览面板（office/preview.js）：还没做好时先放文稿图标 */
+.win.finder .fd-live.fd-live-ofc { min-height: 0; padding: 6px 0 2px; }
+:is(.win.finder, .fd-ql) .fd-ofc-slot { display: inline-flex; align-items: center; justify-content: center; }
+/* 快速查看里的 PDF：交给浏览器 / WebKit 自己的 PDF 阅读器，铺满预览区 */
+.fd-ql .fd-qlp-pdf { display: block; width: 100%; height: 100%; border: 0; background: #fff; }

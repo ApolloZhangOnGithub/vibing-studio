@@ -1,0 +1,33 @@
+/* askpop.css —— 会话在问你：窗口正中的问题卡片（不是新窗口） */
+.ap-ov { position: fixed; inset: 0; z-index: 99990; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .3); }
+.ap-card { width: min(580px, 92vw); max-height: 82vh; display: flex; flex-direction: column; border-radius: 14px; background: var(--st-bg3, #1c1c1c); border: 1px solid var(--st-line, #333); box-shadow: 0 22px 60px rgba(0, 0, 0, .5); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; color: var(--st-fg, #ddd); overflow: hidden; }
+.ap-hd { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px 16px; border-bottom: 1px solid var(--st-line, #2a2a2a); }
+.ap-logo { flex: none; display: inline-flex; width: 15px; height: 15px; color: var(--st-hi); }
+.ap-logo.cc { color: #d97757; }
+.ap-logo > svg { width: 15px; height: 15px; }
+.ap-name { color: var(--st-hi, #fff); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+.ap-sub { color: var(--st-dim, #888); white-space: nowrap; }
+.ap-fill { flex: 1; }
+.ap-x { flex: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: none; color: var(--st-dim); cursor: pointer; }
+.ap-x:hover { background: color-mix(in srgb, var(--st-fg) 10%, transparent); color: var(--st-hi); }
+.ap-ctx { flex: 0 1 auto; max-height: 150px; overflow: auto; margin: 12px 16px 0; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--st-fg) 5%, transparent); color: var(--st-dim, #999); font-size: 12.5px; white-space: pre-wrap; }
+.ap-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 16px 0; }
+.ap-tab { padding: 2px 9px; border-radius: 999px; font-size: 12px; color: var(--st-dim); background: color-mix(in srgb, var(--st-fg) 6%, transparent); }
+.ap-tab.on { color: var(--st-hi); background: color-mix(in srgb, var(--st-fg) 15%, transparent); }
+.ap-tab.done:not(.on) { color: var(--st-fg); }
+.ap-q { margin: 12px 16px 8px; font-size: 14px; font-weight: 600; color: var(--st-hi, #fff); white-space: pre-wrap; }
+.ap-opts { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 16px 12px; }
+.ap-opt, .ap-other { display: flex; align-items: flex-start; gap: 10px; width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--st-line, #333); background: color-mix(in srgb, var(--st-fg) 3%, transparent); color: var(--st-fg); font: inherit; text-align: left; cursor: pointer; }
+.ap-opt:hover, .ap-opt:focus { outline: none; border-color: var(--st-focus, #0a84ff); background: color-mix(in srgb, var(--st-focus, #0a84ff) 10%, transparent); }
+.ap-opt.on { border-color: var(--st-focus, #0a84ff); background: color-mix(in srgb, var(--st-focus, #0a84ff) 18%, transparent); }
+.ap-n { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--st-dim); background: color-mix(in srgb, var(--st-fg) 9%, transparent); }
+.ap-l { display: flex; flex-direction: column; min-width: 0; }
+.ap-l > span { color: var(--st-hi, #fff); }
+.ap-l small { color: var(--st-dim, #888); font-size: 12px; }
+.ap-other { cursor: text; align-items: center; }
+.ap-in { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: var(--st-hi); font: inherit; }
+.ap-ft { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 16px 12px; border-top: 1px solid var(--st-line, #2a2a2a); }
+.ap-keys { color: var(--st-dim, #888); font-size: 12px; white-space: nowrap; }
+.ap-btn { height: 26px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--st-line, #444); background: color-mix(in srgb, var(--st-fg) 8%, transparent); color: var(--st-hi); font: inherit; cursor: pointer; white-space: nowrap; }
+.ap-btn.def { background: var(--st-focus, #0a84ff); border-color: transparent; color: #fff; }
+html.light .ap-card { background: #fff; }

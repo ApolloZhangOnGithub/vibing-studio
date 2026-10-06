@@ -1,0 +1,34 @@
+#!/bin/zsh
+# tcb：Terminal-Coding-Browser 的元素协议（OSC 7700）——终端里的程序把「元素」交给浏览器画：任务清单、状态、键值……，
+# 放在哪（行内 / 底栏 / 右侧检查器 / 隐藏）由浏览器和用户定，程序不用自己画。协议见 public/tcb.js 开头。
+#   tcb set '<元素 JSON>'                      交出 / 更新一个元素，如 {"id":"build","type":"status","data":{"label":"编译中","busy":true}}
+#   tcb tasks '写接口:done' '跑测试:doing' '发版'  任务清单（done / doing / 不写 = 还没开始）
+#   tcb status '正在跑测试…'                     状态行（转圈）；tcb status 不带参数 = 收起
+#   tcb kv 标题 键=值 键=值 …                    一组键值（上下文、用量……）
+#   tcb remove <id> · tcb clear
+# 只在支持的终端里生效（环境变量 TCB=1），别处什么都不做
+[[ "$TCB" == 1 ]] || { echo "tcb: 这个终端不支持 Terminal-Coding-Browser 的元素（要在 Vibing Studio 里）" >&2; exit 1; }
+js() { local s=$1; s=${s//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\r'/\\r}; s=${s//$'\t'/\\t}; printf '"%s"' "$s"; }
+send() { printf '\033]7700;%s\a' "$(printf '%s' "$1" | base64 | tr -d '\n')" > /dev/tty; }
+op=$1; shift 2>/dev/null
+case "$op" in
+  set) send "{\"v\":1,\"op\":\"set\",\"el\":$1}" ;;
+  remove) send "{\"v\":1,\"op\":\"remove\",\"id\":$(js "$1")}" ;;
+  clear) send '{"v":1,"op":"clear"}' ;;
+  tasks)
+    items="" i=0
+    for t in "$@"; do
+      i=$((i + 1)); st=pending; subj=$t
+      case "$t" in *:done) st=completed; subj=${t%:done} ;; *:doing) st=in_progress; subj=${t%:doing} ;; *:todo) subj=${t%:todo} ;; esac
+      items+="${items:+,}{\"id\":\"$i\",\"subject\":$(js "$subj"),\"status\":\"$st\"}"
+    done
+    send "{\"v\":1,\"op\":\"set\",\"el\":{\"id\":\"tasks\",\"type\":\"tasks\",\"title\":\"任务\",\"data\":{\"items\":[$items]}}}" ;;
+  status)
+    if [[ -z "$1" ]]; then send '{"v":1,"op":"remove","id":"status"}'
+    else send "{\"v\":1,\"op\":\"set\",\"el\":{\"id\":\"status\",\"type\":\"status\",\"data\":{\"label\":$(js "$1"),\"busy\":true,\"t0\":$(( $(date +%s) * 1000 ))}}}"; fi ;;
+  kv)
+    title=$1; shift; rows=""
+    for kv in "$@"; do rows+="${rows:+,}[$(js "${kv%%=*}"),$(js "${kv#*=}")]"; done
+    send "{\"v\":1,\"op\":\"set\",\"el\":{\"id\":$(js "kv-$title"),\"type\":\"kv\",\"title\":$(js "$title"),\"data\":{\"rows\":[$rows]}}}" ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

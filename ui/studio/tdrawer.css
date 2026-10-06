@@ -1,0 +1,248 @@
+/* tdrawer.css —— agent 这一级：标签页底下的「后台任务 · 子 Agent」抽屉（tdrawer.js）；全局那一级：底部面板里按 agent 分组的「Agent 活动」（studio.js） */
+.st-tdrawer { order: 99; flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 42%; border-top: 1px solid var(--st-line, rgba(128, 128, 128, 0.25));
+  background: var(--st-bg2, var(--st-bg)); color: var(--st-fg); font: var(--st-fs, 12px)/1.5 var(--st-font, ui-monospace, Menlo, monospace); -webkit-user-select: none; user-select: none; }
+.st-tdrawer[hidden] { display: none; }
+.tpane.guimode > .st-tdrawer { font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; background: var(--st-bg); }
+.td-h { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 8px; color: var(--st-dim); cursor: pointer; }
+.td-h:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+.td-chev { display: inline-flex; transition: transform 0.15s; }
+.td-chev.open { transform: rotate(90deg); }
+.td-sum { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-live { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; white-space: nowrap; color: var(--st-dim); }
+.td-b { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 6px 6px; }
+.td-grp { padding: 6px 6px 2px; font-size: 0.88em; color: var(--st-dim); }
+.td-row { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 0 6px; border-radius: 5px; cursor: pointer; }
+.td-row:hover, .td-row.open { background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+.td-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-dur { flex: none; color: var(--st-dim); font-variant-numeric: tabular-nums; }
+.td-stop { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--st-dim); cursor: pointer; }
+.td-stop:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover2, rgba(128, 128, 128, 0.16)); }
+/* 状态：在跑是橙色的圆点（在呼吸），出错红 ✗，停了灰方块，完成绿 ✓ */
+.td-st { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 12px; font-style: normal; font-size: 11px; line-height: 1; }
+.td-st.run::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e0913a; animation: td-breathe 1.6s ease-in-out infinite; }
+.td-st.stop::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--st-dim); }
+.td-st.err { color: #e5534b; }
+.td-st.ok { color: #3fb950; }
+@keyframes td-breathe { 50% { opacity: 0.35; } }
+.td-det { margin: 2px 6px 6px 26px; padding: 6px 8px; border-radius: 6px; background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+.td-det pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace; -webkit-user-select: text; user-select: text; }
+.td-det .td-out { margin-top: 6px; max-height: 180px; overflow: auto; color: var(--st-dim); }
+.td-none { margin-top: 4px; color: var(--st-dim); }
+/* Claude App：右边开着「后台任务」卡片时，后台任务、子 Agent 在卡片里——抽屉里只剩任务清单（放在抽屉的话），没有就整个不显示（tdrawer.js 算） */
+/* 收起时标题行后面：正在做的那一项（淡的，放不下省略） */
+.td-cur { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-dim); }
+.td-h > .td-sum { flex: none; }
+
+/* ---- 任务清单（studio.js 的 todoHtml：辅助侧栏、Claude App 的卡片、抽屉共用）：在做的在前（粗、橙色方块），没开始的其次，做完的收成「n 项已完成」 ---- */
+.st-todo { display: flex; flex-direction: column; }
+.st-todoi { display: flex; align-items: center; gap: 6px; min-height: 22px; padding: 0 6px; border-radius: 5px; }
+.st-todoi .st-tg { flex: none; width: 1.1em; text-align: center; font-style: normal; color: var(--st-dim); }
+.st-todoi .st-cut { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-todoi.doing { font-weight: 600; color: var(--st-hi, var(--st-fg)); }
+.st-todoi.doing .st-tg { color: #d77757; } /* 在做的 ■：同 Claude Code 任务清单里的（照截图取的色 215,119,87），不是黄一点的 #e0913a */
+html.light .st-todoi.doing .st-tg { color: #b9542f; }
+.st-todoi.done { color: var(--st-dim); }
+.st-todoi.done .st-tg { color: var(--st-green, #3fb950); }
+.st-prw > s.st-cut { color: var(--st-dim); } /* 跑完的后台任务、子 Agent：同做完的任务，淡色 + 划掉 */
+/* 子 Agent 一行（同 Claude Code 的 agents 面板）：○ 白色空心圆（▶ 只给后台命令）、种类（fork、Explore……，淡的）、在干嘛、用时 · ↓ token；跑完的整行淡 */
+.st-tg.st-sadot { color: var(--st-hi, var(--st-fg)); }
+.st-sarow.fin .st-tg.st-sadot, .st-sarow.fin .st-satype { color: var(--st-dim); }
+.st-satype { flex: none; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-dim); }
+.st-sameta { flex: none; white-space: nowrap; }
+.st-sadot .st-forki { width: 0.95em; height: 0.95em; vertical-align: -0.14em; } /* fork：一格宽的分叉图标，颜色同圆圈（在跑的亮、跑完的淡） */
+.st-todoi.st-tdone { gap: 4px; color: var(--st-dim); cursor: pointer; }
+.st-todoi.st-tdone:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+.td-b .st-todo { padding: 0 0 2px; }
+.st-sec .st-todo { margin-top: 2px; }
+
+/* ---- 全局那一级：底部面板的「Agent 活动」——一个 agent 一行（图标、名字、状态、几个在跑），它在跑的任务缩进在下面，跑完的收成「n 个已完成」 ---- */
+.st-actv .st-arow { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0 6px; border-radius: 5px; cursor: pointer; }
+.st-actv .st-arow:hover, .st-actv .st-prw:hover { background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+.st-actv .st-arow + .st-arow { margin-top: 2px; }
+.st-actv .xb-ic.sm { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
+.st-actv .st-aname { font-weight: 600; color: var(--st-hi, var(--st-fg)); }
+.st-actv .st-astate { flex: none; font-size: 0.9em; color: var(--st-dim); }
+.st-actv .st-astate.working { color: #e0913a; }
+.st-actv .st-astate.waiting { color: #d4a72c; }
+.st-actv .st-prw.st-sub { padding-left: 30px; }
+.st-actv .st-adone { padding-left: 30px; color: var(--st-dim); cursor: pointer; }
+.st-actv .st-adone:hover { color: var(--st-hi, var(--st-fg)); }
+/* Claude App 的「后台任务」卡片：后台命令、子 Agent 两种都有时的小标题 */
+.st-plist .st-ptgrp { padding: 6px 8px 2px; font-size: 0.88em; }
+/* 窄的时候：名字、说明优先（至少留几个字），状态、数量、用时不折行 */
+.st-actv .st-arow, .st-actv .st-prw { white-space: nowrap; overflow: hidden; }
+.st-actv .st-arow .st-aname, .st-actv .st-prw .st-cut { flex: 1 1 0; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.st-actv .st-arow > .st-fill { display: none; }
+.st-actv .st-arow > .st-dim, .st-actv .st-prw > .st-dim, .st-actv .st-astate { flex: none; white-space: nowrap; }
+/* 图形界面输入框上方那份（gui.js）：「还有 n 项」「n 项已完成」是能点的一行（淡的，指着变亮） */
+.gv-todoi.gv-todom { gap: 6px; color: var(--st-dim); cursor: pointer; text-decoration: none; }
+.gv-todoi.gv-todom:hover { color: var(--st-hi, var(--st-fg)); }
+.gv-todoi.gv-todom .gv-tchev { display: inline-block; width: 1em; text-align: center; }
+/* 输入框上方那份多了「还有 n 项」「n 项已完成」两行：高一点，6 项 + 两行摘要放得下（再多就在框里滚） */
+.gv-todo { max-height: min(40vh, 250px); }
+
+/* ---- agent 这一级的「任务」一家子（studio.js familyHtml）：辅助侧栏的 Agent 那一层、Claude App 的「后台任务」卡片、标签页最下面的抽屉（tdrawer.js）同一份 ----
+   一块一块：标题行（⌄ 任务清单 3/10；收起时后面是正在做的那一项）+ 内容。点标题行收起 / 展开：grid 的第二行 1fr ↔ 0fr，高度有动画 */
+.st-fam { display: flex; flex-direction: column; gap: 2px; padding: 2px 6px 8px; }
+.st-fsec { flex: none; display: grid; grid-template-rows: auto 1fr; align-content: start; transition: grid-template-rows 0.18s ease; } /* 不跟着挤：放不下是外面那层滚（抽屉、侧栏、卡片），不是把每一块压扁、切掉。
+   align-content: start：收起 / 展开的动画里多出来的高度不分给标题那一行——以前标题行被撑高、字居中跟着往下跑再回来（点的那一行上下跳） */
+.st-fsec.folded { grid-template-rows: auto 0fr; }
+.st-fh { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; padding: 0 6px; border-radius: 5px; color: var(--st-dim); white-space: nowrap; overflow: hidden; cursor: pointer; }
+.st-fh:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+/* 箭头：只转，不改外边距（以前收起 / 展开时外边距跟着变，后面的标题左右挪 2px）；看着居中的那点偏移用 translate，不动排版 */
+.st-fchev { flex: none; width: 5px; height: 5px; margin: 0 4px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-1px) rotate(45deg); transition: transform 0.18s ease; }
+.st-fsec.folded .st-fchev { transform: translateX(-1px) rotate(-45deg); }
+.st-ft { flex: none; font-weight: 600; color: var(--st-fg); }
+/* 清单里「n 项已完成」那一行的箭头：同标题行的（收着朝右，展开朝下） */
+.st-dchev { flex: none; width: 5px; height: 5px; margin: 0 5px 0 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.18s ease; }
+.st-dchev.open { transform: rotate(45deg); margin-bottom: 2px; }
+.st-fcur { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--st-dim); opacity: 0; transition: opacity 0.18s ease; }
+.st-fsec.folded .st-fcur { opacity: 1; }
+.st-frun { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--st-dim); }
+.st-fb { min-height: 0; overflow: hidden; }
+.st-fbi { padding: 0 0 4px 12px; }
+.st-fam .st-frow { min-width: 0; white-space: nowrap; overflow: hidden; }
+.st-fam .st-frow .st-cut { flex: 1 1 0; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.st-fam .st-frow > .st-fill { display: none; }
+.st-fam .st-frow > .st-dim { flex: none; }
+.st-fam .td-det { margin-left: 20px; }
+/* 辅助侧栏标题行「Agent | 全局」后面：跟着的是哪个 agent（编辑区当前的不是 agent 时是最近用的那个，斜一点；点一下切过去） */
+.st-sagent { flex: 0 1 auto; min-width: 0; max-width: 45%; display: inline-flex; align-items: center; height: 20px; margin-left: -5px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--st-dim); font: inherit; font-size: 0.92em; cursor: pointer; } /* -5px：标志和下面各块的小箭头、◎ 在同一列，名字和各块的标题左边齐 */
+.st-sagent[hidden] { display: none; }
+.st-sagent > .st-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sagent.away { font-style: italic; }
+/* 名字左边这个 agent 的标志（Claude 的橙色标志 / Codex 的记号 / 派蒙的头像），同右边的「···」一左一右 */
+.st-salogo { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-right: 6px; font-style: normal; line-height: 0; }
+.st-salogo > svg, .st-salogo > img { display: block; width: 100%; height: 100%; }
+.st-salogo > img.pm-av { vertical-align: 0; }
+.st-salogo-cc { color: var(--st-dim); transition: color .25s ease; } /* 闲着灰，在跑橙（同标签页） */
+.st-sagent.busy .st-salogo-cc { color: #d97757; }
+html.light .st-sagent.busy .st-salogo-cc { color: #c96442; }
+.st-salogo-cx { color: var(--st-fg); }
+.st-sagent.away .st-salogo { opacity: .75; }
+/* 「Agent | 全局」那一格藏着时真的藏起来（以前 display 盖掉了 hidden，名字前面多一个淡淡的小圆点） */
+.st-sidelv[hidden] { display: none !important; }
+.st-sagent:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+/* 一个 agent 都没开：说一句，给个「新建 Agent」 */
+.st-noag { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.st-noag .st-btn { margin-top: 4px; height: 24px; padding: 0 10px; border: 1px solid var(--st-line, rgba(128, 128, 128, 0.3)); border-radius: 6px; background: var(--st-bg2, transparent); color: var(--st-fg); font: inherit; cursor: pointer; }
+.st-noag .st-btn:hover { background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
+/* 抽屉里：一家子自己在抽屉里滚（抽屉最高 42%） */
+.st-tdrawer > .st-fam { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .st-fsec, .st-fchev, .st-fcur { transition: none; } }
+
+/* ---- 终端界面：在跑的那一行（转圈、排着的、后台任务、目标）是 agent 底部的一部分——往上翻看记录时它钉在输入框上面，不跟着滚走（live.js renderStatus 加 .live）。
+   最下面那一行照样被 .botgap 盖着（那一行是空行）；底色同对话区，盖住后面滚过去的字 ---- */
+.tpane .term .blk.status.live { position: sticky; bottom: 0; z-index: 2; margin: 0 -10px; padding: 0 10px; background: #000; }
+.tpane.tl .term .blk.status.live { background: #fff; }
+html.termapp .tpane .term .blk.status.live, html.termapp .tpane.tl .term .blk.status.live { background: var(--st-bg); }
+
+/* ---- 面板的 Agent 那一层 = agent 的底部（studio.js syncFoot）：在跑的那一行、输入框、状态信息（面板里那份 agent 界面，只画这些）。
+   默认贴着内容（面板高度 auto），拖过上边缘就用拖的高度（在跑的那一行那块跟着变高，输入框贴底）；只有 VS Code 风格有这两层 ---- */
+.st-ptop > [hidden], .st-pagent[hidden], .st-pagent > [hidden] { display: none !important; }
+.st-pagent { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; }
+.st-pagent > .tpane { flex: 1 1 auto; min-height: 0; }
+.st-pagent > .tpane.compact { flex: none; }
+.st-pagent > .tpane > .grip { display: none; }
+.st-pagent > .st-pempty { padding: 10px 14px; }
+/* 面板的 Agent 那一层：输入框上面的「子 Agent」（studio.js footSubs）——同辅助侧栏那一家子的样子，多了就在这一块里滚 */
+.st-pagent .tpane > .st-fsubs { flex: none; max-height: min(30vh, 220px); overflow-y: auto; padding: 0 4px 2px; font-family: var(--st-mono, Monaco, Menlo, "PingFang SC", monospace); font-size: var(--st-fs, 12px); line-height: 1.5; white-space: normal; scrollbar-width: thin; } /* 同辅助侧栏：终端的等宽字 */
+.st-pagent .tpane > .st-fsubs[hidden] { display: none; }
+.st-pagent .tpane > .st-fsubs > .st-fam { padding: 0 6px 2px; }
+/* 图形界面的 agent：它输入框那一列（在跑的那一行、排着的、子 Agent、输入框、下面一排）整列搬进面板（gui.js V.dock）；标签页里只剩对话 */
+.st-pagent > .st-gdock { flex: none; display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; }
+.st-pagent > .st-gdock[hidden] { display: none; }
+.gv.gv-dock { flex: none; min-height: 0; background: transparent; }
+.gv.gv-dock > .gv-bottom { padding: 8px 0 10px; }
+.gv.gv-dock > .gv-bottom::before, .gv.gv-docked > .gv-bottom::before { display: none; }
+.gv.gv-docked > .gv-bottom { padding: 0; }
+.gv.gv-dock .st-fsubs { margin: 0 2px 8px; max-height: min(30vh, 220px); overflow-y: auto; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; white-space: normal; }
+.gv.gv-dock .st-fsubs[hidden] { display: none; }
+.gv.gv-dock .st-fsubs > .st-fam { padding: 0; }
+/* ---- agent 标签页：对话和底部（在跑的那一行、输入框、状态行、子 agent）中间的分隔——能上下拖（live.js / gui.js），同 VS Code 的 sash：
+   指着一会儿出一条细线，拖着的时候一直亮；拖出来的高度：多的地方给子 agent 多列几行，少了就在底部里面滚 ---- */
+/* sash：10px 高好抓，压在对话、缩略图、在跑的那一行这些上面（z-index 40）。终端界面的挂在这一格上、贴着底部的上沿（top 由 live.js 量了写上）；图形界面的在底部上沿 */
+.tpane > .st-fsash, .gv-bottom > .gv-fsash { position: absolute; left: 0; right: 0; height: 10px; cursor: row-resize; z-index: 40; touch-action: none; pointer-events: auto; }
+.tpane > .st-fsash { top: calc(100% - 5px); }
+.tpane.nocomp > .st-fsash { display: none; }
+.gv-bottom > .gv-fsash { top: -5px; }
+/* 看得出能拖：一条细线（指着、拖着的时候亮），中间一个小把手（平时淡淡的，指着亮） */
+.tpane > .st-fsash::before, .gv-bottom > .gv-fsash::before { content: ""; position: absolute; left: 0; right: 0; top: 4px; height: 2px; background: transparent; transition: background-color .12s ease; }
+.tpane > .st-fsash::after, .gv-bottom > .gv-fsash::after { content: ""; position: absolute; left: 50%; top: 3px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--st-dim, #888); opacity: .35; transition: opacity .12s ease, background-color .12s ease; }
+.tpane > .st-fsash:hover::before, .gv-bottom > .gv-fsash:hover::before, .tpane > .st-fsash.on::before, .gv-bottom > .gv-fsash.on::before, .tpane > .st-fsash.hot::before, .gv-bottom > .gv-fsash.hot::before { background: var(--st-sash, #3794ff); }
+.tpane > .st-fsash:hover::after, .gv-bottom > .gv-fsash:hover::after, .tpane > .st-fsash.on::after, .gv-bottom > .gv-fsash.on::after, .tpane > .st-fsash.hot::after, .gv-bottom > .gv-fsash.hot::after { opacity: 1; background: var(--st-sash, #3794ff); }
+.tpane > .st-fsash.hot::before, .tpane > .st-fsash.hot::after, .gv-bottom > .gv-fsash.hot::before, .gv-bottom > .gv-fsash.hot::after { transition: none; } /* .hot：测试截图用（窗口在后面时动画不走）*/
+html.st-drag-y iframe, html.st-drag-y webview { pointer-events: none !important; } /* 拖着的时候划过网页、终端：它们不抢指针 */
+/* 底部自己一块：淡淡的底色、上沿一条细线（sash 就在这条线上）；右上角「···」（没有 ×：输入框在这里） */
+html.termapp .tpane.agentfoot > .foot { background: transparent; border-top: 0; padding-top: 2px; padding-bottom: 4px; } /* 底部（输入框那一块）和上面对话一样的底色：不另起一块灰的，也就没有下面那条黑边 */
+.tpane.agentfoot > .foot > .st-fmore { position: absolute; top: 1px; right: 6px; z-index: 8; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 18px; padding: 0; border: 0; border-radius: 5px;
+  background: color-mix(in srgb, var(--st-bg) 93%, var(--st-fg) 7%); color: var(--st-dim); cursor: pointer; }
+.tpane.agentfoot > .foot > .st-fmore:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover2, rgba(128, 128, 128, .2)); }
+html.termapp .gv:not(.gv-dock) > .gv-bottom { background: color-mix(in srgb, var(--st-bg) 95%, var(--st-fg) 5%); border-top: 1px solid var(--st-line); padding-top: 10px; }
+html.termapp .gv:not(.gv-dock) > .gv-bottom::before { display: none; }
+.gv-bottom > .gv-fmore { position: absolute; top: 4px; right: 8px; z-index: 8; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--st-dim); cursor: pointer; }
+.gv-bottom > .gv-fmore:hover { color: var(--st-fg); background: var(--st-hover); }
+.gv.gv-fh > .gv-bottom, .tpane.fh-set > .foot { box-sizing: border-box; } /* 拖出来的高度就是整个底部的高度（记下来的、量出来的一样，不会一拖一次多几像素）*/
+.gv.gv-fh > .gv-bottom > .gv-col { max-height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+/* 图形界面：输入框这一列最下面的子 agent（gui.js subs()）——同 Claude Code 自己的那一块：安静的灰字，只有「● main」加粗；用时 · ↓ token 靠右 */
+.gv-subs { margin: 10px 2px 0; font-size: 12.5px; line-height: 1.5; color: var(--st-dim); }
+.gv-subs[hidden] { display: none; }
+.gv-srow { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 1px 6px; border-radius: 6px; white-space: nowrap; cursor: pointer; }
+.gv-srow:hover { background: var(--st-hover); color: var(--st-fg); }
+.gv-srow.gv-smain { color: var(--st-hi, var(--st-fg)); font-weight: 600; cursor: default; }
+.gv-srow.gv-smain:hover { background: none; }
+.gv-smk { flex: none; width: 1em; text-align: center; }
+.gv-sty { flex: none; }
+.gv-sac { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gv-sme { flex: none; margin-left: 12px; font-variant-numeric: tabular-nums; }
+.gv-pop-sub { width: min(420px, 90vw); }
+.gv-sdet { font-size: 12.5px; line-height: 1.5; }
+.gv-sdh { color: var(--st-dim); }
+.gv-sdh b { color: var(--st-fg); }
+.gv-sdd { margin-top: 4px; color: var(--st-fg); }
+.gv-sds { margin-top: 8px; color: var(--st-dim); }
+.gv-sds > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-sdr { margin: 8px 0 0; max-height: 220px; overflow: auto; white-space: pre-wrap; font: 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: var(--st-dim); -webkit-user-select: text; user-select: text; }
+/* 按钮上的浮层（模型、推理强度、上下文…）：搬进面板时放在页面最上面一层，不被面板裁掉 */
+.gv.gv-float { position: fixed; inset: 0; z-index: 60; display: block; background: none; pointer-events: none; }
+.gv.gv-float > * { pointer-events: auto; }
+/* 面板的 Agent 那一层：打「/」出来的命令菜单在输入框上面，可能高出面板——不裁；里面那份终端界面的底色透明（面板的圆角不被方角盖住） */
+.st-panel.st-plv-agent:not(.max) { overflow: visible; }
+html.termapp .st-pagent .tpane, html.termapp .st-pagent .tpane.tl { background: transparent !important; }
+.st-panel.st-plv-agent > .st-pviews { display: none; }
+html.termapp:not(.st-os-vscode) .st-plv { display: none; }
+html.termapp .st-pagent .tpane, html.termapp .st-pagent .tpane.tl, html.termapp .st-pagent .tpane .botgap, html.termapp .st-pagent .tpane.tl .botgap,
+html.termapp .st-pagent .tpane .term .blk.status.live, html.termapp .st-pagent .tpane.tl .term .blk.status.live { background: var(--st-bg2); }
+/* 正在运行（前台的工具调用）：一闪一闪的灰点（同 Claude Code 在跑的那一条）、工具名、说明 / 命令、用时 */
+.st-fgrow .st-fgdot { color: var(--st-dim); animation: st-fgblink 1s steps(2, jump-none) infinite; }
+.st-fgrow .st-fgn { font-weight: 600; margin-right: 2px; flex: none; }
+@keyframes st-fgblink { 50% { opacity: .25; } }
+/* 子 agent 的标签页里：主 agent 那一行（● main，白色实心点）；列表里它自己那一行标亮一点 */
+.st-mainrow .st-maindot { color: var(--st-hi, #fff); }
+.st-frow.st-me { background: var(--st-hover, rgba(128, 128, 128, .14)); border-radius: 5px; }
+/* 右侧一行点开换行：第一行不动、往下展开——收着和展开用同一种对齐（顶对齐 + 固定行高），图标、用时留在第一行 */
+.st-todoi, .st-todoi.wrap, .st-fgoal, .st-fgoal.wrap, .st-fam .st-prw, .st-fam .st-prw.wrap { align-items: flex-start; }
+.st-todoi { line-height: 18px; min-height: 18px; padding-top: 2px; padding-bottom: 2px; } /* 一行还是 22px 高 */
+.st-fgoal { line-height: 20px; }
+.st-todoi .st-tg, .st-fgoal .st-tg, .st-fam .st-prw .st-tg { line-height: inherit; flex: none; }
+/* 正在运行：一行放得下——说明截断、用时贴右（不会被长说明挤出去）；跑完的打勾、淡一点；点开的下面是完整命令 */
+.st-fam .st-fgrow { white-space: nowrap; }
+.st-fam .st-fgrow .st-cut { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-fam .st-fgrow.wrap .st-cut { white-space: normal; overflow: visible; }
+.st-fam .st-fgrow .st-fill { display: none; }
+.st-fam .st-fgrow .st-fgt { flex: none; margin-left: 8px; font-variant-numeric: tabular-nums; }
+.st-fam .st-fgrow.fin .st-tg.st-tgok { opacity: .8; }
+.st-fgrow .st-fgerr { color: #e5484d; }
+.st-fgdet pre { margin: 0 6px 4px 24px; padding: 4px 8px; border-radius: 5px; background: var(--st-hover, rgba(128, 128, 128, .1)); color: var(--st-dim); font: inherit; font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto; }
+.st-fgnone { padding: 2px 6px 2px 24px; line-height: 18px; }
+/* 「n 个已结束 / n 项已完成」前面的小箭头：行是顶对齐的（第一行不动），箭头按第一行的中线放，不再往上翘 */
+.st-todoi.st-tdone .st-dchev { align-self: flex-start; margin-top: 6px; }
+.st-todoi.st-tdone .st-dchev.open { margin-top: 5px; margin-bottom: 0; }
+/* 子 Agent 一行分两层：说明占满第一行（右边只留用时），种类、token 在下面一行淡的小字 */
+.st-prw.st-sa2 { align-items: flex-start; }
+.st-sa2 .st-sabody { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.st-sa2 .st-saline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.st-sa2 .st-saline .st-cut { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sa2.wrap .st-saline .st-cut { white-space: normal; overflow: visible; }
+.st-sa2 .st-satime { flex: none; font-variant-numeric: tabular-nums; }
+.st-sa2 .st-sasub { font-size: 11px; line-height: 15px; margin: -1px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }

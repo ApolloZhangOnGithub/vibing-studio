@@ -1,0 +1,286 @@
+/* ios/shell.css —— 手机上的 iOS 26 外壳（html.ios，index.html 头里的小脚本定）：状态栏与灵动岛、主屏幕（图标页、Dock、App 资源库、搜索）、
+   Home 指示条、App 切换器、控制中心、通知横幅与通知中心、菜单、提醒、每个 App 顶上的导航栏。
+   窗口还是 desk.js 的 .win：一次只显示一个（.ios-fg），铺满整屏；.body 让出状态栏（--ios-top）与指示条（--ios-bottom），
+   所以每个 App 的内容正好在两者之间。各 App 自己的手机排版写在 html.ios .win.<它的类名> 下 */
+
+html.ios { --ios-top: env(safe-area-inset-top, 0px); --ios-bottom: max(env(safe-area-inset-bottom, 0px), 18px); --ios-acc-h: 0px; --ios-kb: 0px;
+  --ios-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+/* 电脑上看（?ios=1 或窄窗口）：自己画状态栏、灵动岛、指示条；真手机上这些是系统画的，只让出安全区 */
+html.ios.ios-sim { --ios-top: 54px; --ios-bottom: 34px; }
+html.ios body { background: #000; -webkit-touch-callout: none; touch-action: manipulation; }
+html.ios :is(input, textarea, [contenteditable], .selectable, .tpane .term) { -webkit-touch-callout: default; }
+
+/* ---- macOS 的桌面部件：手机上都没有 ---- */
+html.ios :is(#menubar, #dock, #dock-label, #banners, #launchpad, #mc, #space-hud, #stage-icons, #wall), html.ios .glass-pane { display: none !important; }
+html.ios #desktop { background: #000 !important; }
+html.ios #wins { z-index: 3; }
+
+/* ---- 窗口：一个 App 一屏。三个灯的标题栏、拉大小的把手都不要；不在前台的不画、点不到（排版照旧，终端的列数、滚动位置都留着）----
+   动画只动 translate / scale / clip-path / opacity（desk.js 只用 transform），两边互不干扰 */
+html.ios #wins > .win { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important;
+  border-radius: 0 !important; box-shadow: none !important; transform: none !important; transform-origin: 50% 50% !important; animation: none !important; transition: none !important; }
+html.ios #wins > .win.elsewhere { display: block !important; }
+html.ios #wins > .win > .body { box-sizing: border-box; padding: var(--ios-top) 0 var(--ios-bottom); border-radius: 0 !important; -webkit-mask: none !important; mask: none !important; }
+html.ios #wins > .win > .body > .bar, html.ios #wins > .win > .rs { display: none !important; }
+html.ios #wins > .win:not(.ios-fg):not(.ios-card):not(.ios-out), html.ios.ios-home #wins > .win:not(.ios-card):not(.ios-out) { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+html.ios #wins > .win:is(.ios-fg, .ios-card, .ios-out) { opacity: 1; visibility: visible; }
+html.ios #wins > .win:is(.ios-card, .ios-out) > .body { visibility: visible !important; }
+html.ios #wins > .win:is(.ios-card, .ios-out) { pointer-events: none !important; }
+html.ios #wins > .win.ios-out { z-index: 900 !important; }
+html.ios #wins > .win.ios-fg { z-index: 800 !important; }
+html.ios #wins > .win.ios-card { z-index: var(--swz, 100) !important; }
+/* 键盘弹出来：前台 App 缩到键盘上面（visualViewport），指示条被键盘盖住，不再让位 */
+html.ios.ios-kb-up #wins > .win.ios-fg { top: var(--ios-vvt, 0px) !important; height: var(--ios-vvh, 100%) !important; }
+html.ios.ios-kb-up #wins > .win.ios-fg > .body { padding-bottom: var(--ios-acc-h); }
+html.ios.ios-acc-on:not(.ios-kb-up) #wins > .win.ios-fg > .body { padding-bottom: calc(var(--ios-bottom) + var(--ios-acc-h)); }
+
+/* 挂在窗口上的提醒（表单）：手机上同样是屏幕正中的 iOS 提醒 */
+html.ios .sheet-wrap { top: 0 !important; align-items: center; background: rgba(0, 0, 0, 0.22); }
+html.ios .sheet-wrap .alert-card { margin-top: 0; animation: al-pop 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+/* 浮动面板（快速查看这类）：iOS 的页面表单——从状态栏下面一点开始的大圆角卡片 */
+html.ios #wins > .floating { left: 0 !important; top: calc(var(--ios-top) + 10px) !important; width: 100% !important; height: calc(100% - var(--ios-top) - 10px) !important;
+  z-index: 850 !important; border-radius: 16px 16px 0 0 !important; overflow: hidden; }
+html.ios #wins > .floating > .rs { display: none !important; }
+html.ios #wins > .win:not(.ios-fg) + .floating, html.ios.ios-home #wins > .floating, html.ios.ios-switcher #wins > .floating { display: none !important; }
+
+/* ======== 导航栏：标题居中，左右是液态玻璃的圆按钮（iOS 26）；终端等深色的 App 用白字 ======== */
+.ios-nav { display: none; }
+html.ios .ios-nav { position: relative; z-index: 6; flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 16px; box-sizing: border-box;
+  color: #fff; font: 600 17px/1.2 var(--ios-font); user-select: none; -webkit-user-select: none; }
+html.ios.light .ios-nav { color: #000; }
+html.ios .termwin .ios-nav { color: #fff; }
+html.ios .termwin.tl .ios-nav { color: #000; }
+/* 有自己 iPhone 版式的 App（ios/apps.*：文件、Safari、编辑器……）自己画顶栏：这条通用的不要 */
+html.ios .win.ios-nonav .ios-nav, html.ios .win:has(> .body > .io-app) > .body > .ios-nav,
+html.ios :is(.win.finder, .win.sf-win, #safari, .win.ide, #ide, #export, .win.mac-app, .win.ofc-win, #settings) > .body > .ios-nav { display: none; }
+.ios-nav-l, .ios-nav-r { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.ios-nav-r { justify-content: flex-end; }
+.ios-nav-t { flex: 0 1 auto; min-width: 0; max-width: 62%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px; }
+.ios-nb { flex: none; display: flex; align-items: center; justify-content: center; min-width: 40px; height: 40px; padding: 0; border: 0; border-radius: 20px; color: inherit;
+  font: 500 17px var(--ios-font); background: rgba(255, 255, 255, 0.14); -webkit-backdrop-filter: blur(12px) saturate(1.6); backdrop-filter: blur(12px) saturate(1.6);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.45), inset 0 -0.5px 0 rgba(255, 255, 255, 0.12), 0 2px 10px rgba(0, 0, 0, 0.18); }
+html.ios.light .ios-nb, html.ios .termwin.tl .ios-nb { background: rgba(255, 255, 255, 0.72); box-shadow: inset 0 0.5px 0 #fff, 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 3px 12px rgba(0, 0, 0, 0.1); }
+html.ios .termwin:not(.tl) .ios-nb { background: rgba(255, 255, 255, 0.14); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.45), inset 0 -0.5px 0 rgba(255, 255, 255, 0.12), 0 2px 10px rgba(0, 0, 0, 0.18); }
+.ios-nb svg { width: 22px; height: 22px; display: block; }
+.ios-nb:active { filter: brightness(0.82); transform: scale(0.96); }
+.ios-nb[disabled] { opacity: 0.35; }
+
+/* ======== 状态栏（电脑上看时才画）：左边时间，中间灵动岛，右边 Wi‑Fi、电池 ======== */
+#ios-status { position: fixed; left: 0; right: 0; top: 0; z-index: 86; height: var(--ios-top); display: flex; align-items: center; pointer-events: none; color: #fff;
+  font: 600 17px/1 var(--ios-font); letter-spacing: -0.3px; user-select: none; -webkit-user-select: none; transition: color 0.25s; }
+html.ios-sb-dark #ios-status { color: #000; }
+.ios-sb-time { flex: 1 1 0; text-align: center; padding: 3px 12px 0 16px; font-variant-numeric: tabular-nums; }
+.ios-island { flex: none; width: 126px; height: 37px; border-radius: 19px; background: #000; margin-top: 1px; }
+.ios-sb-tray { flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 14px 0 12px; }
+.ios-sb-tray svg { display: block; }
+.ios-batt { position: relative; display: block; width: 25px; height: 12px; border-radius: 4px; box-sizing: border-box; border: 1px solid currentColor; opacity: 1; }
+.ios-batt::before { content: ""; position: absolute; inset: -1px; border-radius: 4px; border: 1px solid transparent; }
+.ios-batt::after { content: ""; position: absolute; right: -4px; top: 3.5px; width: 2px; height: 4px; border-radius: 0 1.5px 1.5px 0; background: currentColor; opacity: 0.45; }
+.ios-batt { border-color: color-mix(in srgb, currentColor 40%, transparent); }
+.ios-batt i { position: absolute; left: 1.5px; top: 1.5px; bottom: 1.5px; width: calc((100% - 3px) * var(--lv, 1)); border-radius: 2px; background: currentColor; }
+.ios-batt.low i { background: #ff3b30; }
+
+/* ======== Home 指示条：App 里才显示；按住往上滑回主屏幕（停住 = App 切换器），点一下回主屏幕，连点两下是 App 切换器 ======== */
+#ios-hi { position: fixed; left: 0; right: 0; bottom: 0; z-index: 75; height: var(--ios-bottom); touch-action: none; }
+html.ios-home #ios-hi { height: 16px; }
+#ios-hi i { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: rgba(255, 255, 255, 0.92); transition: opacity 0.25s, background 0.25s; }
+html:not(.ios-sim) #ios-hi i { bottom: max(6px, calc(env(safe-area-inset-bottom, 0px) - 26px)); }
+html.ios-sb-dark #ios-hi i { background: rgba(0, 0, 0, 0.88); }
+html.ios-home #ios-hi i, html.ios-switcher #ios-hi i, html.ios-kb-up #ios-hi { opacity: 0; }
+html.ios-kb-up #ios-hi { pointer-events: none; }
+#ios-topzone { position: fixed; left: 0; right: 0; top: 0; z-index: 77; height: max(var(--ios-top), 8px); touch-action: none; }
+
+/* ======== 主屏幕 ======== */
+#ios-home { display: none; }
+html.ios #ios-home { display: block; position: absolute; inset: 0; z-index: 1; overflow: hidden; color: #fff; font-family: var(--ios-font); user-select: none; -webkit-user-select: none; }
+.ios-wall { position: absolute; inset: -2px; background: #1a1446 center / cover no-repeat; transition: filter 0.35s, transform 0.35s; }
+html.ios.dark-wall .ios-wall { filter: brightness(0.82); }
+.ios-hs { position: absolute; inset: 0; transform-origin: 50% 45%; }
+.ios-pages { position: absolute; left: 0; right: 0; top: calc(var(--ios-top) + 10px); bottom: 150px; display: flex; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior: contain; touch-action: pan-x; }
+.ios-pages::-webkit-scrollbar { display: none; }
+.ios-page { flex: none; width: 100%; height: 100%; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always; padding: 6px 22px 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 104px; align-content: start; justify-items: center; }
+.ios-app { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 76px; padding: 0; border: 0; background: none; color: inherit;
+  font: 400 12px/1.2 var(--ios-font); -webkit-touch-callout: none; }
+.ios-app .ibox { filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18)); transition: filter 0.12s, transform 0.12s; }
+.ios-app:active .ibox, .ios-app.pressed .ibox { filter: brightness(0.72) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.18)); }
+.ios-lbl { max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); letter-spacing: 0; }
+.ios-app.running::after { content: none; }
+/* 搜索（iOS 26：Dock 上面的小胶囊；翻页时换成页码点）*/
+.ios-foot { position: absolute; left: 0; right: 0; bottom: 124px; height: 30px; display: flex; justify-content: center; align-items: center; }
+.ios-search { display: flex; align-items: center; gap: 5px; height: 30px; padding: 0 13px 0 11px; border: 0; border-radius: 15px; color: #fff; font: 600 14px var(--ios-font);
+  background: rgba(255, 255, 255, 0.16); -webkit-backdrop-filter: blur(14px) saturate(1.6); backdrop-filter: blur(14px) saturate(1.6);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.5), inset 0 -0.5px 0 rgba(255, 255, 255, 0.15); transition: opacity 0.2s; }
+.ios-search svg { width: 14px; height: 14px; }
+.ios-dots { position: absolute; display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.ios-dots i { width: 7px; height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.4); }
+.ios-dots i.on { background: #fff; }
+.ios-foot.paging .ios-search { opacity: 0; pointer-events: none; }
+.ios-foot.paging .ios-dots { opacity: 1; }
+/* Dock：一整块液态玻璃，四个图标，没有名字 */
+.ios-dock { position: absolute; left: 11px; right: 11px; bottom: 11px; height: 96px; display: flex; align-items: center; justify-content: space-around; padding: 0 10px;
+  border-radius: 40px; isolation: isolate; }
+.ios-dock::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08) 55%, rgba(255, 255, 255, 0.12));
+  -webkit-backdrop-filter: blur(3px) saturate(1.9) brightness(1.08); backdrop-filter: blur(3px) saturate(1.9) brightness(1.08);
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.7), inset 0 -1px 0 rgba(255, 255, 255, 0.3), inset 1px 0 0 rgba(255, 255, 255, 0.35), inset -1px 0 0 rgba(255, 255, 255, 0.35),
+    inset 0 0 18px rgba(255, 255, 255, 0.14); }
+html.refract .ios-dock::before { -webkit-backdrop-filter: blur(3px) saturate(1.9) brightness(1.08); backdrop-filter: url(#lg-dock) blur(2px) saturate(1.9) brightness(1.08); }
+.ios-dock .ios-app { width: auto; }
+.ios-dock .ios-lbl { display: none; }
+/* App 资源库：最后一页；上面是搜索框，下面一格格分类（三个大图标 + 一个四小图标的格子）*/
+.ios-lib { padding: 4px 22px 0; display: block; overflow-y: auto; scrollbar-width: none; touch-action: pan-x pan-y; }
+.ios-lib::-webkit-scrollbar { display: none; }
+.ios-lib-search { display: flex; align-items: center; gap: 7px; height: 40px; margin: 2px 0 18px; padding: 0 14px; border-radius: 20px; font: 17px var(--ios-font); color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.18); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.45); }
+.ios-lib-search svg { width: 17px; height: 17px; }
+.ios-lib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; padding-bottom: 20px; }
+.ios-fold { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.ios-fold-box { width: 100%; aspect-ratio: 1; box-sizing: border-box; padding: 13px; border-radius: 28px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px;
+  background: rgba(255, 255, 255, 0.16); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.4); }
+.ios-fold-box > * { display: flex; align-items: center; justify-content: center; }
+.ios-fold-box .ios-app { width: auto; }
+.ios-fold-box .ios-lbl { display: none; }
+.ios-fold-mini { display: grid !important; grid-template-columns: 1fr 1fr; gap: 5px; place-content: center; padding: 3px; border: 0; background: none; }
+.ios-fold-name { font: 500 13px var(--ios-font); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); }
+/* 打开一个分类：屏幕正中的一块玻璃，里面是全部 */
+#ios-folder { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-family: var(--ios-font); color: #fff;
+  background: rgba(0, 0, 0, 0.22); -webkit-backdrop-filter: blur(28px) saturate(1.3); backdrop-filter: blur(28px) saturate(1.3); animation: ios-fade 0.22s ease-out; }
+#ios-folder h2 { margin: 0; font: 700 28px var(--ios-font); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+#ios-folder .ios-fold-all { width: 316px; box-sizing: border-box; padding: 22px 14px 8px; border-radius: 38px; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 104px; justify-items: center;
+  background: rgba(255, 255, 255, 0.2); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.45); animation: ios-pop 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+@keyframes ios-fade { from { opacity: 0; } }
+@keyframes ios-pop { from { transform: scale(0.85); opacity: 0; } }
+/* 切换器、控制中心开着时：主屏幕虚化压暗 */
+html.ios-switcher .ios-wall, html.ios-switcher .ios-hs { filter: blur(22px) brightness(0.7) saturate(1.2); }
+html.ios-switcher .ios-hs { opacity: 0.5; }
+
+/* ======== App 切换器：窗口本身缩小成卡片（活的，里面照常更新）；上面是 App 图标和名字 ======== */
+#ios-sw { position: fixed; inset: 0; z-index: 60; touch-action: none; font-family: var(--ios-font); color: #fff; user-select: none; -webkit-user-select: none; }
+.ios-sw-lab { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; font: 600 15px var(--ios-font); white-space: nowrap; pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); transform-origin: 0 0; }
+.ios-sw-lab .ibox { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.25)); }
+.ios-sw-sh { position: absolute; left: 0; top: 0; border-radius: 34px; box-shadow: 0 0 36px rgba(0, 0, 0, 0.4); pointer-events: none; }
+.ios-sw-empty { position: absolute; left: 0; right: 0; top: 46%; text-align: center; font: 500 15px var(--ios-font); opacity: 0.8; }
+
+/* ======== 控制中心（右上角往下拉）与通知中心（左上角 / 中间往下拉）======== */
+.ios-sheet { position: fixed; inset: 0; z-index: 80; font-family: var(--ios-font); color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+.ios-sheet-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(30px) saturate(1.5); backdrop-filter: blur(30px) saturate(1.5); }
+.ios-sheet-in { position: relative; transform-origin: 85% 0; }
+.ios-cc-grid { width: 344px; max-width: calc(100% - 40px); margin: 0 auto; padding-top: calc(var(--ios-top) + 58px); display: grid; grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 72px; gap: 18px 16px; }
+.ios-cc-m { position: relative; margin: 0; border: 0; padding: 0; color: #fff; font: 600 14px var(--ios-font); text-align: left; border-radius: 36px;
+  background: rgba(255, 255, 255, 0.16); box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.45), inset 0 -0.5px 0 rgba(255, 255, 255, 0.12); overflow: hidden; }
+html.light .ios-cc-m { background: rgba(255, 255, 255, 0.3); }
+.ios-cc-m:active { filter: brightness(1.15); transform: scale(0.97); }
+.ios-cc-c { width: 72px; justify-self: center; }
+.ios-cc-c svg { width: 30px; height: 30px; display: block; margin: auto; }
+.ios-cc-c.on { background: #fff; color: #000; }
+.ios-cc-w2 { grid-column: span 2; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 14px; }
+.ios-cc-w2 .ios-cc-ic { flex: none; width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.2); }
+.ios-cc-w2 .ios-cc-ic svg { width: 24px; height: 24px; }
+.ios-cc-w2.on .ios-cc-ic { background: #5e5ce6; }
+.ios-cc-w2 b { display: block; font: 600 15px var(--ios-font); }
+.ios-cc-w2 small { display: block; font: 400 13px var(--ios-font); opacity: 0.72; margin-top: 1px; }
+.ios-cc-wall { grid-column: span 2; grid-row: span 2; border-radius: 34px; display: flex; flex-direction: column; justify-content: flex-end; padding: 16px; background-size: cover; background-position: center; }
+.ios-cc-wall::before { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 40%, rgba(0, 0, 0, 0.45)); }
+.ios-cc-wall b, .ios-cc-wall small { position: relative; }
+.ios-cc-wall b { font: 600 15px var(--ios-font); }
+.ios-cc-wall small { font: 400 13px var(--ios-font); opacity: 0.8; }
+.ios-cc-slider { grid-row: span 2; width: 72px; justify-self: center; border-radius: 36px; touch-action: none; }
+.ios-cc-slider i { position: absolute; left: 0; right: 0; bottom: 0; height: var(--p, 30%); background: #fff; }
+.ios-cc-slider span { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font: 600 17px var(--ios-font); color: #8e8e93; mix-blend-mode: normal; z-index: 1; letter-spacing: -0.5px; }
+.ios-cc-slider span small { font-size: 12px; }
+/* 通知中心：同锁屏——上面大字时间日期，下面是通知 */
+.ios-nc-in { height: 100%; display: flex; flex-direction: column; padding: calc(var(--ios-top) + 18px) 10px 20px; box-sizing: border-box; }
+.ios-nc-date { text-align: center; font: 600 20px var(--ios-font); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); }
+.ios-nc-time { text-align: center; font: 700 88px/1 var(--ios-font); letter-spacing: -2px; margin: 2px 0 20px; font-variant-numeric: tabular-nums; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.2); }
+.ios-nc-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 8px; font: 700 20px var(--ios-font); }
+.ios-nc-x { height: 28px; min-width: 28px; padding: 0 9px; border: 0; border-radius: 14px; color: #fff; font: 600 14px var(--ios-font); background: rgba(255, 255, 255, 0.22); }
+.ios-nc-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: none; touch-action: pan-y; }
+.ios-nc-list::-webkit-scrollbar { display: none; }
+.ios-nc-empty { margin-top: 40px; text-align: center; font: 500 15px var(--ios-font); opacity: 0.6; }
+
+/* ======== 通知：横幅（从顶上滑下来，往上划掉，点一下打开）与通知中心里的卡片 ======== */
+#ios-banners { position: fixed; left: 8px; right: 8px; top: calc(var(--ios-top) + 2px); z-index: 85; pointer-events: none; }
+.ios-note { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px 12px 12px; border-radius: 26px; color: #000; font: 15px/1.3 var(--ios-font);
+  background: rgba(246, 246, 248, 0.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16), inset 0 0.5px 0 rgba(255, 255, 255, 0.8); pointer-events: auto; touch-action: none; }
+html:not(.light) .ios-note { color: #fff; background: rgba(38, 38, 42, 0.72); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3), inset 0 0.5px 0 rgba(255, 255, 255, 0.2); }
+.ios-note .ibox { margin-top: 1px; }
+.ios-note-txt { flex: 1; min-width: 0; }
+.ios-note-top { display: flex; justify-content: space-between; gap: 8px; }
+.ios-note-top b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ios-note-top time { flex: none; font-size: 13px; opacity: 0.55; font-variant-numeric: tabular-nums; }
+.ios-note-body { opacity: 0.92; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; word-break: break-word; }
+#ios-banners .ios-note { animation: ios-bn-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.05); }
+#ios-banners .ios-note.out { animation: ios-bn-out 0.3s ease-in forwards; }
+@keyframes ios-bn-in { from { transform: translateY(calc(-100% - var(--ios-top))); } }
+@keyframes ios-bn-out { to { transform: translateY(calc(-100% - var(--ios-top))); opacity: 0.4; } }
+
+/* ======== 菜单（TSU_DESK.popup、导航栏的 ⋯、长按）：iOS 26 的菜单——大圆角玻璃，一行一项，图标在右，勾在左；分组之间一条宽缝 ======== */
+.ios-menu-ov { position: fixed; inset: 0; z-index: 95; touch-action: none; }
+.ios-menu-ov.dim { background: rgba(0, 0, 0, 0.12); animation: ios-fade 0.18s ease-out; }
+.ios-menu { position: absolute; width: 254px; max-height: calc(100% - var(--ios-top) - 30px); overflow-y: auto; scrollbar-width: none; border-radius: 26px; color: #000;
+  font: 17px/1.25 var(--ios-font); background: rgba(247, 247, 249, 0.86); -webkit-backdrop-filter: blur(34px) saturate(1.8); backdrop-filter: blur(34px) saturate(1.8);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06); animation: ios-menu-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.12); transform-origin: var(--ox, 50%) var(--oy, 0); touch-action: pan-y; }
+html:not(.light) .ios-menu { color: #fff; background: rgba(40, 40, 44, 0.82); box-shadow: 0 12px 44px rgba(0, 0, 0, 0.45), inset 0 0.5px 0 rgba(255, 255, 255, 0.14); }
+.ios-menu::-webkit-scrollbar { display: none; }
+@keyframes ios-menu-in { from { transform: scale(0.6); opacity: 0; } }
+.ios-menu.out { opacity: 0; transform: scale(0.9); transition: opacity 0.16s, transform 0.16s; }
+.ios-mi { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; box-sizing: border-box; padding: 11px 18px; border: 0; margin: 0;
+  background: none; color: inherit; font: inherit; text-align: left; }
+.ios-menu.ck .ios-mi { padding-left: 38px; }
+.ios-mi + .ios-mi::before { content: ""; position: absolute; left: 18px; right: 0; top: 0; height: 0.5px; background: rgba(60, 60, 67, 0.22); }
+.ios-menu.ck .ios-mi + .ios-mi::before { left: 38px; }
+html:not(.light) .ios-mi + .ios-mi::before { background: rgba(235, 235, 245, 0.16); }
+.ios-mi:active:not(.dis):not(.info), .ios-mi.act { background: rgba(120, 120, 128, 0.2); }
+.ios-mi > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ios-mi .ios-mi-ck { position: absolute; left: 13px; top: 50%; width: 17px; height: 17px; margin-top: -8.5px; }
+.ios-mi .ios-mi-ic { flex: none; width: 21px; height: 21px; display: flex; align-items: center; justify-content: center; }
+.ios-mi .ios-mi-ic svg { width: 19px; height: 19px; display: block; }
+.ios-mi .ios-mi-chev { flex: none; width: 8px; height: 14px; opacity: 0.35; }
+.ios-mi.dis { opacity: 0.32; }
+.ios-mi.info { font-size: 15px; opacity: 0.6; min-height: 38px; padding-top: 8px; padding-bottom: 8px; }
+.ios-mi.red { color: #ff3b30; }
+html:not(.light) .ios-mi.red { color: #ff453a; }
+.ios-mi.head { font-weight: 600; padding-left: 16px; gap: 6px; }
+.ios-mi.head .ios-mi-back { width: 10px; height: 17px; opacity: 0.7; }
+.ios-ms { height: 8px; background: rgba(60, 60, 67, 0.1); }
+html:not(.light) .ios-ms { background: rgba(0, 0, 0, 0.28); }
+.ios-mi-sw { display: flex; gap: 12px; padding: 12px 18px; }
+.ios-mi-sw button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.2); }
+.ios-mi-sw button.on { box-shadow: 0 0 0 2px var(--menu-bg, #fff), 0 0 0 3.5px currentColor; }
+
+/* ======== 提醒（TSU_DESK.alert）：iOS 26——大圆角、字大一号、胶囊按钮；不带 App 图标 ======== */
+html.ios .alert-card { width: 290px; padding: 22px 18px 18px; border-radius: 34px; font: 15px/1.35 var(--ios-font); }
+html.ios .al-icon { display: none; }
+html.ios .al-title { font: 600 17px/1.3 var(--ios-font); }
+html.ios .al-msg { margin-top: 6px; font-size: 14px; line-height: 1.38; }
+html.ios .al-btns { gap: 10px; margin-top: 20px; }
+html.ios .al-btns button { min-height: 48px; border-radius: 24px; font: 500 17px var(--ios-font); }
+html.ios .al-btns button.default { font-weight: 600; }
+html.ios .alert-ov { z-index: 90; }
+
+/* ======== 聚焦搜索（主屏幕的「搜索」）======== */
+#ios-spot { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; font-family: var(--ios-font); color: #fff;
+  background: rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(34px) saturate(1.4); backdrop-filter: blur(34px) saturate(1.4); animation: ios-fade 0.2s ease-out; }
+.ios-spot-bar { display: flex; align-items: center; gap: 10px; padding: calc(var(--ios-top) + 8px) 14px 12px; }
+.ios-spot-field { flex: 1; display: flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px; border-radius: 20px; background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.4); }
+.ios-spot-field svg { flex: none; width: 17px; height: 17px; opacity: 0.7; }
+.ios-spot-field input { flex: 1; min-width: 0; border: 0; outline: none; background: none; color: #fff; font: 17px var(--ios-font); caret-color: #0a84ff; }
+.ios-spot-field input::placeholder { color: rgba(255, 255, 255, 0.6); }
+.ios-spot-cancel { border: 0; background: none; color: #fff; font: 17px var(--ios-font); padding: 0 2px; }
+.ios-spot-list { flex: 1; overflow-y: auto; padding: 4px 14px 30px; scrollbar-width: none; touch-action: pan-y; }
+.ios-spot-list::-webkit-scrollbar { display: none; }
+.ios-spot-h { margin: 16px 4px 8px; font: 600 15px var(--ios-font); opacity: 0.65; }
+.ios-spot-apps { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 100px; justify-items: center; padding: 12px 0 4px; border-radius: 26px; background: rgba(255, 255, 255, 0.12); }
+.ios-spot-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; border: 0; border-radius: 0; background: none; color: inherit; font: 17px var(--ios-font); text-align: left; }
+.ios-spot-rows { border-radius: 22px; overflow: hidden; background: rgba(255, 255, 255, 0.12); }
+.ios-spot-row + .ios-spot-row { box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.14); }
+.ios-spot-row small { display: block; font-size: 13px; opacity: 0.6; }
+.ios-spot-row:active { background: rgba(255, 255, 255, 0.12); }
+.ios-spot-none { margin-top: 40px; text-align: center; opacity: 0.6; }

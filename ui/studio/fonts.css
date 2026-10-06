@@ -1,0 +1,51 @@
+/* fonts.css —— VS Code 风格里三种字各管各的（只在这里写一遍，别处写死的字体在 VS Code 风格里都被这里盖掉）：
+   应用界面字（--st-font，设置 › 应用界面字体：跟随系统风格 = 等宽 / 系统字体 / 等宽）：标题栏、活动栏、侧栏（Agents 树、文件、搜索、扩展）、标签、
+     面包屑、辅助侧栏的外框、底部面板的外框和全局那一层、设置、菜单、选择器、状态栏、访达、更新内容……App 的界面；
+   Agent 界面字（--st-agent-font，设置 › Agent 界面字体：跟随显示方式 = TUI 等宽、GUI 系统字体 / 系统字体 / 等宽）：Agent 自己的界面——
+     任务一家子（任务清单、后台任务、子 Agent、它们的标题、「n 个已结束」、详情）、Agent 活动里的行、底部的子 Agent、分屏的标题和预设、上下文卡片、
+     GUI 里的整个对话（消息、工具、排队的消息、输入框、下面那排小标签）；
+   代码字（--st-mono，设置 › 代码字体）：终端、TUI 画出来的 agent 屏幕（等宽格子，.term、.foot、.jump 这些 pre 自己带 terminal-style-ui）、
+     文件内容、代码块、差异、代码外观预览、行内代码。
+   Claude App、macOS、Pure Terminal 风格不管（它们有自己的字） */
+
+/* 界面：带 terminal-style-ui 的那几个界面容器（原来靠它拿到等宽字）改成界面字；它们里面 TUI 画的 pre 自己带这个 class，照旧是代码字 */
+html.termapp.st-os-vscode :is(.st-aside, .st-status, .st-pop, .st-pg, .st-palette, .st-xview, .st-sview, .st-vhead, .st-fview).terminal-style-ui { font-family: var(--st-font); }
+/* 界面：原来写死系统字体 / 等宽字的 */
+html.termapp.st-os-vscode :is(.st-panel, .st-menu, .st-wkeys, .ss, .ss-ddlist, .st-ft-tip, .xp, .dx-gui, .dx-tui) { font-family: var(--st-font); }
+html.termapp.st-os-vscode :is(.xv, .xd) { --xv-font: var(--st-font); }
+/* 界面里的代码：照旧代码字（浏览器默认给 code / kbd 的是另一种等宽） */
+html.termapp.st-os-vscode :is(.st-aside, .st-panel, .st-pg, .st-palette, .st-menu, .ss, .xp, .st-fview, .st-sview, .st-xview, .xv, .xd) :is(code:not(.st-ftitle), kbd, samp, pre:not(.terminal-style-ui)) { font-family: var(--st-mono); }
+html.termapp.st-os-vscode .ss-code { font-family: var(--st-mono); }
+/* Agent 界面：任务一家子（辅助侧栏、底部面板的 Agent 活动、Claude 的卡片、标签页底下的抽屉里都是它）、底部的子 Agent、分屏的标题和编辑栏、上下文卡片、GUI 整个对话 */
+html.termapp.st-os-vscode :is(.st-fam, .st-tdrawer, .vs-head, .vs-ed, .cx) { font-family: var(--st-agent-font); }
+html.termapp.st-os-vscode .st-fsubs { font-family: var(--st-agent-font); } /* 底部面板 Agent 那一层的子 Agent（TUI 的、GUI 的都是） */
+html.termapp.st-os-vscode .gv { font-family: var(--st-agent-font); --gv-mono: var(--st-mono); } /* GUI 里的代码块、命令、输出、差异：代码字 */
+html.termapp.st-os-vscode :is(.gv-chip, .gv-pop, .gv-float) { font-family: var(--st-agent-font); } /* GUI 输入框下面那排小标签、它们弹出来的（模型、推理强度、权限、上下文）*/
+/* 终端（面板里的 xterm）、任务详情里的输出：代码字 */
+html.termapp.st-os-vscode :is(.xterm, .st-term, .td-det pre) { font-family: var(--st-mono); }
+
+/* ---- Agents 树：界面字是比例字（设置 › 界面字体 = 系统字体，html.st-uiprop）时不用等宽格子画，一行一行的（live.js renderTree 的 DOM 那一种）：
+   同「文件」视图——一样的行高、缩进（一层 16px）、展开箭头一格、图标一格、名字从同一列开始（放不下就 …）、右边是时间 ---- */
+.ts-list.ts-dom { font-family: var(--st-font); font-size: var(--st-fs); line-height: 22px; white-space: normal; --ttu-cell: 0.55em; }
+.ts-list.ts-dom :is(.ts-row, .ts-it, .ts-act) { display: flex; align-items: center; min-width: 0; height: 22px; box-sizing: border-box; padding: 0 6px 0 0; }
+.ts-list.ts-dom .ts-row.ts-edit { height: auto; min-height: 22px; }
+.ts-list.ts-dom .ts-dl { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 100%; padding-left: calc(var(--d, 0) * 16px + 2px); }
+.ts-list.ts-dom .ts-ddis { flex: none; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--st-dim); }
+.ts-list.ts-dom .ts-ddis .ts-chev { width: 12px; height: 12px; vertical-align: 0; }
+.ts-list.ts-dom .ts-dic { flex: none; width: 16px; height: 16px; margin: 0 6px 0 1px; display: flex; align-items: center; justify-content: center; line-height: 1; font-size: 0.95em; color: var(--st-dim); }
+.ts-list.ts-dom .ts-dic svg { width: 15px; height: 15px; }
+.ts-list.ts-dom .ts-dn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.ts-list.ts-dom .ts-dt { flex: none; margin-left: 8px; color: var(--st-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ts-list.ts-dom .ts-act.ts-btn2 { flex: none; width: 20px; height: 20px; justify-content: center; padding: 0; margin-left: 2px; border-radius: 4px; }
+.ts-list.ts-dom .ts-act.ts-btn2 .ts-ic { width: 14px; height: 14px; vertical-align: 0; }
+.ts-list.ts-dom .ts-note { cursor: default; color: var(--st-dim); }
+.ts-list.ts-dom .ts-note:hover { background: none; }
+.ts-list.ts-dom .ts-in { height: 20px; margin: 1px 0; }
+.ts-list.ts-dom .ts-err { width: auto; margin: 1px 6px 3px calc(var(--d, 0) * 16px + 41px); }
+.ts-list.ts-dom .ts-err.ts-errl { margin-left: calc(var(--d, 0) * 16px + 25px); } /* agent 那种不留箭头格的行：名字早一格开始 */
+/* 右边对齐（同 VS Code）：分组标题（Claude Code、Codex……）上的按钮和视图标题上的 ↻ ⊟ ··· 一样大（22px 的格子、16px 的图标）、贴着同一条右边；
+   每一行右边的时间也收到同一条线（图标的右边） */
+.ts-list.ts-dom .ts-row.ts-rhead { padding-right: 0; }
+.ts-list.ts-dom .ts-rhead .ts-act.ts-btn2 { width: 22px; height: 22px; margin-left: 0; }
+.ts-list.ts-dom .ts-rhead .ts-act.ts-btn2 .ts-ic { width: 16px; height: 16px; }
+.ts-list.ts-dom .ts-it { padding-right: 3px; }

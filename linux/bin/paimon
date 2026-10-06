@@ -1,0 +1,14 @@
+#!/bin/bash
+# paimon：在 Paimon Terminal 里进入 agent 的界面（终端收到这个记号就切过去）。agent 在这个目录干活：它的工具（Bash、读写文件）在这台 Mac 上跑
+#   paimon · paimon <名字或 id> · paimon new [名字] · paimon ls
+if [ -t 1 ] && [ "$TERM_PROGRAM" = "PaimonTerminal" ]; then
+  printf '\033]1337;TSUAgent=%s;TSUCwd=%s\a' "$(printf '%s' "$*" | base64 | tr -d '\n')" "$(printf '%s' "$PWD" | base64 | tr -d '\n')"
+  # 等界面切过去（它会敲一个回车过来）再退出：提示符只出来一次。最多等 5 秒
+  if [ -t 0 ]; then
+    s=$(stty -g 2>/dev/null); stty -echo 2>/dev/null
+    IFS= read -r -t 5 _
+    stty "$s" 2>/dev/null
+  fi
+else
+  echo "paimon: 要在 Vibing Studio 里用（它会打开 agent 的界面）" >&2; exit 1
+fi

@@ -1,0 +1,10 @@
+# 不上传到线上的文件（wrangler deploy 读这个）
+.DS_Store
+.assetsignore
+# Apple 的墙纸只在本地用，不能公开分发
+tahoe-day.jpg
+tahoe-day.mp4
+tahoe-night.jpg
+tahoe-night.mp4
+lake-day.jpg
+lake-night.jpg

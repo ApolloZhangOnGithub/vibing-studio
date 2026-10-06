@@ -1,0 +1,300 @@
+/* gui.css —— 图形界面（gui.js）：同 Claude App 的 Code——你的话是右边的气泡、回答按 Markdown 排版、工具调用折成一行灰字（点开是一张卡片）、圆角输入框和下面一排按钮。
+   紧凑：正文 14px、行高 1.45；一问之内挨得近，两问之间空开。颜色都跟配色方案（--st-*），代码高亮跟高亮配色（--hl-*） */
+.tpane.guimode > :is(.screen, .foot, .ta, .jump, .xt, .grip) { display: none !important; }
+.gv { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--st-bg, #fff); color: var(--st-fg, #1a1a1a); container-type: inline-size;
+  font: var(--gv-fs, 14px)/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  --gv-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --gv-box: color-mix(in srgb, var(--st-fg) 5%, var(--st-bg));      /* 卡片里的代码框、行内代码的底 */
+  --gv-bubble: color-mix(in srgb, var(--st-fg) 15%, var(--st-bg));  /* 你的话 */
+  --gv-sum: color-mix(in srgb, var(--st-dim) 88%, var(--st-fg));    /* 一行灰字（工具、思考） */
+  --gv-code: #ef7d6f; }
+html.light .gv { --gv-box: color-mix(in srgb, var(--st-fg) 4%, var(--st-bg)); --gv-bubble: color-mix(in srgb, var(--st-fg) 7%, var(--st-bg)); --gv-code: #c4372b; }
+.gv[hidden] { display: none; }
+.gv-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 20px 0 18px; scrollbar-width: thin; }
+.gv-col { max-width: calc(var(--gv-colw, 880px) + 2 * clamp(14px, 4cqw, 28px)); margin: 0 auto; padding: 0 clamp(14px, 4cqw, 28px); box-sizing: border-box; } /* 宽度：设置 › 外观 › 对话宽度（经典 680 / 效率 880 / 最大利用 1400） */
+.gv-turn[hidden] { display: none; }
+.gv-dim { color: var(--st-dim); }
+.gv-mono { font-family: var(--gv-mono); font-size: 13px; }
+
+/* 你的话：右边一个小气泡；两问之间空开，一问之内挨着 */
+.gv-user { display: flex; justify-content: flex-end; margin: 34px 0 22px; }
+.gv-turn:first-child > .gv-user:first-child { margin-top: 2px; }
+.gv-bubble { max-width: 80%; background: var(--gv-bubble); color: var(--st-hi); border-radius: 12px; padding: 7px 12px; overflow-wrap: anywhere; white-space: normal; }
+.gv-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin: 3px 0 6px; }
+.gv-imgs img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; margin: 2px; box-shadow: var(--st-imgring, 0 0 0 1px rgba(0, 0, 0, .9), 0 0 0 2px rgba(255, 255, 255, .5)); }
+
+/* 回答：没有气泡，一块接一块（文字、一行灰字的工具、卡片） */
+.gv-ai { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.gv-ai > * { max-width: 100%; }
+.gv-turn + .gv-turn > .gv-ai:first-child { margin-top: 10px; } /* 接着上一问的（没有新的提问）：和上面隔开一点 */
+.gv-md { width: 100%; overflow-wrap: anywhere; }
+.gv-md > :first-child { margin-top: 0; }
+.gv-md p { margin: 0 0 10px; }
+.gv-md > :last-child, .gv-md li > :last-child { margin-bottom: 0; }
+.gv-md :is(b, strong) { font-weight: 600; color: var(--st-hi); }
+.gv-md :is(h1, h2, h3, h4, h5, h6) { margin: 18px 0 6px; line-height: 1.35; font-weight: 600; color: var(--st-hi); }
+.gv-md h1 { font-size: 19px; } .gv-md h2 { font-size: 16.5px; } .gv-md h3 { font-size: 15px; } .gv-md :is(h4, h5, h6) { font-size: 14px; }
+.gv-md :is(ul, ol) { margin: 0 0 10px; padding-left: 24px; }
+.gv-md li { margin: 3px 0; padding-left: 2px; }
+.gv-md li::marker { color: var(--st-dim); }
+.gv-md ul > li::marker { font-size: 0.85em; }
+.gv-md li > :is(ul, ol) { margin: 3px 0 0; }
+.gv-md blockquote { margin: 0 0 10px; padding: 6px 12px; border-radius: 8px; background: color-mix(in srgb, var(--st-fg) 5%, transparent); color: var(--st-dim); }
+.gv-md hr { border: 0; border-top: 1px solid var(--st-line); margin: 16px 0; }
+.gv-md a, .gv-res a { color: var(--st-blue, var(--st-lav)); text-decoration: none; }
+.gv-md a:hover, .gv-res a:hover { text-decoration: underline; }
+/* 行内代码：等宽、偏红的字、浅浅的一块底和细边（同 Claude App） */
+.gv-md code { font: 12.5px/1 var(--gv-mono); color: var(--gv-code); background: var(--gv-box); border: 1px solid var(--st-line); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+.gv-md :is(h1, h2, h3, h4, h5, h6) code { font-size: 0.9em; }
+.gv-md table { border-collapse: separate; border-spacing: 0; margin: 0 0 10px; font-size: 13px; display: block; overflow-x: auto; max-width: 100%; width: max-content; border: 1px solid var(--st-line); border-radius: 8px; }
+.gv-md :is(th, td) { padding: 5px 12px; text-align: left; border-bottom: 1px solid var(--st-line); }
+.gv-md :is(th, td) + :is(th, td) { border-left: 1px solid var(--st-line); }
+.gv-md tr:last-child > td { border-bottom: 0; }
+.gv-md th { font-weight: 600; color: var(--st-hi); background: var(--gv-box); }
+/* 代码块：一块浅底、细边、圆角；指上去右上角出「复制」 */
+.gv-codebox { position: relative; margin: 0 0 10px; }
+.gv-codebox:last-child { margin-bottom: 0; }
+pre.gv-code { margin: 0; background: var(--gv-box); border: 1px solid var(--st-line); border-radius: 8px; padding: 9px 12px; overflow-x: auto; font: 12.5px/1.55 var(--gv-mono); color: var(--st-fg); }
+pre.gv-code code { background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+.gv-copy { position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: var(--st-bg2); color: var(--st-dim); display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.gv-codebox:hover > .gv-copy, .gv-copy.ok { opacity: 1; }
+.gv-copy:hover { color: var(--st-fg); background: var(--st-hover); }
+.gv-copy.ok { color: var(--st-green); }
+.gv-copy svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.gv :is(.ide-k) { color: var(--hl-k); } .gv .ide-d { color: var(--hl-d); } .gv .ide-f { color: var(--hl-f); } .gv .ide-s { color: var(--hl-s); } .gv .ide-c { color: var(--hl-c); }
+.gv .ide-n { color: var(--hl-n); } .gv .ide-p { color: var(--hl-p); } .gv .ide-v { color: var(--hl-v); } .gv .ide-h { color: var(--hl-h); } .gv .ide-a { color: var(--hl-a); }
+.gv-task { display: inline-block; width: 12px; height: 12px; border: 1.3px solid var(--st-dim); border-radius: 50%; margin-right: 8px; vertical-align: -1.5px; box-sizing: border-box; flex: none; }
+.gv-task.doing { border-color: var(--st-orange); box-shadow: inset 0 0 0 2px var(--st-bg), inset 0 0 0 6px var(--st-orange); }
+.gv-task.done { border-color: var(--st-green); background: var(--st-green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6.2l2 2 4-4.4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px no-repeat; }
+
+/* 可以点开的：思考、一次工具调用、一组——一行灰字，后面紧跟一个小箭头（开着朝下） */
+.gv-sum { background: none; border: 0; padding: 0; margin: 0; color: var(--gv-sum); font: inherit; line-height: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; text-align: left; max-width: 100%; }
+.gv-sum:hover { color: var(--st-fg); }
+.gv-st { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-sum > i { width: 14px; height: 14px; flex: none; background: currentColor; transition: transform 0.15s;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat; }
+.open > .gv-sum > i { transform: rotate(90deg); }
+.gv-tool.err > .gv-sum { color: var(--st-red); }
+.gv-tool.err > .gv-sum:hover { color: color-mix(in srgb, var(--st-red) 75%, var(--st-hi)); }
+.gv-group, .gv-tool, .gv-think { width: 100%; }
+/* 上下文已压缩（Claude Code、Codex 的会话）：居中的一条分隔线，点开下面是摘要 */
+.gv-compact { width: 100%; margin: 14px 0 6px; }
+.gv-compact > .gv-sum { width: 100%; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--st-dim); }
+.gv-compact > .gv-sum::before, .gv-compact > .gv-sum::after { content: ""; flex: 1; height: 1px; background: var(--st-line); }
+.gv-compact > .gv-det { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--st-line); border-radius: 8px; color: var(--st-dim); font-size: 13px; }
+/* 点开的卡片：一圈细线、圆角；一组是一行一个（中间细线隔开），失败的红字 */
+.gv-card { border: 1px solid var(--st-line); border-radius: 8px; padding: 8px 10px 10px; margin: 7px 0 0; box-sizing: border-box; width: 100%; }
+.gv-rows { padding: 0; overflow: hidden; }
+.gv-rows > .gv-tool > .gv-sum { width: 100%; padding: 7px 10px; }
+.gv-rows > .gv-tool + .gv-tool { border-top: 1px solid var(--st-line); }
+.gv-rows > .gv-tool > .gv-card { border: 0; border-top: 1px solid var(--st-line); border-radius: 0; margin: 0; padding: 8px 10px 10px; }
+/* 结果预览（设置里「结果预览」那一档）：卡片里只有结果的前几行，底下一行灰字说还有多少；点标题看完整的 */
+.gv-peek { padding-bottom: 6px; }
+.gv-peek .gv-out, .gv-peek .gv-diff { max-height: 9.5em; overflow: hidden; }
+.gv-more { margin-top: 4px; color: var(--st-dim); font-size: 12px; }
+/* 能点的「… 还有 N 行」/「收起」、一组里的「… 还有 N 条」：灰字，指着变深、下划线 */
+button.gv-more, .gv-gmore { display: block; background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--st-dim); cursor: pointer; text-align: left; }
+button.gv-more:hover, .gv-gmore:hover { color: var(--st-fg); text-decoration: underline; text-underline-offset: 2px; }
+.gv-rows > .gv-gmore { width: 100%; padding: 6px 10px; border-bottom: 1px solid var(--st-line); }
+/* 用时：标题后面淡的一段；一组里每一条的放在最右边（对齐成一列） */
+.gv-tm { flex: none; margin-left: 8px; color: var(--st-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gv-rows > .gv-tool > .gv-sum > .gv-tm { margin-left: auto; padding-left: 12px; }
+.gv-rows > .gv-tool > .gv-sum > i { margin-left: 4px; }
+
+/* 大卡片（点开看全的输出）：离得远的不画 */
+/* 卡片不再单独 content-visibility: auto：刚换上去的卡片先按占位的 160px 排、下一帧才按真高度排——在跑的那张每秒重画，看着就一跳一跳（离得远的整问由 .gv-far 收着） */
+/* 过程说明（夹在工具调用之间的话）：「一行」时是一行灰字（点开看全）；最终回复照常 */
+.gv-progl { width: 100%; }
+.gv-progl > .gv-sum { width: 100%; }
+.gv-progl > .gv-sum > .gv-st { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-progl > .gv-prog { margin-top: 4px; }
+/* Agent 消息：别的 agent 发来的（名字加粗）、子 agent 跑完的（✓ 绿、✗ 红、■ 灰；完整时下面是报告） */
+.gv-amsg .gv-st b { font-weight: 600; color: var(--st-fg); }
+.gv-amsg, .gv-rep { margin-top: 8px; }
+.gv-amsg > .gv-amsgb, .gv-rep > .gv-repb { margin: 4px 0 0 2px; padding-left: 10px; border-left: 2px solid var(--st-line); }
+.gv-repi { font-weight: 700; }
+.gv-repi.ok { color: var(--st-green, #3fb950); }
+.gv-repi.bad { color: var(--st-red, #e5534b); }
+.gv-repi.stop { color: var(--st-dim, #888); }
+/* 子 Agent 的几块：任务说明、过程、结果——小标题 + 内容 */
+.gv-sub { margin-top: 8px; }
+.gv-subh { margin-bottom: 3px; color: var(--st-dim); font-size: 11.5px; letter-spacing: 0.3px; }
+.gv-step { color: var(--st-dim); font-size: 12.5px; line-height: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-sub > .gv-md { font-size: 13px; }
+.gv-ch { color: var(--st-fg); margin: 0 0 6px; }
+.gv-ch.err { color: var(--st-red); }
+pre.gv-cmd { margin: 0; background: var(--gv-box); border: 1px solid var(--st-line); border-radius: 6px; padding: 5px 9px; font: 12.5px/1.5 var(--gv-mono); color: var(--st-fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.gv-ps { color: var(--st-dim); user-select: none; -webkit-user-select: none; }
+pre.gv-out { margin: 8px 1px 0; max-height: 320px; overflow: auto; font: 12px/1.5 var(--gv-mono); color: color-mix(in srgb, var(--st-fg) 82%, var(--st-dim)); white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.gv-out.err { color: var(--st-red); }
+.gv-diff { font: 12px/1.5 var(--gv-mono); overflow-x: auto; border-radius: 6px; }
+.gv-dl { white-space: pre; padding: 0 6px; }
+.gv-dl.add { background: color-mix(in srgb, var(--st-green) 16%, transparent); }
+.gv-dl.del { background: color-mix(in srgb, var(--st-red) 16%, transparent); }
+.gv-dn { display: inline-block; min-width: 3.5ch; margin-right: 8px; color: var(--st-faint); text-align: right; }
+.gv-dgap { color: var(--st-faint); }
+.gv-res { display: flex; flex-direction: column; margin: 4px 0; }
+.gv-res .gv-dim { font-size: 12px; }
+.gv-thought { color: var(--st-dim); padding: 0; margin: 7px 0 2px; font-style: italic; }
+.gv-thought p { margin-bottom: 6px; }
+.gv-err { color: var(--st-red); }
+/* 系统错误（API 出错、网络、登录、沙盒、中断……）：不是 Agent 说的——对话里单独一条紧凑的条；出错的红、中断和「没有内容」灰；
+   一行：截断（点一下看全）；完整：折行 */
+.gv-syserr { margin: 8px 0; }
+.gv-syserr > .gv-sum { display: flex; align-items: flex-start; gap: 8px; width: 100%; box-sizing: border-box; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; line-height: 18px;
+  color: var(--st-dim); background: color-mix(in srgb, var(--st-fg) 5%, transparent); border: 1px solid color-mix(in srgb, var(--st-fg) 10%, transparent); }
+.gv-syserr.bad > .gv-sum { color: var(--st-red); background: color-mix(in srgb, var(--st-red) 9%, transparent); border-color: color-mix(in srgb, var(--st-red) 26%, transparent); }
+.gv-syserr > .gv-sum:hover { color: var(--st-fg); }
+.gv-syserr.bad > .gv-sum:hover { color: color-mix(in srgb, var(--st-red) 75%, var(--st-hi)); }
+.gv-sei { flex: none; display: inline-flex; width: 16px; height: 18px; align-items: center; }
+.gv-sei svg { width: 14px; height: 14px; }
+.gv-set { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+.gv-syserr:not(.open) .gv-set { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gv-note { color: var(--st-dim); font-size: 13px; margin: 8px 0; }
+.gv-note > .gv-md, .gv-note p { margin: 0; }
+.gv-cmdrec { margin: 12px 0; font-family: var(--gv-mono); font-size: 12.5px; }
+.gv-dots::after { content: "…"; display: inline-block; margin-left: 1px; } /* 在跑：静止的「…」（不再一个点一个点地走——和右边每秒跳的用时叠在一起，看着很躁）；跑完就没有 */
+/* 在跑：输入框上面那一行（橙色的 ✻ 转着 · 在做什么 · 用时 · token · 最右边的「停止」只在指着这一行、或用键盘移到它上面时出来——不显眼：停止不常用，Esc 也行） */
+.gv-live { min-width: 0; flex: 0 1 auto; padding: 0 0 0 10px; overflow: hidden; } /* 在输入框下面那一排的左边：和右边的模型、推理强度同一行（用户：两处要对齐）；左边对着输入框里的字 */
+.gv-live[hidden] { display: none; }
+.gv-spin { display: flex; align-items: baseline; gap: 7px; min-width: 0; color: var(--st-fg); font-size: 13.5px; }
+.gv-spin > .gv-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-spin > .gv-dim { flex: none; }
+.gv-stop { flex: none; margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); font: inherit; font-size: 12px; opacity: 0; cursor: pointer; transition: opacity 0.15s, background 0.12s, color 0.12s; }
+.gv-stop > i { width: 7px; height: 7px; border-radius: 1.5px; background: currentColor; }
+.gv-live:hover .gv-stop, .gv-stop:focus-visible { opacity: 1; }
+.gv-stop:hover { color: var(--st-fg); background: var(--st-hover); }
+.gv-spin > i { font-style: normal; color: var(--st-orange); display: inline-block; width: 1em; text-align: center; flex: none; } /* 同终端界面：字一帧一帧换（gui.js spinGo），不转圈 */
+.gv-spin > .gv-dim { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.gv-spin > .gv-phase { margin-left: -4px; } .gv-spin > .gv-phase::before { content: "· "; }
+@keyframes gv-spin { to { transform: rotate(360deg); } }
+
+/* 输入：任务清单、排着的那条、输入框、下面一排按钮；输入框上面一点渐隐，回答像是滑进去的 */
+.gv-bottom { flex: none; position: relative; padding: 0 0 12px; }
+.gv-bottom::before { content: ""; position: absolute; left: 0; right: 12px; top: -20px; height: 20px; background: linear-gradient(to bottom, color-mix(in srgb, var(--st-bg) 0%, transparent), var(--st-bg)); pointer-events: none; }
+.gv-jump { position: absolute; z-index: 2; left: 50%; top: -28px; transform: translateX(-50%); width: 24px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--st-fg) 8%, var(--st-bg)); color: var(--st-dim); box-shadow: none; display: flex; align-items: center; justify-content: center; cursor: pointer; } /* 滚到底部：紧贴输入框上面的一个小方块、小箭头，不惹眼（不要大圆圈、阴影、描边） */
+.gv-jump[hidden] { display: none; }
+.gv-jump:hover { background: color-mix(in srgb, var(--st-fg) 14%, var(--st-bg)); color: var(--st-fg); }
+.gv-jump svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.gv-todo { border: 1px solid var(--st-line); border-radius: 10px; padding: 7px 12px 8px; margin: 0 0 8px; font-size: 13px; max-height: 180px; overflow-y: auto; background: var(--st-bg); }
+.gv-todo[hidden], .gv-queued[hidden], .gv-att[hidden] { display: none; }
+.gv-todoh { color: var(--st-dim); font-size: 12px; margin-bottom: 3px; }
+.gv-todoi { display: flex; align-items: baseline; padding: 2px 0; }
+.gv-todoi > .gv-task { align-self: center; }
+.gv-todoi.completed { color: var(--st-dim); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--st-dim) 60%, transparent); }
+.gv-todoi.in_progress { color: var(--st-hi); }
+/* 排着的（发了、它还没读到）：在对话最后，同你说的话一样的气泡、淡一点；下面一行「排队中 · ctrl+x ctrl+s 立即发送」和「立即发送」「编辑」（同 TUI：发了就是到上面） */
+.gv-queued { display: block; padding-bottom: 10px; }
+.gv-queued .gv-user.gv-pq { margin: 16px 0 6px; }
+.gv-queued .gv-pq .gv-bubble { opacity: .55; }
+.gv-queued .gv-pqfrom { margin: 12px 0 4px; font-size: 13px; color: var(--st-dim); }
+.gv-queued .gv-pqh { display: flex; justify-content: flex-end; align-items: center; gap: 8px; font-size: 12.5px; }
+.gv-qb { flex: none; height: 22px; padding: 0 8px; border: 1px solid var(--st-line); border-radius: 6px; background: var(--st-bg2); color: var(--st-fg); font: inherit; font-size: 12px; cursor: pointer; }
+.gv-qb:hover { background: var(--st-hover); }
+.gv-qlink { flex: none; margin-left: -4px; padding: 0; border: 0; background: none; color: var(--st-dim); font: inherit; font-size: 12.5px; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--st-dim) 45%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.gv-qlink:hover { color: var(--st-hi); text-decoration-color: currentColor; }
+.gv-comp { position: relative; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-bg2); padding: 6px 6px 6px 12px; transition: border-color 0.12s; }
+/* 打 / 出来的命令：贴在输入框上面 */
+.gv-sug { position: absolute; left: -1px; right: -1px; bottom: calc(100% + 6px); z-index: 20; max-height: 264px; overflow-y: auto; padding: 5px; box-sizing: border-box; background: var(--st-bg2); border: 1px solid var(--st-line); border-radius: 12px; box-shadow: var(--st-shadow); animation: gv-pop-in 0.1s ease-out; }
+.gv-sugi { display: flex; align-items: baseline; gap: 14px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.gv-sugi.on { background: var(--st-hover); }
+.gv-sugn { flex: none; min-width: 108px; font: 13px var(--gv-mono); color: var(--st-hi); }
+.gv-sugd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-dim); font-size: 13px; }
+.gv-comp:focus-within { border-color: color-mix(in srgb, var(--st-dim) 55%, var(--st-line)); }
+.gv-comp textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: none; color: var(--st-fg); font: inherit; line-height: 1.45; padding: 3px 0; max-height: 260px; box-sizing: border-box; } /* 高度 = scrollHeight（含上下留白） */
+.gv-comp textarea::placeholder { color: var(--st-dim); opacity: 1; }
+.gv-att { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
+.gv-attimg { position: relative; }
+.gv-attimg img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid var(--st-line); display: block; }
+.gv-attimg button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; border: 0; background: var(--st-fg); color: var(--st-bg); font-size: 12px; line-height: 18px; padding: 0; cursor: pointer; }
+.gv-send { flex: none; width: 26px; height: 26px; border-radius: 7px; border: 0; padding: 0; background: none; color: var(--st-dim); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: color 0.12s, background 0.12s; }
+.gv-send:hover { background: var(--st-hover); color: var(--st-fg); }
+.gv-send.ready { color: var(--st-hi); }
+.gv-send.stop { color: var(--st-bg); background: var(--st-hi); border-radius: 50%; }
+.gv-send svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.gv-send.stop svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }
+.gv-bar { display: flex; align-items: center; gap: 2px; padding: 5px 4px 0 5px; min-width: 0; }
+.gv-fill { flex: 1; }
+.gv-chip { border: 0; background: none; color: color-mix(in srgb, var(--st-dim) 55%, var(--st-fg)); font: 12.5px/1 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; padding: 5px 7px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; min-width: 0; }
+.gv-chip[hidden] { display: none; }
+.gv-chip:hover { background: var(--st-hover); color: var(--st-hi); }
+.gv-chip[data-c="access"] { color: var(--st-dim); }
+.gv-chip svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.gv-plus { padding: 4px 6px; }
+.gv-plus svg { width: 16px; height: 16px; }
+.gv-ring { display: inline-flex; padding: 4px 6px; }
+.gv-ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+.gv-ring circle { fill: none; stroke: var(--st-line); stroke-width: 2.4; }
+.gv-ring .gv-ringv { stroke: #4c8df6; stroke-linecap: round; }
+.gv .st-flash { animation: gv-flash 1.2s ease-out; border-radius: 8px; }
+@keyframes gv-flash { from { background: var(--st-active); } to { background: transparent; } }
+@container (max-width: 520px) {
+  .gv-bubble { max-width: 88%; }
+  .gv-user { margin: 26px 0 16px; }
+  .gv-chip[data-c="access"] { max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---- 输入框下面那排按钮点出来的浮层（同 Claude App）：圆角、一圈细线；推理强度是滑杆、上下文是用量条、模型和权限是一列 ---- */
+.gv-pop { position: absolute; z-index: 30; min-width: 240px; max-width: 380px; padding: 14px 16px; box-sizing: border-box; background: var(--st-bg2); color: var(--st-fg); border: 1px solid var(--st-line); border-radius: 14px; box-shadow: var(--st-shadow);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; animation: gv-pop-in 0.12s ease-out; }
+@keyframes gv-pop-in { from { opacity: 0; transform: translateY(4px); } }
+.gv-ph { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; font-size: 14px; }
+.gv-ph b { color: var(--st-hi); font-weight: 600; }
+.gv-pop-effort { width: 300px; }
+.gv-ends { display: flex; justify-content: space-between; color: var(--st-dim); font-size: 12.5px; margin-bottom: 8px; }
+.gv-track { position: relative; height: 30px; border-radius: 9px; background: var(--st-ask); cursor: pointer; outline: 0; touch-action: none; }
+.gv-track:focus-visible { box-shadow: 0 0 0 2px var(--st-hover2); }
+.gv-tstop { position: absolute; top: 50%; left: calc(14px + (100% - 28px) * var(--p)); width: 4px; height: 4px; border-radius: 50%; background: var(--st-dim); transform: translate(-50%, -50%); }
+.gv-thumb { position: absolute; top: 4px; left: calc(14px + (100% - 28px) * var(--p)); width: 22px; height: 22px; border-radius: 7px; background: var(--st-hi); transform: translateX(-50%); transition: left 0.14s ease; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.gv-names { position: relative; height: 18px; margin-top: 7px; font-size: 11.5px; color: var(--st-dim); }
+.gv-names span { position: absolute; left: calc(14px + (100% - 28px) * var(--p)); transform: translateX(-50%); white-space: nowrap; }
+.gv-names span.on { color: var(--st-hi); font-weight: 600; }
+.gv-pop-ctx { width: 330px; }
+.gv-meter { height: 7px; border-radius: 4px; background: var(--st-ask); overflow: hidden; }
+.gv-meter span { display: block; height: 100%; border-radius: 4px; background: #4c8df6; }
+.gv-meter span.hot { background: var(--st-orange); }
+.gv-psep { height: 1px; background: var(--st-line); margin: 14px -16px 10px; }
+.gv-prow { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
+.gv-pop-list { padding: 6px; min-width: 250px; }
+.gv-pop-model { width: auto; max-width: 560px; padding: 6px; outline: 0; }
+.gv-casc { display: flex; min-height: 80px; }
+.gv-provs { flex: none; width: 150px; padding-right: 6px; border-right: 1px solid var(--st-line); margin-right: 6px; }
+.gv-prov { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 9px; cursor: default; color: var(--st-fg); }
+.gv-prov > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gv-prov > i { width: 12px; height: 12px; flex: none; background: currentColor; opacity: 0.6;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat; }
+.gv-prov.on { background: var(--st-hover); color: var(--st-hi); }
+.gv-prov.kf { box-shadow: inset 0 0 0 1px var(--st-hover2); }
+.gv-models { flex: 1; min-width: 260px; max-height: 360px; overflow-y: auto; }
+.gv-opt { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 9px; cursor: pointer; outline: 0; }
+.gv-opt:hover, .gv-opt.kf { background: var(--st-hover); }
+.gv-ck { flex: none; width: 14px; color: var(--st-hi); font-weight: 600; }
+.gv-om { display: flex; flex-direction: column; min-width: 0; }
+.gv-on { color: var(--st-hi); }
+.gv-od { color: var(--st-dim); font-size: 12px; }
+
+/* 回复翻译（没有「原文 / 译文」按钮）：译文那一块指上去淡淡一层高亮，点一下换成原文；原文那块浅色底，块里任何地方点一下换回译文 */
+.gv-tr { margin: -3px -8px; padding: 3px 8px; border-radius: 8px; cursor: pointer; transition: background-color .12s; }
+.gv-tr:hover { background: color-mix(in srgb, var(--st-fg) 5%, transparent); }
+.gv-tr.on { background: color-mix(in srgb, var(--st-fg) 9%, transparent); }
+.gv-tr.on:hover { background: color-mix(in srgb, var(--st-fg) 12%, transparent); }
+.gv-tr > :first-child { margin-top: 0; }
+.gv-tr > :last-child { margin-bottom: 0; }
+/* 看不到的那几问不排版、不画（同终端样式那边）：大会话拆分、挪标签页、换宽度时只排看得见的那一段 */
+/*   以前是 content-visibility: auto（滚到哪儿临时排哪儿、画哪儿：一问几百次工具调用时整问一大块，滚快了一片白，回去又白一次）；
+     现在同终端界面：前后三屏以内的照常排好、画好，离得很远的（gui.js 的 farIO 标 .gv-far）才不画，高度记着 */
+.gv-turn { contain-intrinsic-size: auto 480px; }
+.gv-turn.gv-far { content-visibility: hidden; }
+/* 只显示译文：还没翻好的那一段先是一个淡的 … */
+.gv-trwait { color: var(--st-dim); opacity: .6; }
+
+/* 展开着的卡片：指着时边框深一点——示意点一下能收起（点里面空的地方、不是选字）；标题行照样能点 */
+.gv-tool.open > .gv-det, .gv-group.open > .gv-card { cursor: default; transition: border-color .12s; }
+.gv-tool.open > .gv-det:hover, .gv-group.open > .gv-card:hover { border-color: color-mix(in srgb, var(--st-line) 50%, var(--st-dim)); }
+/* 命令限高：5 行（小预览 3 行），放不下的底下淡出去 */
+.gv-cmd.gv-clip { max-height: calc(5 * 1.5em + 12px); overflow: hidden; } /* 1.5em 一行（pre.gv-cmd 的行高）+ 上下内边距、边框 */
+.gv-cmd.gv-clip.gv-clip3 { max-height: calc(3 * 1.5em + 12px); }
+.gv-cmd.gv-clip.gv-over { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent); }
+.gv-imgrefs { margin: 0 0 4px; color: var(--st-dim); font-size: .92em; } /* 悬停预览：[Image #N]（指着浮出小图、点了放大） */

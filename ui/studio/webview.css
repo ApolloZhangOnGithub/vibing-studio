@@ -1,0 +1,24 @@
+/* webview.css —— 内嵌的浏览器（webview.js）：这一块是原生 WKWebView 叠上来的位置（浏览器里是 iframe）；顶上一条细的加载进度 */
+.st-pg-web { overflow: hidden !important; display: flex; background: var(--st-bg); }
+.wb { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.wb-progress { position: absolute; z-index: 2; top: 0; left: 0; height: 2px; width: 0; background: #4c8df6; opacity: 0; transition: width 0.2s ease, opacity 0.3s ease; }
+.wb-box { position: relative; flex: 1; min-height: 0; }
+.wb-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.wb-blank { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--st-dim); font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; }
+.wb-blank[hidden], .wb-err[hidden] { display: none; }
+.wb-err { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--st-bg); color: var(--st-fg);
+  font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; text-align: center; padding: 20px; }
+.wb-et { font-size: 17px; font-weight: 600; color: var(--st-hi); }
+.wb-ed, .wb-eu { color: var(--st-dim); max-width: 520px; overflow-wrap: anywhere; }
+.wb-err button { margin-top: 8px; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg2); color: var(--st-fg); padding: 5px 14px; font: inherit; cursor: pointer; }
+.wb-err button:hover { background: var(--st-hover2); }
+/* 顶栏没有地址栏（关掉了、这种风格没有）时，网页顶上自己的一条：后退、前进、刷新、网址、在默认浏览器中打开（同 Safari 的紧凑工具栏） */
+.wb-ibar { flex: none; display: flex; align-items: center; gap: 2px; height: 34px; padding: 0 8px; border-bottom: 1px solid var(--st-line, rgba(128, 128, 128, 0.22)); background: var(--st-bg2, transparent); }
+.wb-ibar[hidden] { display: none; }
+.wb-ib { flex: none; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: none; color: inherit; opacity: 0.8; cursor: pointer; padding: 0; }
+.wb-ib svg { width: 16px; height: 16px; }
+.wb-ib:hover:not(:disabled) { background: rgba(128, 128, 128, 0.18); opacity: 1; }
+.wb-ib:disabled { opacity: 0.3; cursor: default; }
+.wb-iurl { flex: 1; min-width: 0; height: 26px; margin: 0 6px; padding: 0 10px; border: 1px solid transparent; border-radius: 7px; background: rgba(128, 128, 128, 0.14); color: inherit; font: inherit; font-size: 12.5px; outline: none; text-align: center; }
+.wb-iurl:focus { text-align: left; border-color: rgba(76, 141, 246, 0.8); background: rgba(128, 128, 128, 0.08); }
+.wb-ibar:not([hidden]) ~ .wb-progress { top: 34px; }

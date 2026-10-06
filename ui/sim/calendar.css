@@ -1,0 +1,189 @@
+/* calendar.css —— 日历（.win.cal-win）：日历列表 + 迷你月历 | 日 / 周 / 月 / 年；事件是日历颜色的浅底、深色的字，选中是实色。深色为默认，html.light 为浅色 */
+.win.cal-win { --cal-line: rgba(255, 255, 255, 0.1); --cal-line2: rgba(255, 255, 255, 0.055); --cal-we: rgba(255, 255, 255, 0.025); --cal-red: #ff453a; --cal-term: #30d158;
+  --cal-evbg: 30%; --cal-evfg: 55%; --cal-gut: 58px; min-width: 640px; }
+html.light .win.cal-win { --cal-line: rgba(0, 0, 0, 0.1); --cal-line2: rgba(0, 0, 0, 0.055); --cal-we: rgba(0, 0, 0, 0.022); --cal-red: #ff3b30; --cal-term: #248a3d; --cal-evbg: 20%; --cal-evfg: 62%; }
+.win.cal-win [hidden] { display: none !important; }
+.win.cal-win .ma-main { padding-top: 52px; }
+
+/* ---- 侧边栏：日历列表（彩色的勾选框）、迷你月历 ---- */
+.win.cal-win .cal-sscroll { flex: 1 1 auto; padding: 0 10px 8px; }
+.win.cal-win .cal-acct { margin: 12px 8px 4px; font-size: 12px; font-weight: 700; color: var(--ma-dim); }
+.win.cal-win .cal-cals > .cal-acct:first-child { margin-top: 2px; }
+.win.cal-win .cal-c { display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 8px; border-radius: 8px; }
+.win.cal-win .cal-c:hover { background: var(--ma-hover); }
+.win.cal-win .cal-cb { flex: none; width: 14px; height: 14px; box-sizing: border-box; border-radius: 4px; box-shadow: inset 0 0 0 1.6px var(--c); }
+.win.cal-win .cal-cb.on { box-shadow: none; background: var(--c) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.8 6.2 2.2 2.2 4.2-4.8' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat; }
+.win.cal-win .cal-cname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.cal-win .cal-warn { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #ff9f0a; color: #fff; font: 700 11px/16px -apple-system, sans-serif; text-align: center; }
+.win.cal-win .cal-c.broken .cal-cname { opacity: 0.6; }
+.win.cal-win .cal-smini { flex: none; display: flex; justify-content: center; padding: 10px 8px 14px; }
+.win.cal-win .cal-smini .ma-mini-grid > span.sel:not(.today) { background: var(--ma-sel); color: var(--ma-fg); }
+
+/* ---- 标题（2026年 9月）+ 前后翻 ---- */
+.win.cal-win .cal-head { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 18px 10px 24px; }
+.win.cal-win .cal-title { flex: 1; min-width: 0; font-size: 24px; line-height: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win.cal-win .cal-title b { font-weight: 700; }
+.win.cal-win .cal-title span { font-weight: 400; }
+.win.cal-win .cal-title .cal-sub { margin-left: 12px; font-size: 15px; color: var(--ma-dim); }
+.win.cal-win .cal-nav { flex: none; display: flex; align-items: center; height: 30px; padding: 0 2px; border-radius: 15px; background: var(--ma-field); box-shadow: inset 0 0 0 0.5px var(--ma-line); }
+.win.cal-win .cal-nav button { height: 26px; min-width: 28px; padding: 0 8px; border: 0; border-radius: 13px; background: none; color: var(--ma-fg); font: 13px -apple-system, "PingFang SC", sans-serif; cursor: default; display: flex; align-items: center; justify-content: center; }
+.win.cal-win .cal-nav button:hover { background: var(--ma-hover); }
+.win.cal-win .cal-nav svg { width: 13px; height: 13px; }
+.win.cal-win .cal-view { flex: 1 1 auto; min-height: 0; position: relative; user-select: none; -webkit-user-select: none; }
+.win.cal-win .cal-lunar { font-size: 10.5px; color: var(--ma-dim); font-weight: 400; white-space: nowrap; }
+.win.cal-win .cal-lunar.fest { color: var(--cal-red); }
+.win.cal-win .cal-lunar.term { color: var(--cal-term); }
+.win.cal-win .cal-lunar.month { color: var(--ma-fg); font-weight: 600; }
+
+/* ---- 月 ---- */
+.win.cal-win .cal-v-month { display: flex; flex-direction: column; }
+.win.cal-win .cal-mhead { flex: none; display: grid; grid-template-columns: repeat(7, 1fr); }
+.win.cal-win .cal-mhead span { text-align: right; padding: 0 10px 6px; font-size: 12px; color: var(--ma-dim); }
+.win.cal-win .cal-mgrid { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--cal-line); }
+.win.cal-win .cal-mrow { flex: 1 1 0; min-height: 56px; display: grid; grid-template-columns: repeat(7, 1fr); position: relative; border-bottom: 1px solid var(--cal-line); }
+.win.cal-win .cal-mrow:last-child { border-bottom: 0; }
+.win.cal-win .cal-mcell { position: relative; border-left: 1px solid var(--cal-line); min-width: 0; }
+.win.cal-win .cal-mcell:first-child { border-left: 0; }
+.win.cal-win .cal-mcell.we { background: var(--cal-we); }
+.win.cal-win .cal-mnum { display: flex; justify-content: flex-end; align-items: center; gap: 6px; height: 24px; padding: 2px 6px 0 6px; font-size: 13px; }
+.win.cal-win .cal-mnum b { font-weight: 500; min-width: 22px; height: 22px; line-height: 22px; padding: 0 4px; box-sizing: border-box; text-align: center; border-radius: 11px; }
+.win.cal-win .cal-mcell.out .cal-mnum b { color: var(--ma-dim); font-weight: 400; }
+.win.cal-win .cal-mcell.out .cal-lunar { opacity: 0.6; }
+.win.cal-win .cal-mcell.today .cal-mnum b { background: var(--cal-red); color: #fff; font-weight: 600; }
+.win.cal-win .cal-mcell.sel:not(.today) .cal-mnum b { background: var(--ma-sel); }
+.win.cal-win .cal-mev { position: absolute; inset: 0; pointer-events: none; }
+.win.cal-win .cal-mev > * { pointer-events: auto; position: absolute; height: 18px; box-sizing: border-box; font-size: 11.5px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 5px; }
+.win.cal-win .cal-mbar { padding: 0 6px; background: color-mix(in srgb, var(--c) var(--cal-evbg), var(--ma-bg)); color: color-mix(in srgb, var(--c) var(--cal-evfg), var(--ma-fg)); font-weight: 600; }
+.win.cal-win .cal-mbar span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.win.cal-win .cal-mbar.cutl { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.win.cal-win .cal-mbar.cutr { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.win.cal-win .cal-mbar .cal-t { font-style: normal; font-weight: 400; margin-right: 4px; }
+.win.cal-win .cal-mitem { display: flex; align-items: center; gap: 5px; padding: 0 5px 0 6px; }
+.win.cal-win .cal-mitem:hover { background: var(--ma-hover); }
+.win.cal-win .cal-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.win.cal-win .cal-mt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.win.cal-win .cal-mitem .cal-t { flex: none; font-size: 10.5px; color: var(--ma-dim); font-variant-numeric: tabular-nums; }
+.win.cal-win .cal-mbar.sel, .win.cal-win .cal-mitem.sel { background: var(--c); color: #fff; }
+.win.cal-win .cal-mitem.sel .cal-t, .win.cal-win .cal-mitem.sel .cal-dot { color: #fff; background: #fff; }
+.win.cal-win .cal-mitem.sel .cal-t { background: none; }
+.win.cal-win .cal-more { font-size: 11px; color: var(--ma-dim); cursor: default; padding: 0 4px; }
+.win.cal-win .cal-more:hover { color: var(--ma-fg); }
+.win.cal-win .cal-drop { background: color-mix(in srgb, var(--ma-accent) 14%, transparent) !important; }
+
+/* ---- 周 / 日：全天一栏 + 时间轴 ---- */
+.win.cal-win .cal-tl { display: flex; flex-direction: column; height: 100%; min-width: 0; flex: 1 1 auto; }
+.win.cal-win .cal-wh { flex: none; display: flex; }
+.win.cal-win .cal-gut { flex: none; width: var(--cal-gut); box-sizing: border-box; }
+.win.cal-win .cal-wd { flex: 1 1 0; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 5px; padding: 2px 4px 8px; font-size: 13px; white-space: nowrap; overflow: hidden; }
+.win.cal-win .cal-wd span { color: var(--ma-dim); }
+.win.cal-win .cal-wd b { font-size: 18px; font-weight: 500; min-width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 13px; padding: 0 4px; box-sizing: border-box; }
+.win.cal-win .cal-wd.today b { background: var(--cal-red); color: #fff; font-weight: 600; }
+.win.cal-win .cal-wd.today span { color: var(--cal-red); }
+.win.cal-win .cal-tl.one .cal-wd { justify-content: flex-start; padding-left: 10px; }
+.win.cal-win .cal-wa { flex: none; display: flex; border-top: 1px solid var(--cal-line); border-bottom: 1px solid var(--cal-line); min-height: 30px; }
+.win.cal-win .cal-wa .cal-gut { padding: 7px 8px 0 0; text-align: right; font-size: 11px; color: var(--ma-dim); }
+.win.cal-win .cal-wacols { flex: 1; display: flex; position: relative; }
+.win.cal-win .cal-wacol { flex: 1 1 0; border-left: 1px solid var(--cal-line2); }
+.win.cal-win .cal-abar { position: absolute; height: 19px; line-height: 19px; box-sizing: border-box; padding: 0 6px; border-radius: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--c) var(--cal-evbg), var(--ma-bg)); color: color-mix(in srgb, var(--c) var(--cal-evfg), var(--ma-fg)); }
+.win.cal-win .cal-abar .cal-t { font-style: normal; font-weight: 400; }
+.win.cal-win .cal-abar.sel { background: var(--c); color: #fff; }
+.win.cal-win .cal-ws { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.win.cal-win .cal-wgrid { position: relative; display: flex; }
+.win.cal-win .cal-hours { flex: none; width: var(--cal-gut); position: relative; }
+.win.cal-win .cal-hours span { position: absolute; right: 8px; transform: translateY(-50%); font-size: 11px; color: var(--ma-dim); font-variant-numeric: tabular-nums; }
+.win.cal-win .cal-hours span.near { visibility: hidden; }
+.win.cal-win.ma-narrow .cal-tl:not(.one) .cal-wd .cal-lunar { display: none; }
+.win.cal-win .cal-cols { flex: 1; display: flex; position: relative; background: repeating-linear-gradient(to bottom, var(--cal-line) 0 1px, transparent 1px 48px); }
+.win.cal-win .cal-col { flex: 1 1 0; min-width: 0; position: relative; border-left: 1px solid var(--cal-line2); }
+.win.cal-win .cal-col.we { background: var(--cal-we); }
+.win.cal-win .cal-ev { position: absolute; box-sizing: border-box; padding: 3px 5px 2px 8px; border-radius: 6px; overflow: hidden; font-size: 11.5px; line-height: 15px; cursor: default;
+  background: color-mix(in srgb, var(--c) var(--cal-evbg), var(--ma-bg)); color: color-mix(in srgb, var(--c) var(--cal-evfg), var(--ma-fg)); box-shadow: inset 3px 0 0 var(--c); }
+.win.cal-win .cal-ev b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.win.cal-win .cal-ev .cal-t { display: block; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.win.cal-win .cal-ev.short { display: flex; gap: 4px; padding-top: 1px; line-height: 15px; white-space: nowrap; }
+.win.cal-win .cal-ev.short b { display: inline; flex: 0 1 auto; min-width: 16px; white-space: nowrap; }
+.win.cal-win .cal-ev.short .cal-t { display: inline; flex: 0 100 auto; min-width: 0; }
+.win.cal-win .cal-ev.sel { background: var(--c); color: #fff; }
+.win.cal-win .cal-ev.dragging { z-index: 3; opacity: 0.9; box-shadow: inset 3px 0 0 var(--c), 0 6px 16px rgba(0, 0, 0, 0.28); }
+.win.cal-win .cal-ev.cal-new { z-index: 3; opacity: 0.85; }
+.win.cal-win .cal-rs { position: absolute; left: 0; right: 0; height: 6px; cursor: ns-resize; }
+.win.cal-win .cal-rs-t { top: 0; }
+.win.cal-win .cal-rs-b { bottom: 0; }
+.win.cal-win .cal-now { position: absolute; left: var(--cal-gut); right: 0; height: 0; border-top: 1.5px solid var(--cal-red); z-index: 2; pointer-events: none; }
+.win.cal-win .cal-now i { position: absolute; top: -5px; width: 9px; height: 9px; margin-left: -5px; border-radius: 50%; background: var(--cal-red); }
+.win.cal-win .cal-now span { position: absolute; left: calc(-1 * var(--cal-gut) + 4px); top: -8px; padding: 0 3px; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--cal-red); background: var(--ma-bg); font-variant-numeric: tabular-nums; }
+/* 日：右边一栏是迷你月历和选中事件的详情 */
+.win.cal-win .cal-dayw { display: flex; height: 100%; }
+.win.cal-win .cal-dayside { flex: none; width: 250px; box-sizing: border-box; padding: 0 16px 16px; border-left: 1px solid var(--cal-line); overflow-y: auto; }
+.win.cal-win .cal-daymini { display: flex; justify-content: center; padding: 4px 0 14px; border-bottom: 1px solid var(--cal-line); }
+.win.cal-win .cal-det { padding-top: 14px; }
+.win.cal-win .cal-det b { display: block; font-size: 16px; line-height: 1.35; margin-bottom: 6px; color: color-mix(in srgb, var(--c) 55%, var(--ma-fg)); }
+.win.cal-win .cal-det p { margin: 4px 0; font-size: 12px; line-height: 1.5; color: var(--ma-dim); }
+.win.cal-win .cal-det .cal-dnotes { color: var(--ma-fg); white-space: pre-wrap; }
+.win.cal-win .cal-det .cal-dcal i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--c); margin-right: 6px; }
+.win.cal-win .cal-det.none { text-align: center; color: var(--ma-dim); font-size: 13px; padding-top: 30px; }
+
+/* ---- 年 ---- */
+.win.cal-win .cal-v-year { overflow-y: auto; }
+.win.cal-win .cal-year { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 22px 28px; padding: 4px 26px 28px; }
+.win.cal-win .cal-ym h3 { margin: 0 0 6px 4px; font-size: 15px; font-weight: 600; color: var(--cal-red); cursor: default; }
+.win.cal-win .cal-ym h3:hover { text-decoration: underline; }
+.win.cal-win .cal-ygrid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; }
+.win.cal-win .cal-ygrid i { font-style: normal; font-size: 10px; color: var(--ma-dim); padding-bottom: 2px; }
+.win.cal-win .cal-ygrid span { width: 22px; height: 22px; line-height: 22px; margin: 0 auto; border-radius: 50%; }
+.win.cal-win .cal-ygrid span[style] { background: color-mix(in srgb, var(--h) calc(var(--a) * 100%), transparent); }
+.win.cal-win .cal-ygrid span.we:not(.today) { color: var(--ma-dim); }
+.win.cal-win .cal-ygrid span.sel:not(.today) { box-shadow: inset 0 0 0 1.5px var(--ma-fg); }
+.win.cal-win .cal-ygrid span.today { background: var(--cal-red); color: #fff; font-weight: 600; }
+
+/* ---- 搜索结果 ---- */
+.win.cal-win .cal-results { position: absolute; top: 96px; right: 12px; bottom: 12px; width: 300px; z-index: 6; padding: 6px 6px 10px; box-sizing: border-box; border-radius: 16px;
+  background: var(--ma-glass); box-shadow: inset 0 0 0 0.5px var(--ma-glass-edge), 0 10px 34px rgba(0, 0, 0, 0.25); -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); }
+.win.cal-win .cal-rhead { padding: 6px 10px 4px; font-size: 12px; color: var(--ma-dim); }
+.win.cal-win .cal-rday { padding: 10px 10px 2px; font-size: 12px; font-weight: 700; }
+.win.cal-win .cal-ritem { display: flex; gap: 8px; padding: 6px 10px; border-radius: 9px; cursor: default; }
+.win.cal-win .cal-ritem:hover { background: var(--ma-hover); }
+.win.cal-win .cal-ritem.sel { background: var(--ma-sel); }
+.win.cal-win .cal-ritem > i { flex: none; width: 4px; border-radius: 2px; background: var(--c); }
+.win.cal-win .cal-ritem b { display: block; font-size: 13px; font-weight: 600; }
+.win.cal-win .cal-ritem span { font-size: 11.5px; color: var(--ma-dim); }
+.win.cal-win .cal-rnone { padding: 30px 10px; text-align: center; color: var(--ma-dim); }
+
+/* ---- 事件简介、快速事件、日历表单 ---- */
+.cal-pop { --c: #0a84ff; }
+.cal-insp { width: 304px; padding: 14px 16px 12px; box-sizing: border-box; }
+.cal-insp .ci-top { display: flex; align-items: flex-start; gap: 8px; }
+.cal-insp .ci-title { flex: 1; resize: none; overflow: hidden; font-size: 17px; line-height: 1.3; font-weight: 600; font-family: inherit; }
+.cal-insp .ci-title::placeholder, .cal-insp .ci-loc::placeholder, .cal-insp .ci-notes::placeholder, .cal-insp .ci-url::placeholder { color: var(--ma-dim); opacity: 0.8; }
+.cal-insp .ci-cal { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: var(--ma-field); display: flex; align-items: center; justify-content: center; cursor: default; }
+.cal-insp .ci-cal i { width: 12px; height: 12px; border-radius: 3.5px; background: var(--c); }
+.cal-insp .ci-loc, .cal-insp .ci-url { display: block; width: 100%; font-size: 13px; margin-top: 4px; }
+.cal-insp .ci-url { color: var(--ma-accent); }
+.cal-insp .ci-notes { display: block; width: 100%; resize: none; overflow: hidden; font-size: 13px; line-height: 1.45; font-family: inherit; }
+.cal-insp .ma-row { gap: 8px; min-height: 30px; }
+.cal-insp .ma-row > label { width: 36px; }
+.cal-insp .ci-check { width: 14px; height: 14px; box-sizing: border-box; border-radius: 4px; box-shadow: inset 0 0 0 1.5px rgba(128, 128, 128, 0.6); cursor: default; }
+.cal-insp .ci-check.on { box-shadow: none; background: var(--ma-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.8 6.2 2.2 2.2 4.2-4.8' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat; }
+.cal-insp .ci-date { height: 24px; padding: 0 9px; border: 0; border-radius: 7px; background: var(--ma-field); color: inherit; font: 13px -apple-system, "PingFang SC", sans-serif; font-variant-numeric: tabular-nums; cursor: default;
+  box-shadow: inset 0 0 0 0.5px rgba(128, 128, 128, 0.2); }
+.cal-insp .ci-date:hover { filter: brightness(1.1); }
+.cal-insp .ci-ro { margin-top: 8px; font-size: 12px; color: var(--ma-dim); }
+.cal-insp textarea:disabled, .cal-insp input:disabled { opacity: 1; color: inherit; -webkit-text-fill-color: currentColor; }
+.cal-quick { width: 340px; padding: 12px 12px 10px; box-sizing: border-box; }
+.cal-quick .ma-field { width: 100%; height: 32px; font-size: 14px; }
+.cal-quick .cal-qhint { min-height: 16px; margin: 7px 2px 0; font-size: 12px; color: var(--ma-dim); }
+.cal-sheet { width: 300px; padding: 16px 16px 12px; box-sizing: border-box; }
+.cal-sheet h3 { margin: 0 0 4px; font-size: 14px; }
+.cal-sheet p { margin: 0 0 10px; font-size: 12px; color: var(--ma-dim); word-break: break-all; }
+.cal-sheet .ma-lab { width: 50px; text-align: right; color: var(--ma-dim); }
+.cal-sheet .ma-field { flex: 1; }
+.cal-sheet .cal-colors { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 14px 6px 4px; justify-items: center; }
+.cal-sheet .cal-colors button { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; cursor: default; }
+.cal-sheet .cal-colors button.on { box-shadow: 0 0 0 2px var(--ma-pop, #2c2c2e), 0 0 0 4px rgba(128, 128, 128, 0.75); }
+.cal-ghost { z-index: 60; pointer-events: none; opacity: 0.92; height: 18px; line-height: 18px; font-size: 11.5px; padding: 0 6px; border-radius: 5px; overflow: hidden; white-space: nowrap;
+  background: var(--c); color: #fff; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3); font-family: -apple-system, "PingFang SC", sans-serif; }
+
+/* ---- Dock 图标 ---- */
+.ico-calendar { background: #fff; padding: 0 !important; overflow: hidden; }
+.ico-calendar svg { display: block; width: 100%; height: 100%; }

@@ -1,0 +1,42 @@
+/* guide.css —— Vibing Studio 使用手册（同 Safari 使用手册）：上面标题 + 搜索，左边目录，右边一篇 */
+.gd { position: absolute; inset: 0; display: flex; flex-direction: column; font: 13px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; color: var(--st-fg, #d6d6d6); background: var(--st-bg2, #0c0c0c); }
+.gd-top { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 46px; padding: 0 20px; border-bottom: 1px solid var(--st-line, #262626); }
+.gd-title { font-size: 14px; font-weight: 600; color: var(--st-hi, #fff); }
+.gd-find input { width: 220px; height: 26px; box-sizing: border-box; padding: 0 10px; border-radius: 7px; border: 1px solid var(--st-line, #262626); background: color-mix(in srgb, var(--st-fg) 6%, transparent); color: var(--st-hi); font: inherit; font-size: 12.5px; outline: none; }
+.gd-find input:focus { border-color: var(--st-focus, #0a84ff); }
+.gd-cols { flex: 1 1 auto; min-height: 0; display: flex; }
+.gd-side { flex: 0 0 250px; overflow: auto; padding: 12px 10px 24px; border-right: 1px solid var(--st-line, #262626); }
+.gd-ch { margin-bottom: 4px; }
+.gd-cht { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-weight: 600; color: var(--st-hi); cursor: pointer; -webkit-user-select: none; user-select: none; }
+.gd-cht:hover { background: color-mix(in srgb, var(--st-fg) 6%, transparent); }
+.gd-chev { flex: none; width: 10px; height: 10px; background: currentColor; opacity: .55; transition: transform .12s ease;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3.5 2 6.5 5 3.5 8' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat; }
+.gd-ch.open .gd-chev { transform: rotate(90deg); }
+.gd-tp { padding: 4px 8px 4px 24px; border-radius: 6px; cursor: pointer; color: var(--st-fg); }
+.gd-tp:hover { background: color-mix(in srgb, var(--st-fg) 6%, transparent); }
+.gd-tp.on { background: var(--st-focus, #0a84ff); color: #fff; }
+.gd-main { flex: 1 1 auto; min-width: 0; overflow: auto; outline: none; }
+.gd-art { max-width: 680px; margin: 0 auto; padding: 34px 40px 60px; }
+.gd-crumb { font-size: 12px; color: var(--st-dim, #808080); margin-bottom: 6px; }
+.gd-h1 { margin: 0 0 18px; font-size: 26px; line-height: 1.25; font-weight: 700; color: var(--st-hi, #fff); }
+.gd-body p { margin: 0 0 12px; }
+.gd-body ul { margin: 0 0 12px; padding-left: 20px; }
+.gd-body li { margin: 4px 0; }
+.gd-body b { color: var(--st-hi); }
+.gd-body code { font: 12px Menlo, Monaco, monospace; padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--st-fg) 9%, transparent); }
+.gd kbd, .gd .kc { font: 11.5px -apple-system, BlinkMacSystemFont, sans-serif; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--st-line, #333); background: color-mix(in srgb, var(--st-fg) 6%, transparent); }
+.gd-ln { color: var(--st-blue, #6eaaff); cursor: pointer; text-decoration: none; }
+.gd-ln:hover { text-decoration: underline; }
+.gd-see { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--st-line, #262626); display: flex; flex-direction: column; gap: 6px; }
+.gd-seet { font-size: 12px; font-weight: 600; color: var(--st-dim); }
+.gd-nav { margin-top: 26px; display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; }
+.gd-dim { color: var(--st-dim); margin: -8px 0 16px; }
+.gd-hit { padding: 10px 12px; margin: 0 -12px 4px; border-radius: 8px; cursor: pointer; }
+.gd-hit:hover { background: color-mix(in srgb, var(--st-fg) 5%, transparent); }
+.gd-hitt { font-weight: 600; color: var(--st-hi); }
+.gd-hits { font-size: 12.5px; color: var(--st-fg); }
+.gd-hitc { font-size: 11.5px; color: var(--st-dim); }
+html.light .gd { background: #fff; }
+.gd-fig { margin: 4px 0 18px; }
+.gd-fig img { display: block; max-width: 100%; border-radius: 8px; border: 1px solid var(--st-line, #262626); }
+.gd-fig figcaption { margin-top: 6px; font-size: 12px; color: var(--st-dim, #808080); text-align: center; }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Paimon</string>
+	<key>CFBundleDisplayName</key>
+	<string>Paimon</string>
+	<key>CFBundleIdentifier</key>
+	<string>beer.paimon.desktop</string>
+	<key>CFBundleExecutable</key>
+	<string>Paimon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD__</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>zh-Hans</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+	<key>NSHumanReadableCopyright</key>
+	<string>__COPYRIGHT__</string>
+	<key>NSCameraUsageDescription</key>
+	<string>网页桌面里的 App（视频通话、拍照）要用摄像头。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>网页桌面里的 App（语音输入、录音）要用麦克风。</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>开在 iTerm2 里的 Claude Code 会话：Vibing Studio 请 iTerm2 把你在这里写的话、按的键（Esc 等）送进那个会话，并读取它的运行状态。</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

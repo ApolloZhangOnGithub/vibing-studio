@@ -1,0 +1,203 @@
+/* app.css —— 博客页：桌面（墙纸、菜单栏、Dock）+ 窗口（终端、设置）；终端窗口里的排版见 terminal.css */
+:root { color-scheme: dark light; }
+html, body { margin: 0; height: 100%; overscroll-behavior: none; }
+body { overflow: hidden; background: #1a1446; font: 13px -apple-system, "PingFang SC", sans-serif; }
+
+/* ---- 连续圆角（squircle，同 macOS 的“自然圆角”）：四个超椭圆角（SVG，n=5）+ 横竖两条填满中间，拼成遮罩；--r 是角的大小。
+   所有浏览器都能用（corner-shape 目前只有 Chromium 支持）。遮罩会连阴影一起裁掉，所以窗口分两层：外层 .win 带阴影，里层 .body 带遮罩与底色 ---- */
+:root { --sq-tl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath transform='rotate(0 50 50)' d='M100 100L0.0 100.0L0.0 72.6L0.1 63.9L0.3 57.5L0.5 52.4L0.8 48.0L1.1 44.1L1.5 40.6L2.0 37.5L2.5 34.6L3.1 31.9L3.8 29.4L4.5 27.1L5.3 24.9L6.2 22.9L7.1 21.0L8.1 19.1L9.2 17.5L10.4 15.9L11.6 14.4L12.9 12.9L14.4 11.6L15.9 10.4L17.5 9.2L19.1 8.1L21.0 7.1L22.9 6.2L24.9 5.3L27.1 4.5L29.4 3.8L31.9 3.1L34.6 2.5L37.5 2.0L40.6 1.5L44.1 1.1L48.0 0.8L52.4 0.5L57.5 0.3L63.9 0.1L72.6 0.0L100.0 0.0Z'/%3E%3C/svg%3E"); --sq-tr: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath transform='rotate(90 50 50)' d='M100 100L0.0 100.0L0.0 72.6L0.1 63.9L0.3 57.5L0.5 52.4L0.8 48.0L1.1 44.1L1.5 40.6L2.0 37.5L2.5 34.6L3.1 31.9L3.8 29.4L4.5 27.1L5.3 24.9L6.2 22.9L7.1 21.0L8.1 19.1L9.2 17.5L10.4 15.9L11.6 14.4L12.9 12.9L14.4 11.6L15.9 10.4L17.5 9.2L19.1 8.1L21.0 7.1L22.9 6.2L24.9 5.3L27.1 4.5L29.4 3.8L31.9 3.1L34.6 2.5L37.5 2.0L40.6 1.5L44.1 1.1L48.0 0.8L52.4 0.5L57.5 0.3L63.9 0.1L72.6 0.0L100.0 0.0Z'/%3E%3C/svg%3E"); --sq-br: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath transform='rotate(180 50 50)' d='M100 100L0.0 100.0L0.0 72.6L0.1 63.9L0.3 57.5L0.5 52.4L0.8 48.0L1.1 44.1L1.5 40.6L2.0 37.5L2.5 34.6L3.1 31.9L3.8 29.4L4.5 27.1L5.3 24.9L6.2 22.9L7.1 21.0L8.1 19.1L9.2 17.5L10.4 15.9L11.6 14.4L12.9 12.9L14.4 11.6L15.9 10.4L17.5 9.2L19.1 8.1L21.0 7.1L22.9 6.2L24.9 5.3L27.1 4.5L29.4 3.8L31.9 3.1L34.6 2.5L37.5 2.0L40.6 1.5L44.1 1.1L48.0 0.8L52.4 0.5L57.5 0.3L63.9 0.1L72.6 0.0L100.0 0.0Z'/%3E%3C/svg%3E"); --sq-bl: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath transform='rotate(270 50 50)' d='M100 100L0.0 100.0L0.0 72.6L0.1 63.9L0.3 57.5L0.5 52.4L0.8 48.0L1.1 44.1L1.5 40.6L2.0 37.5L2.5 34.6L3.1 31.9L3.8 29.4L4.5 27.1L5.3 24.9L6.2 22.9L7.1 21.0L8.1 19.1L9.2 17.5L10.4 15.9L11.6 14.4L12.9 12.9L14.4 11.6L15.9 10.4L17.5 9.2L19.1 8.1L21.0 7.1L22.9 6.2L24.9 5.3L27.1 4.5L29.4 3.8L31.9 3.1L34.6 2.5L37.5 2.0L40.6 1.5L44.1 1.1L48.0 0.8L52.4 0.5L57.5 0.3L63.9 0.1L72.6 0.0L100.0 0.0Z'/%3E%3C/svg%3E"); }
+.sq, .win > .body {
+  -webkit-mask: var(--sq-tl) top left / var(--r) var(--r) no-repeat, var(--sq-tr) top right / var(--r) var(--r) no-repeat,
+    var(--sq-br) bottom right / var(--r) var(--r) no-repeat, var(--sq-bl) bottom left / var(--r) var(--r) no-repeat,
+    linear-gradient(#000, #000) center / calc(100% - 2 * var(--r) + 1px) 100% no-repeat, linear-gradient(#000, #000) center / 100% calc(100% - 2 * var(--r) + 1px) no-repeat;
+  mask: var(--sq-tl) top left / var(--r) var(--r) no-repeat, var(--sq-tr) top right / var(--r) var(--r) no-repeat,
+    var(--sq-br) bottom right / var(--r) var(--r) no-repeat, var(--sq-bl) bottom left / var(--r) var(--r) no-repeat,
+    linear-gradient(#000, #000) center / calc(100% - 2 * var(--r) + 1px) 100% no-repeat, linear-gradient(#000, #000) center / 100% calc(100% - 2 * var(--r) + 1px) no-repeat;
+}
+
+/* 方的图标（Dock、启动台、提醒里的 App 图标）：整个超椭圆一张遮罩。六块拼的遮罩在图标这么小、又被 Dock 大小缩放时，拼缝会在图标正中露出一道十字线 */
+:root { --sq-full: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M100.00%2050.00L99.98%2064.28L99.92%2068.84L99.83%2072.14L99.69%2074.82L99.52%2077.11L99.31%2079.12L99.06%2080.92L98.77%2082.55L98.44%2084.05L98.07%2085.43L97.66%2086.71L97.20%2087.89L96.71%2089.00L96.17%2090.03L95.58%2091.00L94.94%2091.90L94.26%2092.74L93.53%2093.53L92.74%2094.26L91.90%2094.94L91.00%2095.58L90.03%2096.17L89.00%2096.71L87.89%2097.20L86.71%2097.66L85.43%2098.07L84.05%2098.44L82.55%2098.77L80.92%2099.06L79.12%2099.31L77.11%2099.52L74.82%2099.69L72.14%2099.83L68.84%2099.92L64.28%2099.98L50.00%20100.00L35.72%2099.98L31.16%2099.92L27.86%2099.83L25.18%2099.69L22.89%2099.52L20.88%2099.31L19.08%2099.06L17.45%2098.77L15.95%2098.44L14.57%2098.07L13.29%2097.66L12.11%2097.20L11.00%2096.71L9.97%2096.17L9.00%2095.58L8.10%2094.94L7.26%2094.26L6.47%2093.53L5.74%2092.74L5.06%2091.90L4.42%2091.00L3.83%2090.03L3.29%2089.00L2.80%2087.89L2.34%2086.71L1.93%2085.43L1.56%2084.05L1.23%2082.55L0.94%2080.92L0.69%2079.12L0.48%2077.11L0.31%2074.82L0.17%2072.14L0.08%2068.84L0.02%2064.28L0.00%2050.00L0.02%2035.72L0.08%2031.16L0.17%2027.86L0.31%2025.18L0.48%2022.89L0.69%2020.88L0.94%2019.08L1.23%2017.45L1.56%2015.95L1.93%2014.57L2.34%2013.29L2.80%2012.11L3.29%2011.00L3.83%209.97L4.42%209.00L5.06%208.10L5.74%207.26L6.47%206.47L7.26%205.74L8.10%205.06L9.00%204.42L9.97%203.83L11.00%203.29L12.11%202.80L13.29%202.34L14.57%201.93L15.95%201.56L17.45%201.23L19.08%200.94L20.88%200.69L22.89%200.48L25.18%200.31L27.86%200.17L31.16%200.08L35.72%200.02L50.00%200.00L64.28%200.02L68.84%200.08L72.14%200.17L74.82%200.31L77.11%200.48L79.12%200.69L80.92%200.94L82.55%201.23L84.05%201.56L85.43%201.93L86.71%202.34L87.89%202.80L89.00%203.29L90.03%203.83L91.00%204.42L91.90%205.06L92.74%205.74L93.53%206.47L94.26%207.26L94.94%208.10L95.58%209.00L96.17%209.97L96.71%2011.00L97.20%2012.11L97.66%2013.29L98.07%2014.57L98.44%2015.95L98.77%2017.45L99.06%2019.08L99.31%2020.88L99.52%2022.89L99.69%2025.18L99.83%2027.86L99.92%2031.16L99.98%2035.72Z'/%3E%3C/svg%3E"); }
+.ico.sq { -webkit-mask: var(--sq-full) center / 100% 100% no-repeat; mask: var(--sq-full) center / 100% 100% no-repeat; }
+
+/* ---- 桌面墙纸：太浩湖白天 / 夜晚（航拍，可动）、The Lake 白天 / 夜晚；由设置选，不跟深浅外观走 ---- */
+#desktop { position: fixed; inset: 0; background: #1a1446 center / cover; }
+#wall { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.6s; }
+#wall.on { opacity: 1; }
+
+/* ---- 菜单栏（左上角是 Claude 的 ✻）与刘海 ---- */
+#menubar { position: absolute; top: 0; left: 0; right: 0; height: 32px; display: flex; align-items: center; gap: 18px; padding: 0 14px;
+  color: #fff; text-shadow: 0 0 6px rgba(0, 0, 0, 0.35); background: rgba(20, 20, 40, 0.18); backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); user-select: none; -webkit-user-select: none; z-index: 5; transition: transform 0.3s; }
+html.light #menubar { color: #111; text-shadow: none; background: rgba(255, 255, 255, 0.28); }
+#menubar .apple { color: #d77757; font-size: 17px; text-shadow: none; }
+#menubar .sp { flex: 1; }
+/* 刘海：正中一块黑，只有下边两个角（超椭圆） */
+#notch { position: absolute; left: 50%; top: 0; width: 200px; height: 32px; margin-left: -100px; background: #000; pointer-events: none;
+  -webkit-mask: linear-gradient(#000, #000) top / 100% calc(100% - 16px) no-repeat, var(--sq-bl) bottom left / 16px 16px no-repeat,
+    var(--sq-br) bottom right / 16px 16px no-repeat, linear-gradient(#000, #000) bottom / calc(100% - 31px) 16px no-repeat;
+  mask: linear-gradient(#000, #000) top / 100% calc(100% - 16px) no-repeat, var(--sq-bl) bottom left / 16px 16px no-repeat,
+    var(--sq-br) bottom right / 16px 16px no-repeat, linear-gradient(#000, #000) bottom / calc(100% - 31px) 16px no-repeat; }
+
+/* ---- Dock ---- */
+#dock { --r: 38px; position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; padding: 8px 12px 10px;
+  background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6); z-index: 5; transition: transform 0.3s; }
+#dock .app { position: relative; display: block; cursor: pointer; transition: transform 0.15s; }
+#dock .app:hover { transform: translateY(-6px) scale(1.12); }
+#dock .app.running::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 4px; height: 4px; margin-left: -2px; border-radius: 2px; background: rgba(255, 255, 255, 0.85); }
+html.light #dock .app.running::after { background: rgba(0, 0, 0, 0.6); }
+#dock .app.bounce { animation: bounce 0.6s; }
+@keyframes bounce { 30% { transform: translateY(-16px); } 60% { transform: translateY(0); } 80% { transform: translateY(-5px); } }
+#dock .ico { --r: 24px; display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; box-sizing: border-box; }
+.ico-term { background: linear-gradient(#3a3a3a 0 10px, #111 10px); color: #eee; font: bold 15px Monaco, monospace; padding: 9px 0 0 6px; justify-content: flex-start !important; }
+.ico-gear { background: linear-gradient(#8e8e93, #5a5a5f); color: #eee; font-size: 30px; }
+.ico-folder { background: linear-gradient(#6cc3ff, #2f8fe8); position: relative; }
+.ico-folder::before { content: ""; position: absolute; top: 10px; left: 8px; width: 16px; height: 6px; border-radius: 3px 3px 0 0; background: #9ad6ff; }
+.ico-box { background: linear-gradient(#f3f3f3, #cfcfcf); color: #2f7de1; font: bold 24px -apple-system, sans-serif; }
+
+/* ---- 窗口：标题栏拖动、四边四角拉大小、双击标题栏 / 绿灯缩放；desk.js 管位置 ---- */
+.win { --r: 26px; position: absolute; min-width: 360px; min-height: 240px; border-radius: 18px; transform-origin: 50% 100%;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55); }
+html.light .win { box-shadow: 0 22px 70px rgba(30, 40, 90, 0.35); }
+.win > .body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; /* 不用 inset:0：Safari 有时把它当作高度不定，flex 子项就不撑满 */ display: flex; flex-direction: column; overflow: hidden; background: #000; }
+#win.tl > .body { background: #fff; }
+.win.anim { transition: transform 0.35s, opacity 0.35s; } /* 缩放 / 全屏的位置和大小不再做过渡（每帧都要重排），改由 desk.js 用 transform 做 FLIP */
+.win.min { transform: scale(0.04); opacity: 0; pointer-events: none; } /* 缩向哪里由 desk.js 定（transform-origin 设在 Dock 里那一格 / App 图标上） */
+.win.closed { transform: scale(0.96); opacity: 0; pointer-events: none; }
+.win.front { z-index: 2; }
+/* 收起 / 关掉的窗口：动画放完就不再绘制里面的内容（以前 opacity 0 的窗口里的终端、Safari 仍在每次更新时重绘）；
+   打开时不延迟，立刻可见 */
+.win > .body { transition: visibility 0s; }
+.win.min > .body, .win.closed > .body { visibility: hidden; transition: visibility 0s 0.36s; }
+/* 支持 corner-shape 的浏览器（Chromium 139+）：窗口的连续圆角用原生的，不用 6 层 SVG 遮罩——
+   遮罩让整个窗口单独成一张离屏图、每次重绘都要再合成一遍，大窗口（终端流式输出时）很费 */
+@supports (corner-shape: superellipse(2)) {
+  .win > .body { -webkit-mask: none; mask: none; border-radius: var(--r); corner-shape: superellipse(2.3); }
+}
+#desktop.full #menubar { transform: translateY(-100%); }
+#desktop.full #dock { transform: translate(-50%, 140%); }
+#desktop.full #win { border-radius: 0; }
+#desktop.full #win > .body { -webkit-mask: none; mask: none; }
+.bar { flex: none; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; position: relative; cursor: default;
+  background: #262626; border-bottom: 1px solid #000; font: 12px -apple-system, "PingFang SC", sans-serif; color: #999; user-select: none; -webkit-user-select: none; }
+html.light .bar { background: #ececec; border-bottom-color: #d4d4d4; color: #666; }
+.bar > span { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; }
+#toggle { margin-left: auto; position: relative; border: 0; background: none; color: inherit; font-size: 14px; cursor: pointer; padding: 2px 4px; }
+/* 三个灯：指针移到灯上时显出 × − 和全屏的两个小三角（同 macOS） */
+.bar i { width: 12px; height: 12px; border-radius: 6px; background: #ff5f57; cursor: pointer; position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: center; font: 700 11px/1 -apple-system, sans-serif; font-style: normal; color: transparent; }
+.bar i:nth-child(2) { background: #febc2e; }
+.bar i:nth-child(3) { background: #28c840; }
+.bar i.off { background: #9a9a9a; opacity: 0.5; cursor: default; }
+/* 灯上的 × − ⤢：指针在三个灯（任何一个）上时才显出（同 macOS），不是整条标题栏；每个灯左右各多 4px 感应区，灯之间的缝也算 */
+.bar > i::before { content: ""; position: absolute; inset: -6px -4px; }
+.bar:has(> i:hover) > i { color: rgba(0, 0, 0, 0.55); }
+.bar i[data-act="close"]::after { content: "\00D7"; margin-top: -1px; }
+.bar i[data-act="min"]::after { content: "\2212"; margin-top: -1px; }
+.bar i[data-act="full"]::after { content: ""; width: 8px; height: 8px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 2h5L2 7z M10 10H5l5-5z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 2h5L2 7z M10 10H5l5-5z'/%3E%3C/svg%3E") center / contain no-repeat; }
+
+/* ---- 终端窗口（内容的深浅看 #win.tl——终端自己的外观：跟随系统 / 浅色 / 深色；标题栏跟系统走）：同 Claude Code 全屏模式——对话在屏幕里滚动（不显示滚动条、滚到头不回弹），输入栏固定在底部 ---- */
+#screen { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior: none; position: relative; } /* 滚到头就停住，不回弹 */
+#screen::-webkit-scrollbar { display: none; }
+/* 往回翻时顶上空一行 */
+#topgap { position: sticky; top: 0; z-index: 3; visibility: hidden; background: #000; }
+#win.tl #topgap { background: #fff; }
+#topgap.on { visibility: visible; }
+/* Jump to bottom：往回翻时浮在对话区底部正中，指上去稍亮一点 */
+#jump { position: absolute; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 4; margin: 0; padding: 0 1ch; display: none; cursor: pointer;
+  white-space: pre; background: #3a3a3a; color: #eee; --ttu-font-size: 13px; transition: background 0.12s; }
+#jump:hover { background: #4d4d4d; color: #fff; }
+#jump.ttu-light { background: #dcdcdc; color: #111; }
+#jump.ttu-light:hover { background: #cbcbcb; }
+#jump.on { display: block; }
+#page { position: relative; }
+#term, #foot { --ttu-font-size: 13px; margin: 0; padding: 0 10px; /* 同终端：⏺ 顶着左边、正文排到右边，只留窗口的一点内边距 */ overflow: visible; background: transparent; position: relative; z-index: 0; }
+#term a, #foot a { color: inherit; text-decoration: none; }
+#term a:hover, #foot a:hover { background: rgba(127, 127, 127, 0.22); }
+#foot { flex: none; cursor: text; padding: 0 0 8px !important; } /* 输入栏的横线顶到窗口两边 */
+/* 块：每轮问答、图片、用户的话——高度都是整行，整屏仍是一张行格 */
+#term .blk, #term .fig, #term .ask { display: block; }
+#term .fig { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+#term .fig img { --r: 16px; display: block; cursor: zoom-in; background: #1e1e1e; }
+#win.tl #term .fig img { background: #eee; }
+/* 用户的话：灰底画在最底层（z-index -2），选区（-1）在它之上、文字之下——选中时不会被灰底盖住 */
+#term .ask { position: relative; margin: 0 -10px; padding: 0 10px; }
+#term .ask::before { content: ""; position: absolute; inset: 0; z-index: -2; background: #373737; }
+#win.tl #term .ask::before { background: #ececec; }
+/* 选区自己画（同 iTerm：浅蓝底、黑字）：#sel 在 #term 里，与文字、灰底同一层叠上下文；制表符的透明字形选中后仍透明 */
+#term::selection, #term ::selection { background: transparent; color: #000; }
+#term .ttu-box::selection { color: transparent; -webkit-text-fill-color: transparent; }
+#sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
+#sel > div { position: absolute; background: #b5d5ff; }
+.noscript { position: fixed; bottom: 20px; color: #ddd; font: 14px sans-serif; }
+
+/* ---- 设置 App：macOS 设置式的面板（不是终端） ---- */
+#settings { min-width: 380px; color: #1d1d1f; }
+#settings > .body { background: #f5f5f7; }
+html:not(.light) #settings { color: #eee; }
+html:not(.light) #settings > .body { background: #1e1e20; }
+#settings .pane { flex: 1; overflow: auto; padding: 8px 22px 18px; font: 13px -apple-system, "PingFang SC", sans-serif; }
+#settings h3 { font-size: 12px; font-weight: 600; color: #888; margin: 16px 0 8px; }
+#settings .seg { display: inline-flex; border-radius: 7px; overflow: hidden; border: 1px solid rgba(127, 127, 127, 0.35); }
+#settings .seg button { border: 0; padding: 5px 16px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+#settings .seg button.on { background: #0a84ff; color: #fff; }
+#settings .walls { display: grid; grid-template-columns: repeat(2, max-content); gap: 10px 12px; }
+#settings .walls button { border: 0; padding: 3px; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: center; border-radius: 12px; }
+#settings .walls button.on { background: #0a84ff; }
+#settings .walls button.on span { color: #fff; }
+#settings .walls img { --r: 14px; display: block; width: 132px; height: 82px; object-fit: cover; }
+#settings .walls span { display: block; margin: 4px 0 2px; font-size: 12px; }
+#settings .row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+#settings input[type=range] { flex: 1; max-width: 240px; }
+#settings output { min-width: 90px; color: #888; font-variant-numeric: tabular-nums; }
+#settings .note { color: #888; font-size: 12px; margin: 6px 0 0; }
+
+/* ---- 手机（放在最后）：没有桌面、菜单栏、Dock 与三个灯，终端窗口铺满、方角 ---- */
+@media (max-width: 600px) {
+  #menubar, #dock, .bar i, #settings { display: none; }
+  .win { inset: 0; width: auto !important; height: auto !important; left: 0 !important; top: 0 !important; border-radius: 0; box-shadow: none; min-width: 0; }
+  .win > .body { -webkit-mask: none; mask: none; }
+  #term, #foot { --ttu-font-size: 12px; padding: 0 6px; }
+  #term .ask { margin: 0 -6px; padding: 0 6px; }
+}
+/* 菜单栏右侧：输入法、Wi‑Fi、电池、控制中心（SVG，颜色跟文字走）与时钟（等宽数字，秒不跳位） */
+#menubar .tray { display: flex; align-items: center; gap: 16px; }
+#menubar .tray svg { display: block; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.25)); }
+html.light #menubar .tray svg { filter: none; }
+#menubar .ime { font: 600 11px/16px -apple-system, "PingFang SC", sans-serif; padding: 0 3px; border-radius: 4px; background: #fff; color: #333; text-shadow: none; }
+html.light #menubar .ime { background: #1d1d1f; color: #fff; }
+#menubar .bolt { fill: #333; }
+html.light #menubar .bolt { fill: #fff; }
+#clock { font-variant-numeric: tabular-nums; }
+
+/* ---- 液态玻璃（macOS 26 Tahoe）：玻璃是一层，画在 ::before 上，字和图标在它上面、不受任何影响。
+   玻璃本身：很轻的模糊、饱和与亮度略提，背景几乎透过来；边缘一圈亮线、上沿镜面高光；Chromium 再加透镜式的边缘折射（#lg-bar / #lg-dock） ---- */
+#menubar { background: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; text-shadow: none !important; isolation: isolate; }
+#menubar::before { content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  -webkit-backdrop-filter: blur(1.5px) saturate(1.8) brightness(1.06); backdrop-filter: blur(1.5px) saturate(1.8) brightness(1.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.4), 0 1px 10px rgba(0, 0, 0, 0.08); }
+html.light #menubar::before { background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12)); }
+html.refract #menubar::before { backdrop-filter: url(#lg-bar) blur(1px) saturate(1.8) brightness(1.06); }
+#dock { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; isolation: isolate; }
+#dock::before { content: ""; position: absolute; inset: 0; z-index: -1; --r: 38px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0.09));
+  -webkit-backdrop-filter: blur(2px) saturate(1.9) brightness(1.08); backdrop-filter: blur(2px) saturate(1.9) brightness(1.08);
+  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.75), inset 0 -1px 0 rgba(255, 255, 255, 0.35), inset 1px 0 0 rgba(255, 255, 255, 0.4),
+    inset -1px 0 0 rgba(255, 255, 255, 0.4), inset 0 0 16px rgba(255, 255, 255, 0.16);
+  -webkit-mask: var(--sq-tl) top left / var(--r) var(--r) no-repeat, var(--sq-tr) top right / var(--r) var(--r) no-repeat,
+    var(--sq-br) bottom right / var(--r) var(--r) no-repeat, var(--sq-bl) bottom left / var(--r) var(--r) no-repeat,
+    linear-gradient(#000, #000) center / calc(100% - 2 * var(--r) + 1px) 100% no-repeat, linear-gradient(#000, #000) center / 100% calc(100% - 2 * var(--r) + 1px) no-repeat;
+  mask: var(--sq-tl) top left / var(--r) var(--r) no-repeat, var(--sq-tr) top right / var(--r) var(--r) no-repeat,
+    var(--sq-br) bottom right / var(--r) var(--r) no-repeat, var(--sq-bl) bottom left / var(--r) var(--r) no-repeat,
+    linear-gradient(#000, #000) center / calc(100% - 2 * var(--r) + 1px) 100% no-repeat, linear-gradient(#000, #000) center / 100% calc(100% - 2 * var(--r) + 1px) no-repeat; }
+html.refract #dock::before { backdrop-filter: url(#lg-dock) blur(1.5px) saturate(1.9) brightness(1.08); }
+#term .ttu-box.sel { filter: brightness(0); } /* 选中的表格线跟选中文字一样变黑 */
+/* 对话区最底下一行始终留空（Jump to bottom 就浮在这一行上），与输入栏隔开 */
+#botgap { position: sticky; bottom: 0; z-index: 3; background: #000; }
+#win.tl #botgap { background: #fff; }
+/* 语义化全文：视觉隐藏，读屏器与搜索引擎读它 */
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#readall { position: relative; border: 0; background: none; color: inherit; font-size: 15px; cursor: pointer; padding: 2px 6px; margin-left: auto; }
+#readall + #toggle { margin-left: 0; }
+#settings .walls button[hidden] { display: none; }

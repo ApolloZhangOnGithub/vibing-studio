@@ -1,0 +1,63 @@
+# Vibing Studio 的网页端（code.paimon.beer）：同 iPhone、iPad，是连到你的 Mac（以后也包括别的主机）的客户端；登录、账号、设备间中转（relay.js）在这里。
+# 从 teyvat-mac-simulator（开源项目）拆出来单独部署：Worker 名、D1、Durable Object、密钥沿用原来那一套（名字不变，数据和登录都在）。部署：tools/deploy.sh
+# native-agent-desktop-os-web：code.paimon.beer —— 浏览器里的一台「Mac / iPhone」，agent 是原生住在里面的居民；终端里是 Claude Code 式的对话。账号制（GitHub 登录、邀请制、按额度计费），
+# Anthropic 的 Key 只在服务器上（Worker Secret），浏览器拿不到。前端是 public/ 下的静态文件，由同一个 Worker 托管（同源，Cookie 最简单）
+name = "native-agent-desktop-os-web"
+main = "src/index.js"
+compatibility_date = "2026-07-29"
+workers_dev = false   # 只在自己的域名上（不另开 *.workers.dev 的地址）
+preview_urls = false
+# 自定义域名（Cloudflare 自动在 paimon.beer 区域建 DNS 记录与证书；网页不经过源站）。要放在任何 [表] 之前，不然会被当成那张表里的字段
+routes = [{ pattern = "code.paimon.beer", custom_domain = true }]
+
+[dev]
+host = "localhost"   # 本地 wrangler dev 里请求的网址仍是 localhost（不然会按上面的 routes 当成 code.paimon.beer，本地的 DEV_LOGIN 就认不出来）
+
+[assets]
+directory = "../ui"   # Vibing Studio 的界面本身（同 Mac App 的本地界面）；不上传的文件见 ui/.assetsignore
+binding = "ASSETS"
+run_worker_first = true   # 每个请求先过 Worker：没登录只给登录页（网页的脚本、样式一样都不给）
+
+[[d1_databases]]
+binding = "DB"
+database_name = "native-agent-desktop-os-web"
+database_id = "410c69eb-815f-4413-91af-bbea8298acc0"          # 线上的库（wrangler d1 create native-agent-desktop-os-web）
+preview_database_id = "00000000-0000-0000-0000-000000000000"  # 本地开发（wrangler dev）用的那份，同以前
+
+
+[vars]
+GITHUB_CLIENT_ID = "Ov23litCoJXIUBeA7plg"          # GitHub OAuth App 的 Client ID（不是秘密；回调 https://code.paimon.beer/auth/callback）
+ONLY_IDS = "120164259"                      # 私人站点：只有这些 GitHub 账号（数字 id，登录名改了也不变）能登录；想开放给别人用就清空，改走下面的邀请制
+ALLOW_IDS = "120164259"                     # 邀请制：这些 GitHub id 首次登录自动放行（逗号分隔）；其余要管理员放行
+ADMIN_IDS = "120164259"                     # 能加额度、放行别人的账号（GitHub id）
+NEW_USER_CREDIT = "5000000"                  # 放行时送的额度，微元（5 000 000 = ¥5）
+RATE_PER_MIN = "60"                          # 每个账号每分钟最多几次模型调用（agent 一轮里会调很多次）
+MAX_TOKENS = "64000"                         # 单次回答的 max_tokens 上限（按实际用量扣费，放宽不多花钱）
+# 上游：Anthropic 格式的接口。DeepSeek：https://api.deepseek.com/anthropic（Key 用 wrangler secret put UPSTREAM_KEY）
+UPSTREAM_URL = "https://api.deepseek.com/anthropic"
+# 可用模型与单价：元 / 百万 token（高峰价）。in = 输入（未命中缓存）、hit = 输入（命中缓存）、out = 输出；offpeak = 平时的折扣
+# （DeepSeek：北京时间工作日 9–12 点、14–18 点是高峰，其余时段半价）。价格来自 https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+MODELS = '[{"id":"deepseek-flash","name":"DeepSeek V4.1 Flash","ctx":1000000,"in":2,"out":8,"hit":0.04,"offpeak":0.5,"vision":true},{"id":"deepseek-v4-pro","name":"DeepSeek V4 Pro","ctx":1000000,"in":9,"out":27,"hit":0.3,"offpeak":0.5}]'
+
+# 工具服务与单价（微元 / 次）：40000 = ¥0.04。BRAVE_URL 可指向中继（默认官方 https://api.search.brave.com）；fetch 另按读网页用的 token 计
+TOOLS = '{"brave":{"name":"Brave Search","per_call":40000},"fetch":{"name":"Web Fetch","per_call":2000}}'
+
+# 秘密（不写在这里）：
+#   wrangler secret put BRAVE_KEY
+#   wrangler secret put GITHUB_CLIENT_SECRET
+#   wrangler secret put SESSION_SECRET        # 随机 32 字节以上，签会话 Cookie
+#   wrangler secret put UPSTREAM_KEY          # 上游（DeepSeek / Anthropic）的 API Key
+# 本地开发写在 .dev.vars（已 gitignore），可以另设 DEV_LOGIN=你的 GitHub 名 跳过 GitHub 登录；不设 ANTHROPIC_API_KEY 时回答是模拟的
+
+# 这次部署的版本号（env.CF_VERSION_METADATA.id）：页面里站内脚本、样式的地址带上它（?v=），浏览器存着、启动时不再一个个去问改了没有（见 src/index.js 的 site）
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+# iPad 端借 Mac 干活的中转（src/relay.js）：每个账号一个 Durable Object，Mac 的页面和 iPad 的页面各连一条 WebSocket
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "Relay"
+
+[[migrations]]
+tag = "v1-relay"
+new_sqlite_classes = ["Relay"]

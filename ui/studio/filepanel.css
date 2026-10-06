@@ -1,0 +1,107 @@
+/* filepanel.css —— 小的文件面板（filepanel.js）：Claude App「Files」卡片的样子——它的深 / 浅两套颜色（Claude App 风格里直接用 --ca-*，别处用同样的值）、紧凑的行、细线 */
+.fp {
+  --fp-bg: var(--ca-card-bg, #171717); --fp-bg2: var(--ca-main-bg, #151515); --fp-line: var(--ca-card-line, #2c2c2b); --fp-fg: var(--ca-fg, #e6e6e6); --fp-hi: var(--ca-hi, #ffffff);
+  --fp-dim: var(--ca-dim, #9a9a9a); --fp-faint: var(--ca-faint, #6b6b6b); --fp-hover: var(--ca-hover, #1e1e1e); --fp-on: var(--ca-seg-on, #2e2e2d); --fp-acc: var(--ca-orange, #d97757);
+  --fp-cur: rgba(255, 255, 255, .045); --fp-mk: rgba(217, 119, 87, .32); --fp-mk-on: rgba(217, 119, 87, .7); --fp-lh: 18px;
+  --fp-k: #ff7b72; --fp-d: #d2a8ff; --fp-f: #d2a8ff; --fp-s: #a5d6ff; --fp-c: #8b949e; --fp-n: #79c0ff; --fp-p: #ffa657; --fp-h: #79c0ff; --fp-a: #7ee787;
+  position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--fp-bg); color: var(--fp-fg);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; -webkit-user-select: none; user-select: none;
+}
+html.light .fp {
+  --fp-bg: var(--ca-card-bg, #ffffff); --fp-bg2: var(--ca-main-bg, #faf9f5); --fp-line: var(--ca-card-line, #dedbd1); --fp-fg: var(--ca-fg, #262624); --fp-hi: var(--ca-hi, #000000);
+  --fp-dim: var(--ca-dim, #73716b); --fp-faint: var(--ca-faint, #a3a19a); --fp-hover: var(--ca-hover, #eceae2); --fp-on: #efede6; --fp-acc: var(--ca-orange, #c96442);
+  --fp-cur: rgba(0, 0, 0, .04); --fp-mk: rgba(201, 100, 66, .22); --fp-mk-on: rgba(201, 100, 66, .5);
+  --fp-k: #cf222e; --fp-d: #8250df; --fp-f: #8250df; --fp-s: #0a3069; --fp-c: #6e7781; --fp-n: #0550ae; --fp-p: #953800; --fp-h: #0550ae; --fp-a: #116329;
+}
+.fp [hidden] { display: none !important; }
+.fp svg { width: 16px; height: 16px; flex: none; }
+.fp-ib { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--fp-dim); cursor: pointer; }
+.fp-ib:hover { background: var(--fp-hover); color: var(--fp-fg); }
+
+/* 上面一排：文件树开关 · 标签 · 搜索 ⋮ 放大 关闭 */
+.fp-top { flex: none; display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 6px; border-bottom: 1px solid var(--fp-line); }
+.fp-tabs { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; margin: 0 4px; }
+.fp-tabs::-webkit-scrollbar { display: none; }
+.fp-tab { flex: 0 1 auto; min-width: 72px; max-width: 220px; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 8px; border-radius: 7px; color: var(--fp-dim); cursor: pointer; }
+.fp-tab:hover { background: var(--fp-hover); color: var(--fp-fg); }
+.fp-tab.on { background: var(--fp-on); color: var(--fp-hi); }
+.fp-tab .fp-ico svg { width: 14px; height: 14px; }
+.fp-tn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.fp-tc { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--fp-dim); cursor: pointer; opacity: 0; }
+.fp-tc svg { width: 12px; height: 12px; }
+.fp-tab:hover .fp-tc, .fp-tab.on .fp-tc { opacity: 1; }
+.fp-tc:hover { background: var(--fp-hover); color: var(--fp-fg); }
+
+/* 左边树 | 细线（能拖）| 右边正文 */
+.fp-main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: var(--fp-tw, 240px) 1px minmax(0, 1fr); }
+.fp.fp-notree .fp-main { grid-template-columns: 0 0 minmax(0, 1fr); }
+.fp.fp-notree :is(.fp-tree, .fp-sash) { visibility: hidden; }
+.fp-tree { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.fp-filter { flex: none; padding: 8px 8px 6px; }
+.fp-filter input { width: 100%; height: 28px; box-sizing: border-box; padding: 0 9px; border: 1px solid var(--fp-line); border-radius: 7px; background: transparent; color: var(--fp-fg); font: inherit; font-size: 12.5px; outline: 0; -webkit-user-select: text; user-select: text; }
+.fp-filter input::placeholder { color: var(--fp-faint); }
+.fp-filter input:focus { border-color: color-mix(in srgb, var(--fp-fg) 30%, var(--fp-line)); }
+.fp-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 6px 10px; outline: 0; scrollbar-width: thin; overscroll-behavior: contain; }
+.fp-row { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 6px 0 calc(4px + var(--dep, 0) * 12px); border-radius: 6px; white-space: nowrap; cursor: pointer; }
+.fp-row:hover { background: var(--fp-hover); }
+.fp-row.on { background: var(--fp-on); color: var(--fp-hi); }
+.fp-row.sel { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fp-fg) 22%, transparent); }
+.fp-row.fp-dot { opacity: .55; }
+.fp-row.fp-dim { color: var(--fp-faint); cursor: default; }
+.fp-row.fp-dim:hover { background: none; }
+.fp-chev { flex: none; display: inline-flex; width: 12px; color: var(--fp-faint); font-style: normal; transition: transform .12s ease; }
+.fp-chev svg { width: 12px; height: 12px; }
+.fp-chev.open { transform: rotate(90deg); }
+.fp-ico { flex: none; display: inline-flex; color: var(--fp-dim); font-style: normal; }
+.fp-ico svg { width: 15px; height: 15px; }
+.fp-row.on .fp-ico { color: var(--fp-fg); }
+.fp-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fp-nm b, .fp-dir b { color: var(--fp-acc); font-weight: 600; }
+/* 按名字筛出来的：文件名，后面淡的是它在哪个文件夹 */
+.fp-res { padding-left: 6px; }
+.fp-dir { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fp-faint); font-size: 12px; }
+.fp-cnt { flex: none; margin-left: auto; padding: 0 6px; border-radius: 8px; background: var(--fp-hover); color: var(--fp-dim); font-size: 11px; line-height: 16px; }
+/* 搜内容：文件一行，下面每一处一行（行号 · 那一行，搜的字标出来）*/
+.fp-hfile { margin-top: 4px; }
+.fp-hit { gap: 8px; padding-left: 26px; font: 12px/1 ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; }
+.fp-hl { flex: none; min-width: 3ch; text-align: right; color: var(--fp-faint); }
+.fp-ht { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fp-dim); }
+.fp-ht b { color: var(--fp-fg); background: var(--fp-mk); border-radius: 2px; font-weight: 500; }
+.fp-empty { padding: 12px 14px; color: var(--fp-faint); font-size: 12.5px; white-space: normal; }
+.fp-empty.fp-big { display: flex; align-items: center; justify-content: center; height: 100%; box-sizing: border-box; }
+
+.fp-sash { position: relative; background: var(--fp-line); cursor: col-resize; z-index: 2; }
+.fp-sash::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px; }
+.fp.fp-drag, .fp.fp-drag * { cursor: col-resize !important; }
+
+/* 右边：文件名、路径（· 截断的说明）；查找条；正文 */
+.fp-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--fp-bg); }
+.fp-vhead { flex: none; display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--fp-line); white-space: nowrap; overflow: hidden; }
+.fp-vhead:empty { display: none; }
+.fp-hn { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; color: var(--fp-hi); font-weight: 600; font-size: 12.5px; }
+.fp-hp { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fp-faint); font-size: 12px; direction: rtl; text-align: left; } /* 路径太长：省掉前面的 */
+.fp-hnote { flex: none; margin-left: auto; color: var(--fp-faint); font-size: 11.5px; }
+.fp-find { flex: none; display: flex; align-items: center; gap: 2px; height: 34px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--fp-line); }
+.fp-find input { flex: 1 1 auto; min-width: 60px; max-width: 280px; height: 24px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--fp-line); border-radius: 6px; background: transparent; color: var(--fp-fg); font: inherit; font-size: 12.5px; outline: 0; -webkit-user-select: text; user-select: text; }
+.fp-find.none input { border-color: color-mix(in srgb, #e5534b 60%, var(--fp-line)); }
+.fp-fcount { flex: none; min-width: 48px; padding: 0 6px; color: var(--fp-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.fp-body { position: relative; flex: 1 1 auto; min-height: 0; }
+.fp-code { position: absolute; inset: 0; overflow: auto; outline: 0; font: 12px/var(--fp-lh) ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; scrollbar-width: thin; overscroll-behavior: contain; -webkit-user-select: text; user-select: text; }
+.fp-spacer { width: 1px; }
+.fp-lines { position: absolute; top: 0; left: 0; min-width: 100%; padding-top: 4px; will-change: transform; }
+.fp-l { display: flex; height: var(--fp-lh); white-space: pre; tab-size: 4; }
+.fp-l.cur, .fp-l.cur .fp-no { background: var(--fp-cur); }
+.fp-no { flex: none; position: sticky; left: 0; z-index: 1; width: var(--fp-gw, 5ch); box-sizing: border-box; padding-right: 14px; text-align: right; color: var(--fp-faint); background: var(--fp-bg); -webkit-user-select: none; user-select: none; }
+.fp-l.cur .fp-no { color: var(--fp-dim); background: color-mix(in srgb, var(--fp-bg) 100%, var(--fp-fg) 4%); }
+.fp-tx { padding-right: 24px; }
+::highlight(fp-find) { background-color: var(--fp-mk, rgba(217, 119, 87, .32)); }
+::highlight(fp-find-on) { background-color: var(--fp-mk-on, rgba(217, 119, 87, .7)); }
+/* 语法色（hl.js 给的 class）*/
+.fp .ide-k { color: var(--fp-k); } .fp .ide-d { color: var(--fp-d); } .fp .ide-f { color: var(--fp-f); } .fp .ide-s { color: var(--fp-s); } .fp .ide-c { color: var(--fp-c); font-style: italic; }
+.fp .ide-n { color: var(--fp-n); } .fp .ide-p { color: var(--fp-p); } .fp .ide-v { color: var(--fp-fg); } .fp .ide-h { color: var(--fp-h); font-weight: 600; } .fp .ide-a { color: var(--fp-a); } .fp .ide-b { color: var(--fp-hi); font-weight: 600; }
+/* 图片：居中，棋盘格底；PDF：交给浏览器 */
+.fp-img { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; overflow: auto;
+  background: repeating-conic-gradient(color-mix(in srgb, var(--fp-fg) 6%, var(--fp-bg)) 0 25%, var(--fp-bg) 0 50%) 0 0 / 16px 16px; }
+.fp-img img { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 1px 8px rgba(0, 0, 0, .18); }
+.fp-imgsz { position: absolute; right: 10px; bottom: 8px; padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--fp-bg) 85%, transparent); color: var(--fp-dim); font-size: 11.5px; }
+.fp-pdf { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--fp-bg2); }

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>macOS Simulator</title>
+<link rel="icon" type="image/svg+xml" href="desk-logo.svg">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="terminal.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="panes.css">
+<link rel="stylesheet" href="desk.css">
+<link rel="stylesheet" href="sim/finder.css">
+<link rel="stylesheet" href="sim/safari.css">
+<link rel="stylesheet" href="sim/ide.css">
+<link rel="stylesheet" href="sim/export.css">
+<!-- 日历、提醒事项、备忘录（数据是 ~/Library/Calendars、Reminders、Notes 里的文件） -->
+<link rel="stylesheet" href="sim/apps-common.css">
+<link rel="stylesheet" href="sim/calendar.css">
+<link rel="stylesheet" href="sim/reminders.css">
+<link rel="stylesheet" href="sim/notes.css">
+<!-- Office：表格 / 文稿 / 讲演（office/；各 App 的脚本与 vendor/ 里的库在第一次打开时才载入） -->
+<link rel="stylesheet" href="sim/office/office.css">
+<script>
+  // 主题：手动选过的优先，否则跟随系统；首帧前定下，浅色不会先闪一下黑底
+  if (localStorage.getItem("tsu-theme") ? localStorage.getItem("tsu-theme") === "light" : matchMedia("(prefers-color-scheme: light)").matches)
+    document.documentElement.classList.add("light");
+</script>
+<!-- iOS（手机）：宽度 ≤ 600 或网址带 ?ios=1 时根元素加 .ios（首帧前定下，不会先闪一下 macOS 的桌面）；外壳与终端在 ios/ 里 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="sim/ios/shell.css">
+<link rel="stylesheet" href="sim/ios/term.css">
+<script>
+  (function () {
+    var q = /[?&]ios=([01])(&|$)/.exec(location.search), r = document.documentElement;
+    if (!(q ? q[1] === "1" : matchMedia("(max-width: 600px)").matches)) return;
+    r.classList.add("ios");
+    // 真的手机上状态栏、Home 指示条是系统画的；在电脑上看（?ios=1、窄窗口）才自己画一份
+    if (q || !(/iPhone|iPad|iPod|Android/.test(navigator.userAgent) && navigator.maxTouchPoints > 0)) r.classList.add("ios-sim");
+    // 输入框聚焦时不放大页面（iOS 会把小于 16px 的输入框放大）
+    var vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.content = "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover";
+  })();
+</script>
+<!-- /iOS -->
+</head>
+<body>
+<!-- 液态玻璃的折射（Chromium：backdrop-filter: url()）：边缘位移图——中间不动，越靠边背景越往里弯；只作用于玻璃后面的墙纸，玻璃上的字和图标不受影响 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="lg-bar" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feImage href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='x'%3E%3Cstop offset='0' stop-color='#000'/%3E%3Cstop offset='0.03' stop-color='#800000'/%3E%3Cstop offset='0.97' stop-color='#800000'/%3E%3Cstop offset='1' stop-color='#f00'/%3E%3C/linearGradient%3E%3ClinearGradient id='y' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='#000'/%3E%3Cstop offset='0.4' stop-color='#008000'/%3E%3Cstop offset='0.6' stop-color='#008000'/%3E%3Cstop offset='1' stop-color='#0f0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' fill='url(%23x)'/%3E%3Crect width='100' height='100' fill='url(%23y)' style='mix-blend-mode:screen'/%3E%3C/svg%3E" preserveAspectRatio="none" width="100%" height="100%" result="map"/><feDisplacementMap in="SourceGraphic" in2="map" scale="14" xChannelSelector="R" yChannelSelector="G"/></filter><filter id="lg-dock" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feImage href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='x'%3E%3Cstop offset='0' stop-color='#000'/%3E%3Cstop offset='0.12' stop-color='#800000'/%3E%3Cstop offset='0.88' stop-color='#800000'/%3E%3Cstop offset='1' stop-color='#f00'/%3E%3C/linearGradient%3E%3ClinearGradient id='y' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='#000'/%3E%3Cstop offset='0.3' stop-color='#008000'/%3E%3Cstop offset='0.7' stop-color='#008000'/%3E%3Cstop offset='1' stop-color='#0f0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' fill='url(%23x)'/%3E%3Crect width='100' height='100' fill='url(%23y)' style='mix-blend-mode:screen'/%3E%3C/svg%3E" preserveAspectRatio="none" width="100%" height="100%" result="map"/><feDisplacementMap in="SourceGraphic" in2="map" scale="26" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
+<div id="desktop">
+<video id="wall" muted loop playsinline preload="none"></video>
+<div id="menubar"><span class="apple">✻</span><b id="appname">终端</b><span>Shell</span><span>编辑</span><span>显示</span><span>窗口</span><span>帮助</span><span class="sp"></span><span class="tray"><span class="ime">拼</span><svg viewBox="0 0 20 15" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 5.5a11.5 11.5 0 0 1 16 0"/><path d="M5 8.8a7 7 0 0 1 10 0"/><circle cx="10" cy="12.3" r="1.3" fill="currentColor" stroke="none"/></svg><svg viewBox="0 0 28 14" width="27" height="13"><rect x="1" y="1" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-opacity=".45" stroke-width="1.2"/><rect x="3" y="3" width="18" height="8" rx="2" fill="currentColor"/><path d="M24.5 5v4a2 2 0 0 0 0-4z" fill="currentColor" fill-opacity=".45"/><path d="M13.2 2.6 9.5 7.6h3l-1.3 3.8 3.9-5.2h-3z" class="bolt"/></svg><svg viewBox="0 0 20 16" width="18" height="15" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="1.5" width="18" height="5.5" rx="2.75"/><circle cx="4.2" cy="4.25" r="1.6" fill="currentColor" stroke="none"/><rect x="1" y="9" width="18" height="5.5" rx="2.75"/><circle cx="15.8" cy="11.75" r="1.6" fill="currentColor" stroke="none"/></svg></span><span id="clock"></span><i id="notch"></i></div>
+<div class="win" id="win"><div class="body">
+  <div class="bar"><i data-act="close" title="关闭"></i><i data-act="min" title="最小化"></i><i data-act="full" title="全屏"></i><span id="title">macOS Simulator</span><button id="readall" hidden>≡</button><button id="toggle" title="终端外观">◐</button></div>
+  <div class="tabs" hidden></div>
+  <div class="panes"></div>
+</div></div>
+<div class="win closed" id="settings"><div class="body">
+  <div class="bar"><i data-act="close" title="关闭"></i><i data-act="min" title="最小化"></i><i class="off"></i><span>设置</span></div>
+  <div class="pane">
+    <section><h3>外观</h3><div class="seg" data-set="theme"><button data-v="auto">自动</button><button data-v="light">浅色</button><button data-v="dark">深色</button></div></section>
+    <section><h3>墙纸</h3><div class="walls" data-set="wall">
+      <button data-v="tahoe-day" hidden><img class="sq" data-src="img/wall-tahoe-day.webp" alt=""><span>太浩湖白天</span></button>
+      <button data-v="tahoe-night" hidden><img class="sq" data-src="img/wall-tahoe-night.webp" alt=""><span>太浩湖夜晚</span></button>
+      <button data-v="lake-day" hidden><img class="sq" data-src="img/wall-lake-day.webp" alt=""><span>The Lake 白天</span></button>
+      <button data-v="lake-night" hidden><img class="sq" data-src="img/wall-lake-night.webp" alt=""><span>The Lake 夜晚</span></button>
+      <button data-v="pub-emerald"><img class="sq" data-src="img/wall-pub-emerald.webp" alt=""><span>翡翠湾</span></button>
+      <button data-v="pub-sunset"><img class="sq" data-src="img/wall-pub-sunset.webp" alt=""><span>太浩湖黄昏</span></button>
+    </div><label class="row"><input type="checkbox" data-set="motion"> 动态墙纸（太浩湖是航拍视频）</label>
+      <p class="note">翡翠湾、太浩湖黄昏：Wikimedia Commons，CC0。</p></section>
+    <section><h3>文字大小</h3><div class="row"><input type="range" min="11" max="18" step="1" data-set="font"><output data-out="font"></output></div></section>
+    <section hidden><input type="range" data-set="tps"><output data-out="tps"></output></section>
+  </div>
+</div></div>
+<div id="dock">
+  <a class="app running" data-app="win" title="终端"><span class="ico sq ico-term">&gt;_</span></a>
+  <a class="app" data-app="settings" title="系统设置"><span class="ico sq ico-gear">⚙︎</span></a>
+</div>
+</div>
+<noscript><p class="noscript">需要 JavaScript。</p></noscript>
+<script src="ttu-core.js"></script>
+<!-- 跟着账号走的数据（同 iCloud）：设备身份、agent 与对话的同步、租约、通知（界面状态跟着设备走，不经过它） -->
+<script src="sync.js"></script>
+<script src="sandbox.js"></script>
+<!-- 系统命令（同 macOS 的命令行工具）：apps、windows、open、screencapture、ax、defaults、notifications、pbcopy……人和 agent 都在 shell 里用（截屏的画图代码 sys-capture.js 用到时才载入） -->
+<script src="sim/sys.js"></script>
+<script src="sim/sys-cmds.js"></script>
+<script src="sim/sys-ax.js"></script>
+<script src="native.js"></script><!-- 在 Paimon App（apps/macos/）里：接上原生的桥（系统命令 native、真剪贴板、系统通知）；浏览器里什么都不做 -->
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-unicode11.js"></script>
+<script src="vendor/xterm/addon-webgl.js"></script>
+<script src="xterm-gl.js"></script>
+<script src="vendor/xterm/addon-web-links.js"></script>
+<script src="agents.js"></script>
+<script src="live.js"></script>
+<script src="desk.js"></script>
+<!-- iOS（手机）：在 desk.js 上面包一层 iOS 的外壳（主屏幕、App 切换器、控制中心……）与手机上的终端；不是 html.ios 时什么都不做 -->
+<script src="sim/ios/shell.js"></script>
+<script src="sim/ios/term.js"></script>
+<!-- /iOS -->
+<script src="sim/finder.js"></script>
+<script src="sim/safari.js"></script>
+<script src="hl.js"></script>
+<script src="sim/ide.js"></script>
+<script src="sim/export.js"></script>
+<!-- 日历、提醒事项、备忘录 -->
+<script src="sim/apps-common.js"></script>
+<script src="sim/calendar.js"></script>
+<script src="sim/reminders.js"></script>
+<script src="sim/notes.js"></script>
+<!-- 时钟：世界时钟、闹钟、秒表、计时器（数据是 ~/Library/Clock 里的文件；桌面、手机两套版式） -->
+<link rel="stylesheet" href="sim/clock.css">
+<script src="sim/clock.js"></script>
+<!-- /时钟 -->
+<!-- Office：表格 / 文稿 / 讲演（Dock 图标、访达里的打开方式、给 agent 的说明；App 本身按需载入） -->
+<script src="sim/pdf.js"></script><!-- 导出 PDF（文稿、表格、讲演、备忘录共用）：App 里原生出真的 PDF 文件，浏览器里走打印 -->
+<script src="sim/office/office.js"></script>
+<!-- iOS 的各个 App：手机上（html.ios）文件、Safari、编辑器、传输、备忘录、提醒事项、日历、表格 / 文稿 / 讲演、系统设置换成 iPhone 的版式（ios/apps.*） -->
+<link rel="stylesheet" href="sim/ios/apps.css">
+<script src="sim/ios/apps.js"></script>
+</body>
+</html>

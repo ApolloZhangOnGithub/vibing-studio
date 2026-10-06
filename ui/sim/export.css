@@ -1,0 +1,109 @@
+/* export.css —— 「传输」窗口（#export，export.js）：标题栏里居中的分段控件（下载到本机 / 上传到沙盒）、大号虚线拖放区、项目列表、底栏；
+   图标（.ico-export：Dock、启动台、通知里都用）与拖到 Dock 图标上的提示。深色为默认，html.light 为浅色；类名都带 ex- 前缀 */
+#export { --ex-bg: #1e1e20; --ex-bar: #28282a; --ex-fg: #e8e8ea; --ex-dim: #8e8e93; --ex-line: rgba(255, 255, 255, 0.08); --ex-hover: rgba(255, 255, 255, 0.055);
+  --ex-seg: rgba(255, 255, 255, 0.07); --ex-seg-on: rgba(255, 255, 255, 0.17); --ex-zone: rgba(255, 255, 255, 0.2); --ex-zone-bg: rgba(255, 255, 255, 0.018);
+  --ex-field: rgba(255, 255, 255, 0.06); --ex-btn: rgba(255, 255, 255, 0.1); --ex-btn-hover: rgba(255, 255, 255, 0.16); --ex-accent: #0a84ff; --ex-warn: #ff9f0a;
+  min-width: 460px; min-height: 380px; color: var(--ex-fg); font: 13px -apple-system, "PingFang SC", sans-serif; }
+html.light #export { --ex-bg: #ffffff; --ex-bar: #f6f6f7; --ex-fg: #1d1d1f; --ex-dim: #86868b; --ex-line: rgba(0, 0, 0, 0.08); --ex-hover: rgba(0, 0, 0, 0.04);
+  --ex-seg: rgba(0, 0, 0, 0.06); --ex-seg-on: #ffffff; --ex-zone: rgba(0, 0, 0, 0.17); --ex-zone-bg: rgba(0, 0, 0, 0.012);
+  --ex-field: #ffffff; --ex-btn: #ffffff; --ex-btn-hover: #f1f1f3; --ex-accent: #007aff; --ex-warn: #c46a00; }
+#export > .body { background: var(--ex-bg); }
+
+/* ---- 标题栏 = 工具栏：三个灯在左，分段控件居中（原来居中的标题不要；.bar i 是灯的样式、.bar > span 是标题，所以这里不用 i、不直接放 span） ---- */
+#export .bar { height: 52px; padding: 0 12px 0 20px; background: var(--ex-bar); border-bottom: 1px solid var(--ex-line); color: var(--ex-dim); }
+#export .bar > span { display: none; }
+#export .ex-tb { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+#export .ex-tb span { position: static; }
+#export .ex-seg { display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--ex-seg); }
+#export .ex-seg button { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 13px; border: 0; border-radius: 7px; background: none; color: var(--ex-dim);
+  font: 500 12.5px -apple-system, "PingFang SC", sans-serif; white-space: nowrap; cursor: default; }
+#export .ex-seg button:hover:not(.ex-on) { color: var(--ex-fg); }
+#export .ex-seg button.ex-on { background: var(--ex-seg-on); color: var(--ex-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06); }
+#export .ex-seg svg { display: block; width: 14px; height: 14px; }
+#export .ex-seg button.ex-on svg { color: var(--ex-accent); }
+
+/* ---- 内容：两页，按 data-tab 显示一页 ---- */
+#export .ex { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; position: relative; outline: none; cursor: default;
+  user-select: none; -webkit-user-select: none; }
+#export .ex-pane { flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; }
+#export .ex[data-tab="down"] .ex-down, #export .ex[data-tab="up"] .ex-up { display: flex; }
+
+/* 空的时候：一大块虚线拖放区；拖着东西进来变蓝，箭头往拖的方向挪一点 */
+#export .ex-zone { flex: 1 1 auto; min-height: 0; margin: 16px 16px 4px; padding: 20px; display: none; align-items: center; justify-content: center; text-align: center;
+  border: 2px dashed var(--ex-zone); border-radius: 18px; background: var(--ex-zone-bg); transition: border-color 0.15s, background-color 0.15s; }
+#export .ex-empty .ex-zone { display: flex; }
+#export .ex-empty .ex-list { display: none; }
+#export .ex-zone-in { max-width: 380px; }
+#export .ex-zone-ico { display: inline-flex; color: var(--ex-dim); transition: transform 0.2s, color 0.15s; }
+#export .ex-zone-ico svg { width: 60px; height: 60px; }
+#export .ex-zone b { display: block; margin-top: 14px; font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+#export .ex-zone small { display: block; margin-top: 6px; font-size: 13px; color: var(--ex-dim); }
+#export .ex-zone em { display: block; margin-top: 14px; font-size: 11.5px; font-style: normal; line-height: 1.5; color: var(--ex-dim); opacity: 0.85; }
+#export .ex-picks { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
+#export .ex-drop .ex-empty .ex-zone { border-color: var(--ex-accent); background: color-mix(in srgb, var(--ex-accent) 10%, transparent); }
+#export .ex-drop .ex-empty .ex-zone-ico { color: var(--ex-accent); }
+#export .ex-drop .ex-down.ex-empty .ex-zone-ico { transform: translateY(4px); }
+#export .ex-drop .ex-up.ex-empty .ex-zone-ico { transform: translateY(-4px); }
+
+/* ---- 列表：图标、名字 + 路径（+ 说明）、大小 / 文件数、操作 ---- */
+#export .ex-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 8px 10px; }
+#export .ex-it { display: flex; align-items: center; gap: 11px; min-height: 44px; padding: 6px 8px 6px 10px; border-radius: 10px; }
+#export .ex-it + .ex-it { margin-top: 2px; }
+#export .ex-it:hover { background: var(--ex-hover); }
+#export .ex-ico { flex: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+#export .ex-ico svg { display: block; width: 100%; height: 100%; }
+#export .ex-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#export .ex-nm { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#export .ex-path, #export .ex-note { font-size: 11.5px; color: var(--ex-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#export .ex-note.ex-warn { color: var(--ex-warn); }
+#export .ex-meta { flex: none; font-size: 12px; color: var(--ex-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#export .ex-x { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--ex-dim); cursor: default; }
+#export .ex-x:hover { background: var(--ex-btn-hover); color: var(--ex-fg); }
+#export .ex-gone .ex-nm, #export .ex-gone .ex-ico { opacity: 0.45; }
+#export .ex-gone .ex-meta { color: var(--ex-warn); }
+#export .ex-acts { flex: none; display: flex; align-items: center; gap: 6px; }
+#export .ex-acts:empty { display: none; }
+#export .ex-bar { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--ex-seg); overflow: hidden; }
+#export .ex-bar > b { display: block; height: 100%; border-radius: 2px; background: var(--ex-accent); transition: width 0.2s; }
+
+/* ---- 底栏：一行汇总 / 提示，下面是控件 ---- */
+#export .ex-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 9px 14px 12px; border-top: 1px solid var(--ex-line); background: var(--ex-bar); }
+#export .ex-sum { min-height: 15px; font-size: 11.5px; color: var(--ex-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#export .ex-sum.ex-warn { color: var(--ex-warn); }
+#export .ex-ctl { display: flex; align-items: center; gap: 10px; }
+#export .ex-flex { flex: 1; }
+#export .ex-fname { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ex-dim); white-space: nowrap; }
+#export .ex-fname input { flex: 1; min-width: 60px; height: 26px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--ex-line); border-radius: 7px; outline: none;
+  background: var(--ex-field); color: var(--ex-fg); font: 13px -apple-system, "PingFang SC", sans-serif; user-select: text; -webkit-user-select: text; }
+#export .ex-fname input:focus { border-color: var(--ex-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ex-accent) 35%, transparent); }
+#export .ex-fname input:disabled { color: var(--ex-dim); }
+#export .ex-always { flex: none; display: flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }
+#export .ex-always input { margin: 0; accent-color: var(--ex-accent); }
+#export .ex-btn { flex: none; height: 26px; padding: 0 14px; border: 0; border-radius: 7px; background: var(--ex-btn); color: var(--ex-fg); cursor: default; white-space: nowrap;
+  font: 13px -apple-system, "PingFang SC", sans-serif; box-shadow: 0 0 0 0.5px rgba(127, 127, 127, 0.35), 0 0.5px 1px rgba(0, 0, 0, 0.12); }
+#export .ex-btn:hover:not(:disabled) { background: var(--ex-btn-hover); }
+#export .ex-btn:active:not(:disabled) { filter: brightness(0.92); }
+#export .ex-btn:disabled { opacity: 0.45; }
+#export .ex-btn[hidden] { display: none; }
+#export .ex-btn.ex-primary { background: var(--ex-accent); color: #fff; font-weight: 500; box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.2); }
+#export .ex-btn.ex-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--ex-accent) 88%, #fff); }
+#export .ex-btn.ex-mini { height: 22px; padding: 0 10px; border-radius: 6px; font-size: 12px; }
+
+/* ---- 列表不空时拖东西进来：整块蒙一层，写着松手会怎样 ---- */
+#export .ex-veil { position: absolute; inset: 8px; z-index: 3; display: flex; align-items: center; justify-content: center; pointer-events: none; border-radius: 14px;
+  border: 2px dashed var(--ex-accent); background: color-mix(in srgb, var(--ex-accent) 12%, color-mix(in srgb, var(--ex-bg) 72%, transparent)); }
+#export .ex-veil[hidden] { display: none; }
+#export .ex-veil span { padding: 8px 16px; border-radius: 10px; background: var(--ex-accent); color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }
+
+/* ---- 图标：绿色方块，白色托盘 + 一上一下两个箭头；在忙时底部一条进度 ---- */
+.ico-export { position: relative; background: linear-gradient(160deg, #52e0a6, #0f9f6b); }
+.ico-export svg { display: block; filter: drop-shadow(0 1px 1.2px rgba(0, 70, 40, 0.35)); }
+.ico-export .ex-dprog { display: none; position: absolute; left: 9px; right: 9px; bottom: 3px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.3); overflow: hidden; }
+.ico-export .ex-dprog b { display: block; width: 0; height: 100%; border-radius: 2px; background: #fff; }
+.ico-export.ex-busy .ex-dprog { display: block; }
+.ico-export.ex-busy svg { transform: translateY(-1.5px); } /* 给进度条让点地方 */
+/* 拖到 Dock 图标上：放大一点，头上冒个小标签说松手会怎样（同「移除」的样子） */
+#dock .app.ex-dock-on { transform: translateY(-8px) scale(1.16); }
+#dock .app.ex-dock-on::before { content: attr(data-ex-hint); position: absolute; left: 50%; top: -30px; transform: translateX(-50%); padding: 3px 9px; border-radius: 8px;
+  white-space: nowrap; font: 11px -apple-system, "PingFang SC", sans-serif; background: rgba(30, 30, 34, 0.88); color: #fff; pointer-events: none; }

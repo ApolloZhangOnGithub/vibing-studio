@@ -1,0 +1,32 @@
+/* stats.css —— 用量统计卡片（stats.js）：同 Claude 桌面版新会话页上那张。深色为默认，html.light 为浅色 */
+.us-card { --us-bg: rgba(255, 255, 255, 0.045); --us-tile: rgba(255, 255, 255, 0.07); --us-fg: #ececec; --us-dim: rgba(236, 236, 236, 0.55); --us-cell: rgba(255, 255, 255, 0.07);
+  box-sizing: border-box; width: 100%; max-width: 520px; padding: 12px 12px 14px; border-radius: 14px; background: var(--us-bg); color: var(--us-fg);
+  font: 13px/1.35 var(--ca-font, var(--mac-font, var(--st-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif))); -webkit-user-select: none; user-select: none; }
+html.light .us-card { --us-bg: rgba(0, 0, 0, 0.035); --us-tile: rgba(0, 0, 0, 0.045); --us-fg: #1f1f1f; --us-dim: rgba(31, 31, 31, 0.55); --us-cell: rgba(0, 0, 0, 0.06); }
+.us-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.us-tabs, .us-range { display: inline-flex; gap: 2px; }
+.us-head button { height: 24px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--us-dim); font: inherit; cursor: pointer; }
+.us-head button.on { background: var(--us-tile); color: var(--us-fg); }
+.us-tabs button { font-size: 13.5px; }
+.us-range button { font-size: 12.5px; }
+.us-body { min-height: 60px; }
+.us-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 8px; }
+.us-tile { min-width: 0; padding: 6px 8px 7px; border-radius: 7px; background: var(--us-tile); }
+.us-k { color: var(--us-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-v { margin-top: 2px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-v.sm { font-weight: 500; }
+.us-heat { display: grid; grid-template-columns: repeat(var(--cols), 14px); grid-auto-rows: 14px; gap: 3.5px; justify-content: space-between; margin: 10px 0 4px; }
+.us-heat i { border-radius: 3px; background: var(--us-cell); }
+.us-heat i.l1 { background: #a2bff6; } .us-heat i.l2 { background: #7fa6f2; } .us-heat i.l3 { background: #5b8def; } .us-heat i.l4 { background: #2f6bdc; }
+.us-heat i.lx { background: transparent; }
+html.light .us-heat i.l1 { background: #c3d6f9; } html.light .us-heat i.l2 { background: #9bbcf6; } html.light .us-heat i.l3 { background: #6c9bef; } html.light .us-heat i.l4 { background: #2f6bdc; }
+.us-fun { margin-top: 10px; color: var(--us-dim); font-size: 12.5px; }
+.us-empty { padding: 26px 0; color: var(--us-dim); text-align: center; }
+.us-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.us-chart text { fill: var(--us-dim); font-size: 11px; font-family: inherit; }
+.us-legend { margin-top: 8px; }
+.us-lg { display: flex; align-items: center; gap: 8px; height: 22px; }
+.us-lg i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.us-lgn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.us-lgd { flex: none; color: var(--us-dim); font-variant-numeric: tabular-nums; }
+.us-lg b { flex: none; width: 52px; text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }

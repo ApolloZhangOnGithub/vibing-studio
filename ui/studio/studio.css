@@ -1,0 +1,1513 @@
+/* studio.css —— Vibe Code Studio（studio.js）：外观守 TUI 的规矩（等宽字、终端的颜色、Claude Code 的符号），结构学 VS Code——
+   活动栏（左下 ⚙ 管理菜单）· 标题栏右上的布局开关 · 标签条（图标 + 名字 + ×，右端「新终端 / 分屏 / ···」）· 面包屑 · 缩略图 · 右侧栏 · 终端面板 · 状态栏
+   · 命令面板 · 设置页 · 文件页。
+   所有颜色都来自「配色方案」（设置里的一项，studio.js 把方案里的颜色写成下面这些变量）：工具栏、标签、侧栏、终端、页面同一套 */
+:root { --st-font: Monaco, Menlo, "PingFang SC", monospace; --st-fs: 12px;
+  --st-bg: #000; --st-bg2: #0c0c0c; --st-bg3: #161616; --st-line: #262626; --st-fg: #d6d6d6; --st-hi: #fff; --st-dim: #808080; --st-faint: #4a4a4a;
+  --st-lav: rgb(177, 185, 249); --st-orange: rgb(215, 119, 87); --st-green: rgb(78, 186, 101); --st-red: rgb(255, 107, 128); --st-blue: rgb(110, 170, 255); --st-yellow: rgb(229, 192, 123);
+  --st-sel: rgba(177, 185, 249, 0.14); --st-onacc: #000; --st-hover: #1f1f1f; --st-hover2: #333; --st-active: #303030; --st-ask: #373737; --st-canvas: #0a0a0a;
+  --hl-k: #f92672; --hl-d: #66d9ef; --hl-f: #a6e22e; --hl-s: #e6db74; --hl-c: #75715e; --hl-n: #ae81ff; --hl-p: #fd971f; --hl-v: #f8f8f2; --hl-h: #66d9ef; --hl-a: #a6e22e; }
+.st-dim { color: var(--st-dim); }
+.st-lav { color: var(--st-hi); } /* 界面上不用紫色：强调就是白（配色方案的最亮字色）*/
+.st-orange { color: var(--st-orange); }
+.st-green { color: var(--st-green); }
+.st-red { color: var(--st-red); }
+.st-b { font-weight: 700; }
+.st-cut { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-fill { flex: 1; min-width: 8px; }
+.st-k, .st-x { cursor: pointer; color: var(--st-dim); }
+.st-k:hover, .st-x:hover { color: var(--st-hi); background: var(--st-hover2); border-radius: 3px; }
+.st-x { padding: 0 4px; }
+html.st-drag-x, html.st-drag-x * { cursor: col-resize !important; user-select: none !important; }
+html.st-drag-y, html.st-drag-y * { cursor: row-resize !important; user-select: none !important; }
+
+/* ======== 样式的总管：每一块用哪个底色（面）只在这里定 ========
+   --st-canvas 窗口的底：活动栏、标题栏、状态栏直接在它上面
+   --st-bg2    左边栏、右侧栏（卡片）、标签条
+   --st-bg     编辑区（对话、文件、设置页）、终端面板、菜单、命令面板
+   TTU 画的东西（.terminal-style-ui：terminal.css 里默认黑底、灰字、带内边距）在 Paimon Terminal 里一律不自带底色，字色跟配色方案，
+   当容器用的（搜索视图、标题栏、页面、命令面板）不要它的内边距——哪一块什么底色只由上面这几个变量决定，不会再出现「这块黑那块灰」 */
+html.termapp .terminal-style-ui, html.termapp .terminal-style-ui.ttu-light { background: transparent; color: var(--st-fg); }
+html.termapp :is(.st-sview, .st-xview, .st-shdr, .st-pg, .st-palette, .st-aside, .st-status).terminal-style-ui { padding: 0; }
+html.termapp .st-shdr.terminal-style-ui { padding: 0 var(--ts-rgap, 8px) 0 10px; } /* 视图的标题行（Agent、搜索、对话）：左右和下面的内容对齐，几个侧栏一样 */
+html.termapp .termwin .tside, html.termapp .st-aside { background: var(--st-bg2) !important; }
+html.termapp .st-vhead.terminal-style-ui { background: var(--st-bg2); } /* 粘在顶上的标题栏：不透明，树滚过去不透出来 */
+html.termapp :is(.st-pop, .st-palette).terminal-style-ui { background: var(--st-canvas); } /* 弹出来的（菜单、选择器）：和窗口边框一样的灰，不是贴上去的一块黑 / 白 */
+
+/* ======== 整个窗口一套颜色（配色方案）======== */
+/* 对话区上下的遮挡条、你说的话和工具详情的底色、「跳到底部」：原来写死黑 / 白，换了方案会露出一块块白的 */
+html.termapp .tpane .topgap, html.termapp .tpane .botgap, html.termapp .tpane.tl .topgap, html.termapp .tpane.tl .botgap { background: var(--st-bg); }
+html.termapp .tpane .term .ask::before, html.termapp .tpane.tl .term .ask::before { background: var(--st-prompt, var(--st-ask)); } /* 你说的话：同 Claude Code 的底（深色 55 灰），比工具详情的底亮一档 */
+html.termapp .tpane .term .ask { color: var(--st-hi); }
+html.termapp .tpane .term .ask.q { color: inherit; } /* 排着、还没发出去的：不高亮 */ /* 字：配色方案里最亮的字色（深色是纯白，同 Claude Code） */
+html.termapp .tpane .term .grp .gdet::before, html.termapp .tpane.tl .term .grp .gdet::before, html.termapp .tpane .term .grp.uopen::before, html.termapp .tpane.tl .term .grp.uopen::before { background: var(--st-ask); }
+html.termapp .tpane .jump, html.termapp .tpane .jump.ttu-light { background: var(--st-pill, var(--st-ask)); color: var(--st-fg); }
+html.termapp .tpane .jump:hover, html.termapp .tpane .jump.ttu-light:hover { background: var(--st-hover2); color: var(--st-hi); }
+html.termapp, html.termapp body, html.termapp #desktop, html.termapp #win > .body { background: var(--st-bg) !important; }
+html.termapp #win .bar { background: var(--st-bg2); border-bottom: 1px solid var(--st-line); color: var(--st-dim); font: var(--st-fs) var(--st-font); }
+html.termapp #win .bar > #toggle, html.termapp #win .bar > .ts-btn, html.termapp #win .bar > .ts-tb, html.termapp #win .bar > #readall { display: none !important; }
+html.termapp .ts-addr { background: var(--st-bg); border: 1px solid var(--st-line); border-radius: 0; color: var(--st-fg); font: var(--st-fs) var(--st-font); height: 22px; top: 4px; }
+html.termapp .ts-addr.editing { background: var(--st-bg2); box-shadow: none; border-color: var(--st-hover2); } /* 点进去只是边线亮一点，不换成白底 */
+html.termapp .ts-addr input { font: var(--st-fs) var(--st-font); }
+html.termapp .ts-sug { background: var(--st-canvas); border: 1px solid var(--st-line); border-radius: 0; box-shadow: var(--st-shadow); font: var(--st-fs) var(--st-font); padding: 4px 0; left: 0; right: 0; top: calc(100% + 2px); color: var(--st-fg); }
+html.termapp .ts-srow { border-radius: 0; height: 22px; }
+html.termapp .ts-srow.on { background: var(--st-active); color: var(--st-hi); border-radius: 4px; }
+html.termapp .ts-srow.on::before { content: "❯"; margin-right: -2px; }
+html.termapp .ts-srow.on .ts-su { color: var(--st-dim); }
+html.termapp .termwin .tside { background: var(--st-bg2) !important; border-right: 1px solid var(--st-line) !important; }
+html.termapp .tpane, html.termapp .tpane.tl { background: var(--st-bg); }
+html.termapp .termwin .tlab.off + * { }
+
+/* ---- 活动栏：最左一条（同 VS Code）。上面是视图（点一下开 / 关左边栏），左下 ⚙ 是管理菜单 ---- */
+.st-act { flex: none; width: 48px; display: flex; flex-direction: column; align-items: center; padding: 6px 0 8px; gap: 4px; background: var(--st-bg2); border-right: 1px solid var(--st-line); color: var(--st-dim); }
+.st-act button { width: 38px; height: 38px; border: 0; padding: 0; background: none; color: inherit; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.st-act button[hidden] { display: none; }
+.st-act button svg { width: 24px; height: 24px; }
+.st-act button:hover { color: var(--st-hi); }
+.st-act button.on { color: var(--st-hi); background: var(--st-hover2); } /* 点着的那个：一块圆角底色（同 VS Code）*/
+.st-act .st-grow { flex: 1; }
+html:not(.termapp) .st-act { display: none; }
+/* 活动栏大小：精致（同 VS Code 的 compact）——栏窄一点、图标小一点、间距小一点；宽裕是上面的 48px。在顶部 / 底部时按钮也矮一点（不碰那一排的宽度） */
+html.st-act-compact .st-act:not(.st-acttop) { width: 36px; padding: 4px 0 6px; gap: 2px; }
+html.st-act-compact .st-act:not(.st-acttop) button { width: 30px; height: 30px; border-radius: 5px; }
+html.st-act-compact .st-act:not(.st-acttop) button svg { width: 18px; height: 18px; }
+html.st-act-compact .st-act:not(.st-acttop) button.st-badge::after { right: 4px; bottom: 4px; width: 6px; height: 6px; }
+html.st-act-compact .st-act.st-acttop button { width: 24px; height: 22px; }
+html.st-act-compact .st-act.st-acttop button svg { width: 15px; height: 15px; }
+html.st-act-compact .st-glob.st-globbar button { width: 24px; height: 22px; }
+html.st-act-compact .st-glob.st-globbar button svg { width: 14px; height: 14px; }
+
+/* ---- 标题栏右上：四个布局开关（同 VS Code：自定义布局 · 主侧栏 · 面板 · 辅助侧栏）---- */
+.st-lay { position: relative; z-index: 2; margin-left: auto; display: flex; gap: 2px; }
+.st-lay button { width: 24px; height: 22px; border: 0; background: none; color: var(--st-dim); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.st-lay button:hover { color: var(--st-hi); background: var(--st-hover2); }
+.st-lay button[hidden] { display: none; } /* 右键里取消勾选的、默认不摆出来的（浏览器）：上面的 display: flex 盖不过它 */
+.st-lay svg { width: 16px; height: 16px; }
+/* 顶栏上显示哪些（顶栏右键勾选）：地址栏、布局控件默认有；新建标签页、标签页概览默认没有 */
+html.termapp:not(.st-tb-address) #win .bar > .ts-addr { visibility: hidden; }
+html.termapp:not(.st-tb-layout) .st-lay > :is([data-l="custom"], [data-l="left"], [data-l="panel"], [data-l="right"]) { display: none; }
+html.termapp:not(.st-tb-newTab) .st-lay > [data-l="newtab"], html.termapp:not(.st-tb-overview) .st-lay > [data-l="overview"] { display: none; }
+
+/* ---- 标签条（同 VS Code：图标 + 名字 + ×；右端「新终端 / 分屏 / ···」）---- */
+html.termapp .termwin .tabs { height: 30px; background: var(--st-bg2); border-bottom: 1px solid var(--st-line); color: var(--st-dim); font: var(--st-fs) var(--st-font); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+html.termapp .termwin .tabs::-webkit-scrollbar { display: none; }
+html.termapp .termwin .tab { flex: 0 1 auto; min-width: 90px; max-width: 220px; gap: 1ch; padding: 0 5px 0 1.2ch; border-right: 1px solid var(--st-line); position: relative; background: none; } /* 左边、图标和字之间各一个字宽（同 VS Code）*/
+html.termapp .termwin .tab span { text-align: left; }
+html.termapp .termwin .tab.on { background: var(--st-bg); color: var(--st-fg); }
+html.termapp .termwin .tab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--st-bg); }
+html.termapp .termwin .tab kbd { display: none; }
+html.termapp .termwin .tab > i:not(.st-ico) { order: 3; flex: none; width: 20px; height: 20px; margin-left: auto; border-radius: 4px; font-size: 0; color: var(--st-dim); display: flex; align-items: center; justify-content: center; }
+/* 关闭：画一个细线的 ×（同 VS Code），不用字 */
+html.termapp .termwin .tab > i:not(.st-ico)::before { content: ""; width: 10px; height: 10px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 1L9 9M9 1L1 9' stroke='black' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1 1L9 9M9 1L1 9' stroke='black' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 10px 10px no-repeat; }
+html.termapp .termwin .tab.on > i:not(.st-ico) { visibility: visible; }
+html.termapp .termwin .tab > i:not(.st-ico):hover { background: var(--st-hover2); color: var(--st-hi); }
+html.termapp .termwin .tab .st-ico { order: 0; visibility: visible; width: auto; border-radius: 0; background: none !important; } /* 图标不是关闭按钮：不吃 .tab i 的悬停底色 */
+html.termapp .termwin .tab > span { order: 1; }
+.st-ico { flex: none; font-weight: 700; font-size: inherit; font-style: normal; text-align: left; }
+.st-ico.st-i-pm > img.pm-av { width: 1.15em; height: 1.15em; vertical-align: -0.22em; } /* Paimon 的 agent：派蒙的头像 */
+.st-ico.st-i-sh { color: var(--st-dim); } .st-ico.st-i-pm { color: var(--st-hi); } .st-ico.st-i-cc { color: var(--st-orange); } .st-ico.st-i-md { color: var(--st-blue); }
+.st-ico.st-i-js { color: var(--st-yellow); } .st-ico.st-i-ts { color: var(--st-blue); } .st-ico.st-i-py { color: var(--st-green); } .st-ico.st-i-cfg { color: var(--st-dim); }
+.st-tacts { flex: none; position: sticky; right: 0; margin-left: auto; display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--st-bg2); }
+.st-tacts button { width: 24px; height: 22px; border: 0; background: none; color: var(--st-dim); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
+.st-tacts button:hover { color: var(--st-hi); background: var(--st-hover2); }
+.st-tacts svg { width: 16px; height: 16px; }
+
+/* ---- 面包屑：标签条下面一行 ---- */
+.st-crumbs { flex: none; display: block; height: 22px; line-height: 22px; padding: 0 12px; background: var(--st-bg); color: var(--st-dim); font: var(--st-fs) var(--st-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.st-crumbs .st-ico { display: inline-block; min-width: 0; margin-right: 4px; }
+.st-crumbs b { font-weight: 400; color: var(--st-fg); }
+.st-crumbs .st-sepc { padding: 0 6px; color: var(--st-faint); }
+html:not(.termapp) .st-crumbs { display: none; }
+
+/* ---- 缩略图（minimap）：面板右边一条，整段缩小；灰的那块是看得见的这一段，点、拖都行 ---- */
+.st-map { position: absolute; top: 0; right: 0; height: 100%; width: 70px; z-index: 5; cursor: pointer; background: var(--st-bg); border-left: 1px solid var(--st-line); overflow: hidden; }
+.st-map canvas { position: absolute; left: 0; top: 0; }
+.st-map .st-view { position: absolute; left: 0; right: 0; background: rgba(127, 127, 127, 0.14); }
+.st-map:hover .st-view { background: rgba(127, 127, 127, 0.24); }
+.tpane.st-mapclear .st-map { background: transparent; border-left: 0; }
+.tpane.st-mapclear .st-map .st-view { background: transparent; }
+.tpane.st-mapclear .st-map:hover .st-view { background: rgba(127, 127, 127, 0.2); }
+.tpane.st-hasmini > .screen, .tpane.st-hasmini > .xt, .tpane.st-hasmini .st-fbody { margin-right: 71px; } /* 输入栏不让：缩略图只到它上面 */
+/* 仅滚动时显示：浮在内容上（不占地方），平时看不见；手动滚动时浮现，停下一会儿淡出；指着、拖着时不消失（同 macOS 的浮动滚动条） */
+.tpane.st-mapfloat > .st-map { opacity: 0; pointer-events: none; transition: opacity 0.25s; box-shadow: -6px 0 16px rgba(0, 0, 0, 0.12); }
+.tpane.st-mapfloat > .st-map.show { opacity: 1; pointer-events: auto; }
+
+/* ---- 中间：面板们 + 右侧栏；下面是终端面板 ---- */
+.st-mid { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
+.st-mid > .st-ecol { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.st-ecol > .panes { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; }
+.st-grip, .st-aside { display: none; }
+.tlab.st-aside-on > .st-grip { display: block; position: relative; z-index: 7; }
+.tlab.st-aside-on > .st-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 6px; cursor: col-resize; }
+.tlab.st-aside-on > .st-aside { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--st-bg2); color: var(--st-fg); }
+.st-aside, .st-status, .st-panel, .st-pop, .st-palette, .st-pg { font-size: var(--st-fs); --ttu-font-size: var(--st-fs); white-space: normal; }
+.st-shdr { flex: none; display: flex; align-items: center; height: 32px; padding: 0 var(--ts-rgap, 8px) 0 10px; white-space: nowrap; overflow: hidden; } /* 左右和下面的目录树对齐（同 VS Code 的视图标题栏）*/
+.st-shdr[hidden] { display: none; }
+.st-vhead { position: sticky; top: 0; z-index: 2; background: var(--st-bg2); }
+.st-shdr .st-x { margin-left: auto; }
+.st-sbody { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 20px; scrollbar-width: thin; }
+.st-sec { padding: 0 0 6px; }
+.st-shead { padding: 4px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.st-shead:hover { background: var(--st-hover); }
+.st-sbody2 { padding: 0 12px 0 24px; }
+.st-sbody2 > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.6; }
+.st-empty { padding: 20px 14px; white-space: pre-wrap; line-height: 1.6; }
+.st-fhead0 { padding: 6px 0 2px; }
+.st-frow { display: flex; align-items: baseline; gap: 8px; line-height: 1.8; }
+.st-flab { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-fopts { flex: none; display: flex; gap: 2px; }
+.st-opt { padding: 0 4px; color: var(--st-dim); cursor: pointer; }
+.st-opt:hover { color: var(--st-fg); }
+.st-opt.on { background: var(--st-active); color: var(--st-hi); font-weight: 700; }
+
+/* ---- 状态栏：窗口最下面一行 ---- */
+.st-status { flex: none; display: flex; align-items: center; height: 22px; padding: 0 10px; background: var(--st-bg2); border-top: 1px solid var(--st-line); color: var(--st-fg); white-space: nowrap; overflow: hidden; }
+.st-status[hidden] { display: none; }
+.st-item { cursor: default; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; }
+.st-item[data-el]:hover, .st-item[data-sec]:hover, .st-item[data-st]:hover { background: var(--st-hover2); }
+.st-cwd { color: var(--st-dim); }
+.st-keys { display: flex; gap: 12px; margin-left: 14px; }
+
+/* ---- 终端面板（⌘J）：拖上边缘调高 ---- */
+.st-panel { display: none; flex-direction: column; position: relative; min-width: 0; background: var(--st-bg2); }
+.st-panel.on { display: flex; }
+.tlab > .st-panel.max { grid-row: 1 / 3; height: auto !important; z-index: 20; margin-top: 0; } /* 放大：占满主侧栏和编辑区（右侧栏不动）*/
+.st-pgrip { position: absolute; left: 0; right: 0; top: -3px; height: 6px; cursor: row-resize; z-index: 3; }
+.st-phead { flex: none; display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 8px 0 12px; color: var(--st-dim); white-space: nowrap; overflow: hidden; }
+.st-phead > .st-b { color: var(--st-fg); text-decoration: underline; text-underline-offset: 6px; text-decoration-color: var(--st-fg); }
+.st-ptab { cursor: pointer; }
+.st-ptab.on { color: var(--st-fg); }
+.st-ptab .st-x { visibility: hidden; }
+.st-ptab.on .st-x { visibility: visible; }
+@media (hover: hover) { .st-ptab:hover .st-x { visibility: visible; } } /* 只在有悬停的设备上：手指点的设备第一下会被当成悬停，要点两次 */
+.st-pbody { flex: 1; min-height: 0; position: relative; }
+.st-term { position: absolute; inset: 0 4px 2px 12px; }
+
+/* ---- 小菜单 / 状态栏点开的一块：等宽字、一圈细线 ---- */
+.st-pop { position: fixed; z-index: 90; min-width: 180px; max-width: 460px; max-height: 60vh; overflow-y: auto; padding: 6px 10px; background: var(--st-canvas); color: var(--st-fg); border: 1px solid var(--st-line); line-height: 1.6; font-family: var(--st-font); }
+.st-mi { cursor: pointer; white-space: pre; }
+.st-mi:hover { background: var(--st-hover); }
+.st-hint { margin-top: 4px; }
+
+/* ---- 命令面板 / 快速打开 / 配色方案：窗口上方正中一个框（同 Claude Code 的斜杠菜单）---- */
+.st-palette { position: absolute; z-index: 80; top: 34px; left: 50%; transform: translateX(-50%); width: min(640px, calc(100% - 40px)); background: var(--st-canvas); color: var(--st-fg); border: 1px solid var(--st-line); box-shadow: var(--st-shadow); font-family: var(--st-font); }
+.st-pin { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--st-line); }
+.st-pin input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: inherit; font: inherit; }
+.st-plist { max-height: min(460px, 60vh); overflow-y: auto; padding: 4px 0; }
+.st-prow { display: flex; align-items: baseline; gap: 8px; padding: 1px 10px; line-height: 1.8; cursor: pointer; }
+.st-prow:hover { background: var(--st-hover); }
+.st-prow.on { background: var(--st-active); color: var(--st-hi); }
+.st-ptr { flex: none; width: 1ch; color: var(--st-hi); }
+.st-pt { flex: 0 1 auto; min-width: 0; }
+.st-pdesc { margin-left: 1.5ch; color: var(--st-dim); } /* 名字后面淡色的说明（同 VS Code 的 Default Dark）*/
+.st-pchk { flex: none; color: var(--st-hi); }
+.st-pgrp { flex: 1 0 auto; text-align: right; color: var(--st-dim); } /* 组名：这组第一行的最右边 */
+.st-pkey { flex: 1 1 0; min-width: 0; text-align: right; color: var(--st-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* 命令的快捷键、网址 */
+.st-psep { height: 1px; margin: 3px 0; background: var(--st-line); }
+
+/* ---- 编辑区的页面：设置（同 Claude Code 的 /config）、文件 ---- */
+.tpane .st-pg { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: var(--st-bg); color: var(--st-fg); outline: 0; }
+.tpane:not(.pagemode) .st-pg { display: none !important; }
+.st-set { padding: 12px 18px 40px; }
+/* 两栏：左边分区目录（同 VS Code 设置页左边那列），右边这一区的设置 */
+.st-setcols { display: flex; align-items: flex-start; }
+.st-settoc { flex: none; width: 168px; position: sticky; top: 0; align-self: stretch; padding: 2px 12px 0 0; margin-right: 20px; border-right: 1px solid var(--st-line); }
+.st-toci { padding: 1px 10px; line-height: 1.9; border-radius: 4px; cursor: pointer; color: var(--st-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-toci:hover { background: var(--st-hover); color: var(--st-fg); }
+.st-toci.on { background: var(--st-active); color: var(--st-hi); }
+.st-setbody { flex: 1; min-width: 0; max-width: 880px; }
+/* 窄的时候（设置开在窄的编辑组、右侧栏里）：分区目录从左边一列变成上面一排（放不下就折行），右边的设置用满宽度 */
+.st-pg-settings { container-type: inline-size; }
+@container (max-width: 600px) {
+  .st-setcols { flex-direction: column; align-items: stretch; }
+  .st-settoc { position: static; width: auto; display: flex; flex-wrap: wrap; gap: 2px 4px; padding: 0 0 8px; margin: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--st-line); }
+  .st-toci { padding: 0 8px; }
+}
+.st-set-tabs { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.st-tab { padding: 0 6px; cursor: pointer; }
+.st-tab.on { background: var(--st-active); color: var(--st-hi); font-weight: 700; }
+.st-tab:not(.on):hover { background: var(--st-hover); }
+.st-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--st-dim); padding: 3px 10px; margin: 0 0 10px; }
+.st-search:focus-within { border-color: var(--st-fg); }
+.st-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: inherit; font: inherit; }
+.st-cnote { margin: 0 0 8px; line-height: 1.7; }
+.st-cgroup { margin: 14px 0 4px; }
+.st-crow { display: flex; gap: 8px; line-height: 1.75; cursor: pointer; }
+/* 设置的一项：名字、说明一行，下面选项摊开成一排（放不下就折到下一行），当前那个是实的 */
+.st-crow { display: block !important; padding: 6px 8px 8px; margin: 0 -8px 2px; border-radius: 6px; line-height: 1.6; }
+.st-crow:hover { background: var(--st-hover); }
+.st-crow.on { background: var(--st-hover); }
+.st-rhead { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.st-rhead .st-rlab { flex: none; color: var(--st-hi); }
+.st-rdesc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vcs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.vcs-chip { padding: 1px 10px; border: 1px solid var(--st-line); border-radius: 4px; cursor: pointer; color: var(--st-fg); background: var(--st-bg); white-space: nowrap; }
+.vcs-chip:hover { background: var(--st-hover2); }
+.vcs-chip.on { background: var(--st-active); border-color: var(--st-hover2); color: var(--st-hi); font-weight: 700; }
+.st-rlab { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-rval { flex: none; min-width: 12ch; text-align: right; }
+.st-crow.on .st-rval { font-weight: 700; }
+.st-choice { display: flex; gap: 8px; line-height: 1.75; padding-left: 5ch; cursor: pointer; white-space: pre; }
+.st-choice { border-radius: 4px; }
+.st-choice:hover { background: var(--st-hover); }
+.st-pad { padding: 16px 18px; }
+.st-fhead { display: flex; align-items: center; gap: 12px; padding: 3px 14px; flex: none; background: var(--st-bg); }
+.st-fhead .st-cut { flex: 0 1 auto; min-width: 0; }
+.st-pg-file { display: flex; flex-direction: column; overflow: hidden !important; }
+.st-fbody { position: relative; flex: 1; min-height: 0; overflow: auto; }
+.st-doc { margin: 0; padding: 10px 16px 40px; background: transparent !important; -webkit-user-select: text; user-select: text; }
+.st-img { padding: 14px; text-align: center; }
+.st-img img { max-width: 100%; height: auto; background: repeating-conic-gradient(rgba(127, 127, 127, 0.15) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+.st-pdf { display: block; width: 100%; height: 100%; min-height: 400px; border: 0; background: #fff; }
+.st-nv { position: absolute; inset: 0; } /* PDF、Office 预览、很大的图片：原生的网页视图叠在这一块上（webview.js 的 overlay） */
+/* 编辑：左边行号，右边透明 textarea 叠在高亮好的 <pre> 上（同 ide.js）*/
+.st-ed { position: absolute; inset: 0; overflow: hidden; font: var(--st-fs)/1.5 var(--st-mono); contain: strict; } /* 里面重排、重画不牵连外面 */
+/* 代码编辑器（只看也是它，只读）：CodeMirror 6 铺满；颜色、字体在 vendor/codemirror 的主题里走 --st-* / --hl-* */
+.st-ed.st-cm > .cm-editor { height: 100%; }
+.st-ed.st-cm .cm-scroller { -webkit-user-select: text; user-select: text; }
+/* 改了没存的「是否要保存」（同 VS Code 在 Mac 上的那个）：不带图标；粗体一行标题、一行淡的说明，三个按钮——不保存（左）· 取消 · 保存（蓝，默认） */
+.st-modal.st-modal-save { display: flex; align-items: flex-start; justify-content: center; padding-top: max(72px, 16vh); background: rgba(0, 0, 0, .28); animation: sdFade .12s ease-out; }
+html.light .st-modal.st-modal-save { background: rgba(0, 0, 0, .12); }
+.st-savedlg { width: 380px; max-width: calc(100vw - 48px); box-sizing: border-box; padding: 18px 18px 14px; border-radius: 12px; background: var(--st-bg2); color: var(--st-fg); border: 1px solid var(--st-line); box-shadow: 0 20px 50px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .2); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; animation: sdIn .15s cubic-bezier(.2, .8, .2, 1); }
+html.light .st-savedlg { box-shadow: 0 16px 40px rgba(0, 0, 0, .16), 0 1px 3px rgba(0, 0, 0, .1); }
+html:not(.light) .st-savedlg { background: color-mix(in srgb, var(--st-bg2) 88%, #fff); border-color: color-mix(in srgb, var(--st-fg) 16%, transparent); } /* 深色：比底下亮一档，同 Mac 深色模式的对话框 */
+.st-savedlg { position: relative; }
+.st-savedlg .sd-title { font-weight: 600; font-size: 13.5px; color: var(--st-hi); overflow-wrap: anywhere; padding-right: 22px; }
+.st-savedlg button.sd-x { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; min-width: 0; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--st-dim); }
+.st-savedlg button.sd-x:hover { background: color-mix(in srgb, var(--st-fg) 10%, transparent); color: var(--st-fg); }
+html.light .st-savedlg button.sd-x { background: transparent; box-shadow: none; }
+html.light .st-savedlg button.sd-x:hover { background: rgba(0, 0, 0, .06); }
+.st-savedlg .sd-msg { margin-top: 5px; font-size: 12.5px; color: var(--st-dim); }
+.st-savedlg .sd-btns { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.st-savedlg .sd-fill { flex: 1; }
+.st-savedlg button { height: 28px; min-width: 72px; padding: 0 14px; box-sizing: border-box; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--st-fg) 14%, transparent); background: color-mix(in srgb, var(--st-fg) 9%, transparent); color: var(--st-fg); font: inherit; font-size: 13px; cursor: default; }
+.st-savedlg button:hover { background: color-mix(in srgb, var(--st-fg) 15%, transparent); }
+html.light .st-savedlg button:not(.sd-yes) { background: #fff; border-color: rgba(0, 0, 0, .13); box-shadow: 0 1px 1px rgba(0, 0, 0, .05); }
+html.light .st-savedlg button:not(.sd-yes):hover { background: #f4f4f4; }
+.st-savedlg button:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 1px; }
+.st-savedlg .sd-yes { border-color: transparent; background: #0a84ff; color: #fff; font-weight: 500; }
+.st-savedlg .sd-yes:hover { background: #2894ff; }
+html.light .st-savedlg .sd-yes { background: #007aff; }
+html.light .st-savedlg .sd-yes:hover { background: #1a85ff; }
+@keyframes sdIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes sdFade { from { opacity: 0; } to { opacity: 1; } }
+/* 代码的颜色都来自「高亮配色」（studio.js 写成 --hl-* 变量；对话里 TTU 画的代码块也换成了这些变量）*/
+.st-ed .ide-k { color: var(--hl-k); } .st-ed .ide-d { color: var(--hl-d); } .st-ed .ide-f { color: var(--hl-f); } .st-ed .ide-s { color: var(--hl-s); } .st-ed .ide-c { color: var(--hl-c); }
+.st-ed .ide-n { color: var(--hl-n); } .st-ed .ide-p { color: var(--hl-p); } .st-ed .ide-v { color: var(--hl-v); } .st-ed .ide-b { color: var(--st-hi); } .st-ed .ide-h { color: var(--hl-h); } .st-ed .ide-a { color: var(--hl-a); }
+/* 搜索结果跳过去：那一问闪一下 */
+@keyframes st-flash { 0% { background: var(--st-active); } 100% { background: transparent; } }
+.blk.st-flash { animation: st-flash 1.6s ease-out; }
+/* ---- 左边栏的搜索视图 ---- */
+.termwin .tside { display: flex; flex-direction: column; }
+.st-sview { flex: 1; min-height: 0; display: flex; flex-direction: column; white-space: normal; color: var(--st-fg); font-size: var(--st-fs); --ttu-font-size: var(--st-fs); }
+.st-sview[hidden] { display: none; }
+/* 扩展视图：一行一个扩展——勾选框、图标、名字，下面一行说明；勾上就是装上 */
+.st-xview { flex: 1; min-height: 0; display: flex; flex-direction: column; white-space: normal; color: var(--st-fg); font-size: var(--st-fs); --ttu-font-size: var(--st-fs); }
+.st-xview[hidden] { display: none; }
+.st-xlist { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 14px 10px; outline: 0; }
+.st-xrow { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; margin: 0 -4px; border-radius: 6px; cursor: pointer; }
+.st-xrow:hover { background: var(--st-hover); }
+.st-xrow.kfocus { background: var(--st-active); box-shadow: inset 0 0 0 1px var(--st-hover2); }
+.st-xbox { flex: none; width: 14px; height: 14px; margin-top: 3px; box-sizing: border-box; border: 1px solid var(--st-dim); border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; color: var(--st-bg); }
+.st-xbox.on { background: var(--st-hi); border-color: var(--st-hi); }
+.st-xicon { flex: none; color: var(--st-orange); }
+.st-xmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.st-xname { font-weight: 700; color: var(--st-hi); }
+.st-xdesc { line-height: 1.5; }
+.st-sbox { margin: 8px 10px; }
+.st-sres { flex: 1; min-height: 0; overflow-y: auto; padding: 0 0 20px; }
+.st-spad { padding: 2px 12px 6px; }
+.st-sgh { display: flex; gap: 4px; padding: 2px 12px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.st-sgh:hover { background: var(--st-hover); }
+.st-sh { padding: 1px 12px 1px 28px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--st-dim); }
+.st-sh:hover { background: var(--st-hover); color: var(--st-fg); }
+.st-hit { color: var(--st-hi); font-weight: 700; background: var(--st-hover2); border-radius: 2px; }
+.termwin .tside > .ts-list[hidden] { display: none; }
+.st-gap { flex: none; width: 14px; }
+
+/* ---- 能点的都是手（同网页）：标签、树的行、地址栏的建议、状态栏里能点开的……；拖的地方是拖的光标，打字的地方是竖线 ---- */
+.st-item[data-el], .st-item[data-sec], .st-item[data-st],
+html.termapp .termwin .tab, html.termapp .termwin .tab > i, html.termapp .ts-srow, html.termapp .ts-btn, html.termapp .tw-row, html.termapp .ov-card,
+html.termapp .termwin .ts-list .ts-row, html.termapp .termwin .ts-list .ts-it, html.termapp .termwin .ts-list .ts-act { cursor: pointer; }
+/* ---- 左边栏的目录树：悬停整行一块圆角底色（同 VS Code，要看得出来）；开着的那个是选中色 ---- */
+html.termapp .termwin .ts-list .ts-row, html.termapp .termwin .ts-list .ts-it { border-radius: 4px; }
+html.termapp .termwin .ts-list .ts-row:hover, html.termapp .termwin .ts-list .ts-it:hover { background: var(--st-hover); filter: none; }
+html.termapp .termwin .ts-list .ts-act:hover { filter: none; background: var(--st-hover2); border-radius: 3px; }
+html.termapp .termwin .ts-list .ts-it.cur { background: var(--st-active); }
+.st-sgh, .st-sh { border-radius: 4px; margin: 0 6px; }
+/* ---- 界面本身的字选不中（一直是这样，没有开关）：边栏、标签条、活动栏、面包屑、状态栏、菜单、设置页……拖的时候不会刷出一片选区；
+   对话、终端、文件正文照常能选（右侧栏只有标题行、分区选不中，下面的对话、输入框照常）。desk.css 给所有 .terminal-style-ui 开了能选（边栏的树、搜索也是它画的），这里要盖过去 ---- */
+html.termapp.st-nosel :is(.termwin .tside, .termwin .tabs, #win .bar, .st-act, .st-crumbs, .st-status, .st-phead, .st-pop, .st-palette, .st-set, .st-fhead, .st-map, .st-lay, .st-tacts, .st-menu, .st-aside > .st-sidehdr, .st-aside > .st-sbody),
+html.termapp.st-nosel :is(.termwin .tside, .termwin .tabs, #win .bar, .st-act, .st-crumbs, .st-status, .st-phead, .st-pop, .st-palette, .st-set, .st-fhead, .st-map, .st-lay, .st-tacts, .st-menu, .st-aside > .st-sidehdr, .st-aside > .st-sbody) * { -webkit-user-select: none !important; user-select: none !important; }
+html.termapp.st-nosel :is(input, textarea) { -webkit-user-select: text !important; user-select: text !important; }
+/* ---- 菜单（⚙ 管理菜单、右键菜单、···）：等宽字、一圈细线；悬停 / 键盘移到的那行一块底色 ---- */
+.st-menu { position: fixed; z-index: 95; min-width: 220px; max-width: 440px; padding: 4px; background: var(--st-canvas); color: var(--st-fg); border: 1px solid var(--st-line); box-shadow: var(--st-shadow); font: var(--st-fs) var(--st-font); outline: 0; -webkit-user-select: none; user-select: none; }
+.st-mrow { display: flex; align-items: baseline; gap: 4px; padding: 1px 8px 1px 4px; line-height: 1.75; border-radius: 3px; white-space: nowrap; cursor: pointer; }
+.st-mrow.on { background: var(--st-active); color: var(--st-hi); }
+.st-mrow.off { color: var(--st-faint); cursor: default; }
+.st-mchk { flex: none; width: 2ch; text-align: center; color: var(--st-hi); }
+.st-mlab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.st-mkey { flex: none; margin-left: 28px; color: var(--st-dim); }
+.st-marr { flex: none; margin-left: 8px; color: var(--st-dim); }
+.st-mval { flex: none; margin-left: 24px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; color: var(--st-dim); } /* 右边灰字：现在选的是什么（「状态  进行中 ›」） */
+.st-mval + .st-mkey:empty { display: none; }
+/* 一段的小标题（灰、不能选）；名字下面一行说明；右边一列菜单里的快捷字母；红字的（删除） */
+.st-mhead { padding: 6px 12px 2px; color: var(--st-dim); font-size: 0.92em; line-height: 1.6; cursor: default; }
+.st-mlab2 { display: flex; flex-direction: column; justify-content: center; line-height: 1.3; }
+.st-msub { color: var(--st-dim); font-size: 0.88em; }
+.st-mrow.two { padding-top: 4px; padding-bottom: 4px; }
+.st-macc { flex: none; min-width: 1.2ch; margin-left: 24px; color: var(--st-dim); text-align: right; }
+.st-mrow.dan, .st-mrow.dan .st-mico { color: #e5534b; }
+.st-mrow.dan .st-macc { color: color-mix(in srgb, #e5534b 70%, transparent); }
+/* 一排颜色圆点（访达右键的标签）、菜单项前面的颜色圆点 */
+.st-mdots { display: flex; gap: 8px; padding: 6px 12px; }
+.st-mdot { flex: none; width: 16px; height: 16px; box-sizing: border-box; border-radius: 50%; background: var(--c); cursor: pointer; transition: transform .1s; }
+.st-mdot:hover { transform: scale(1.18); }
+.st-mdot.on { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .9); }
+.st-mdoti { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+.st-msep { height: 1px; margin: 4px 6px; background: var(--st-line); }
+/* 对话里能点开的（工具那一组、链接）：悬停一块底色，不是单纯变亮 */
+/* 对话里能点开的那几行（「Ran 9 shell commands」、「… +N lines」）：指着只是字变亮（浅色方案里变深），不画底色块（同 Claude Code） */
+html.termapp .tpane .term .grp .hot:hover { filter: brightness(1.6); background: none; }
+html.termapp .tpane.tl .term .grp .hot:hover { filter: brightness(0.55); background: none; }
+html.termapp .tpane .term a:hover, html.termapp .tpane .foot a:hover, html.termapp .tpane.tl .term a:hover, html.termapp .tpane.tl .foot a:hover { filter: none; }
+/* 目录树：左边留 10px、右边 8px（列数按这个算，见 live.js renderTree），和标题栏、搜索框对齐 */
+html.termapp .termwin .ts-list { padding: 2px 8px 14px 10px; }
+.st-sbox { margin: 2px var(--ts-rgap, 8px) 8px 10px; }
+.st-sgh, .st-sh { margin: 0 var(--ts-rgap, 8px) 0 6px; }
+.st-sgh { padding: 2px 4px; }
+.st-sh { padding: 1px 4px 1px 22px; }
+.st-spad { padding: 2px 10px 6px; }
+/* 搜索的两节（App 里）：「对话」「文件」——节的标题（点一下收起来）、文件那一组是文件的图标 + 名字 + 淡的所在文件夹，下面每一处前面是行号 */
+.st-ssec { display: flex; align-items: center; gap: 4px; margin: 6px var(--ts-rgap, 8px) 2px 6px; padding: 2px 4px; border-radius: 4px; font-weight: 600; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.st-ssec:first-child { margin-top: 0; }
+.st-ssec:hover { background: var(--st-hover); }
+.st-ssec .st-ssec-p { min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: 4px; font-weight: 400; }
+.st-ssec > .st-dim { font-weight: 400; }
+.st-sgf { align-items: center; }
+.st-sgf .st-fi { margin-right: 2px; }
+.st-sgf .st-sfn { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
+.st-sgf .st-sfd { min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-left: 6px; font-size: .92em; }
+.st-sln { display: inline-block; min-width: 2.6em; margin-right: 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.ts-chev.st-chev0 { visibility: hidden; }
+/* 折叠箭头：同 VS Code 的细线箭头（› 收着、⌄ 展开），一格宽，颜色跟字走 */
+.ts-chev { display: inline-block; width: var(--ttu-cell, 1ch); height: 1em; vertical-align: -0.14em; background: currentColor; opacity: 0.85; }
+.ts-chev.r { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5L10.5 8L6 12.5' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+.ts-chev.d { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6L8 10.5L12.5 6' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 6L8 10.5L12.5 6' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+/* ======== 版面：同 VS Code——窗口是一块底（canvas），左边栏、编辑区是放在上面的两张圆角卡片，中间留一条缝；活动栏、标题栏、状态栏直接在底上 ======== */
+html.termapp #win > .body, html.termapp .termwin > .body { background: var(--st-canvas) !important; }
+html.termapp #win .bar { background: var(--st-canvas); border-bottom: 0; }
+html.termapp .st-act { background: var(--st-canvas); border-right: 0; }
+html.termapp .st-status { background: var(--st-canvas); border-top: 0; }
+html.termapp .termwin .tlab { padding: 0 6px 6px 0; }
+html.termapp .termwin .tside { border: 1px solid var(--st-line) !important; border-radius: 8px; margin-right: 6px; }
+html.termapp .termwin .tmain { border: 1px solid var(--st-line); border-radius: 8px; overflow: hidden; background: var(--st-bg); }
+html.termapp .termwin .ts-grip::after { left: -7px; width: 8px; } /* 拖缝调宽 */
+/* 图标只在标签上：地址栏、面包屑里不再重复 */
+html.termapp .ts-addr .ts-afav { display: none; }
+/* 根行（Paimon、Claude Code）：是标题，不是一项，悬停不给底色 */
+html.termapp .termwin .ts-list .ts-row.ts-rhead:hover { background: none; }
+/* 标题行右边的小图标：筛选（漏斗：空心 = 全部，实心 = 只看在跑的）、全部折叠 */
+.ts-ic { display: inline-block; width: var(--ttu-cell, 1ch); height: 1em; vertical-align: -0.14em; background: currentColor; }
+.ts-ic.filter { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.5 3.5h11L9.2 8.6v3.9l-2.4 1.2V8.6z' fill='none' stroke='black' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.5 3.5h11L9.2 8.6v3.9l-2.4 1.2V8.6z' fill='none' stroke='black' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+.ts-ic.filter.on { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.5 3.5h11L9.2 8.6v3.9l-2.4 1.2V8.6z' fill='black' stroke='black' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.5 3.5h11L9.2 8.6v3.9l-2.4 1.2V8.6z' fill='black' stroke='black' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; background: var(--st-hi); }
+.ts-ic.collapse { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2.8' y='2.8' width='10.4' height='10.4' rx='1.6' fill='none' stroke='black' stroke-width='1.5'/%3E%3Cpath d='M5.6 8h4.8' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='2.8' y='2.8' width='10.4' height='10.4' rx='1.6' fill='none' stroke='black' stroke-width='1.5'/%3E%3Cpath d='M5.6 8h4.8' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+/* 各组标题旁边的「新建」：Paimon Code 的新建 Agent、新建文件夹，Claude Code / Codex 的新建会话（同 VS Code 资源管理器每一组自己的按钮）*/
+.ts-ic.newagent { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.3 2.4c.3 2.2 1.4 3.3 3.6 3.6-2.2.3-3.3 1.4-3.6 3.6-.3-2.2-1.4-3.3-3.6-3.6 2.2-.3 3.3-1.4 3.6-3.6z'/%3E%3Cpath d='M11.8 9.4v4.2M9.7 11.5h4.2'/%3E%3C/svg%3E") center / 13px 13px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.3 2.4c.3 2.2 1.4 3.3 3.6 3.6-2.2.3-3.3 1.4-3.6 3.6-.3-2.2-1.4-3.3-3.6-3.6 2.2-.3 3.3-1.4 3.6-3.6z'/%3E%3Cpath d='M11.8 9.4v4.2M9.7 11.5h4.2'/%3E%3C/svg%3E") center / 13px 13px no-repeat; }
+.ts-ic.newfolder { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 12.5H2.8a.8.8 0 0 1-.8-.8V4.1a.8.8 0 0 1 .8-.8h3.1l1.4 1.5h5.9a.8.8 0 0 1 .8.8v2.2'/%3E%3Cpath d='M11.8 9.2v4.2M9.7 11.3h4.2'/%3E%3C/svg%3E") center / 13px 13px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 12.5H2.8a.8.8 0 0 1-.8-.8V4.1a.8.8 0 0 1 .8-.8h3.1l1.4 1.5h5.9a.8.8 0 0 1 .8.8v2.2'/%3E%3Cpath d='M11.8 9.2v4.2M9.7 11.3h4.2'/%3E%3C/svg%3E") center / 13px 13px no-repeat; }
+.ts-ic.newsess { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 8.5v3.7a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3V4.3A1.3 1.3 0 0 1 3.8 3h3.7'/%3E%3Cpath d='M11.4 2.4l2.2 2.2-5.3 5.3-2.6.4.4-2.6z'/%3E%3C/svg%3E") center / 13px 13px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 8.5v3.7a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3V4.3A1.3 1.3 0 0 1 3.8 3h3.7'/%3E%3Cpath d='M11.4 2.4l2.2 2.2-5.3 5.3-2.6.4.4-2.6z'/%3E%3C/svg%3E") center / 13px 13px no-repeat; }
+/* 地址栏（同 VS Code 顶上的命令中心）：不用的时候暗一些，不抢注意力；悬停亮一点，点进去编辑才是正常的字色和亮边 */
+html.termapp .ts-addr:not(.editing) { background: transparent; border-color: var(--st-line); color: var(--st-dim); }
+html.termapp .ts-addr:not(.editing) input { color: var(--st-dim); }
+html.termapp .ts-addr:not(.editing):hover { border-color: var(--st-hover2); }
+html.termapp .ts-addr:not(.editing):hover input { color: var(--st-fg); }
+/* ======== 编辑器组（同 VS Code）：每组一条标签条 + 面包屑 + 内容；组和组之间的分隔线从标签条一直通到底 ======== */
+html.termapp .tgroup { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; background: var(--st-bg); }
+html.termapp .tgbody { flex: 1 1 auto; min-height: 0; display: flex; position: relative; }
+html.termapp .tgbody > .tpane { flex: 1 1 auto; position: absolute; inset: 0; } /* 这一组开着的几个叠在一起（都留在页面上，见 live.js bodyPanes） */
+html.termapp .tgbody { isolation: isolate; } /* 叠着的几个的 z-index 只在这一组里比 */
+/* 藏着的：挪到屏幕外（transform，只动合成层，不重排、不重算样式）、垫在当前那个下面。排好的样子、滚动位置都还在，切过去只是换个 class。
+   不用 content-visibility:hidden（露出来要把整棵子树的样式重算一遍，大会话十来毫秒）、visibility / pointer-events（会往下继承，一改整棵子树重算）、inert（WebKit 里要好几秒） */
+html.termapp .tgbody > .tpane.tpoff { transform: translateX(-400vw); z-index: -1; }
+html.termapp .panes .divider { background: var(--st-line); }
+/* 当前组里当前的标签：上沿一条亮线；别的组里当前的标签字暗一点（同 VS Code）*/
+html.termapp .termwin .tgroup:not(.on) .tab.on { color: var(--st-dim); }
+/* 编辑区一路往上都能缩：每组的标签条再长也只是自己横着滚，不把整个编辑区撑出窗口 */
+html.termapp .termwin .tlab, html.termapp .st-row0, html.termapp .termwin .tmain, html.termapp .st-mid, html.termapp .panes, html.termapp .panes .split { min-width: 0; }
+html.termapp .tgroup > .tabs { min-width: 0; }
+/* 选高亮配色时：框底下一小段代码，↑↓ 换的时候直接看到颜色 */
+.st-psample { margin: 0; padding: 8px 12px 10px; border-top: 1px solid var(--st-line); font: var(--st-fs)/1.55 var(--st-font); white-space: pre; overflow: hidden; color: var(--st-fg); background: var(--st-bg2); }
+.st-psample .ide-k { color: var(--hl-k); } .st-psample .ide-d { color: var(--hl-d); } .st-psample .ide-f { color: var(--hl-f); } .st-psample .ide-s { color: var(--hl-s); } .st-psample .ide-c { color: var(--hl-c); } .st-psample .ide-n { color: var(--hl-n); } .st-psample .ide-p { color: var(--hl-p); } .st-psample .ide-v { color: var(--hl-v); }
+/* ======== 键盘快捷方式（同 VS Code）：一张能搜的表，快捷键一个键一格 ======== */
+/* 快捷键页：搜索框在最上面一整行（同 VS Code 的键盘快捷方式编辑器），下面是表。（上面状态栏那条旧的 .st-keys 是横排的：这里改回竖排） */
+.st-keys { display: block; gap: 0; margin-left: 0; padding: 12px 18px 40px; }
+.st-keys .st-search { display: flex; width: auto; margin: 0 0 10px; }
+.st-keys .st-search .st-kq { flex: 1; min-width: 0; width: 100%; }
+.st-krow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr) 56px; gap: 16px; align-items: center; padding: 2px 8px; line-height: 1.9; border-radius: 4px; }
+.st-krow:not(.st-khead):hover { background: var(--st-hover); }
+.st-khead { font-weight: 700; border-bottom: 1px solid var(--st-line); border-radius: 0; margin-bottom: 4px; }
+.st-kchord { display: inline-flex; gap: 3px; vertical-align: middle; }
+.st-kthen { display: inline-block; width: 10px; }
+.st-kc { display: inline-block; min-width: 1.7em; padding: 0 5px; border: 1px solid var(--st-line); border-bottom-width: 2px; border-radius: 4px; background: var(--st-bg2); color: var(--st-fg); font: inherit; font-size: 0.92em; line-height: 1.55; text-align: center; }
+.st-kempty { padding: 12px 8px; }
+html.termapp.st-nosel .st-keys .st-ktable, html.termapp.st-nosel .st-keys .st-ktable * { -webkit-user-select: none !important; user-select: none !important; }
+/* ======== 浮动窗口（同 VS Code）：设置、键盘快捷方式默认浮在窗口正中（大小、位置 studio.js 的 floatLayout 算：窗口的 88%，拖顶上那一条能挪）；右上角：JSON · 放进编辑区 · 放大 · 关闭 ======== */
+.st-float { position: fixed; z-index: 60; left: 8px; top: 8px; width: 1000px; height: 700px; box-sizing: border-box; display: flex; flex-direction: column;
+  background: var(--st-bg); border: 1px solid var(--st-line); border-radius: var(--st-win-r, 18px); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55); overflow: hidden; animation: st-float-in .16s cubic-bezier(.2, .8, .3, 1); }
+/* 圆角同 App 窗口自己的（量出来：macOS 窗口的角约 17.5pt 的连续曲线）——浮在窗口里的设置、快捷键和外面那一圈一样圆，不是更小的一圈 */
+@keyframes st-float-in { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } } /* 出来时淡进、放大一点点 */
+/* 模态层（studio.js 的 modalOpen）：盖住整个窗口、接住所有的点击；底下的 App 是 inert。VS Code 里是透明的，Claude App 里是毛玻璃（claudeapp.css）。
+   菜单、下拉列表、命令面板、对话框在它上面（z-index 更高） */
+.st-modal { position: fixed; inset: 0; z-index: 70; }
+.st-float.max { border-radius: 8px; }
+.st-fbar { flex: none; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 14px; background: var(--st-bg2); border-bottom: 1px solid var(--st-line); font: var(--st-fs) var(--st-font); color: var(--st-fg); -webkit-user-select: none; user-select: none; }
+.st-facts, .st-tacts { display: flex; align-items: center; gap: 2px; }
+.st-facts button { width: 26px; height: 24px; border: 0; padding: 0; background: none; color: var(--st-dim); border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.st-facts button:hover { background: var(--st-hover2); color: var(--st-hi); }
+.st-facts svg { width: 16px; height: 16px; }
+.st-fsep, .st-tsep { width: 1px; height: 16px; margin: 0 4px; background: var(--st-line); }
+.st-fbox { flex: 1; min-height: 0; display: flex; }
+.st-fbox > .tpane { flex: 1 1 auto; }
+/* 边栏每个视图的标题栏（Agent、搜索……）一个样子：同样的字、字号、粗细，右边同样大小的图标按钮 */
+.st-shdr .st-vtitle { font: 700 var(--st-fs) var(--st-font); color: var(--st-hi); letter-spacing: 0.02em; }
+.st-hbtn { width: 22px; height: 22px; border: 0; padding: 0; background: none; color: var(--st-dim); border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.st-hbtn:hover { background: var(--st-hover2); color: var(--st-hi); }
+.st-hbtn svg { width: 16px; height: 16px; }
+html.termapp .st-shdr { font-size: var(--st-fs); }
+/* 键盘走到的那一行（树、搜索结果）：焦点在这一块时是实的一块，加一圈细线（同 VS Code 的键盘焦点）*/
+html.termapp .termwin .ts-list:focus, .st-sres:focus { outline: none; }
+html.termapp .termwin .ts-list:focus .kfocus, .st-sres:focus .kfocus { background: var(--st-active); box-shadow: inset 0 0 0 1px var(--st-hover2); }
+/* 输入框的字、光标、占位字都明确跟配色方案（不继承，免得在别的底色上看不见）*/
+html.termapp :is(.st-search, .st-pin, .ts-addr.editing) input { color: var(--st-fg); caret-color: var(--st-fg); }
+html.termapp :is(.st-search, .st-pin, .ts-addr) input::placeholder { color: var(--st-dim); opacity: 1; }
+.st-item.st-update { color: var(--st-onacc); background: var(--st-hi); border-radius: 3px; font-weight: 700; }
+/* ======== 面板（同 VS Code）：最上面单独一行是总控（··· 视图 | 放大 · 关闭）；下面几个视图并排，各有一行标题（能收起），终端右边一列终端 ======== */
+.st-ptop { flex: none; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 8px 0 10px; -webkit-user-select: none; user-select: none; }
+.st-ptop > .st-psep { flex: none; width: 1px; height: 16px; margin: 0 5px; background: var(--st-line); }
+/* 面板顶上的视图标签（同 VS Code 的面板标题）：大写小字；没选中的淡、指着亮一点；选中的亮、下面一道线；放不下的收进「»」 */
+.st-ptabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: stretch; align-self: stretch; overflow: hidden; margin-left: -4px; }
+.st-ptab { flex: none; position: relative; display: flex; align-items: center; padding: 0 9px; font: 11px/1 var(--st-ui-font, -apple-system, BlinkMacSystemFont, sans-serif); letter-spacing: .02em; text-transform: uppercase; color: var(--st-dim); cursor: pointer; white-space: nowrap; }
+.st-ptab:hover { color: var(--st-fg); }
+.st-ptab.on { color: var(--st-hi); }
+.st-ptab.on::after { content: ""; position: absolute; left: 9px; right: 9px; bottom: 2px; height: 1px; background: var(--st-focus, currentColor); }
+.st-ptab[hidden], .st-ptmore[hidden] { display: none; }
+.st-ptacts { display: flex; align-items: center; }
+.st-panel:not(.st-ptabbed) :is(.st-ptabs, .st-ptmore, .st-ptacts) { display: none; }
+.st-panel.st-ptabbed .st-pv > .st-pvh { display: none; }
+.st-panel.st-ptabbed .st-pv { border-left: 0; }
+.st-pvh .ts-chev { flex: none; width: 12px; }
+.st-pviews { flex: 1; min-height: 0; display: flex; }
+.st-pv { display: flex; flex-direction: column; min-width: 0; flex: 1 1 0; border-left: 1px solid var(--st-line); }
+.st-pv.first { border-left: 0; }
+.st-pv[data-v="term"] { flex: 2 1 0; }
+.st-pv[hidden] { display: none; }
+/* 收起的视图：一条窄竖条，上面 › 和视图的图标，整条都能点开；地方全让给别的视图 */
+.st-pv.folded { flex: none !important; width: 26px; }
+.st-pv.folded .st-pvb { display: none; }
+.st-pv.folded .st-pvh { flex: 1; flex-direction: column; justify-content: flex-start; height: auto; gap: 8px; padding: 6px 0; color: var(--st-dim); }
+.st-pv.folded .st-pvh:hover { color: var(--st-hi); }
+.st-pvi { flex: none; display: flex; width: 16px; height: 16px; }
+.st-pvi svg { width: 16px; height: 16px; }
+.st-pvi > img.pm-av { width: 16px; height: 16px; vertical-align: 0; }
+.st-pvh { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; font: 700 var(--st-fs) var(--st-font); color: var(--st-hi); cursor: pointer; white-space: nowrap; -webkit-user-select: none; user-select: none; }
+.st-pvb { flex: 1; min-height: 0; display: flex; }
+.st-pv[data-v="term"] .st-pbody { flex: 1; min-width: 0; position: relative; }
+.st-tlist { flex: none; width: 170px; border-left: 1px solid var(--st-line); overflow-y: auto; padding: 2px 4px; font: var(--st-fs) var(--st-font); }
+/* 终端这一格窄了（辅助侧栏开着、面板里并排好几个视图）：右边的终端列表收起来，宽度都给终端（同 VS Code 窄的时候不显示终端标签列表）——不然终端只剩几列 */
+.st-pv[data-v="term"] { container-type: inline-size; }
+@container (max-width: 420px) { .st-tlist { display: none; } }
+.st-trow { display: flex; align-items: center; gap: 4px; padding: 1px 4px 1px 8px; border-radius: 4px; line-height: 1.8; cursor: pointer; color: var(--st-fg); }
+.st-trow:hover { background: var(--st-hover); }
+.st-trow.on { background: var(--st-active); color: var(--st-hi); }
+.st-trow .st-cut { flex: 1; min-width: 0; }
+.st-trow .st-tkill { visibility: hidden; width: 18px; height: 18px; }
+@media (hover: hover) { .st-trow:hover .st-tkill { visibility: visible; } } /* 只在有悬停的设备上：手指点的设备第一下会被当成悬停，要点两次 */
+.st-plist { flex-direction: column; overflow-y: auto; padding: 2px 6px 8px; font: var(--st-fs) var(--st-font); }
+.st-prw { display: flex; align-items: center; gap: 6px; padding: 1px 6px; border-radius: 4px; line-height: 1.8; color: var(--st-fg); }
+.st-prw:hover { background: var(--st-hover); }
+.st-prw .st-cut { min-width: 0; }
+.st-pempty { padding: 6px 8px; }
+/* 对话里的图片：一行「⎿  [Image #1]」，虚线下划线，点一下在右侧栏里看（同 Claude Code）*/
+.tpane .term a[href*="#vs-img:"], .st-imgref, .terminal-style-ui span.st-imgref { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-color: var(--st-dim); cursor: pointer; }
+.st-imgref:hover { color: var(--st-hi); } /* 同别的能点的字：只是字变亮，没有底色块 */
+/* 悬停在 [Image #N] 上浮出来的小预览（不接指针，离开就收） */
+.st-imgpeek { position: fixed; z-index: 90; pointer-events: none; padding: 4px; border-radius: 8px; background: var(--st-bg2, #1e1e1e); border: 1px solid var(--st-line); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(2px); transition: opacity .12s ease, transform .12s ease; }
+.st-imgpeek.on { opacity: 1; transform: none; }
+.st-imgpeek img { display: block; max-width: min(420px, 50vw); max-height: min(320px, 45vh); border-radius: 5px; box-shadow: var(--st-imgring); }
+/* 图的边界：紧贴着一圈深的、外面一圈浅的——图的边是黑的（截的深色界面）看外面那圈浅的，是白的看里面那圈深的；以前只有框的底色，深色的图贴着深色的框就分不出哪儿是边 */
+:root { --st-imgring: 0 0 0 1px rgba(0, 0, 0, .9), 0 0 0 2px rgba(255, 255, 255, .5); }
+/* 点了放大：屏幕中间，后面毛玻璃；点外面任何地方 / Esc 关 */
+.st-modal.st-lb { display: flex; align-items: center; justify-content: center; cursor: zoom-out; background: rgba(0, 0, 0, 0); transition: background-color .16s ease; }
+.st-modal.st-lb.on { background: rgba(0, 0, 0, .42); -webkit-backdrop-filter: blur(18px) saturate(1.1); backdrop-filter: blur(18px) saturate(1.1); }
+html.light .st-modal.st-lb.on { background: rgba(250, 250, 250, .42); }
+.st-lbwin { max-width: 92vw; max-height: 90vh; }
+.st-lbwin img { display: block; max-width: 92vw; max-height: 90vh; border-radius: 8px; box-shadow: var(--st-imgring), 0 20px 60px rgba(0, 0, 0, .45); cursor: default; }
+.st-prevb img { cursor: zoom-in; }
+.st-prevh { display: flex; align-items: center; gap: 6px; padding: 4px 12px; font-weight: 700; color: var(--st-hi); }
+.st-prevb { padding: 4px 12px 14px; }
+.st-prevb img { display: block; max-width: calc(100% - 4px); margin: 2px; height: auto; border-radius: 4px; box-shadow: var(--st-imgring); }
+/* 地址栏：平时只显示站点、居中（.ts-alabel 叠在输入框上）；点进去字从中间滑到左边，再换成完整地址（同 Safari）*/
+html.termapp .ts-alabel { position: absolute; inset: 0 8px; display: flex; align-items: center; justify-content: center; pointer-events: none; overflow: hidden; white-space: nowrap; color: var(--st-dim); font: var(--st-fs) var(--st-font); }
+html.termapp .ts-alabel > span { display: inline-block; will-change: transform; }
+html.termapp .ts-addr:not(.editing) input { color: transparent !important; caret-color: transparent; }
+html.termapp .ts-addr.editing .ts-alabel { visibility: hidden; }
+html.termapp .ts-addr:not(.editing):hover .ts-alabel { color: var(--st-fg); }
+html.termapp .ts-addr.editing input { text-align: left; }
+/* 对话区顶上的遮挡条：上面已经有面包屑了，不用再空一行 */
+html.termapp .tpane .topgap, html.termapp .tpane .topgap.on { display: none !important; }
+/* 搜索框右边三个开关（同 VS Code）：Aa 区分大小写、ab 全字匹配、.* 正则；开着的是实的一块 */
+.st-sopts { flex: none; display: flex; gap: 2px; }
+/* 搜索的范围：打开的 Agent / 全部 Agent（分段的两个按钮，选中的那个有底色） */
+.st-sscope { display: flex; gap: 2px; margin: 2px 12px 6px; padding: 2px; border-radius: 6px; background: var(--st-hover2, rgba(127, 127, 127, .12)); }
+.st-sscope button { flex: 1 1 auto; min-width: 0; height: 22px; padding: 0 6px; border: 0; border-radius: 4px; background: none; color: var(--st-dim); font: 12px var(--st-font-ui, var(--st-font)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; } /* 三段按字的宽度分（「打开的 Agent」最长），不折行 */
+.st-sscope button:hover { color: var(--st-hi); }
+.st-sscope button.on { background: var(--st-bg); color: var(--st-hi); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12), 0 1px 2px rgba(0, 0, 0, .08); }
+.st-sopts button { min-width: 22px; height: 20px; padding: 0 3px; border: 1px solid transparent; border-radius: 3px; background: none; color: var(--st-dim); font: 11px var(--st-font); cursor: pointer; }
+.st-sopts button:hover { background: var(--st-hover2); color: var(--st-hi); }
+.st-sopts button.on { background: var(--st-active); border-color: var(--st-hover2); color: var(--st-hi); }
+.st-prw { cursor: pointer; }
+/* 面板的视图：左边一条能拖的缝（调大小）；按住标题左右拖换顺序，落点一条竖线 */
+.st-pviews { position: relative; }
+.st-pv { position: relative; }
+.st-pvgrip { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 3; }
+.st-pv.nogrip > .st-pvgrip, .st-pv.folded > .st-pvgrip { display: none; }
+.st-pvdrop { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--st-hi); z-index: 4; pointer-events: none; }
+
+/* ======== 右侧栏：输入与管理（同 VS Code 的辅助侧栏）——和左边的侧栏一模一样：一张圆角卡片、同样的标题行（对话 · ···）；分区；最下面是对话的输入框 ======== */
+html.termapp .termwin .tmain { border: 0; border-radius: 0; background: transparent; overflow: visible; } /* 编辑区（含面板）、右侧栏各是一张卡片，这一层只是摆放 */
+html.termapp .st-mid > .st-ecol { border: 1px solid var(--st-line); border-radius: 8px; overflow: hidden; background: var(--st-bg); }
+/* 网格：主侧栏 | 缝 | 编辑区 | 缝 | 右侧栏；面板在第二行，从主侧栏底下到编辑区；右侧栏两行通到底 */
+html.termapp .termwin .tlab.st-grid { display: grid; grid-template-columns: auto auto minmax(0, 1fr) 0 0; grid-template-rows: minmax(0, 1fr) auto; }
+html.termapp .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 6px calc(var(--aside-r, 0.5) * (100% - 6px)); }
+html.termapp .tlab.st-grid > .tside { grid-column: 1; grid-row: 1; min-height: 0; }
+html.termapp .tlab.st-grid > .ts-grip { grid-column: 2; grid-row: 1; }
+html.termapp .tlab.st-grid > .tmain { grid-column: 3; grid-row: 1; min-height: 0; }
+html.termapp .tlab.st-grid > .st-panel { grid-column: 1 / 4; grid-row: 2; margin-top: 6px; border: 1px solid var(--st-line); border-radius: 8px; overflow: hidden; }
+html.termapp .tlab.st-grid > .st-grip { grid-column: 4; grid-row: 1 / 3; }
+html.termapp .tlab.st-grid > .st-aside { grid-column: 5; grid-row: 1 / 3; border: 1px solid var(--st-line); border-radius: 8px; overflow: hidden; }
+.st-aside > .st-sbody[hidden], .st-scomp[hidden] { display: none; }
+.st-scomp { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.st-scomp.compact { flex: none; margin-top: auto; } /* 只有输入框：贴在最下面，上面留给分区 */
+.st-scomp > .tpane { flex: 1 1 auto; min-height: 0; }
+.st-scomp.compact > .tpane { flex: none; }
+/* 辅助侧栏的两层「Agent | 全局」（标题行左边的分段控件，滑块由 seg.js 画）；全局那一层是全局助手的对话，占满下面 */
+.st-sidelv { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--st-hover); }
+.st-sidelv > button { height: 20px; padding: 0 9px; border: 0; border-radius: 5px; background: none; color: var(--st-dim); font: inherit; font-size: 0.92em; cursor: pointer; white-space: nowrap; }
+.st-sidelv > button.on { background: var(--st-hover2); color: var(--st-hi); }
+.st-sglob[hidden] { display: none; }
+.st-sglob { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.st-sglob > .tpane { flex: 1 1 auto; min-height: 0; }
+.st-gwait { padding: 14px 12px; }
+.st-aside.chat > .st-sbody { flex: 0 1 auto; max-height: 40%; } /* 右侧栏也看对话：分区只占上面一块 */
+.st-aside:not(.chat) > .st-sbody { flex: 1 1 auto; }
+html.termapp .st-aside .tpane, html.termapp .st-aside .tpane.tl, html.termapp .st-aside .tpane .botgap, html.termapp .st-aside .tpane.tl .botgap { background: var(--st-bg2); }
+/* 编辑区里的 agent：输入框在右侧栏时这里不画输入栏（只剩对话）；右侧栏里的对话不要输入框时同理 */
+.tpane.nocomp .foot, .tpane.nocomp .ta, .tpane.nofoot .foot, .tpane.nofoot .ta { display: none !important; }
+/* ---- 菜单项前面的线条图标（有一项带，整个菜单都留出这一格）---- */
+.st-mico { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px; color: var(--st-dim); align-self: center; }
+.st-mico svg { width: 16px; height: 16px; }
+.st-mrow.on .st-mico { color: var(--st-hi); }
+/* 图形界面：菜单同 Claude App——系统字、行高一点、圆角 */
+html .st-menu { font: 13.5px/1 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; border-radius: 12px; padding: 6px; }
+html .st-mrow { line-height: 2.3; border-radius: 7px; padding: 0 12px 0 4px; align-items: center; }
+html .st-mkey, html .st-marr { font-size: 12px; }
+html .st-msep { margin: 5px 8px; }
+/* macOS 风格里自己画的菜单（原生菜单关掉时、浏览器里）：同 macOS 的菜单——半透明磨砂、选中的一行是强调色；深色 / 浅色跟着外观走
+   （VS Code、Pure Terminal 用配色方案的颜色，本来就跟着主题；Claude App 的在 claudeapp.css） */
+html.st-macos .st-menu { padding: 5px; border: 0.5px solid rgba(255, 255, 255, 0.14); border-radius: 10px; background: rgba(38, 38, 42, 0.86); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); color: #ececef; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); font: 13px/1 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; }
+html.st-macos.light .st-menu { border-color: rgba(0, 0, 0, 0.12); background: rgba(246, 246, 248, 0.86); color: #1d1d1f; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16); }
+html.st-macos .st-mrow { line-height: 22px; padding: 0 10px 0 4px; border-radius: 5px; }
+html.st-macos .st-mrow.on { background: var(--mac-accent, #0a84ff); color: #fff; }
+html.st-macos .st-mrow.on :is(.st-mkey, .st-mval, .st-marr, .st-mico, .st-mchk) { color: rgba(255, 255, 255, 0.88); }
+html.st-macos .st-mrow.off { color: rgba(128, 128, 134, 0.8); }
+html.st-macos :is(.st-mkey, .st-mval, .st-marr) { color: rgba(128, 128, 134, 0.95); }
+html.st-macos .st-msep { margin: 4px 8px; background: rgba(128, 128, 134, 0.3); }
+/* ---- 自定义布局（同 VS Code 的 Customize Layout）：顶上居中的一块；每行图标、名字（勾着的 ✓）、快捷键、组名 ---- */
+.st-lpick { width: min(560px, calc(100% - 40px)); outline: 0; padding-bottom: 6px; }
+.st-lph { display: flex; align-items: center; gap: 2px; padding: 8px 8px 6px 14px; }
+.st-lph b { color: var(--st-hi); font-weight: 600; }
+.st-lpick .st-plist { max-height: min(560px, 70vh); overflow-y: auto; }
+.st-lrow { display: flex; align-items: center; gap: 8px; padding: 3px 10px; margin: 0 6px; border-radius: 5px; line-height: 1.75; cursor: pointer; }
+.st-lrow:hover { background: var(--st-hover); }
+.st-lrow.on { background: var(--st-active); color: var(--st-hi); }
+.st-lico { flex: none; width: 16px; height: 16px; display: inline-flex; color: var(--st-dim); }
+.st-lico svg { width: 16px; height: 16px; }
+.st-lrow.on .st-lico { color: var(--st-hi); }
+.st-lchk { margin-left: 8px; color: var(--st-hi); }
+.st-lgh { display: flex; align-items: center; gap: 8px; margin: 7px 16px 3px; color: var(--st-dim); font-size: 11.5px; line-height: 1.2; } /* 一组的名字：分隔线右端 */
+.st-lgh::before { content: ""; flex: 1; height: 1px; background: var(--st-line); }
+.st-lgh.st-lgh0 { margin-top: 2px; }
+.st-lgh.st-lgh0::before { background: none; }
+html .st-lpick { font: 13.5px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; border-radius: 12px; }
+/* 禅模式：只剩编辑区（活动栏、主侧栏、状态栏收起来；辅助侧栏、面板在进入时关掉，退出时照原样打开）*/
+/* 禅模式：活动栏、状态栏暂时收起（「自定义布局」里点一下就拿回来）；主侧栏、面板用它们自己的开关收（虚线图标，点一下就回来）——不再用 CSS 硬藏，免得出不来 */
+html.st-zen:not(.st-zshow-act) .st-act, html.st-zen:not(.st-zshow-status) .st-status { display: none !important; }
+.st-lpick .st-psep { height: 1px; margin: 5px 14px; padding: 0; border: 0; background: var(--st-line); }
+
+/* ---- 编辑区空着（同 VS Code）：中间一个很淡的标志，下面几行快捷键 ---- */
+.st-watermark { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; background: var(--st-bg); border-radius: 8px; -webkit-user-select: none; user-select: none; }
+.st-wmark { width: 190px; height: 190px; color: var(--st-fg); opacity: 0.06; }
+.st-wmark svg { width: 100%; height: 100%; }
+.st-wkeys { display: grid; gap: 8px; font: 13px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; color: var(--st-dim); }
+.st-wk { display: flex; align-items: center; justify-content: space-between; gap: 40px; cursor: pointer; }
+.st-wk:hover { color: var(--st-fg); }
+.st-wk .st-kc { font-size: 11px; }
+
+/* ---- 活动栏：有新版本时 ⚙ 上一个点（状态栏藏了也看得到）；在顶部时是主侧栏标题栏里的一排小图标 ---- */
+.st-act button { position: relative; }
+.st-act button.st-badge::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--st-blue); box-shadow: 0 0 0 2px var(--st-canvas); }
+.st-act.st-acttop { flex: 1 1 auto; flex-direction: row; align-items: center; width: auto; min-width: 0; padding: 0; gap: 2px; background: none !important; border: 0 !important; }
+.st-act.st-acttop button { width: 28px; height: 24px; border-radius: 5px; }
+.st-act.st-acttop button svg { width: 17px; height: 17px; }
+.st-act.st-acttop button.st-badge::after { right: 3px; bottom: 2px; width: 6px; height: 6px; }
+.tside.st-acttop .st-shdr > .st-vtitle, .tside.st-acttop .st-shdr > .st-fill { display: none; }
+/* ---- 主侧栏在右边（同 VS Code 的「将主侧栏移到右侧」）：活动栏、主侧栏换到右边，辅助侧栏到左边 ---- */
+.st-row0.st-sright { flex-direction: row-reverse; }
+html.termapp .termwin .tlab.st-grid.st-sright { direction: rtl; padding: 0 0 6px 6px; }
+html.termapp .termwin .tlab.st-grid.st-sright > * { direction: ltr; }
+html.termapp .termwin .tlab.st-sright > .tside { margin-right: 0; margin-left: 6px; }
+html.termapp .termwin .tlab.st-sright > .ts-grip::after { left: -1px; }
+
+/* ======== 设置页（VS Code、Pure Terminal 的样子；同 macOS 的系统设置那样分两栏）：左边最上面是搜索框、下面是顶级分区；
+   右边顶上一条（‹ › 和这一页的名字，第二级是「分区 › 这一页」，不跟着滚），下面是一张张卡片（一行一项：名字、淡的说明在左，控件靠右，上下居中）。
+   三级字号：页名（大）> 卡片上面的小节标题 > 一项的名字 ======== */
+.tpane .st-pg.st-pg-settings { overflow: hidden; display: flex; flex-direction: column; }
+.ss { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 184px minmax(0, 1fr); /* 左边分区名都短：184px 够了，不空 */ grid-template-rows: auto minmax(0, 1fr); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; color: var(--st-fg); background: var(--st-bg); outline: 0; }
+.ss, .ss * { -webkit-user-select: none; user-select: none; } /* 界面上的字不能选（输入框照常） */
+.ss input, .ss .ss-info, .ss .ss-mt, .ss .ss-code { -webkit-user-select: text; user-select: text; } /* 能复制的：输入框、只看的值（路径、版本、账号、用量）、代码预览 */
+.ss-top { grid-column: 1; grid-row: 1; padding: 12px 8px 8px 10px; border-right: 1px solid var(--st-line); }
+.ss-q { display: block; width: 100%; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--st-line); border-radius: 4px; background: var(--st-bg2); color: var(--st-fg); font: inherit; font-size: 13px; outline: 0; }
+.ss-q:focus { border-color: var(--st-focus); }
+.ss-q::placeholder { color: var(--st-dim); }
+.ss-cols { display: contents; }
+/* 左边：顶级分区；亮的那项一块淡底（同 VS Code 目录里选中的那项；不画框） */
+.ss-toc { grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto; overscroll-behavior: none; padding: 2px 8px 24px 10px; border-right: 1px solid var(--st-line); scrollbar-width: thin; } /* 滚到头不回弹 */
+.ss-ti { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px; border-radius: 4px; cursor: pointer; color: var(--st-fg); white-space: nowrap; overflow: hidden; transition: background-color .1s; }
+.ss-ti > span { overflow: hidden; text-overflow: ellipsis; }
+.ss-ti:hover { background: var(--st-hover); }
+.ss-ti.on { background: var(--st-active, var(--st-hover2)); color: var(--st-hi); }
+/* 右边：顶上一条（不滚）+ 这一页的内容（滚） */
+.ss-main { grid-column: 2; grid-row: 1 / 3; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ss-head { flex: none; display: flex; align-items: center; gap: 12px; box-sizing: border-box; width: 100%; max-width: calc(var(--ss-w) + 52px); min-width: 0; margin: 0 auto; padding: 10px 28px 8px 24px; white-space: nowrap; } /* 同下面的内容一栏对齐（一样宽、一样居中） */
+.ss-ht { flex: none; font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--st-hi); }
+/* 顶上的 ‹ ›：同系统设置——两个小的圆角按钮，灰；能点的指着时亮一点，不能点的淡 */
+.ss-hnav { flex: none; display: inline-flex; gap: 2px; margin-right: -4px; }
+.ss-hb { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: none; color: var(--st-fg); font: 400 22px/1 -apple-system, BlinkMacSystemFont, sans-serif; padding: 0 0 3px; cursor: pointer; }
+.ss-hb:hover:not(:disabled) { background: var(--st-hover, rgba(128, 128, 128, .18)); color: var(--st-hi); }
+.ss-hb:disabled { opacity: .3; cursor: default; }
+.ss-ht.ss-up { cursor: pointer; color: var(--st-dim); text-decoration: underline transparent; text-underline-offset: 5px; text-decoration-thickness: 1.5px; transition: color .12s, text-decoration-color .12s; } /* 第二级：前面的分区名淡一点、能点（回第一级）；指着：亮一点、下面一道线 */
+.ss-ht.ss-up:hover { color: var(--st-hi); text-decoration-color: currentColor; }
+.ss-hc { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 22px; font-weight: 600; line-height: 1.3; color: var(--st-hi); }
+.ss-hc::before { content: "›"; margin: 0 10px 0 2px; color: var(--st-dim); font-weight: 400; }
+.ss-body { position: relative; flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: none; padding: 4px 28px 32px 24px; } /* 到底就到底：最后一张卡片下面只留 20px，没有垫高的空白 */
+/* 内容一栏最宽 --ss-w（680px），宽的窗口里居中：一行里名字和控件不隔得老远（同系统设置、Claude 的设置）；用量的卡片、搜索结果一样 */
+.ss { --ss-w: 680px; }
+.ss-sec { display: flow-root; max-width: var(--ss-w); margin: 0 auto; }
+.ss-h2 { margin: 0; padding: 18px 0 6px; font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--st-hi); } /* 只在搜索结果里：一组是哪一页 */
+.ss-found:first-child > .ss-h2 { padding-top: 4px; }
+.ss[data-sty="vscode"].ss-pagedmode .ss-sec > .ss-h2 { display: none; }
+.ss-sub { display: flow-root; margin: 0 0 14px; }
+.ss-sec > .ss-sub:last-child { margin-bottom: 0; }
+.ss-h3 { margin: 0; padding: 14px 2px 4px; font-size: 15px; font-weight: 600; line-height: 1.35; color: var(--st-hi); } /* 没有卡片框了：小节标题要比一项的名字明显大一号、粗，层次才分得清 */
+/* 一张卡片：淡淡的边、一行和一行之间一道细线（同 VS Code 的分组，不抢眼） */
+/* 设置不再一格一格装在带边框的卡片里（用户：边框、点来点去太落后）：同 Claude 的设置——没有框、没有底色，一项一行，小节之间一道细线 */
+.ss-card { border: 0; border-radius: 0; background: none; overflow: visible; }
+/* 一行和一行之间一道很淡的细线（同 Claude 的设置：没有框，但每一项之间有线，有没有说明的行看着一样齐）；小节之间只靠标题和留白分开，不再画线 */
+.ss-card > .ss-row + .ss-row { border-top: 1px solid color-mix(in srgb, var(--st-line) 55%, transparent); }
+.ss-card > .ss-row.ss-half + .ss-row.ss-half { border-top: 0; }
+.ss-sec > .ss-sub + .ss-sub { border-top: 0; padding-top: 2px; }
+.ss-note { margin: 2px 0 8px; color: var(--st-dim); }
+.ss-none { padding: 24px 0; color: var(--st-dim); }
+.ss-otp { display: none; }
+/* 一项：名字（正文粗细）、淡的说明在左，控件靠右；没有说明的：名字和控件上下对齐；有说明的：控件对着「名字 + 说明」一块居中。
+   点着的那项一块淡底（同 VS Code 聚焦的那项），键盘走到的那项再加一圈细框 */
+.ss-row { position: relative; display: grid; grid-template-columns: minmax(min(150px, 45%), 1fr) auto; /* 名字至少留 150px：右边的值太长就自己折行，不把名字挤成一个字一行 */ grid-template-areas: "t c" "d c" "x x"; column-gap: 28px; align-items: center; margin: 0; padding: 7px 2px; min-height: 30px; outline: 0; } /* 行距收紧一点：外观这一页在笔记本上一屏放得下，不用滚 */
+.ss-row:not(:has(.ss-desc)) { grid-template-areas: "t c" "x x"; }
+.ss-row:hover, .ss-row.on { background: none; } /* 没有框了：指着、点着的那一行不再铺一块底（键盘走到的照样有一圈细框） */
+.ss-row:focus-visible { box-shadow: inset 0 0 0 1px var(--st-focus); }
+.ss-row.flash { background: color-mix(in srgb, var(--st-focus) 16%, transparent); transition: background .6s; }
+.ss-row > .ss-title { grid-area: t; margin: 0; font-weight: 400; color: var(--st-hi); }
+.ss-desc { max-width: 720px; color: var(--st-dim); }
+.ss-row > .ss-desc { grid-area: d; margin: 2px 0 0; }
+.ss-row > .ss-ctl { grid-area: c; justify-self: end; }
+.ss-ctl { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+/* 去第二级的一行：整行能点；右边现在的样子（淡的）和 › */
+.ss-row.ss-k-nav { cursor: pointer; }
+.ss-row.ss-k-nav > .ss-ctl { gap: 10px; }
+.ss-navv { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--st-dim); }
+.ss-navc { flex: none; width: 7px; height: 7px; margin-right: 3px; border: solid var(--st-dim); border-width: 1.5px 1.5px 0 0; transform: rotate(45deg); }
+/* 下拉框：关着的样子（右边一个 ⌄）；开着时它不动不盖，列表接在它正下方（下面放不下就接在正上方） */
+.ss-dd { position: relative; display: inline-flex; align-items: center; width: auto; min-width: 128px; max-width: min(260px, 100%); /* 跟着字的宽度（「简体中文」不用拉成 230px 的一长条），短的也不小于 128 */ height: 28px; margin: 0; padding: 0 30px 0 10px; border: 1px solid color-mix(in srgb, var(--st-line) 60%, var(--st-dim)); border-radius: 6px; background: transparent; color: var(--st-fg); font: inherit; text-align: left; outline: 0; cursor: pointer; } /* 同输入框：不铺底色，一圈细边 */
+.ss-dd:hover { border-color: color-mix(in srgb, var(--st-line) 50%, var(--st-dim)); }
+.ss-dd:focus-visible, .ss-dd.open { border-color: var(--st-focus); }
+.ss-dd.open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.ss-dd.open.up { border-radius: 0 0 6px 6px; }
+.ss-ddv { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-ddc { position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--st-dim); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.ss-ddlist { position: fixed; z-index: 120; display: flex; flex-direction: column; box-sizing: border-box; border: 1px solid var(--st-focus); border-top-color: var(--st-line); border-radius: 0 0 6px 6px; background: var(--st-bg3); box-shadow: var(--st-shadow); font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; color: var(--st-fg); overflow: hidden; -webkit-user-select: none; user-select: none; }
+.ss-ddlist.up:not(.ss-pop) { border-top-color: var(--st-focus); border-bottom-color: var(--st-line); border-radius: 6px 6px 0 0; }
+.ss-ddrows { overflow-y: auto; padding: 3px 0; }
+.ss-ddi { display: flex; align-items: center; gap: 12px; height: 24px; padding: 0 10px; margin: 0 3px; border-radius: 3px; white-space: nowrap; cursor: pointer; }
+.ss-ddi > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ss-ddi > em { font-style: normal; color: var(--st-dim); }
+.ss-ddi.on { background: color-mix(in srgb, var(--st-focus) 62%, var(--st-bg3)); color: #fff; }
+.ss-ddi.on > em { color: rgba(255, 255, 255, .8); }
+.ss-dddesc { flex: none; padding: 6px 10px 7px; border-top: 1px solid var(--st-line); color: var(--st-fg); opacity: .85; white-space: normal; }
+/* 输入框 */
+.ss-input { width: 230px; max-width: 100%; height: 28px; box-sizing: border-box; margin: 0; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--st-line) 60%, var(--st-dim)); border-radius: 6px; background: transparent; color: var(--st-fg); font: inherit; outline: 0; } /* 输入框不铺底色，只一圈细边（同 Claude 的设置） */
+.ss-input:focus { border-color: var(--st-focus); }
+.ss-ctl:has(.ss-sugbtn) .ss-input { width: 196px; } /* 旁边有「…」：连它一起和下拉框一样宽 */
+.ss-num { width: 80px; font-variant-numeric: tabular-nums; text-align: right; }
+.ss-num::-webkit-inner-spin-button, .ss-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.ss-sugbtn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid color-mix(in srgb, var(--st-line) 60%, var(--st-dim)); border-radius: 6px; background: transparent; color: var(--st-dim); cursor: pointer; }
+.ss-sugbtn:hover { color: var(--st-hi); }
+.ss-sugbtn svg { width: 14px; height: 14px; }
+/* 勾选框（同 VS Code 的样子）：靠右，说明在名字下面 */
+.ss-row > .ss-ctl:has(> .ss-checkrow), .ss-row .ss-checkrow { display: contents; }
+.ss-checkrow > .ss-desc { grid-area: d; margin: 2px 0 0; }
+.ss-row .ss-check { grid-area: c; justify-self: end; }
+/* 开关（同 macOS 系统设置，不是勾选框）：钮滑过去（同分段控件那块滑块的手感）、底填上强调色；按住时钮拉长一点；灰着的（不可用）淡掉 */
+.ss-check { -webkit-appearance: none; appearance: none; position: relative; flex: none; display: block; width: 32px; height: 18px; margin: 0; border: 0; border-radius: 9px; background: color-mix(in srgb, var(--st-dim) 40%, var(--st-bg3)); cursor: pointer; outline: 0; transition: background-color .18s ease, box-shadow .12s; }
+.ss-check::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 7px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 0 0 .5px rgba(0, 0, 0, .12); transition: left .18s cubic-bezier(.3, .8, .4, 1), width .12s ease; }
+.ss-check:hover:not(:disabled) { background: color-mix(in srgb, var(--st-dim) 55%, var(--st-bg3)); }
+.ss-check:active:not(:disabled)::after { width: 18px; }
+.ss-check:checked { background: var(--st-focus); }
+.ss-check:checked:hover:not(:disabled) { background: color-mix(in srgb, var(--st-focus) 86%, #fff); }
+.ss-check:checked::after { left: 16px; }
+.ss-check:checked:active:not(:disabled)::after { left: 12px; }
+.ss-check:focus-visible { box-shadow: 0 0 0 2px var(--st-bg), 0 0 0 3.5px var(--st-focus); }
+.ss-check:disabled { opacity: .4; cursor: not-allowed; }
+/* 滑块：有先后的几档（推理强度）；刻度可以直接点 */
+.ss-slider { width: 260px; max-width: 100%; padding-top: 2px; }
+.ss-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 4px; margin: 8px 0 8px; border-radius: 2px; background: linear-gradient(to right, var(--st-focus) var(--p, 0%), var(--st-line) var(--p, 0%)); outline: 0; cursor: pointer; }
+.ss-range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 0 0 .5px rgba(0, 0, 0, .25), 0 1px 3px rgba(0, 0, 0, .35); }
+.ss-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--st-focus); }
+.ss-stops { display: flex; justify-content: space-between; font-size: 12px; color: var(--st-dim); }
+.ss-stops span { cursor: pointer; }
+.ss-stops span:hover { color: var(--st-fg); }
+.ss-stops span.on { color: var(--st-hi); font-weight: 600; }
+/* 几个短选项（VS Code）：一排分段按钮，几个选项一眼看全、点一下就换；选中的那个强调色底 */
+.ss[data-sty="vscode"] .ss-opts { display: inline-flex; flex-wrap: nowrap; gap: 1px; padding: 2px; border: 1px solid var(--st-line); border-radius: 5px; background: var(--st-bg3); }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border: 0; border-radius: 3px; background: none; color: var(--st-fg); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer; transition: background-color .12s, color .12s; }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt:hover:not(.on):not(:disabled) { background: var(--st-hover); color: var(--st-hi); }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt.on { background: var(--st-focus); color: #fff; }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt.na { color: var(--st-dim); opacity: .5; cursor: not-allowed; }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt:focus-visible { outline: 1px solid var(--st-focus); outline-offset: 1px; }
+.ss[data-sty="vscode"] .ss-opts.ss-icons > .ss-opt { padding: 0 8px; }
+.ss[data-sty="vscode"] .ss-opts.ss-icons > .ss-opt svg { width: 14px; height: 14px; }
+/* 视图预设：名字、说明在上面一行，下面一排卡片（名字 + 一句话）；选中的那张强调色的边（同 VS Code 选中的项） */
+.ss-row.ss-k-cards { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+.ss-row.ss-k-cards > .ss-ctl { justify-self: stretch; margin-top: 8px; }
+.ss-pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; width: 100%; }
+.ss .ss-pcard { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; height: auto; padding: 9px 11px; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg); color: var(--st-fg); font: inherit; text-align: left; white-space: normal; cursor: pointer; box-shadow: none; transition: border-color .12s, background-color .12s; }
+.ss .ss-pcard > b { font-weight: 600; color: var(--st-hi); }
+.ss .ss-pcard > span { font-size: 12px; line-height: 1.4; color: var(--st-dim); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: 2.8em; } /* 说明最多两行、每张都占两行的高——四张一样高 */
+.ss .ss-pcard:hover:not(.on) { border-color: color-mix(in srgb, var(--st-line) 40%, var(--st-dim)); background: var(--st-bg); }
+.ss .ss-pcard.on { border-color: var(--st-focus); box-shadow: inset 0 0 0 1px var(--st-focus); background: color-mix(in srgb, var(--st-focus) 7%, var(--st-bg)); }
+.ss .ss-pcard.ss-pcust { cursor: default; } /* 「自定义」同别的卡片一样的实线（以前是虚线，看着像锯齿） */
+/* 左边分组的小标题、分区图标：VS Code 的目录里没有（Claude App、macOS 各自画） */
+/* 左边：分组的小灰字（设置 / App / Agent / 开发者），每个分区前面一个线条图标 */
+.ss-grp { padding: 14px 10px 4px; color: var(--st-dim); font-size: 11.5px; font-weight: 600; letter-spacing: .02em; }
+.ss-grp:first-child { padding-top: 4px; }
+.ss-grp:empty { padding: 10px 0 0; } /* 不写组名的（高级）：只空一点 */
+.ss-sic { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; color: var(--st-dim); }
+.ss-sic svg { width: 16px; height: 16px; }
+.ss-ti.on .ss-sic, .ss-ti:hover .ss-sic { color: var(--st-hi); }
+.ss-navsw { margin: 0 2px 0 6px; } /* 去第二级的一行上的开关 */
+/* 下拉列表里选不了的（系统风格定死了）：灰着，右边写原因 */
+.ss-ddi.na { color: var(--st-dim); cursor: default; }
+.ss-ddi.na > em { color: var(--st-dim); }
+/* 只看的值（账户名、余额）、按钮（登录 / 退出登录）、头像、一排缩略图 */
+.ss-info { color: var(--st-fg); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.ss-info.neg { color: #f14c4c; }
+.ss-info.pos { color: #3fb950; }
+/* 用量：一长条（限额用了多少 / 余额还剩多少），右边写百分比或金额；只有一行字的（结论、没有数据）不画控件 */
+.ss-row.ss-k-meter { grid-template-columns: minmax(140px, 1fr) minmax(0, 1.4fr); }
+.ss-row.ss-k-meter > .ss-ctl { justify-self: stretch; gap: 12px; }
+.ss-meter { flex: 1; min-width: 60px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--st-dim) 22%, transparent); overflow: hidden; }
+.ss-meter > i { display: block; height: 100%; min-width: 2px; border-radius: 3px; background: var(--st-focus); transition: width .3s ease; }
+/* 用量的卡片（同 Claude 的 Settings › Usage）：四周留白，行和行之间不画线、挨得紧；顶上一行是名字和 ›（点进去是明细） */
+.ss-sub.ss-ucard > .ss-card { padding: 0 2px 10px; }
+.ss-sub.ss-ucard + .ss-sub.ss-ucard { border-top: 1px solid color-mix(in srgb, var(--st-line) 70%, transparent); padding-top: 4px; }
+.ss-sub.ss-ucard > .ss-card > .ss-row { padding: 5px 0; min-height: 0; }
+.ss-sub.ss-ucard > .ss-card > .ss-row + .ss-row { border-top: 0; }
+.ss-sub.ss-ucard > .ss-card > .ss-row:hover, .ss-sub.ss-ucard > .ss-card > .ss-row.on { background: none; }
+.ss-sub.ss-ucard > .ss-card > .ss-row.ss-uhead { padding: 10px 0 6px; }
+.ss-row.ss-uhead > .ss-title { font-weight: 600; }
+.ss-row.ss-k-line.dim > .ss-title { color: var(--st-dim); font-size: 12.5px; }
+.ss-row.ss-k-line.warn > .ss-title { color: #d29922; font-size: 12.5px; }
+.ss-row.ss-k-stat > .ss-title { font-size: 20px; font-weight: 500; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.ss-row.ss-k-stat.neg > .ss-title { color: #f14c4c; }
+.ss-row.ss-k-stat > .ss-desc { margin-top: 1px; font-size: 12.5px; }
+.ss-row.ss-k-stat > .ss-ctl { gap: 10px; }
+.ss-ubar { width: 220px; max-width: 28vw; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--st-dim) 22%, transparent); overflow: hidden; }
+.ss-ubar > i { display: block; height: 100%; min-width: 2px; border-radius: 3px; background: var(--st-focus); }
+.ss-ubar.warn > i { background: #d29922; }
+.ss-upct { min-width: 6.5ch; color: var(--st-dim); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ss-row.ss-k-pairs { display: block; }
+.ss-row.ss-k-pairs > .ss-title { display: none; }
+.ss-prs { display: flex; flex-wrap: wrap; gap: 2px 18px; color: var(--st-dim); font-size: 12.5px; }
+.ss-pr b { margin-left: 6px; font-weight: 500; color: var(--st-fg); font-variant-numeric: tabular-nums; -webkit-user-select: text; user-select: text; }
+.ss-meter.warm > i { background: #d29922; }
+.ss-meter.hot > i { background: #e5534b; }
+.ss-mt { flex: none; min-width: 5ch; text-align: right; color: var(--st-dim); font-variant-numeric: tabular-nums; }
+.ss-row.ss-k-line { display: block; padding-top: 6px; padding-bottom: 6px; }
+.ss-row.ss-k-line:hover, .ss-row.ss-k-line.on { background: none; }
+.ss-row.ss-k-line > .ss-title { font-weight: 400; color: var(--st-fg); }
+.ss-row.ss-k-line > .ss-ctl { display: none; }
+.ss-btn { height: 26px; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--st-line) 60%, var(--st-dim)); border-radius: 6px; background: transparent; color: var(--st-fg); font: inherit; cursor: pointer; } /* 按钮同输入框：一圈细边、不铺底 */
+.ss-btn:hover { background: var(--st-hover); }
+.ss-btn.primary { border-color: transparent; background: var(--st-focus); color: #fff; }
+.ss-btn.primary:hover { background: color-mix(in srgb, var(--st-focus) 85%, #fff); }
+.ss-avatar { display: inline-grid; place-items: center; width: 36px; height: 36px; overflow: hidden; border-radius: 50%; background: var(--st-bg3); color: var(--st-fg); font-weight: 600; }
+.ss-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ss-swatches { display: flex; flex-wrap: wrap; gap: 12px; }
+.ss-sw { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--st-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.ss-sw > i { display: block; width: 88px; height: 56px; border-radius: 7px; box-shadow: 0 0 0 1px var(--st-line); background-size: cover; transition: box-shadow .15s; }
+.ss-sw:hover > i { box-shadow: 0 0 0 1px var(--st-dim); }
+.ss-sw.on { color: var(--st-hi); }
+.ss-sw.on > i { box-shadow: 0 0 0 2px var(--st-bg), 0 0 0 4px var(--st-focus); }
+/* 代码外观：浅色、深色两套并排（窄了上下放）；每一套下面一张预览——它自己的底色和高亮颜色（--cb 底、--cf 字、--cl 边、--cd 行号、--hl-* 在元素上），逐词的增删深一点 */
+.ss-sub.ss-halves > .ss-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; align-items: start; }
+.ss-sub.ss-halves > .ss-card > :not(.ss-half) { grid-column: 1 / -1; }
+.ss-sub.ss-halves > .ss-card > .ss-half + .ss-half { border-top: 0; border-left: 0; } /* 并排的两张：中间只留空（以前一道竖线，看着像把一行劈开） */
+.ss-sub.ss-halves > .ss-card > .ss-half + :not(.ss-half) { border-top: 0; } /* 预览下面那一行（代码字体）：不再加线 */
+.ss-row.ss-half { grid-template-columns: minmax(0, 1fr) auto; } /* 半张卡片里：名字可以缩，下拉框的字不截 */
+.ss-row > .ss-code { grid-area: x; }
+.ss-half .ss-dd { width: auto; min-width: 150px; max-width: 100%; }
+.ss-code { margin-top: 8px; padding: 8px 0; border: 1px solid var(--cl, var(--st-line)); border-radius: 8px; background: var(--cb, var(--st-bg)); color: var(--cf, var(--st-fg)); font: 12px/1.55 var(--st-mono, Monaco, monospace); overflow: hidden; }
+.ss-code .ide-k { color: var(--hl-k); } .ss-code .ide-d { color: var(--hl-d); } .ss-code .ide-f { color: var(--hl-f); } .ss-code .ide-s { color: var(--hl-s); } .ss-code .ide-c { color: var(--hl-c); }
+.ss-code .ide-n { color: var(--hl-n); } .ss-code .ide-p { color: var(--hl-p); } .ss-code .ide-v { color: var(--hl-v); } .ss-code .ide-h { color: var(--hl-h); } .ss-code .ide-a { color: var(--hl-a); }
+.ss-cl { display: flex; align-items: baseline; gap: 10px; padding: 0 14px; white-space: pre; }
+.ss-code-dark .ss-cl.del { background: rgba(248, 81, 73, .12); } .ss-code-dark .ss-cl.del mark { background: rgba(248, 81, 73, .38); }
+.ss-code-dark .ss-cl.add { background: rgba(46, 160, 67, .15); } .ss-code-dark .ss-cl.add mark { background: rgba(46, 160, 67, .42); }
+.ss-code-light .ss-cl.del { background: #ffebe9; } .ss-code-light .ss-cl.del mark { background: rgba(255, 129, 130, .45); }
+.ss-code-light .ss-cl.add { background: #e6ffec; } .ss-code-light .ss-cl.add mark { background: rgba(74, 194, 107, .42); }
+.ss-cl mark { color: inherit; border-radius: 3px; padding: 1px 0; }
+.ss-ln { flex: none; width: 2ch; text-align: right; color: var(--cd, var(--st-dim)); }
+.ss-code-dark .ss-cl.del :is(.ss-ln, .ss-sg) { color: #f47067; } .ss-code-dark .ss-cl.add :is(.ss-ln, .ss-sg) { color: #57ab5a; }
+.ss-code-light .ss-cl.del :is(.ss-ln, .ss-sg) { color: #cf222e; } .ss-code-light .ss-cl.add :is(.ss-ln, .ss-sg) { color: #1a7f37; }
+.ss-sg { flex: none; width: 1ch; }
+.ss-cl code { font: inherit; color: inherit; background: none; padding: 0; }
+/* 窄的时候：左边的分区变成上面一排（能横着滚）；再窄：控件放到名字、说明下面（开关还在右边）；代码外观两张预览上下放 */
+@container (max-width: 900px) {
+  .ss[data-sty="vscode"] .ss-sub.ss-halves > .ss-card { grid-template-columns: minmax(0, 1fr); }
+  .ss[data-sty="vscode"] .ss-sub.ss-halves > .ss-card > .ss-half + .ss-half { border-left: 0; border-top: 0; margin-top: 6px; }
+}
+@container (max-width: 760px) { /* 左边那栏放不下：搜索框、分区（一排，能横着滚）、右边的内容上下放 */
+  .ss[data-sty="vscode"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .ss[data-sty="vscode"] .ss-top { grid-column: 1; grid-row: 1; padding: 10px 16px 6px; border-right: 0; }
+  .ss[data-sty="vscode"] .ss-toc { grid-column: 1; grid-row: 2; display: flex; gap: 2px; padding: 4px 12px 6px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--st-line); scrollbar-width: none; }
+  .ss[data-sty="vscode"] .ss-toc::-webkit-scrollbar { display: none; }
+  .ss[data-sty="vscode"] .ss-ti { flex: none; }
+  .ss[data-sty="vscode"] .ss-toc .ss-grp { display: none; }
+  .ss[data-sty="vscode"] .ss-main { grid-column: 1; grid-row: 3; }
+  .ss[data-sty="vscode"] .ss-head { padding: 8px 16px 6px; }
+  .ss[data-sty="vscode"] :is(.ss-ht, .ss-hc) { font-size: 18px; }
+  .ss[data-sty="vscode"] .ss-body { padding: 2px 16px 16px; }
+}
+@container (max-width: 760px) { .ss[data-sty="vscode"] .ss-toc { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); } }
+@container (max-width: 520px) { /* 大的控件（下拉、输入框）放到名字下面；小的（勾选框、数字、按钮、只看的值）还在右边 */
+  .ss[data-sty="vscode"] .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "t" "d" "c" "x"; }
+  .ss[data-sty="vscode"] .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) > .ss-ctl { justify-self: stretch; margin-top: 8px; }
+  .ss[data-sty="vscode"] .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) .ss-dd, .ss[data-sty="vscode"] .ss-row:not(:has(.ss-check)):not(.ss-plain):not(.ss-k-number) .ss-input { width: 100%; }
+  .ss[data-sty="vscode"] .ss-row .ss-ctl:has(.ss-sugbtn) .ss-input { width: auto; flex: 1; }
+}
+/* ---- 账户、管理（全局的两个）：活动栏在左边时在它最下面；不在左边（顶部、底部、隐藏）时到标题栏最右边、小一号 ---- */
+.st-glob { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.st-glob button[hidden] { display: none; }
+.st-avatar { display: block; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+/* 自己的头像（studio.js 的 avatarHtml）：GitHub 照片，或首字母 + 底色——0 中性灰，1–5 几种低饱和的颜色；深色、浅色各一套 */
+.st-av { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; box-sizing: border-box; border-radius: 50%; overflow: hidden; background: var(--av-bg, #3a3a38); color: var(--av-fg, #e6e4dd); font: 600 11px/1 -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; letter-spacing: .02em; -webkit-user-select: none; user-select: none; }
+.st-av img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.st-av-t0 { --av-bg: #3b3b39; --av-fg: #e4e2db; } html.light .st-av-t0 { --av-bg: #e1dfd8; --av-fg: #45443f; }
+.st-av-t1 { --av-bg: #5b4036; --av-fg: #f1dacf; } html.light .st-av-t1 { --av-bg: #efd9ce; --av-fg: #7b4b39; } /* 陶土 */
+.st-av-t2 { --av-bg: #3c4a3f; --av-fg: #d5e5d7; } html.light .st-av-t2 { --av-bg: #d8e6da; --av-fg: #3f5b46; } /* 灰绿 */
+.st-av-t3 { --av-bg: #384759; --av-fg: #d6e1ee; } html.light .st-av-t3 { --av-bg: #d8e2ee; --av-fg: #3e5371; } /* 石板蓝 */
+.st-av-t4 { --av-bg: #473f58; --av-fg: #e2dcf0; } html.light .st-av-t4 { --av-bg: #e3ddf0; --av-fg: #574b75; } /* 灰紫 */
+.st-av-t5 { --av-bg: #54492f; --av-fg: #eee3c7; } html.light .st-av-t5 { --av-bg: #ede3ca; --av-fg: #6c592c; } /* 沙色 */
+.st-glob .st-av.st-avatar { font-size: 10px; }
+/* 设置 › 账号 › 头像：指着盖一层淡的圆、中间「换一个」的图标（同 Claude），点一下换下一种 */
+.ss-avbtn { position: relative; display: block; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; outline: 0; }
+.ss-avbtn:focus-visible { box-shadow: 0 0 0 2px var(--st-bg), 0 0 0 3.5px var(--st-focus); }
+.ss-avshuf { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--st-fg) 12%, var(--st-bg)); color: var(--st-hi); opacity: 0; transition: opacity .15s; } /* 同 Claude：淡灰的圆、中间「换一个」 */
+.ss-avbtn:has(.st-av-img) .ss-avshuf { background: rgba(0, 0, 0, .45); color: #fff; } /* 照片上：压暗一层 */
+.ss-avshuf svg { width: 18px; height: 18px; }
+.ss-avbtn:hover .ss-avshuf, .ss-avbtn:focus-visible .ss-avshuf { opacity: 1; }
+.st-glob.st-globbar { position: relative; z-index: 2; flex: none; flex-direction: row; gap: 2px; margin: 0 8px 0 4px; align-self: center; }
+.st-glob.st-globbar button { width: 26px; height: 22px; border: 0; padding: 0; border-radius: 5px; background: none; color: var(--st-dim); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; }
+.st-glob.st-globbar button:hover { color: var(--st-hi); background: var(--st-hover2); }
+.st-glob.st-globbar button svg { width: 16px; height: 16px; }
+.st-glob.st-globbar .st-avatar { width: 17px; height: 17px; font-size: 8px; }
+.st-glob.st-globbar button.st-badge::after { right: 3px; bottom: 1px; width: 6px; height: 6px; }
+/* 底部：主侧栏最下面一排 */
+.tside > .st-actfoot { flex: none; display: flex; align-items: center; margin-top: auto; padding: 4px 6px; border-top: 1px solid var(--st-line); }
+.tside > .st-actfoot > .st-act { flex: 1 1 auto; }
+
+/* ---- 键帽：整串一组（和弦两下之间 10px） ---- */
+.st-kcaps { display: inline-flex; align-items: center; flex: none; }
+/* ---- 面板对齐（同 VS Code）：左对齐——伸到主侧栏下面；居中——只在编辑区下面（默认）；右对齐——编辑区和辅助侧栏下面；两端对齐——整个宽度 ---- */
+html.termapp.st-pa-center .tlab.st-grid > .st-panel { grid-column: 3 / 4; }
+html.termapp.st-pa-right .tlab.st-grid > .st-panel { grid-column: 3 / 6; }
+html.termapp.st-pa-justify .tlab.st-grid > .st-panel { grid-column: 1 / 6; }
+html.termapp:is(.st-pa-center, .st-pa-right) .tlab.st-grid > :is(.tside, .ts-grip) { grid-row: 1 / 3; }
+html.termapp:is(.st-pa-right, .st-pa-justify) .tlab.st-grid > :is(.st-grip, .st-aside) { grid-row: 1; }
+/* ---- 快速输入（命令面板、各种选择）在中间 ---- */
+html.st-qcenter .st-palette { top: 24%; }
+/* ---- 布局密度：紧凑——卡片之间的缝、圆角、活动栏小一号 ---- */
+html.termapp.st-compact .termwin .tlab { padding: 0 3px 3px 0; }
+html.termapp.st-compact .termwin .tlab.st-grid.st-sright { padding: 0 0 3px 3px; }
+html.termapp.st-compact .termwin .tside { margin-right: 3px; border-radius: 6px; }
+html.termapp.st-compact .termwin .tlab.st-sright > .tside { margin-right: 0; margin-left: 3px; }
+html.termapp.st-compact .tlab.st-grid > .st-panel { margin-top: 3px; border-radius: 6px; }
+html.termapp.st-compact .tlab.st-grid > .st-aside { border-radius: 6px; }
+html.termapp.st-compact .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 3px calc(var(--aside-r, 0.5) * (100% - 3px)); }
+/* 活动栏的大小只归「活动栏大小」管（宽裕 / 精致）：布局密度不再改它——以前密度紧凑时这里压着，「活动栏大小」怎么选都没反应 */
+
+/* 换配色的那一下：所有过渡先关掉（换完 40ms 后打开）——一起变，不是有的立刻变、有的慢慢淡过去 */
+html.st-theming *, html.st-theming *::before, html.st-theming *::after { transition: none !important; }
+
+/* ---- 各种输入框：微圆角；有焦点时一圈强调色（VS Code 的两套配色是 VS Code 的蓝） ---- */
+html.termapp .ts-addr { border-radius: 5px; }
+html.termapp .ts-addr.editing, html.termapp .ts-addr:focus-within { border-color: var(--st-focus); }
+.st-search { border-radius: 4px; border-color: var(--st-line); }
+.st-search:focus-within { border-color: var(--st-focus); }
+.st-palette .st-pin { margin: 6px 6px 4px; padding: 4px 8px; border: 1px solid var(--st-line); border-radius: 4px; }
+.st-palette .st-pin:focus-within { border-color: var(--st-focus); }
+.xp-q:focus { border-color: var(--st-focus); }
+/* ---- 标签页上页面的线条图标（设置、快捷键、仪表盘、资源管理器、浏览器、扩展） ---- */
+.st-ico.st-i-svg { display: inline-flex; align-items: center; color: var(--st-dim); }
+.st-ico.st-i-svg svg { width: 14px; height: 14px; }
+html.termapp .termwin .tab.on .st-ico.st-i-svg { color: var(--st-fg); }
+/* 活动栏不在边上（顶部、底部、隐藏）：主侧栏和窗口边之间也留一道缝（同另一边） */
+html.termapp .st-row0.st-noact > .tlab { padding-left: 6px; }
+html.termapp .st-row0.st-noact.st-sright > .tlab.st-grid.st-sright { padding-left: 0; padding-right: 6px; }
+html.termapp.st-compact .st-row0.st-noact > .tlab { padding-left: 3px; }
+
+/* ---- 标签栏外观（同 VS Code）：单个标签页——只显示当前那个（占满一行）；隐藏——整条不要；位置：底部 ---- */
+html.termapp.st-tabs-single .gtabs > .tab:not(.on) { display: none; }
+html.termapp.st-tabs-single .gtabs > .tab.on { flex: 0 1 auto; max-width: none; }
+html.termapp.st-tabs-hidden .tgroup > .gtabs { display: none; }
+html.termapp.st-tabs-bottom .tgroup > .st-crumbs { order: 1; }
+html.termapp.st-tabs-bottom .tgroup > .tgbody { order: 2; }
+html.termapp.st-tabs-bottom .tgroup > .gtabs { order: 3; border-bottom: 0 !important; border-top: 1px solid var(--st-line); }
+html.termapp.st-tabs-bottom .termwin .tab.on::after { top: -1px; bottom: auto; }
+/* 拖标签页排序：指着的那个标签页一块淡的强调色；拖到标签条空白处（放到最后）：整条淡一下 */
+html.termapp .termwin .tab.st-dropon { background: color-mix(in srgb, var(--st-focus) 24%, var(--st-bg2)) !important; }
+/* 拖标签页排序：插入线（2px，强调色）画在要插进去的那条缝上；标签条末尾空白处 = 最后 */
+html.termapp .termwin .tab.st-ins-l { box-shadow: inset 2px 0 0 var(--st-focus) !important; }
+html.termapp .termwin .tab.st-ins-r { box-shadow: inset -2px 0 0 var(--st-focus) !important; }
+html.termapp .gtabs.st-dropend > .tab:last-of-type { box-shadow: inset -2px 0 0 var(--st-focus) !important; }
+/* 编辑器的按钮放在标题栏里 */
+.st-tbacts { position: relative; z-index: 2; display: flex; align-items: center; margin-left: auto; }
+.st-tbacts + .st-lay { margin-left: 6px; }
+.st-tbacts .st-tacts { display: flex; align-items: center; gap: 2px; border: 0; background: none; padding: 0; }
+.st-tbacts .st-tacts button { width: 24px; height: 22px; }
+
+/* ======== 系统风格：Pure Terminal（同 iTerm）——没有活动栏、侧栏、面板、状态栏、面包屑、地址栏；只有标签页（一个时不显示）和终端 / 对话，标题栏正中是标题 ======== */
+html.termapp.st-os-terminal :is(.st-act, .termwin .tside, .termwin .ts-grip, .st-panel, .st-status, .st-crumbs, .st-aside, .tlab > .st-grip, .st-lay, .st-glob, .st-tbacts, .st-tacts, .st-map, #win .bar > .ts-addr, #win .bar > .ts-btn) { display: none !important; }
+html.termapp.st-os-terminal .termwin .tlab, html.termapp.st-os-terminal .termwin .tlab.st-grid { display: flex !important; padding: 0 !important; }
+html.termapp.st-os-terminal .termwin .tmain { flex: 1 1 auto; border: 0 !important; border-radius: 0 !important; }
+html.termapp.st-os-terminal .tgroup { border-radius: 0 !important; }
+html.termapp.st-os-terminal #win .bar > #title { display: block !important; font: 12.5px/30px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; color: var(--st-dim); }
+/* 窗口顶上一排是 iTerm 的标签页（一个标签页里可以分屏）；只有一个标签页时不显示（设置里可以改成始终显示） */
+html.termapp.st-os-terminal .termwin .tabs.pt-tabs { display: flex; flex: none; align-items: stretch; height: 30px; box-sizing: border-box; padding: 3px 6px; gap: 4px; overflow: hidden; background: var(--st-canvas); border: 0; border-bottom: 1px solid var(--st-line); font: 12.5px/24px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; }
+html.termapp.st-os-terminal .termwin .tabs.pt-tabs[hidden] { display: none; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab { position: relative; flex: 1 1 0; min-width: 0; max-width: none; height: auto; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 22px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); white-space: nowrap; overflow: hidden; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab:hover { background: var(--st-hover); }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab.on { background: color-mix(in srgb, var(--st-focus) 62%, var(--st-canvas)); color: #fff; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab.on .st-ico { color: #fff; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab > span { overflow: hidden; text-overflow: ellipsis; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab > .tx { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); visibility: hidden; font-style: normal; }
+@media (hover: hover) { html.termapp.st-os-terminal .termwin .pt-tabs > .tab:hover > .tx { visibility: visible; } } /* 只在有悬停的设备上：手指点的设备第一下会被当成悬停，要点两次 */
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab::after { display: none !important; }
+html.termapp.st-os-terminal .pt-tabs .pt-k { order: 3; flex: none; font-style: normal; font-size: 11.5px; opacity: .7; }
+html.termapp.st-os-terminal .termwin .pt-tabs > .tab > span { order: 2; }
+html.termapp.st-os-terminal .pt-tabs > .pt-new { flex: none; width: 26px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); font-size: 17px; line-height: 1; cursor: pointer; }
+html.termapp.st-os-terminal .pt-tabs > .pt-new:hover { color: var(--st-hi); background: var(--st-hover); }
+/* 每一格上面的小标题：只有分屏时显示（同 iTerm）；当前那格淡的强调色 */
+html.termapp.st-os-terminal .tgroup > .gtabs { display: none !important; }
+html.termapp.st-os-terminal .panes.pt-split .tgroup > .gtabs { display: flex !important; height: 22px; min-height: 22px; padding: 0 6px; background: var(--st-bg2); border-bottom: 1px solid var(--st-line); font: 12px/22px -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif; }
+html.termapp.st-os-terminal .panes.pt-split .tgroup.on > .gtabs { background: color-mix(in srgb, var(--st-focus) 26%, var(--st-bg2)); }
+html.termapp.st-os-terminal .panes.pt-split .gtabs > .tab { flex: 1 1 auto; max-width: none; height: 22px; justify-content: flex-start; border: 0; background: none !important; color: var(--st-fg); }
+html.termapp.st-os-terminal .panes.pt-split .gtabs > .tab > .tx { visibility: visible; order: -1; }
+html.termapp.st-os-terminal .panes.pt-split .gtabs > .tab::after, html.termapp.st-os-terminal .panes.pt-split .gtabs > .tab::before { display: none !important; }
+html.termapp.st-os-terminal.st-pt-notitle #win .bar > #title { visibility: hidden; }
+/* ======== 系统风格：Claude App——外壳用系统字体、圆角，标签页收起（一次看一个对话，同 Claude App）======== */
+html.termapp.st-os-claude :is(#win .bar, .termwin .tabs, .st-crumbs, .st-status, .st-shdr, .st-vtitle, .st-menu, .st-pvh, .st-ptop, .ts-addr, .ts-addr input) { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif !important; }
+html.termapp.st-os-claude .tgroup > .gtabs { display: none; }
+html.termapp.st-os-claude .termwin .tside, html.termapp.st-os-claude .tlab.st-grid > .st-panel, html.termapp.st-os-claude .tlab.st-grid > .st-aside, html.termapp.st-os-claude .termwin .tmain .tgroup { border-radius: 12px !important; }
+/* ---- 面板最大化（同 VS Code「最大化面板大小」）：占满它那几列的整个高度（编辑区被盖住），再点还原 ---- */
+html.termapp .tlab.st-grid > .st-panel.max { grid-row: 1 / 3; height: auto !important; margin-top: 0; z-index: 20; align-self: stretch; }
+html.termapp .tlab.st-grid > .st-panel.max > .st-pgrip { display: none; }
+
+
+/* 终端：+ 和 ⌄ 连在一起（同 VS Code）；列表里每个终端的小图标（可换颜色、图标） */
+.st-split-btn { display: inline-flex; align-items: center; }
+.st-split-btn .st-caret { width: 14px; margin-left: -2px; }
+.st-split-btn .st-caret svg { width: 12px; height: 12px; }
+.st-ticon { font-weight: 700; color: var(--st-dim); }
+/* 后台任务、子 Agent、Agent 活动一行前面的状态字形（◼ 在跑、✔ 完成、✗ 失败、■ 停了）：固定一格宽、居中，字都从同一列开始（同任务清单） */
+.st-tg { display: inline-block; flex: none; width: 1.3em; text-align: center; font-style: normal; }
+/* 状态颜色：▶ 在跑 / 进行中（黄）、✔ 完成（绿）、■ 停了（灰的小方块，和字一样大小） */
+.st-tg.st-tgrun { color: rgb(0, 204, 204); } /* 后台任务在跑：同 Claude Code 的 background 色（深色 0,204,204 / 浅色 0,153,153） */
+html.light .st-tg.st-tgrun { color: rgb(0, 153, 153); }
+.st-tg.st-tgok { color: #3fb950; }
+html.light .st-tg.st-tgok { color: #1a7f37; }
+.st-tg.st-tgdo { color: #d77757; } /* 任务清单在做的 ■（同 Claude Code 的橙） */
+html.light .st-tg.st-tgdo { color: #b9542f; }
+/* 任务清单、后台任务：放不下的点一下换行展开全文，再点收回 */
+.st-todoi[data-st^="todo-wrap-"], .st-fgoal { cursor: pointer; }
+.st-todoi.wrap, .st-fgoal.wrap { align-items: flex-start; } /* （右侧的「第一行不动」见 tdrawer.css 末尾） */
+.st-todoi.wrap .st-cut, .st-fgoal.wrap .st-cut, .st-prw.wrap .st-cut { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.st-todoi.wrap .st-tg, .st-fgoal.wrap .st-tg { line-height: inherit; }
+/* /goal 在跑：辅助侧栏最上面一行 */
+.st-fgoal { display: flex; align-items: center; gap: 6px; min-height: 24px; margin: 2px 0 6px; padding: 2px 6px; border-radius: 5px; color: var(--st-fg); }
+.st-fgoal .st-cut { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-fgoal b { font-weight: 600; color: var(--st-hi, var(--st-fg)); margin-right: 4px; }
+.st-fgoal .st-fgi { flex: none; width: 1.1em; text-align: center; font-style: normal; color: var(--st-lav, #b1b9f9); }
+.st-fgoal .st-dim { flex: none; }
+.st-tg.st-tgstop::before { content: ""; display: inline-block; width: 0.5em; height: 0.5em; border-radius: 1px; background: var(--st-dim); vertical-align: 0.08em; }
+/* Claude Code 的标志（标签页、页面图标）：Claude 的橙，13px */
+.st-ico.st-i-cc { display: inline-flex; align-items: center; color: #d97757; }
+.st-ico.st-i-cc > .cc-logo-svg { width: 13px; height: 13px; }
+.st-ico.st-i-cx { display: inline-flex; align-items: center; color: var(--st-dim); transition: color .25s ease; } /* Codex 的标签页：OpenAI 的结，平时淡、在跑时字色 */
+.st-ico.st-i-cx > .cx-logo-svg { width: 13px; height: 13px; }
+html.termapp .termwin .tab.busy > .st-ico.st-i-cx { color: var(--st-hi); } /* 在跑：OpenAI 的黑 / 白（同 Claude Code 的标签页在跑时是它的橙） */
+/* 标签页上 agent 在跑：图标那一格是 Claude Code 的转圈（字由 browser.js 每 120ms 换），闲着才是它自己的图标；占的宽同图标，字换来换去不挤动名字 */
+/* 在跑 / 闲着只看颜色，不动：Claude 的标志闲着是灰的，在跑是它的橙色（不跳——一直动太分神）
+   （以前的「心跳」：html.termapp .termwin .tab.busy > .st-ico { animation: st-tabbeat 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }，关键帧在下面留着） */
+html.termapp .termwin .tab > .st-ico.st-i-cc { color: var(--st-dim); transition: color .25s ease; }
+html.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #d97757; }
+/* 在等你（问你问题、等你确认）：图标变蓝，名字后面一个蓝点——比「在跑」的橙更要紧（同 Claude Code 的 needs you） */
+html.termapp .termwin .tab.needs > .st-ico, html.termapp .termwin .tab.needs.busy > .st-ico.st-i-cc { color: #4c9bff; }
+html.termapp .termwin .tab.needs > span::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: #4c9bff; vertical-align: middle; }
+/* 底部在跑那一行右边：别的会话在等你（live.js renderInput） */
+.tpane .foot .input { position: relative; }
+.tpane .vs-needs { position: absolute; right: 10px; height: var(--ttu-row, 1.3em); line-height: var(--ttu-row, 1.3em); color: #6eaaff; cursor: pointer; white-space: pre; }
+.tpane .vs-needs:hover { text-decoration: underline dashed; text-underline-offset: 0.2em; }
+html.light.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #c96442; }
+@keyframes st-tabbeat { 0%, 100% { transform: scale(1); } 18% { transform: scale(1.28); } 34% { transform: scale(.94); } 50% { transform: scale(1.08); } 66% { transform: scale(1); } }
+.st-cclogo { display: inline-flex; align-items: center; color: #d97757; }
+.st-cclogo > .cc-logo-svg { width: 12px; height: 12px; }
+/* Agent 活动：一行一行排好——每行固定高度、不被挤扁（以前一多就互相叠在一起）；超出面板就滚动。
+   不加动画（标志不跳、点不闪）：这里是一眼扫过去看状态的地方 */
+.st-pvb.st-actv { display: block; overflow: auto; padding: 4px 6px; }
+.st-actv > * { flex: none; }
+.st-actv .st-arow, .st-actv .st-prw { display: flex; align-items: center; min-height: 24px; height: auto; line-height: 20px; box-sizing: border-box; }
+.st-actv .st-prw.st-sub, .st-actv .st-adone { padding-left: 28px; min-height: 22px; }
+.st-actv .st-arow.st-acn { gap: 7px; margin-top: 4px; }
+.st-actv .st-arow.st-acn:first-child { margin-top: 0; }
+.st-alogo { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 15px; height: 15px; }
+.st-alogo svg, .st-alogo img { display: block; width: 15px; height: 15px; }
+.st-alogo.cc { color: #d97757; }
+.st-actv .st-afg .st-fgdot { color: var(--st-dim); animation: none; font-size: 9px; }
+.st-actv .st-sa2 .st-sasub { display: none; } /* 这里一行放不下两层：token 省掉，用时留在右边 */
+
+/* 「读取中…」：读得快（大多数文件）的时候根本不出现，慢了 0.35 秒才淡出来——不在每次点开时闪一下 */
+.st-fload { opacity: 0; animation: stFloadIn .2s ease .35s forwards; }
+@keyframes stFloadIn { to { opacity: 1; } }
+
+/* Agent 活动的时间线（trace.js）：上面一排时间段 + 图例，下面一张 SVG（横轴时间、一组一个会话） */
+.st-pvb.tr-host { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.tr-bar { display: flex; align-items: center; gap: 14px; flex: none; padding: 5px 10px 4px; font-size: 11.5px; color: var(--st-dim); }
+.tr-seg { display: inline-flex; border: 1px solid var(--st-line); border-radius: 6px; overflow: hidden; }
+.tr-sp { border: 0; background: none; color: var(--st-dim); font: inherit; padding: 1px 9px; cursor: pointer; }
+.tr-sp + .tr-sp { border-left: 1px solid var(--st-line); }
+.tr-sp.on { background: var(--st-hover, rgba(128, 128, 128, .14)); color: var(--st-hi, var(--st-fg)); }
+.tr-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.tr-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tr-legend i { display: inline-block; width: 10px; height: 8px; border-radius: 2px; font-style: normal; }
+.tr-legend i.tr-lask, .tr-legend i.tr-lcmp { width: auto; height: auto; background: none !important; font-size: 9px; }
+.tr-legend i.tr-lask { color: #a5a8f5; } .tr-legend i.tr-lcmp { color: #d29922; }
+.tr-scroll { flex: 1; min-height: 0; overflow: auto; }
+.tr-empty { padding: 10px 12px; }
+.tr-svg { display: block; font-family: var(--st-font); }
+.tr-svg .tr-grid { stroke: var(--st-line); stroke-width: 1; opacity: .5; }
+.tr-svg .tr-tick { fill: var(--st-dim); font-size: 10px; text-anchor: middle; }
+.tr-svg .tr-tick.now { text-anchor: end; }
+.tr-svg .tr-now { stroke: #d97757; stroke-width: 1; opacity: .7; }
+.tr-svg .tr-sep { stroke: var(--st-line); stroke-width: 1; }
+.tr-svg .tr-hit { fill: transparent; cursor: pointer; }
+.tr-svg .tr-grp:hover .tr-hit { fill: var(--st-hover, rgba(128, 128, 128, .06)); }
+.tr-svg .tr-name { fill: var(--st-fg); font-size: 12px; font-weight: 600; }
+.tr-svg .tr-grp.busy .tr-name.cc { fill: #d97757; }
+.tr-svg .tr-sum { fill: var(--st-dim); font-size: 10.5px; }
+.tr-svg .tr-turn { fill: rgba(128, 128, 128, .09); }
+.tr-svg .tr-turn.live { fill: rgba(217, 119, 87, .08); }
+.tr-svg .tr-b { opacity: .78; }
+.tr-svg .tr-b.run { opacity: 1; }
+.tr-svg .tr-b.err { stroke: #e5484d; stroke-width: 1.2; }
+.tr-svg .tr-b:hover, .tr-svg .tr-bg:hover { opacity: 1; stroke: var(--st-fg); stroke-width: .8; }
+.tr-svg .tr-bg { fill-opacity: .16; stroke-opacity: .55; stroke-width: 1; }
+.tr-svg .tr-bg.run { fill-opacity: .24; stroke-opacity: .85; }
+.tr-svg .tr-bt { fill: #fff; font-size: 10px; pointer-events: none; } /* 条里的字：它在干什么 · 用时 */
+.tr-svg .tr-bgt { fill: var(--st-fg); font-size: 9.5px; opacity: .85; pointer-events: none; }
+.tr-svg .tr-more { fill: var(--st-dim); font-size: 10px; } /* 同时在跑的后台任务太多、没画出来的几个 */
+.tr-legend i.tr-lturn { background: rgba(217, 119, 87, .16); border: 1px solid rgba(217, 119, 87, .3); width: 14px; }
+.tr-legend i.tr-lbgi { background: rgba(63, 185, 80, .16); border: 1px solid rgba(63, 185, 80, .55); width: 14px; }
+.tr-svg .tr-ask { fill: #a5a8f5; }
+.tr-svg .tr-cmp { fill: #d29922; }
+.tr-svg .tr-lblbg { fill: transparent; }
+
+/* ---- Agent 活动（trace.js）：同活动监视器——一张表（斑马纹、表头能点着排序、数字右对齐），底下一条 CPU 负载；窄的时候一行一个会话 ---- */
+.tr-host .am-top { display: flex; align-items: center; gap: 10px; flex: none; padding: 6px 10px 4px; font-size: 11.5px; color: var(--st-dim); }
+.am-fill { flex: 1; }
+.am-move { flex: none; width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: none; color: var(--st-dim); cursor: pointer; }
+.am-move:hover { background: var(--st-hover); color: var(--st-hi); }
+.am-move svg { width: 15px; height: 15px; }
+.am-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* 会话表 | 整机：两块各自滚，中间的分隔线能拖（宽的时候左右放，窄的时候上下放） */
+.am-split { flex: 1 1 auto; min-height: 0; display: flex; }
+.am-split.v { flex-direction: column; }
+.am-split > .am-body, .am-split > .am-footw { min-width: 0; min-height: 0; overflow: auto; }
+.am-split > .am-footw > .am-foot { border-top: 0; }
+.am-grip { flex: none; position: relative; z-index: 2; background: var(--st-line); }
+.am-split.v > .am-grip { height: 1px; cursor: row-resize; } .am-split.h > .am-grip { width: 1px; cursor: col-resize; }
+.am-grip::after { content: ""; position: absolute; inset: -3px 0; } .am-split.h > .am-grip::after { inset: 0 -3px; }
+.am-grip:hover, .am-grip.drag { background: var(--st-focus, #0a84ff); }
+/* 浮动的 Agent 活动：在所有东西上面；标题栏拖、右下角缩放 */
+.am-float { position: fixed; z-index: 400; display: flex; flex-direction: column; background: var(--st-bg2, #1e1e1e); border: 1px solid var(--st-line); border-radius: 10px; box-shadow: var(--st-shadow, 0 10px 32px rgba(0,0,0,.5)); overflow: hidden; color: var(--st-fg); }
+.am-fbar { flex: none; height: 26px; display: flex; align-items: center; padding: 0 10px; font-size: 11.5px; color: var(--st-dim); cursor: grab; border-bottom: 1px solid var(--st-line); user-select: none; }
+.am-fhost { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.am-fres { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+.am-table { display: flex; flex-direction: column; font-size: 12px; }
+.am-tr { display: grid; grid-template-columns: minmax(130px, 1.2fr) minmax(160px, 2.4fr) 66px 58px 66px 44px 54px; align-items: center; column-gap: 8px; min-height: 26px; padding: 0 10px; cursor: pointer; }
+.am-tr:not(.am-th):nth-child(even) { background: color-mix(in srgb, var(--st-fg) 3.5%, transparent); }
+.am-tr:not(.am-th):hover { background: var(--st-hover); }
+.am-th { position: sticky; top: 0; z-index: 1; min-height: 24px; background: var(--st-bg); border-bottom: 1px solid var(--st-line); cursor: default; }
+.am-th .am-c { border: 0; padding: 0; background: none; font: inherit; font-size: 11.5px; color: var(--st-dim); cursor: pointer; }
+.am-th .am-c.am-name { padding-left: 20px; } /* 「Agent」和下面的名字对齐（名字前面是 14px 的标志 + 6px 间隔） */
+/* 状态的颜色在字上：工作中 橙、等待处理 蓝、空闲 淡 */
+.am-st-run { color: var(--st-fg); } .am-st-wait { color: #4c9bff; } .am-st-idle { color: var(--st-dim); } /* 工作中是常态：本色；要你处理的才上色 */
+.am-th .am-c:hover, .am-th .am-c.on { color: var(--st-hi); }
+.am-c { min-width: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.am-c.am-ms, .am-c.am-cpu, .am-c.am-mem, .am-c.am-procs, .am-c.am-ctx { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.am-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-dim { color: var(--st-dim); }
+.am-sort { font-style: normal; margin-left: 2px; }
+.am-logo { flex: none; display: inline-flex; width: 14px; height: 14px; color: var(--st-dim); }
+.am-logo > svg, .am-logo > img { width: 14px; height: 14px; }
+.am-logo.am-k-cc { color: #d97757; } .am-logo.am-k-cx { color: var(--st-hi); } /* 不用 .cc / .cx：desk.css 里 .cc 是控制中心（带 12px 内边距），套上就把标志撑到 38px 宽，名字对不齐 */
+.am-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--st-dim); opacity: .55; }
+.am-dot.run { background: #d97757; opacity: 1; } .am-dot.wait { background: #4c9bff; opacity: 1; } /* 等待处理：蓝（同标签页上「在等你」） */
+.am-foot { flex: none; display: flex; align-items: center; gap: 18px; padding: 6px 12px 8px; border-top: 1px solid var(--st-line); font-size: 11.5px; color: var(--st-dim); }
+.am-foot b { color: var(--st-hi); font-weight: 600; font-variant-numeric: tabular-nums; }
+.am-load { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.am-lt { font-size: 10.5px; letter-spacing: .04em; }
+.am-chart { display: block; max-width: 100%; border: 1px solid var(--st-line); border-radius: 4px; background: color-mix(in srgb, var(--st-fg) 3%, transparent); }
+.am-area { fill: color-mix(in srgb, var(--st-blue, #3d7bf5) 26%, transparent); fill-opacity: .32; }
+.am-line { fill: none; stroke: var(--st-blue, #3d7bf5); stroke-width: 1.2; }
+.am-mid { stroke: var(--st-line); stroke-width: 1; }
+/* 整机（同活动监视器底下那一块）：上面一排页签，下面 左边几行数 | 中间图 | 右边几行数；窄的时候图在上、两列数在下 */
+.am-sys { display: flex; flex-direction: column; gap: 6px; }
+.am-systabs { align-self: flex-start; }
+.am-sysb { display: flex; align-items: stretch; gap: 0; border: 1px solid var(--st-line); border-radius: 6px; overflow: hidden; }
+.am-sysb > .am-kv { flex: 1 1 0; min-width: 0; padding: 6px 10px; }
+.am-sysb > .am-kv + .am-sysmid, .am-sysb > .am-sysmid + .am-kv { border-left: 1px solid var(--st-line); }
+.am-sysmid { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 10px; }
+.am-sysmid .am-chart { border: 0; border-top: 1px solid var(--st-line); border-radius: 0; background: transparent; }
+.am-kvr { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--st-line) 70%, transparent); white-space: nowrap; }
+.am-kvr:last-child { border-bottom: 0; }
+.am-kvr b { font-variant-numeric: tabular-nums; }
+.am-sys.c .am-sysb { flex-direction: column; }
+.am-sys.c .am-sysmid { border-bottom: 1px solid var(--st-line); }
+.am-sys.c .am-syskv { display: flex; gap: 0; }
+.am-sys.c .am-syskv > .am-kv { flex: 1 1 0; min-width: 0; padding: 6px 10px; }
+.am-sys.c .am-syskv > .am-kv + .am-kv { border-left: 1px solid var(--st-line); }
+/* 概览：六张小卡片（CPU、内存、GPU、磁盘、网络、电池）——一页看全，点一张进它那一页 */
+.am-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; } /* 放不下就换行（不挤、不叠） */
+.am-cards.c { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.am-card { border: 1px solid var(--st-line); border-radius: 6px; padding: 6px 8px; cursor: pointer; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.am-card:hover { background: var(--st-hover); }
+.am-cardh { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; }
+.am-cardh > span { flex: none; white-space: nowrap; }
+.am-cardh b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--st-hi); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.am-card .am-cardsub { display: block; font-size: 10.5px; color: var(--st-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.am-card .am-chart { border: 0; border-radius: 3px; width: 100%; }
+.am-foot.c { flex-direction: column; align-items: stretch; gap: 8px; }
+.am-foot:not(.c) { flex-wrap: wrap; } /* 窄的（竖排）不能 wrap：竖排 + wrap 在高度不够时会折成第二列，整机那块跑到右边去 */
+.am-foot:not(.c) > .am-sys { flex: 1 1 100%; }
+.am-list { display: flex; flex-direction: column; }
+.am-crow { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 3px; align-items: center; padding: 7px 12px; border-bottom: 1px solid color-mix(in srgb, var(--st-line) 55%, transparent); cursor: pointer; }
+.am-crow > .am-logo { justify-self: center; }
+.am-crow > .am-name { color: var(--st-hi); }
+.am-crow > .am-num { color: var(--st-dim); font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.am-crow > .am-l2 { grid-column: 2 / 4; font-size: 11.5px; color: var(--st-dim); } /* 第二行从名字那一列起（不画状态点，颜色在字上） */
+.am-crow:hover { background: var(--st-hover); }
+.am-c1, .am-c2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.am-c1 .am-name { color: var(--st-hi); }
+.am-num { color: var(--st-dim); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.am-c2 { margin-top: 2px; padding-left: 20px; font-size: 11.5px; color: var(--st-dim); }
+.am-st { flex: none; }
+/* 挪到右侧栏的时候：在右侧栏下面一块 */
+.st-aside .st-sact { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 120px; max-height: 60%; border-top: 1px solid var(--st-line); overflow: hidden; }
+.st-aside .st-sact.sized { max-height: none; flex: none; } /* 拖过分隔线：按拖出来的高度 */
+/* 任务清单和 Agent 活动之间的分隔线：上下拖改两块的高度（同 VS Code 视图之间的分隔线） */
+.st-aside .st-sactsplit { flex: none; height: 5px; margin: -3px 0 -2px; position: relative; z-index: 3; cursor: row-resize; }
+.st-aside .st-sactsplit[hidden] { display: none; }
+.st-aside .st-sactsplit:hover, .st-aside .st-sactsplit.drag { background: color-mix(in srgb, var(--st-focus, #0a84ff) 70%, transparent); }
+.st-aside .st-sact[hidden] { display: none; }
+
+/* ---- 第一次打开：选样子（两张大卡片 + 下面一行小字） ---- */
+.st-modal.st-first { display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
+.st-firstwin { width: min(620px, calc(100vw - 48px)); padding: 26px 26px 18px; border: 1px solid var(--st-line); border-radius: 14px; background: var(--st-bg); color: var(--st-fg); box-shadow: var(--st-shadow); text-align: center; }
+/* 都套在 .st-firstwin 里：.st-fh 这些名字右侧栏的分组标题也在用（没套时它们被放大成 19px） */
+.st-firstwin .st-fh { font-size: 19px; font-weight: 600; color: var(--st-hi); }
+.st-firstwin .st-fsub { margin: 6px 0 18px; font-size: 12.5px; color: var(--st-dim); }
+.st-firstwin .st-fcards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.st-firstwin .st-fcard { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px; border: 1px solid var(--st-line); border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.st-firstwin .st-fcard:hover, .st-firstwin .st-fcard:focus-visible { border-color: var(--st-focus); outline: 0; background: color-mix(in srgb, var(--st-focus) 6%, transparent); }
+.st-firstwin .st-fart { align-self: stretch; color: var(--st-dim); }
+.st-firstwin .st-fart svg { display: block; width: 100%; height: auto; }
+.st-firstwin .st-fcard b { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 14px; font-weight: 600; color: var(--st-hi); }
+.st-firstwin .st-fcard > span:last-child { font-size: 12.5px; line-height: 1.45; color: var(--st-dim); }
+.st-firstwin .st-frec { font-style: normal; font-weight: 500; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--st-focus) 16%, transparent); color: var(--st-focus); }
+.st-firstwin .st-fother { margin-top: 14px; padding: 4px 8px; border: 0; background: none; color: var(--st-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.st-firstwin .st-fother:hover { color: var(--st-hi); text-decoration: underline; }
+/* 设置开在标签页里（宽）：左边的分区和右边的内容作为一块居中（同 Claude 的设置）——不是分区贴着最左、内容在剩下的地方居中（左右空得不一样，看着歪）。窗口里的不动 */
+.tpane .st-pg.st-pg-settings .ss { padding-inline: max(0px, calc((100% - 184px - var(--ss-w) - 120px) / 2)); }
+/* 设置里的小示例（长行、时间格式……）：选的这一种画出来是什么样；等宽、淡底，贴在那一项下面 */
+.ss-demo { flex-basis: 100%; margin: 4px 0 2px; padding: 6px 10px; border-radius: 6px; background: var(--st-bg2); color: var(--st-fg); font: 12px/1.5 var(--st-mono); white-space: pre; overflow: hidden; max-width: 460px; box-sizing: border-box; }
+.ss-demo i { font-style: normal; }
+.ss-demo .dn { color: var(--st-dim); }
+.ss-demo .da { color: var(--st-green); }
+.ss-demo .dd { color: var(--st-dim); }
+.ss-row > .ss-demo { grid-area: x; margin-top: 6px; }
+/* ---- 欢迎页（welcome.js）：同更新内容那一页的排版（cl-page），一段介绍、几个按钮、连接状态、快捷键 ---- */
+.wl .wl-hero p { margin: 6px 0 4px; max-width: 560px; color: var(--st-dim); line-height: 1.6; }
+.wl .wl-sec { margin: 26px 0 10px; font-size: 12.5px; font-weight: 500; letter-spacing: .6px; text-transform: uppercase; opacity: .55; }
+.wl .wl-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.wl .wl-act { padding: 6px 12px; border: 1px solid var(--st-line); border-radius: 7px; background: none; color: var(--st-fg); font: inherit; font-size: 13px; cursor: pointer; }
+.wl .wl-act:hover { background: var(--st-hover); color: var(--st-hi); }
+.wl .wl-conn { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
+.wl .wl-conn > span:last-child { color: var(--st-dim); }
+.wl .wl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st-faint, #555); flex: none; }
+.wl .wl-dot.on { background: var(--st-green, #3fb950); }
+.wl .wl-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 28px; max-width: 620px; }
+.wl .wl-key { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+/* ---- iPad 端（remote.js）：连不上 Mac、没被允许时盖在页面上的一句话 ---- */
+.rm-veil { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.rm-veil[hidden] { display: none; }
+.rm-card { width: min(440px, calc(100vw - 48px)); padding: 22px 22px 16px; border-radius: 14px; background: var(--st-bg, #1c1c1e); color: var(--st-fg, #ddd); border: 1px solid var(--st-line, #333); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+.rm-card b { display: block; font-size: 16px; color: var(--st-hi, #fff); margin-bottom: 6px; }
+.rm-card p { margin: 0 0 16px; color: var(--st-dim, #999); }
+.rm-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.rm-acts button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--st-line, #333); background: none; color: inherit; font: inherit; cursor: pointer; }
+.rm-acts button[data-rm="retry"] { background: var(--st-focus, #0a84ff); border-color: transparent; color: #fff; }
+/* iPad：手指点的东西大一点、不要悬停才出来的（触屏没有悬停） */
+html.ipad .tabs .tab .tx, html.ipad .st-tab .tx { opacity: 1 !important; }
+html.ipad { -webkit-text-size-adjust: 100%; }
+.am-systabs .tr-sp .am-lv { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; vertical-align: 1px; }
+.am-lv.warn { background: #d4a72c; } .am-lv.crit { background: #e5534b; }
+.am-card.warn { border-color: color-mix(in srgb, #d4a72c 60%, var(--st-line)); } .am-card.crit { border-color: color-mix(in srgb, #e5534b 70%, var(--st-line)); }
+/* 会话那几项的负载色：正常是本色，偏高黄、很高红（按这台电脑的核数、内存算） */
+.am-warn { color: #d4a72c !important; } .am-crit { color: #e5534b !important; }
+/* 整机那块的头一行：左边页签、右边合计（同一行，不各占一行） */
+.am-syshd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.am-syshd .am-sum { white-space: nowrap; }
+.am-sys { gap: 6px; }
+.am-foot { padding-top: 6px; }
+/* 系统资源视图：内容区高度固定（概览的卡片、各页的数表一样高），切页签不跳；页签的负载色在字上 */
+.am-syshost { display: flex; flex-direction: column; padding: 8px 12px; overflow: auto; }
+.am-sysview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.am-sysview > .am-sys { flex: 1 1 auto; min-height: 0; }
+.am-sysview .am-sysb { flex: 1 1 auto; min-height: 120px; }
+.am-sysview .am-sysmid { flex: 1 1 auto; justify-content: center; }
+.am-sysview .am-cards { align-items: stretch; }
+.am-sysview .am-card { justify-content: space-between; }
+.am-systabs .tr-sp.am-warn { color: #d4a72c !important; } .am-systabs .tr-sp.am-crit { color: #e5534b !important; }
+/* 表的最后一行：合计（同一套列对齐） */
+.am-tr.am-total { position: sticky; bottom: 0; background: var(--st-bg); border-top: 1px solid var(--st-line); font-weight: 600; cursor: default; }
+.am-tr.am-total:hover { background: var(--st-bg); }
+/* 一个会话自己的资源（列表里点它） */
+.am-detail { padding: 8px 12px; display: flex; flex-direction: column; gap: 10px; }
+.am-dhead { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.am-back { border: 0; background: rgba(127, 127, 127, .16); color: inherit; font: inherit; font-size: 11.5px; padding: 2px 9px; border-radius: 5px; cursor: pointer; }
+.am-back:hover { background: rgba(127, 127, 127, .26); }
+.am-dhead b { color: var(--st-hi); }
+.am-dnums { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.am-dnum { border: 1px solid var(--st-line); border-radius: 6px; padding: 5px 8px; display: flex; flex-direction: column; gap: 2px; }
+.am-dnum span { font-size: 10.5px; color: var(--st-dim); } .am-dnum b { color: var(--st-hi); font-variant-numeric: tabular-nums; }
+.am-dcharts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.am-dchart { display: flex; flex-direction: column; gap: 4px; } .am-dchart .am-chart { width: 100%; }
+.am-dprocs { display: flex; flex-direction: column; font-size: 12px; }
+.am-dpr { display: grid; grid-template-columns: minmax(0, 1fr) 64px 64px 76px; gap: 8px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--st-line) 60%, transparent); }
+.am-dpr > span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.am-dph { color: var(--st-dim); font-size: 11px; }
+/* 系统资源的页签：文字 + 下面一条细线（同面板的页签），不是一格一格的分段按钮 */
+.am-systabs { display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--st-line); flex: 1 1 auto; min-width: 0; }
+.am-stab { border: 0; background: none; font: inherit; font-size: 12px; color: var(--st-dim); padding: 4px 0 6px; margin-bottom: -1px; border-bottom: 1.5px solid transparent; cursor: pointer; white-space: nowrap; }
+.am-stab:hover { color: var(--st-hi); }
+.am-stab.on { color: var(--st-hi); border-bottom-color: var(--st-focus, #0a84ff); }
+.am-stab.am-warn { color: #d4a72c; } .am-stab.am-crit { color: #e5534b; }
+.am-stab.on.am-warn, .am-stab.on.am-crit { border-bottom-color: currentColor; }
+/* 图（同活动监视器）：四边都有框，线细、面积淡；数字用系统字体常规字重、等宽数字，不加粗 */
+.am-chart.am-boxed { border: 0; border-radius: 0; background: rgba(0, 0, 0, .18); }
+html.light .am-chart.am-boxed { background: rgba(0, 0, 0, .03); }
+.am-frame { fill: none; stroke: var(--st-line); stroke-width: 1; }
+.am-line { stroke-width: 1.1; stroke-linejoin: round; }
+.am-kvr b, .am-cardh b, .am-dnum b { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.am-kvr b { font-size: 12.5px; }
+.am-sysmid .am-chart { border-top: 0; }
+
+
+/* ==== Agent 活动（同活动监视器）：上面页签（胶囊）、中间会话、底下固定高的一条；内容左右边和面板标题栏的字对齐 ==== */
+.tr-host { --am-in: 19px; --am-ln: color-mix(in srgb, var(--st-fg) 20%, transparent); --am-ln2: color-mix(in srgb, var(--st-fg) 10%, transparent); }
+.am-amv { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.am-amv > .am-body { flex: 1 1 auto; min-height: 56px; overflow: auto; }
+.am-segw { flex: none; display: flex; justify-content: center; padding: 4px var(--am-in) 8px; }
+.am-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: color-mix(in srgb, var(--st-fg) 7%, transparent); }
+.am-segb { border: 0; background: none; font: inherit; font-size: 12px; line-height: 1; color: var(--st-dim); padding: 5px 13px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.am-segb:hover { color: var(--st-hi); }
+.am-segb.on { color: var(--st-hi); background: color-mix(in srgb, var(--st-fg) 17%, transparent); }
+.am-stripw { flex: none; display: flex; justify-content: center; padding: 10px var(--am-in) 12px; border-top: 1px solid var(--st-line); overflow-x: auto; }
+/* 底下那一条：表格 | 图 | 表格 连成一个框 */
+.am-strip { flex: none; display: flex; align-items: stretch; border: 1px solid var(--am-ln); border-radius: 8px; }
+.am-strip > .am-sec { flex: none; position: relative; box-sizing: border-box; padding: 8px 14px; }
+.am-strip > .am-sec + .am-sec { border-left: 1px solid var(--am-ln); }
+.am-strip.stack { flex-direction: column; width: 100%; }
+.am-strip.stack > .am-sec + .am-sec { border-left: 0; border-top: 1px solid var(--am-ln); }
+.am-strip .am-kv { display: flex; flex-direction: column; justify-content: center; padding-top: 8px; padding-bottom: 8px; }
+.am-strip .am-kvr { display: flex; justify-content: space-between; align-items: center; gap: 12px; height: 26px; padding: 0; border-bottom: 1px solid var(--am-ln2); white-space: nowrap; font-size: 12.5px; color: var(--st-fg); }
+.am-strip .am-kvr:last-child { border-bottom: 0; }
+.am-strip .am-kvr b { font-weight: 400; font-size: 12.5px; color: var(--st-hi); }
+.am-gsec { display: flex; flex-direction: column; }
+.am-gt { flex: none; height: 22px; margin-bottom: 2px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--am-ln2); font-size: 12px; font-weight: 600; color: var(--st-hi); white-space: nowrap; }
+.am-gsel { border: 0; background: none; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 10px; padding: 1px 6px; border-radius: 4px; cursor: pointer; }
+.am-gsel:hover { background: var(--st-hover); }
+.am-updn { flex: none; opacity: .75; }
+.am-strip .am-chart, .am-ov .am-chart { display: block; border: 0; border-radius: 0; background: none; max-width: none; }
+.am-strip .am-mid, .am-ov .am-mid { stroke: var(--am-ln2); }
+/* 内存：右边「App内存 / 联动内存 / 被压缩」是「已使用内存」分开的三份——框的左边一个尖指着那一行（第二行） */
+.am-strip:not(.stack) .am-callout::before { content: ""; position: absolute; left: -5px; top: 43px; width: 8px; height: 8px; box-sizing: border-box; background: var(--am-bg, var(--st-bg2)); border-left: 1px solid var(--am-ln); border-bottom: 1px solid var(--am-ln); transform: rotate(45deg); }
+/* 概览：六格连成一个框 */
+.am-ov { display: grid; border: 1px solid var(--am-ln); border-radius: 8px; overflow: hidden; }
+.am-ovc { box-sizing: border-box; min-width: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; border-right: 1px solid var(--am-ln); border-bottom: 1px solid var(--am-ln); cursor: pointer; }
+.am-ovc.lc { border-right: 0; } .am-ovc.lr { border-bottom: 0; }
+.am-ovc:hover { background: color-mix(in srgb, var(--st-fg) 4%, transparent); }
+.am-ovh { flex: none; height: 18px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; white-space: nowrap; color: var(--st-fg); }
+.am-ovh b { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 400; color: var(--st-hi); font-variant-numeric: tabular-nums; }
+/* 会话表：没有隔行底色、表头不是黑的；名字、「Agent」、「合计」一条竖线对齐；更新只改变了的字，不闪 */
+.tr-host .am-tr { grid-template-columns: minmax(170px, 1.2fr) minmax(170px, 2.4fr) 84px 60px 76px 50px 84px; min-height: 28px; padding: 0 var(--am-in); border-bottom: 1px solid var(--am-ln2); }
+.tr-host .am-tr:not(.am-th):nth-child(even) { background: none; }
+.tr-host .am-tr:not(.am-th):not(.am-total):not(.am-sub):hover { background: color-mix(in srgb, var(--st-fg) 5%, transparent); }
+.tr-host .am-th { min-height: 26px; background: var(--am-bg, var(--st-bg2)); border-bottom: 1px solid var(--st-line); }
+.tr-host .am-th .am-c { font-size: 11.5px; font-weight: 400; color: var(--st-dim); }
+.tr-host .am-th .am-c.on, .tr-host .am-th .am-c:hover { color: var(--st-hi); }
+.tr-host .am-th .am-c.am-name, .tr-host .am-total .am-c.am-name { padding-left: 34px; } /* 展开的尖 10 + 4 + 标志 14 + 6 */
+.tr-host .am-tr.am-total { background: var(--am-bg, var(--st-bg2)); border-bottom: 0; border-top: 1px solid var(--st-line); font-weight: 400; }
+.tr-host .am-tr.am-total:hover { background: var(--am-bg, var(--st-bg2)); }
+.tr-host .am-total .am-c { color: var(--st-hi); }
+.tr-host .am-total .am-c.am-status { color: var(--st-dim); }
+.am-sort { display: inline-flex; align-items: center; margin-left: 4px; font-style: normal; }
+.am-tr .am-c.am-name { gap: 4px; }
+.am-tr .am-c.am-name > .am-logo { margin-right: 2px; }
+.am-dis { flex: none; color: var(--st-dim); transition: transform .12s ease; }
+.am-tr.open .am-dis { transform: rotate(90deg); }
+.tr-host .am-tr.am-sub { min-height: 24px; font-size: 11.5px; cursor: default; }
+.tr-host .am-sub .am-c.am-name { padding-left: 50px; color: var(--st-fg); }
+.am-sub .am-c.am-span { grid-column: 1 / -1; }
+.am-csub { display: flex; justify-content: space-between; gap: 8px; padding: 3px 12px 3px 36px; font-size: 11px; color: var(--st-fg); border-bottom: 1px solid var(--am-ln2); }
+.am-csub .am-num { flex: none; }
+
+/* 右侧栏「任务」那一块：右上角 TUI / 图形 换样子；TUI 样子同 Claude Code 终端里的写法 */
+.st-fam { position: relative; }
+.st-fmode { display: flex; justify-content: flex-end; margin: 0 2px 2px; }
+.st-fmodeb { border: 0; background: none; padding: 1px 6px; border-radius: 4px; font: inherit; font-size: 11px; color: var(--st-dim); cursor: pointer; }
+.st-fmodeb:hover { color: var(--st-hi); background: color-mix(in srgb, var(--st-fg) 8%, transparent); }
+.st-ftui { margin: 0; padding: 2px 4px 6px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; line-height: 1.45; background: none; }
+
+/* 手机（iPhone）布局按钮精简时：标题栏整条收起，标签页就在最上面（灵动岛正下方）；布局、拆分都在标签栏的 ··· 里 */
+html.st-phone.termapp.st-lay-concise:not(.st-os-claude) #win .bar { display: none !important; } /* 横着拿也一样：高度本来就不够 */
+html.st-phone.termapp.st-lay-concise .st-tacts [data-t="split"] { display: none !important; }
+
+/* 全屏只看对话（标签栏 ··· 旁边的按钮）：只在精简的布局按钮（手机）时有这个按钮；进去以后只剩当前这一格 */
+.st-tacts [data-t="focus"], .st-tacts [data-t="lay"] { display: none; }
+html.termapp.st-lay-concise .st-tacts [data-t="focus"] { display: inline-flex; }
+html.st-phone.termapp.st-lay-concise:not(.st-os-claude) .st-tacts [data-t="lay"] { display: inline-flex; } /* 标题栏收起来时：设置、账号、侧栏、面板……都在这一个按钮里 */
+html.st-focus :is(.st-act, #win .bar, .tabs, .gtabs, .st-panel, .st-aside, .tside, .ts-grip, .st-status, .st-crumbs, .st-pgrip, .tlab > .st-grip) { display: none !important; }
+.st-focus-exit { position: fixed; z-index: 2147483000; top: 8px; right: 10px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 16px;
+  background: color-mix(in srgb, var(--st-bg, #fff) 72%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6); color: var(--st-fg, #333); box-shadow: 0 2px 10px rgba(0, 0, 0, .18); cursor: pointer; }
+.st-focus-exit[hidden] { display: none; }
+.st-focus-exit svg { width: 16px; height: 16px; }
+
+/* 手机那么窄：面板里的几块（Agent 活动、系统资源……）不再并排挤成两条窄的，上下排、各占整宽；面板高一点（不然一块只剩几行） */
+@media (max-width: 600px) {
+  .st-pviews { flex-direction: column; overflow-y: auto; }
+  .st-pviews > .st-pv { flex: 1 0 auto; min-height: 50%; border-left: 0; border-top: 1px solid var(--st-line); }
+  .st-pviews > .st-pv.first { border-top: 0; }
+  .st-pviews > .st-pv > .st-pvgrip { display: none; }
+}
+
+/* ======== 手机（iPhone）：整屏用起来——编辑区、面板、侧栏不再是四周留缝的圆角卡片，贴边铺满（无边框）；
+   四周的安全区由页面自己让：上面让出状态栏和灵动岛，横着拿时左右让出灵动岛和圆角（活动栏伸进左边那一条，图标在上下两头，碰不到灵动岛）；
+   底部不留空的一条：最下面那一行（输入框下的状态信息）伸进底部横条那一块 ======== */
+html.st-phone.termapp .termwin .tlab { padding: 0 !important; }
+html.st-phone.termapp .termwin .tmain { border: 0; border-top: 1px solid var(--st-line); border-radius: 0; } /* 无边框，但顶上一条线把标签栏封起来（不然白的标签页和上面灰的那条连在一起，像是开着口） */
+html.st-phone.termapp .termwin .tside { border: 0 !important; border-radius: 0; margin: 0 !important; }
+html.st-phone.termapp .tlab.st-grid > .st-panel { margin-top: 0; border: 0; border-top: 1px solid var(--st-line); border-radius: 0; }
+html.st-phone.termapp .tlab.st-grid > .st-aside { border: 0; border-left: 1px solid var(--st-line); border-radius: 0; }
+html.st-phone.termapp .st-mid > .st-ecol { border: 0; border-radius: 0; }
+html.iphone.termapp #win > .body { box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 max(0px, calc(env(safe-area-inset-left) - 38px)); }
+html.iphone.termapp .st-act { padding-bottom: env(safe-area-inset-bottom); }
+html.iphone .tpane.agentfoot > .foot { padding-bottom: max(4px, calc(env(safe-area-inset-bottom) - 12px)) !important; }
+html.iphone .st-focus-exit { top: calc(env(safe-area-inset-top) + 6px); right: calc(env(safe-area-inset-right) + 10px); }
+
+/* 新加的设置：名字前面的蓝点（只给测试账号、开了开发者功能的） */
+.ss-newdot { display: inline-block; flex: none; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--st-blue, #0a84ff); vertical-align: 1px; }
+
+/* 横着拿手机打字：键盘挡掉大半屏，输入框在最下面根本看不见——这时输入框到最上面、对话在它下面；标签栏、活动栏、面板先收起来 */
+@media (orientation: landscape) {
+  html.iphone.st-kb .tpane.agentfoot { flex-direction: column-reverse; }
+  html.iphone.st-kb .tpane.agentfoot > .foot { border-bottom: 1px solid var(--st-line); }
+  html.iphone.st-kb .tpane .jump { display: none !important; }
+  html.iphone.st-kb :is(.tabs, .gtabs, .st-act, .st-panel, .st-status, .st-crumbs, .termwin .tside, .termwin .ts-grip, .st-aside) { display: none !important; }
+}
+
+/* 有灵动岛的 iPhone 竖着拿（VS Code 风格、布局按钮精简）：最上面不再空着一条——状态栏收起，标签页那一行顶到最上面，绕开灵动岛：
+   标签页在灵动岛左边（可以横着滑），全屏、··· 在右边；灵动岛底下那一段空着（st-island 由 App 按安全区判断后加上） */
+@media (orientation: portrait) {
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) #win > .body { padding-top: 0 !important; }
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) .tmain .tgroup { position: relative; background: linear-gradient(var(--st-bg2) 47px, var(--st-line) 47px, var(--st-line) 48px, transparent 48px); }
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) .tmain .tgroup > .gtabs { box-sizing: border-box; height: 48px; padding-top: 11px; width: calc(50vw - 72px - 37px); flex: none; border-bottom: 0; background: transparent; }
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) .tmain .tgroup > .gtabs > .st-tacts { position: absolute; top: 11px; right: 6px; height: 36px; background: transparent; }
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) .st-act { padding-top: 11px; }
+  html.iphone.st-island.termapp.st-lay-concise:not(.st-os-claude) .termwin .tlab.ts-drawer:not(.off) > .tside { top: 48px; } /* 拉出来的侧栏从标签页那一行下面开始：不跟灵动岛叠在一起 */
+}
+
+/* iPhone 横着拿：高度只有四百来点，竖着时的那一套（活动栏、侧栏、面板、状态栏）一摆就没地方看对话了——横着时只留标签页、对话和输入框（同全屏只看对话，标签页还在，能换会话）；
+   要用侧栏、面板、设置就竖过来 */
+@media (orientation: landscape) {
+  html.iphone.termapp :is(.st-act, #win .bar, .termwin .tside, .termwin .ts-grip, .st-aside, .st-panel, .st-status, .st-crumbs, .tlab > .st-grip) { display: none !important; }
+  html.iphone.termapp .termwin .tlab { padding: 0 !important; }
+}
+
+/* 全屏只看对话：输入框贴到最下面（底部不再多留一截）；退出按钮能拖：拖的时候不选字、不滚 */
+html.st-focus .tpane.agentfoot > .foot { padding-bottom: 2px !important; }
+.st-focus-exit { touch-action: none; -webkit-user-select: none; user-select: none; }
+
+/* iPhone 全屏只看对话：App 把网页铺到整屏（状态栏收起），上面让出灵动岛，下面输入框的底色一直铺到最下面、字在横条上面——不再上下各空一条 */
+html.iphone.st-focus.termapp #win > .body { padding-top: env(safe-area-inset-top) !important; }
+html.iphone.st-focus .tpane.agentfoot > .foot { padding-bottom: max(2px, env(safe-area-inset-bottom)) !important; }
+html.st-focus .tpane, html.st-focus .tpane:focus, html.st-focus .tpane.active { outline: 0 !important; box-shadow: none !important; }
+
+/* ---- 连 Mac：在连哪台、等那台 Mac 点「允许」、输入 Mac 上显示的 6 位验证码、被拒绝（remote.js 的 authShow；同 Apple 账户登录新设备）---- */
+.rm-auth { background: var(--st-canvas, #111); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.rm-auth .rm-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 26px 26px 20px; }
+.rm-auth .rm-card p { margin: 4px 0 8px; line-height: 1.5; }
+.rm-auth .rm-acts { width: 100%; justify-content: center; margin-top: 6px; }
+.rm-auth .rm-pri { background: var(--st-focus, #0a84ff) !important; border-color: transparent !important; color: #fff !important; }
+.rm-spin { width: 22px; height: 22px; margin-bottom: 10px; border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--st-fg, #ddd) 18%, transparent); border-top-color: var(--st-fg, #ddd); animation: rm-spin .8s linear infinite; }
+@keyframes rm-spin { to { transform: rotate(360deg); } }
+.rm-code { width: 220px; margin: 6px 0 2px; padding: 8px 0; border: 1px solid var(--st-line, #444); border-radius: 10px; background: var(--st-bg2, #000); color: var(--st-hi, #fff);
+  font: 600 30px/1.2 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 12px; text-indent: 12px; text-align: center; outline: none; }
+.rm-code:focus { border-color: var(--st-focus, #0a84ff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-focus, #0a84ff) 30%, transparent); }
+.rm-err { min-height: 1.4em; margin: 0 !important; color: var(--st-red, #ff453a) !important; font-size: 13px; }
+
+/* 浏览器里（不是 Mac 上的 App）：没有窗口，左上角不画红黄绿三个假按钮——网页就是整页的 App */
+html:not(.native-app) #win .bar > i[data-act] { display: none !important; }
+/* 代码文件不显示行号（设置 › 外观 › 行号；标签栏 ··· 菜单）：行号那一栏不要，字往右挪一点不贴边 */
+html.st-noln { --st-cm-gut: none; --st-cm-pl: 14px; } /* 编辑器在影子 DOM 里（studio.js CM_SHADOW_CSS）：经继承的变量告诉它 */

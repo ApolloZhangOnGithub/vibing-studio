@@ -1,0 +1,208 @@
+// cm6.js 的源（esbuild 打包：npm i @codemirror/{state,view,commands,language,search,autocomplete,lang-*,legacy-modes} @lezer/highlight esbuild；
+//   esbuild entry.js --bundle --minify --format=iife --target=safari15 --legal-comments=none --outfile=cm6.js）。改了这里要重新打包再拷过来
+// Vibing Studio 的代码编辑器：CodeMirror 6 打成一个文件（window.CM6）。只画看得见的行、语法树在后台分片算——大文件打开、滚动、打字都不卡；
+// 输入法（中文组字）、撤销、查找（⌘F）、括号匹配、缩进都是它自己的。颜色全走页面的 CSS 变量（--st-* / --hl-*），深浅主题跟着变。
+import { EditorState, Compartment, EditorSelection, Transaction, StateField, RangeSetBuilder } from "@codemirror/state";
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, highlightActiveLine, rectangularSelection, dropCursor, gutterLineClass, GutterMarker } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle, indentUnit, StreamLanguage, forceParsing, syntaxTree } from "@codemirror/language";
+import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { tags as t, highlightTree } from "@lezer/highlight";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { json } from "@codemirror/lang-json";
+import { css } from "@codemirror/lang-css";
+import { html } from "@codemirror/lang-html";
+import { markdown } from "@codemirror/lang-markdown";
+import { cpp } from "@codemirror/lang-cpp";
+import { rust } from "@codemirror/lang-rust";
+import { java } from "@codemirror/lang-java";
+import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { go } from "@codemirror/lang-go";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { lua } from "@codemirror/legacy-modes/mode/lua";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { diff } from "@codemirror/legacy-modes/mode/diff";
+import { kotlin, objectiveC, csharp, scala } from "@codemirror/legacy-modes/mode/clike";
+import { r } from "@codemirror/legacy-modes/mode/r";
+import { perl } from "@codemirror/legacy-modes/mode/perl";
+
+const S = (m) => () => StreamLanguage.define(m);
+const EXT = {
+  js: () => javascript({ jsx: true }), mjs: () => javascript(), cjs: () => javascript(), jsx: () => javascript({ jsx: true }),
+  ts: () => javascript({ typescript: true }), mts: () => javascript({ typescript: true }), cts: () => javascript({ typescript: true }), tsx: () => javascript({ typescript: true, jsx: true }),
+  py: python, pyw: python, pyi: python, json: json, jsonc: json, json5: json, geojson: json, ipynb: json, webmanifest: json,
+  css: css, scss: css, less: css, html: html, htm: html, xhtml: html, vue: html, svelte: html,
+  md: markdown, markdown: markdown, mdx: markdown, c: cpp, h: cpp, cc: cpp, cpp: cpp, cxx: cpp, hpp: cpp, hh: cpp, hxx: cpp, ino: cpp, cu: cpp, metal: cpp,
+  m: S(objectiveC), mm: S(objectiveC), rs: rust, java: java, kt: S(kotlin), kts: S(kotlin), cs: S(csharp), scala: S(scala), sql: sql,
+  xml: xml, svg: xml, plist: xml, xib: xml, storyboard: xml, csproj: xml, entitlements: xml, yaml: yaml, yml: yaml, go: go,
+  sh: S(shell), bash: S(shell), zsh: S(shell), command: S(shell), fish: S(shell), swift: S(swift), toml: S(toml), rb: S(ruby), lua: S(lua),
+  ini: S(properties), cfg: S(properties), conf: S(properties), properties: S(properties), env: S(properties), diff: S(diff), patch: S(diff), r: S(r), pl: S(perl), pm: S(perl),
+};
+const NAMES = { dockerfile: S(dockerFile), makefile: S(shell), gemfile: S(ruby), rakefile: S(ruby), ".zshrc": S(shell), ".bashrc": S(shell), ".bash_profile": S(shell), ".profile": S(shell), ".zprofile": S(shell), ".env": S(properties), ".gitignore": S(properties) };
+function langFor(name) {
+  const n = String(name || "").split("/").pop().toLowerCase(), i = n.lastIndexOf(".");
+  const f = NAMES[n] || (i > 0 ? EXT[n.slice(i + 1)] : null);
+  try { return f ? f() : null; } catch (e) { return null; }
+}
+
+// 颜色：同 hl.js 的几类（关键字、声明、函数名、字符串、注释、数字 / 常量、变量、标题），值是页面上的 CSS 变量
+const hl = HighlightStyle.define([
+  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier, t.self], color: "var(--hl-k)" },
+  { tag: [t.typeName, t.className, t.namespace, t.definition(t.typeName), t.standard(t.typeName)], color: "var(--hl-d)" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName)), t.macroName], color: "var(--hl-f)" },
+  { tag: [t.string, t.special(t.string), t.regexp, t.character, t.docString, t.url], color: "var(--hl-s)" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment, t.meta], color: "var(--hl-c)" },
+  { tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom, t.constant(t.variableName), t.escape], color: "var(--hl-n)" },
+  { tag: [t.definition(t.variableName), t.definition(t.propertyName)], color: "var(--hl-v)" },
+  { tag: [t.attributeName, t.tagName, t.labelName], color: "var(--hl-a)" },
+  { tag: [t.heading, t.heading1, t.heading2, t.heading3], color: "var(--hl-h)", fontWeight: "600" },
+  { tag: t.strong, fontWeight: "600" }, { tag: t.emphasis, fontStyle: "italic" }, { tag: t.link, textDecoration: "underline" },
+  { tag: [t.invalid], color: "var(--st-red)" }, { tag: [t.inserted], color: "var(--st-green)" }, { tag: [t.deleted], color: "var(--st-red)" },
+]);
+const theme = EditorView.theme({
+  "&": { height: "100%", fontSize: "var(--st-fs)", color: "var(--st-fg)", backgroundColor: "transparent" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": { fontFamily: "var(--st-mono)", lineHeight: "1.5", overflow: "auto" },
+  ".cm-content": { padding: "8px 0", caretColor: "var(--st-fg)" }, // 下面不多留一截：正好一屏的文件不能再上下滚
+  ".cm-line": { padding: "0 12px 0 4px" },
+  ".cm-gutters": { backgroundColor: "transparent", color: "var(--st-faint)", border: "none", fontFamily: "var(--st-mono)" },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px", minWidth: "3ch" },
+  ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--st-fg)" },
+  ".cm-selLineGutter": { color: "var(--st-fg)" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  "&.cm-focused .cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--st-fg) 4%, transparent)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--st-fg)", borderLeftWidth: "1.5px" },
+  ".cm-selectionBackground": { backgroundColor: "var(--st-active) !important" },
+  "&.cm-focused .cm-selectionBackground": { backgroundColor: "color-mix(in srgb, var(--st-focus) 32%, transparent) !important" },
+  ".cm-selectionMatch": { backgroundColor: "color-mix(in srgb, var(--st-focus) 16%, transparent)" },
+  ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": { backgroundColor: "color-mix(in srgb, var(--st-fg) 12%, transparent)", outline: "1px solid color-mix(in srgb, var(--st-fg) 25%, transparent)" },
+  ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--st-yellow) 30%, transparent)", outline: "1px solid color-mix(in srgb, var(--st-yellow) 55%, transparent)" },
+  ".cm-searchMatch-selected": { backgroundColor: "color-mix(in srgb, var(--st-orange) 40%, transparent)" },
+  ".cm-panels": { backgroundColor: "var(--st-bg2)", color: "var(--st-fg)" },
+  ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--st-line)" },
+  ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--st-line)" },
+  ".cm-panel.cm-search": { padding: "6px 10px", fontFamily: "var(--st-font)", fontSize: "12px" },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-panel.cm-search label": { fontSize: "12px" },
+  ".cm-textfield": { background: "var(--st-bg)", color: "var(--st-fg)", border: "1px solid var(--st-line)", borderRadius: "5px", padding: "3px 6px" },
+  ".cm-button": { background: "var(--st-bg)", backgroundImage: "none", color: "var(--st-fg)", border: "1px solid var(--st-line)", borderRadius: "5px", padding: "2px 8px" },
+  ".cm-tooltip": { background: "var(--st-bg2)", color: "var(--st-fg)", border: "1px solid var(--st-line)" },
+});
+
+// 只读（预览）时：没有光标、没有「在编辑哪一行」的概念——不高亮当前行和它的行号；选中了几行就把那几行的行号点亮（知道选的是哪几行）
+class SelMark extends GutterMarker { constructor() { super(); this.elementClass = "cm-selLineGutter"; } }
+const selMark = new SelMark();
+function selLines(st) {
+  const b = new RangeSetBuilder(), seen = new Set();
+  for (const r of st.selection.ranges) {
+    if (r.empty) continue;
+    const a = st.doc.lineAt(r.from).number, endL = st.doc.lineAt(r.to), z = endL.from === r.to && r.to > r.from ? endL.number - 1 : endL.number;
+    for (let n = a; n <= z; n++) seen.add(n);
+  }
+  [...seen].sort((x, y) => x - y).forEach((n) => { const l = st.doc.line(n); b.add(l.from, l.from, selMark); });
+  return b.finish();
+}
+const selGutter = StateField.define({ create: selLines, update: (v, tr) => (tr.docChanged || tr.selection ? selLines(tr.state) : v), provide: (f) => gutterLineClass.from(f) });
+const actOf = (readOnly) => (readOnly ? [selGutter] : [highlightActiveLine(), highlightActiveLineGutter()]);
+
+// create(父元素, { text, name（文件名，定语言）, readOnly, plain（大文件：不高亮）, indent（"\t" / "  " / "    "）, crlf, onChange(), onSave(), line })
+function create(parent, o) {
+  o = o || {};
+  const ro = new Compartment(), lang = new Compartment(), act = new Compartment();
+  const L = o.plain ? null : langFor(o.name);
+  const exts = [
+    lineNumbers(), act.of(actOf(!!o.readOnly)), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
+    EditorState.allowMultipleSelections.of(true), indentOnInput(), bracketMatching(), closeBrackets(), rectangularSelection(),
+    highlightSelectionMatches(), search({ top: true }), syntaxHighlighting(hl, { fallback: true }), theme,
+    indentUnit.of(o.indent || "    "), EditorState.tabSize.of(4),
+    keymap.of([{ key: "Mod-s", preventDefault: true, run: () => { if (o.onSave) o.onSave(); return true; } }, ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, indentWithTab]),
+    ro.of([EditorState.readOnly.of(!!o.readOnly), EditorView.editable.of(!o.readOnly)]),
+    lang.of(L || []),
+    EditorView.updateListener.of((u) => { if (u.docChanged && o.onChange) o.onChange(u); }),
+  ];
+  if (o.crlf) exts.push(EditorState.lineSeparator.of("\r\n"));
+  const view = new EditorView({ state: EditorState.create({ doc: o.text || "", extensions: exts }), parent });
+  const api = {
+    view,
+    text: () => view.state.doc.toString(),
+    lines: () => view.state.doc.lines,
+    setReadOnly: (b) => view.dispatch({ effects: [ro.reconfigure([EditorState.readOnly.of(!!b), EditorView.editable.of(!b)]), act.reconfigure(actOf(!!b))] }),
+    // 整篇的语法树在后台一片一片算完（每片 25ms，空闲时）：往下滚、跳到哪里颜色都已经在了，不是滚到了才上色
+    parseAll: () => {
+      if (o.plain) return;
+      const idle = window.requestIdleCallback || ((f) => setTimeout(f, 30));
+      const step = () => {
+        if (!view.dom.isConnected) return;
+        const len = view.state.doc.length;
+        if (syntaxTree(view.state).length >= len) return;
+        forceParsing(view, len, 25);
+        idle(step);
+      };
+      idle(step);
+    },
+    parsedTo: () => syntaxTree(view.state).length, // 语法树算到哪（缩略图看它变没变）
+    // 缩略图用：每一行一串 [列, 格数, 颜色]（照编辑器里的语法颜色；没着色的字用正文颜色）。行太多只给前 maxLines 行
+    lineRuns: (maxLines) => {
+      const st = view.state, doc = st.doc, n = Math.min(doc.lines, maxLines || 20000), end = doc.line(n).to, cache = {}, spans = new Map();
+      const probe = document.createElement("span"); probe.style.cssText = "position:absolute;visibility:hidden"; view.contentDOM.appendChild(probe);
+      const colorOf = (cls) => { if (!(cls in cache)) { probe.className = cls; cache[cls] = getComputedStyle(probe).color; } return cache[cls]; };
+      const base = colorOf(""), tree = syntaxTree(st);
+      if (!o.plain && tree.length) highlightTree(tree, hl, (from, to, cls) => {
+        if (from > end) return;
+        const col = colorOf(cls);
+        for (let ln = doc.lineAt(from); ; ln = doc.line(ln.number + 1)) {
+          if (ln.number > n || ln.from > to) break;
+          const a = Math.max(from, ln.from) - ln.from, z = Math.min(to, ln.to) - ln.from;
+          if (z > a) { let l = spans.get(ln.number); if (!l) spans.set(ln.number, (l = [])); l.push([a, z, col]); }
+          if (ln.number >= doc.lines) break;
+        }
+      }, 0, end);
+      const rows = [];
+      for (let i = 1; i <= n; i++) {
+        const txt = doc.line(i).text, sp = (spans.get(i) || []).sort((x, y) => x[0] - y[0]), runs = [], re = /\S+/g;
+        let m;
+        while ((m = re.exec(txt))) {
+          const ws = m.index, we = ws + m[0].length;
+          let cur = ws;
+          for (const [a, z, col] of sp) {
+            const os = Math.max(ws, a), oe = Math.min(we, z);
+            if (oe <= os || oe <= cur) continue;
+            if (os > cur) runs.push([cur, os - cur, base]);
+            runs.push([Math.max(os, cur), oe - Math.max(os, cur), col]);
+            cur = oe;
+          }
+          if (cur < we) runs.push([cur, we - cur, base]);
+        }
+        rows.push({ bg: null, runs: runs });
+      }
+      probe.remove();
+      return rows;
+    },
+    // 外面换了内容（文件在别处改了、不保存丢掉改动）：换掉整篇，光标、滚动尽量留在原地；不记进撤销
+    setText: (s) => {
+      const cur = view.state.doc.toString();
+      if (cur === s) return false;
+      const top = view.scrollDOM.scrollTop, head = Math.min(view.state.selection.main.head, s.length);
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: s }, selection: EditorSelection.cursor(head), annotations: Transaction.addToHistory.of(false) });
+      view.scrollDOM.scrollTop = top;
+      return true;
+    },
+    gotoLine: (n) => {
+      const ln = view.state.doc.line(Math.max(1, Math.min(view.state.doc.lines, n | 0 || 1)));
+      view.dispatch({ selection: EditorSelection.cursor(ln.from), effects: EditorView.scrollIntoView(ln.from, { y: "center" }) });
+    },
+    focus: () => view.focus(),
+    destroy: () => view.destroy(),
+  };
+  if (o.line) setTimeout(() => api.gotoLine(o.line), 0);
+  api.parseAll();
+  return api;
+}
+window.CM6 = { create, langFor, version: "6" };

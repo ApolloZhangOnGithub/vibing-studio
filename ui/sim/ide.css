@@ -1,0 +1,196 @@
+/* ide.css —— 编辑器窗口（#ide，ide.js）：整窗是一张等宽字符网格（Monaco / PingFang，同终端的格宽与行高）；深色为默认，html.light 为浅色。
+   类名都带 ide- 前缀，全部限定在 #ide 下（Dock 图标除外） */
+#ide { --ide-bg: #000; --ide-fg: #c7c7c7; --ide-hi: #fff; --ide-dim: #8a8a8a; --ide-faint: #333; --ide-gutter: #5f5f5f; --ide-gutter-on: #c7c7c7;
+  --ide-acc: #b1b9f9; --ide-org: #d77757; --ide-red: #ff6b80; --ide-grn: #4eba65;
+  --ide-row: rgba(177, 185, 249, 0.14); --ide-hover: rgba(255, 255, 255, 0.05); --ide-curl: rgba(255, 255, 255, 0.055); --ide-selbg: rgba(177, 185, 249, 0.3);
+  --ide-mkbg: rgba(215, 119, 87, 0.32); --ide-mkon: rgba(215, 119, 87, 0.7); --ide-panel: #0c0c0c; --ide-field: #1b1b1b; --ide-bar: #0b0b0b; --ide-caret: #e6e6e6;
+  --tk: rgb(249, 38, 114); --td: rgb(102, 217, 239); --tf: rgb(166, 226, 46); --ts: rgb(230, 219, 116); --tc: rgb(117, 113, 94); --tn: rgb(190, 132, 255); --tp: rgb(253, 151, 31);
+  min-width: 520px; min-height: 320px; }
+html.light #ide { --ide-bg: #fff; --ide-fg: #1a1a1a; --ide-hi: #000; --ide-dim: #8a8a8a; --ide-faint: #d6d6d6; --ide-gutter: #a8a8a8; --ide-gutter-on: #1a1a1a;
+  --ide-acc: #5a67d8; --ide-org: #c4613d; --ide-red: #d20f39; --ide-grn: #2e8b57;
+  --ide-row: rgba(90, 103, 216, 0.12); --ide-hover: rgba(0, 0, 0, 0.04); --ide-curl: rgba(0, 0, 0, 0.045); --ide-selbg: rgba(90, 103, 216, 0.22);
+  --ide-mkbg: rgba(215, 119, 87, 0.28); --ide-mkon: rgba(215, 119, 87, 0.6); --ide-panel: #f6f6f6; --ide-field: #ececec; --ide-bar: #f6f6f6; --ide-caret: #111;
+  --tk: rgb(215, 0, 95); --td: rgb(0, 134, 179); --tf: rgb(80, 130, 0); --ts: rgb(160, 120, 0); --tc: rgb(140, 135, 115); --tn: rgb(125, 60, 200); --tp: rgb(200, 100, 0); }
+#ide > .body { background: var(--ide-bg); }
+
+/* ---- 整体网格 ---- */
+#ide .ide-root { --ide-cell: 1ch; flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; color: var(--ide-fg); background: var(--ide-bg);
+  font-family: Monaco, Menlo, "PingFang SC", monospace; font-size: var(--ide-fs, 13px); line-height: var(--ide-lh, 17px); font-variant-ligatures: none;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; cursor: default; }
+#ide .ide-root input, #ide .ide-root textarea { font: inherit; line-height: var(--ide-lh, 17px); letter-spacing: 0; font-variant-ligatures: none; }
+#ide [hidden] { display: none !important; }
+#ide .ide-main { flex: 1; min-height: 0; display: flex; }
+#ide .ide-flex { flex: 1; min-width: 0; }
+#ide .ide-g { color: var(--ide-dim); }
+#ide .ide-ac { color: var(--ide-acc); }
+#ide .ide-org { color: var(--ide-org); }
+#ide .ide-red { color: var(--ide-red); }
+#ide .ide-grn { color: var(--ide-grn); }
+#ide .ide-hi { color: var(--ide-hi); }
+#ide .ide-w { display: inline-block; width: calc(var(--ide-cell) * 2); }
+#ide .ide-w1 { display: inline-block; width: var(--ide-cell); text-align: center; }
+/* 横线：一整行的 ─，用 CSS 画（同 TTU 的制表符画法），不用一串字符 */
+#ide .ide-rule { flex: none; height: var(--ide-lh); color: var(--ide-faint); background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; }
+#ide .ide-bx { display: inline-block; width: var(--ide-cell); height: var(--ide-lh); vertical-align: top; -webkit-text-fill-color: transparent; }
+#ide .ide-bx-v { background: linear-gradient(currentColor, currentColor) 50% 0 / 1px 100% no-repeat; }
+#ide .ide-bx-h { background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; }
+#ide .ide-bx-t { background: linear-gradient(currentColor, currentColor) 100% 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 0 / 1px 100% no-repeat; }
+#ide .ide-bx-l { background: linear-gradient(currentColor, currentColor) 100% 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 0 / 1px calc(50% + 0.5px) no-repeat; }
+#ide .ide-bx-f { background: linear-gradient(currentColor, currentColor) 100% 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 100% / 1px calc(50% + 0.5px) no-repeat; }
+#ide .ide-bx-r { background: linear-gradient(currentColor, currentColor) 0 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 100% / 1px calc(50% + 0.5px) no-repeat; }
+#ide .ide-bx-j { background: linear-gradient(currentColor, currentColor) 0 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 0 / 1px calc(50% + 0.5px) no-repeat; }
+#ide .ide-bx-u { background: linear-gradient(currentColor, currentColor) 0 50% / calc(50% + 0.5px) 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 0 / 1px 100% no-repeat; }
+#ide .ide-btn { color: var(--ide-dim); cursor: pointer; white-space: pre; user-select: none; -webkit-user-select: none; }
+#ide .ide-btn:hover { color: var(--ide-hi); }
+#ide .ide-btn.ide-on { color: var(--ide-acc); }
+#ide .ide-btn.ide-run { color: var(--ide-grn); }
+#ide .ide-btn.ide-run:hover { color: var(--ide-hi); }
+#ide .ide-measure { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: pre; }
+#ide ::selection { background: var(--ide-selbg); }
+
+/* 滚动条：细、暗，跟终端一样不抢眼 */
+#ide ::-webkit-scrollbar { width: 10px; height: 10px; }
+#ide ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border: 2px solid transparent; border-radius: 6px; background-clip: padding-box; }
+html.light #ide ::-webkit-scrollbar-thumb { background-color: rgba(0, 0, 0, 0.18); }
+#ide ::-webkit-scrollbar-track, #ide ::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---- 侧边栏：资源管理器树 / 搜索 ---- */
+#ide .ide-side { flex: none; width: 30ch; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+#ide .ide-sh { flex: none; height: var(--ide-lh); display: flex; white-space: pre; padding: 4px 1ch 0 2ch; color: var(--ide-dim); user-select: none; -webkit-user-select: none; }
+#ide .ide-sh .ide-btn { padding: 0 0.5ch; }
+#ide .ide-sv { cursor: pointer; }
+#ide .ide-sv:hover { color: var(--ide-fg); }
+#ide .ide-sv.ide-on { color: var(--ide-hi); }
+#ide .ide-side > .ide-rule { padding-left: 1ch; }
+#ide .ide-tree, #ide .ide-sres { flex: 1; min-height: 0; overflow: auto; padding-bottom: calc(var(--ide-lh) * 2); outline: none; scrollbar-width: thin; }
+#ide .ide-row { height: var(--ide-lh); padding: 0 1ch 0 2ch; white-space: pre; overflow: hidden; cursor: pointer; user-select: none; -webkit-user-select: none; }
+#ide .ide-row:hover { background: var(--ide-hover); }
+#ide .ide-row.ide-on { background: var(--ide-row); color: var(--ide-hi); }
+#ide .ide-row .ide-g { color: var(--ide-faint); }
+html.light #ide .ide-row .ide-g { color: #bdbdbd; }
+#ide .ide-ar { color: var(--ide-dim); }
+#ide .ide-dn { color: var(--ide-acc); }
+#ide .ide-row.ide-hid { opacity: 0.55; }
+#ide .ide-row.ide-err { color: var(--ide-red); cursor: default; }
+#ide .ide-search { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#ide .ide-sq { flex: none; display: flex; white-space: pre; padding: 4px 1ch 2px 2ch; }
+#ide .ide-sq input { flex: 1; min-width: 0; border: 0; outline: 0; padding: 0 0.5ch; background: var(--ide-field); color: var(--ide-hi); caret-color: var(--ide-acc); }
+#ide .ide-sopt { flex: none; white-space: pre; }
+#ide .ide-sinfo { flex: none; height: var(--ide-lh); white-space: pre; overflow: hidden; text-overflow: ellipsis; padding: 0 1ch 0 2ch; }
+#ide .ide-search > .ide-rule { padding-left: 1ch; }
+#ide .ide-hit { padding-left: 2ch; }
+#ide .ide-hit .ide-g { color: var(--ide-dim); }
+#ide .ide-hp { color: var(--ide-acc); }
+#ide .ide-hn { color: var(--ide-org); }
+#ide .ide-sres mark { color: var(--ide-hi); background: var(--ide-mkbg); border-radius: 2px; }
+#ide .ide-sash { flex: none; width: 1ch; cursor: col-resize; background: linear-gradient(var(--ide-faint), var(--ide-faint)) center / 1px 100% no-repeat; }
+
+/* ---- 中间：标签页、查找条、编辑区、预览、终端 ---- */
+#ide .ide-center { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#ide .ide-tabrow { flex: none; display: flex; height: var(--ide-lh); padding-top: 4px; white-space: pre; }
+#ide .ide-tabs { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; white-space: pre; scrollbar-width: none; }
+#ide .ide-tabs::-webkit-scrollbar { display: none; }
+#ide .ide-tab { color: var(--ide-dim); cursor: pointer; }
+#ide .ide-tab:hover { color: var(--ide-fg); }
+#ide .ide-tab.ide-on { color: var(--ide-hi); }
+#ide .ide-tab.ide-del .ide-tn { text-decoration: line-through; opacity: 0.6; }
+#ide .ide-x { color: transparent; }
+#ide .ide-tab.ide-on .ide-x, #ide .ide-tab:hover .ide-x { color: var(--ide-dim); }
+#ide .ide-x:hover { color: var(--ide-hi) !important; }
+#ide .ide-tab.ide-dirty .ide-x { color: var(--ide-org); }
+#ide .ide-tab.ide-cf .ide-x { color: var(--ide-red); }
+/* 改过的标签页：● 代替 ×，指针移上去才变回 ×（同 VS Code）*/
+#ide .ide-x .ide-xc { display: none; }
+#ide .ide-tab:hover .ide-x .ide-xd { display: none; }
+#ide .ide-tab:hover .ide-x .ide-xc { display: inline; }
+#ide .ide-tab.ide-dirty:hover .ide-x { color: var(--ide-dim); }
+#ide .ide-tctl { flex: none; white-space: pre; padding-left: 1ch; }
+#ide .ide-center > .ide-rule { margin-top: 0; }
+
+#ide .ide-find { flex: none; position: relative; height: var(--ide-lh); white-space: pre; padding: 3px 5ch 3px 2ch; background: var(--ide-panel); overflow: hidden; }
+#ide .ide-find input { display: inline-block; vertical-align: top; width: 24ch; border: 0; outline: 0; padding: 0 0.5ch; height: var(--ide-lh); background: var(--ide-field); color: var(--ide-hi); caret-color: var(--ide-acc); }
+#ide .ide-find [data-f="close"] { position: absolute; right: 1.5ch; top: 3px; }
+#ide .ide-find .ide-btn { padding: 0 0.5ch; }
+#ide .ide-find:not(.ide-frep-on) .ide-frep { display: none; }
+#ide .ide-fc { min-width: 7ch; }
+
+#ide .ide-work { flex: 1; min-height: 0; display: flex; position: relative; }
+#ide .ide-ed { flex: 1; min-width: 0; position: relative; overflow: hidden; }
+#ide .ide-gut { position: absolute; left: 0; top: 0; width: var(--ide-gw, 6ch); margin: 0; padding: 0 2ch 0 0; box-sizing: border-box; text-align: right;
+  font: inherit; line-height: var(--ide-lh); white-space: pre; color: var(--ide-gutter); pointer-events: none; user-select: none; -webkit-user-select: none; will-change: transform; }
+#ide .ide-gn { color: var(--ide-gutter-on); }
+#ide .ide-code { position: absolute; top: 0; bottom: 0; right: 0; left: var(--ide-gw, 6ch); overflow: hidden; }
+#ide .ide-curl { position: absolute; left: 0; right: 0; top: 0; height: var(--ide-lh); background: var(--ide-curl); pointer-events: none; will-change: transform; }
+/* 高亮层与查找层：跟 textarea 同样的字体、行高、内边距、tab 宽，才能一格不差地叠住 */
+#ide .ide-hl, #ide .ide-marks { position: absolute; left: 0; top: 0; margin: 0; padding: 0 12px; font: inherit; line-height: var(--ide-lh); white-space: pre; tab-size: 4;
+  pointer-events: none; will-change: transform; color: var(--ide-fg); }
+#ide .ide-marks { color: transparent; }
+#ide .ide-marks mark { color: transparent; background: var(--ide-mkbg); border-radius: 2px; }
+#ide .ide-marks mark.ide-mk-on { background: var(--ide-mkon); }
+#ide textarea.ide-src { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; border: 0; outline: 0; border-radius: 0; resize: none; box-sizing: border-box;
+  padding: 6px 12px calc(var(--ide-lh) * 6); white-space: pre; overflow: auto; tab-size: 4; background: transparent; color: transparent; -webkit-text-fill-color: transparent;
+  caret-color: var(--ide-caret); -webkit-appearance: none; appearance: none; box-shadow: none; }
+#ide textarea.ide-src::selection { background: var(--ide-selbg); -webkit-text-fill-color: transparent; color: transparent; }
+/* 语法色（同 TTU 的代码配色）*/
+#ide .ide-k { color: var(--tk); }
+#ide .ide-d { color: var(--td); }
+#ide .ide-f { color: var(--tf); }
+#ide .ide-s { color: var(--ts); }
+#ide .ide-c { color: var(--tc); }
+#ide .ide-n { color: var(--tn); }
+#ide .ide-p { color: var(--tp); }
+#ide .ide-v { color: var(--ide-hi); }
+#ide .ide-h { color: var(--ide-acc); }
+#ide .ide-a { color: var(--ide-acc); }
+#ide .ide-b { color: var(--ide-hi); }
+
+/* Markdown 预览（TTU 渲染）：同终端按整行滚、不显示滚动条、滚到头不回弹 */
+#ide .ide-md { flex: 1; min-width: 0; margin: 0; --ttu-font-size: var(--ide-fs, 13px); padding: var(--ide-lh) 16px calc(var(--ide-lh) * 3) 2ch; background: var(--ide-bg);
+  box-shadow: inset 1px 0 var(--ide-faint); cursor: auto; scrollbar-width: none; overscroll-behavior: none; }
+#ide .ide-md::-webkit-scrollbar { display: none; }
+#ide .ide-md.ttu-light { background: #fff; }
+#ide .ide-welcome { flex: 1; margin: 0; padding: calc(var(--ide-lh) * 1.5) 2ch; font: inherit; line-height: var(--ide-lh); overflow: auto; color: var(--ide-fg); }
+
+#ide .ide-term { flex: none; height: calc(var(--ide-lh) * 13); display: flex; flex-direction: column; min-height: 0; }
+#ide .ide-thd { flex: none; display: flex; height: var(--ide-lh); white-space: pre; overflow: hidden; cursor: row-resize; user-select: none; -webkit-user-select: none; }
+#ide .ide-thd .ide-tt { color: var(--ide-fg); }
+#ide .ide-fill { color: var(--ide-faint); background: linear-gradient(currentColor, currentColor) 0 50% / 100% 1px no-repeat; }
+#ide .ide-thd > .ide-g:not(.ide-tcwd) { color: var(--ide-faint); }
+#ide .ide-tout { flex: 1; min-height: 0; overflow: auto; padding: 0 1ch var(--ide-lh) 2ch; cursor: text; scrollbar-width: none; overscroll-behavior: none; }
+#ide .ide-tout::-webkit-scrollbar { display: none; }
+#ide .ide-tl { white-space: pre-wrap; word-break: break-all; min-height: var(--ide-lh); }
+#ide .ide-tin { display: flex; white-space: pre; }
+#ide .ide-tinp { flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ide-hi); caret-color: var(--ide-acc); }
+#ide .ide-tinp:disabled { opacity: 0; }
+
+/* ---- 状态栏（底部一行）：避开窗口圆角 ---- */
+#ide .ide-status { flex: none; display: flex; height: var(--ide-lh); padding: 3px 22px 6px; white-space: pre; overflow: hidden; color: var(--ide-dim); background: var(--ide-bar);
+  box-shadow: inset 0 1px var(--ide-faint); user-select: none; -webkit-user-select: none; }
+#ide .ide-sl { color: var(--ide-fg); flex: none; }
+#ide .ide-smsg { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; color: var(--ide-dim); }
+#ide .ide-smsg.ide-grn { color: var(--ide-grn); }
+#ide .ide-smsg.ide-org { color: var(--ide-org); }
+#ide .ide-smsg.ide-red { color: var(--ide-red); }
+#ide .ide-sr { flex: none; padding-left: 2ch; }
+
+/* ---- 命令面板：╭─╮ 画的框，浮在上方正中 ---- */
+#ide .ide-pal { position: absolute; inset: 0; z-index: 20; display: flex; justify-content: center; align-items: flex-start; padding-top: calc(var(--ide-lh) * 2); background: rgba(0, 0, 0, 0.18); }
+html.light #ide .ide-pal { background: rgba(255, 255, 255, 0.25); }
+#ide .ide-pbox { white-space: pre; background: var(--ide-bg); color: var(--ide-fg); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6); }
+html.light #ide .ide-pbox { box-shadow: 0 14px 44px rgba(0, 0, 0, 0.18); }
+#ide .ide-ptop, #ide .ide-psep, #ide .ide-pbot, #ide .ide-prow { height: var(--ide-lh); overflow: hidden; }
+#ide .ide-pin { display: flex; height: var(--ide-lh); }
+#ide .ide-pq { flex: none; border: 0; outline: 0; padding: 0; margin: 0; height: var(--ide-lh); background: transparent; color: var(--ide-hi); caret-color: var(--ide-acc); }
+#ide .ide-pq::placeholder { color: var(--ide-dim); opacity: 0.7; }
+#ide .ide-prow { cursor: pointer; }
+#ide .ide-prow.ide-on { background: var(--ide-row); }
+#ide .ide-prow .ide-g { color: var(--ide-dim); }
+#ide .ide-mt { color: var(--ide-acc); }
+#ide .ide-prow.ide-on .ide-mt { color: var(--ide-org); }
+
+/* ---- App 图标（Dock、启动台、通知、提醒里共用）：深色方块里淡紫的 { } ---- */
+.ico-ide { background: linear-gradient(#2c2c34, #0b0b0e); color: #b1b9f9; font: 700 19px/1 Monaco, Menlo, monospace; letter-spacing: -1px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.ico-ide span { position: relative; top: -1px; text-shadow: 0 0 10px rgba(177, 185, 249, 0.45); }
+/* 从访达拖进来：落在终端上是插入路径，落在别处是打开 */
+#ide .ide-root.ide-drop-term .ide-term, #ide .ide-root.ide-drop-ed .ide-work { outline: 2px solid #0a84ff; outline-offset: -2px; }
