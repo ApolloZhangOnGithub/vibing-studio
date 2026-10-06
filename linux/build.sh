@@ -12,7 +12,7 @@ APP="$WORK/app"
 mkdir -p "$APP/ui"
 # 源码、界面：只加、只覆盖（不删缓存里多出来的旧文件）
 rsync -a --exclude node_modules --exclude dist --exclude build.sh "$HERE/" "$APP/"
-rsync -a "$ROOT/ui/" "$APP/ui/"
+rsync -a --exclude downloads "$ROOT/ui/" "$APP/ui/" # downloads/：发出去的 macOS App，不带进 Linux 版
 # 版本号跟界面走（ui/version.json 的 0.2.x）
 UIV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/ui/version.json" 2>/dev/null || echo 0.2.0)
 python3 - "$APP/package.json" "$UIV" <<'PY'
