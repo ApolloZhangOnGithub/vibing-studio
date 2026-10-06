@@ -2068,10 +2068,12 @@
           var tsw = rt.session().turns, rcT = ldt ? tsw[tsw.indexOf(ldt) + 1] : null; if (rcT && rcT.recap !== undefined && blocks.has(rcT)) drawTurn(rcT); // 跟在它后面的回顾（做完那一行在回顾上面 ↔ 输入框下面）
         }
         renderStatus(); renderInput(); if (P.win.syncTitlesSoon) P.win.syncTitlesSoon(); else P.win.syncTitles();
+        ccWatch();
       }
       else if (type === "tasks") { renderStatus(); if (panel && panel.kind === "tasks") renderInput(); if (rt.stream) drawTurn(rt.stream.turn); }
-      else if (type === "config") { renderInput(); if (bannerEl) bannerEl.innerHTML = P.join(banner()); }
+      else if (type === "config") { renderInput(); if (bannerEl) bannerEl.innerHTML = P.rowsHtml(banner()); }
     });
+    setTimeout(function () { if (!P.closed) ccWatch(); }, 1200); // 打开时它已经在等（面板开着）：也看一眼
     var onNeeds = function () { if (!P.closed) renderInput(); };
     document.addEventListener("vs-needs", onNeeds);
     var off2 = A.on(function (type) {
@@ -2172,7 +2174,7 @@
     }
     stk.addEventListener("mousedown", function (e) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); stickyGo(); });
     stk.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
-    V.detach = function () { if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
+    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
     // 跳到某一问（搜索结果）：滚过去，闪一下
     // 跳到一问（搜索里点的那一处）：给了找到的字就在这一问里找到第 nth 处、滚到它在屏幕上三分之一的地方、亮一下（不是只跳到这一问开头——一问很长时差好几屏）；
     //   折行、行首的缩进不算（照字连起来找），不分大小写；这一问里没画出来（收着的工具输出里）就退回到这一问开头
@@ -2316,7 +2318,7 @@
       idxOf = new Map(); rt.session().turns.forEach(function (t, i) { idxOf.set(t, i); });
       var gen = ++renderGen; pendTurns = null; pendTail = null; firstBlk = null; anchored = false;
       if (!P.footOnly) { // 面板里那份（agent 的底部）：对话一条都不画——跑着的工具、上一轮的输出、压缩的分隔线都不画；只有在跑的那一行、输入框、状态信息
-        bannerEl = P.block(P.join(banner()), statusEl);
+        bannerEl = P.block(P.rowsHtml(banner()), statusEl);
         var ts = rt.session().turns, ai = -1, aoff = 0;
         if (anch) anch.some(function (a) { var k = a ? ts.indexOf(a.turn) : -1; if (k < 0) return false; ai = k; aoff = a.off; return true; });
         if (ts.length >= 24 && !P.following() && ai >= 0) {
@@ -3718,7 +3720,7 @@
     var footVpad = -1; // 底部上下的内边距 + 边框（拖出来的高度按它算能放几行）
     var inputStale = false, statusStale = false;
     // 藏在同一组后面的（content-visibility:hidden）：不画输入框、状态行——在那里量尺寸会把整块藏着的对话强行排版一遍（切走时失焦那一下就要二十多毫秒）；露出来时补画
-    V.unpark = function () { if (inputStale) { inputStale = false; renderInput(); } if (statusStale) { statusStale = false; renderStatus(); } };
+    V.unpark = function () { if (inputStale) { inputStale = false; renderInput(); } if (statusStale) { statusStale = false; renderStatus(); } ccWatch(); };
     var needsAid = ""; // 底部「● N awaiting input」点了去的那个会话
     function renderInput() {
       if (P.off) { inputStale = true; return; }
@@ -3846,6 +3848,135 @@
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
     function openPanel(p) { panel = p; P.jump.classList.remove("on"); renderInput(); P.fit(); P.stick(); }
     function closePanel() { panel = null; lastFootRows = -1; renderInput(); P.fit(); P.stick(); P.onScroll(); }
+    // ---- Claude Code 自己的面板（/config、/model、/theme、/help… 和它的对话框）：这边不一个个仿——后台会话接上它的界面（rt.tui，同 claude attach），
+    //   它画的那一块原样搬到输入框的位置（字、颜色照它的），键原样送进去；它把面板关了（屏幕上回到输入框）就断开、收起。
+    //   面板的上边是它画的一整行 ▔（同它自己的样子），按这个找；找不到（不是面板、或者命令直接就有结果）一会儿就断开，什么都不显示
+    var ccT = null, ccPalC = null, ccPalL = null;
+    function ccTuiOpen(why) {
+      if (ccT || !agent.claude || !rt.tui || !window.Terminal || (rt.tuiBy && rt.tuiBy !== V)) return; // 同一个会话开在几处：只一处接上（不然几处一起改它的终端大小）
+      var cols = Math.max(40, P.footCols() - 1), rows = 60, term = new Terminal({ cols: cols, rows: rows, scrollback: 0, allowProposedApi: true });
+      try { if (window.Unicode11Addon) { term.loadAddon(new Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = "11"; } } catch (e) { /* 没有就按默认宽度 */ }
+      var st = ccT = { term: term, cols: cols, rows: rows, lines: [], row0: 0, seen: false, mouse: false, paste: false, t: 0, give: 0 };
+      rt.tuiBy = V;
+      st.tui = rt.tui(cols, rows, {
+        open: function (modes) {
+          st.mouse = modes.indexOf(1006) >= 0 && (modes.indexOf(1000) >= 0 || modes.indexOf(1002) >= 0 || modes.indexOf(1003) >= 0); st.paste = modes.indexOf(2004) >= 0;
+          var r = st.tui && st.tui.rows ? st.tui.rows() : rows; // 接上时可能少一行（逼它整屏重画）：这边的屏幕跟着
+          if (r !== st.rows) { st.rows = r; try { term.resize(cols, r); } catch (e) { /* 大小不对就算了 */ } }
+        },
+        data: function (d) { term.write(d, function () { if (!st.t) st.t = setTimeout(function () { st.t = 0; ccTuiScan(st); }, 30); }); },
+        close: function (err) { if (ccT === st) ccTuiDrop(err && st.seen ? uiT("与 Claude Code 的连接断开了") : ""); },
+      });
+      if (!st.tui) { ccT = null; rt.tuiBy = null; term.dispose(); return; }
+      st.give = setTimeout(function () { if (ccT === st && !st.seen) { ccTuiDrop(""); setTimeout(ccWatch, 200); } }, 4000); // 送了命令没弹面板（直接就有结果的）：一会儿就断开；那时它要是在等（命令排着、后来才弹）再看一眼
+    }
+    function ccTuiDrop(msg) {
+      var st = ccT;
+      if (!st) return;
+      ccT = null;
+      if (rt.tuiBy === V) rt.tuiBy = null;
+      clearTimeout(st.give); clearTimeout(st.t); clearTimeout(st.re);
+      try { st.tui.close(); } catch (e) { /* 已经断了 */ }
+      try { st.term.dispose(); } catch (e) { /* 已经没了 */ }
+      if (panel && panel.kind === "cc") closePanel();
+      if (msg) P.flash(msg, 3000);
+    }
+    // 它的屏幕：最后一整行 ▔ 往下是它的面板；那下面又有输入框（一整行 ─，下一行是 ❯）就是面板关了
+    function ccTuiScan(st) {
+      if (ccT !== st) return;
+      var b = st.term.buffer.active, txt = [], top = -1, i;
+      for (i = 0; i < st.rows; i++) { var l = b.getLine(b.viewportY + i); txt.push(l ? l.translateToString(true) : ""); }
+      // 上边那行可能嵌着字（它把「● high · /effort」画进这一行的右边）：一行以一串 ▔ 开头、▔ 占了大半就算；输入框上面那条 ─ 也一样（右边嵌着会话名）
+      var rule = function (l, ch) { var t = l.trim(), n = t.split(ch).length - 1; return t.indexOf(ch + ch + ch + ch + ch + ch + ch + ch) === 0 && n >= t.length * 0.6; };
+      for (i = txt.length - 1; i >= 0; i--) if (rule(txt[i], "▔")) { top = i; break; }
+      var prompt = false;
+      for (i = Math.max(0, top + 1); i < txt.length - 1; i++) if (rule(txt[i], "─") && /^❯/.test(txt[i + 1])) { prompt = true; break; }
+      // 面板比屏幕还高、上边那行 ▔ 挤出去了：屏幕上没有输入框、最下面几行里有它面板的那句提示（Esc to cancel / close…）——整屏都是面板
+      var full = top < 0 && !prompt && txt.slice(-6).some(function (l) { return /\bEsc to (cancel|close|clear|exit|go back)\b/.test(l); });
+      if (!st.seen && top < 0 && !full) { clearTimeout(st.re); st.re = setTimeout(function () { ccTuiScan(st); }, 400); } // 还没看见面板：隔一会儿再读一遍
+      if ((top < 0 && !full) || prompt) { if (st.seen) { ccWaitSeen = rt.waitingDialog ? rt.waitingDialog() : 0; ccTuiDrop(""); if (rt.dialogClosed) rt.dialogClosed(); } return; } // 面板关了：这一回不再接上；它不在等了（排着的马上送，不等它的登记改过来）
+      var last = txt.length - 1;
+      while (last > top && !txt[last].trim()) last--;
+      st.lines = []; st.row0 = full ? 0 : top + 1;
+      for (i = st.row0; i <= last; i++) st.lines.push(ccRowAnsi(b.getLine(b.viewportY + i), st.cols));
+      if (!st.seen) { st.seen = true; clearTimeout(st.give); }
+      if (!panel || panel.kind !== "cc") openPanel({ kind: "cc" }); else renderInput();
+    }
+    // 256 色（它在「只用 ANSI 颜色」的主题里用前 16 个）：前 16 个照这边终端的配色，其余按 xterm 的标准算；这边的画法只认 24 位色，一律换成 RGB
+    function ccPal() {
+      if (ccPalC && ccPalL === P.light) return ccPalC;
+      var th = xtermTheme(P.light) || {}, names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"];
+      var DEF = [0x000000, 0xcd3131, 0x0dbc79, 0xe5e510, 0x2472c8, 0xbc3fbc, 0x11a8cd, 0xe5e5e5, 0x666666, 0xf14c4c, 0x23d18b, 0xf5f543, 0x3b8eea, 0xd670d6, 0x29b8db, 0xffffff];
+      var num = function (c, d) { var s0 = String(c || ""), m = /^#([0-9a-f]{6})/i.exec(s0), r = /^rgba?\((\d+)\D+(\d+)\D+(\d+)/i.exec(s0); return m ? parseInt(m[1], 16) : r ? (+r[1] << 16 | +r[2] << 8 | +r[3]) : d; };
+      var pal = names.map(function (n, k) { return num(th[n], DEF[k]); }), lv = [0, 95, 135, 175, 215, 255];
+      for (var r0 = 0; r0 < 6; r0++) for (var g0 = 0; g0 < 6; g0++) for (var b0 = 0; b0 < 6; b0++) pal.push(lv[r0] << 16 | lv[g0] << 8 | lv[b0]);
+      for (var k = 0; k < 24; k++) { var v = 8 + k * 10; pal.push(v << 16 | v << 8 | v); }
+      ccPalL = P.light;
+      return (ccPalC = pal);
+    }
+    function ccSgr(c, pal) {
+      var p = [], rgb = function (v) { return (v >> 16 & 255) + ";" + (v >> 8 & 255) + ";" + (v & 255); };
+      if (c.isBold()) p.push("1"); if (c.isDim()) p.push("2"); if (c.isItalic()) p.push("3"); if (c.isUnderline()) p.push("4"); if (c.isInverse()) p.push("7"); if (c.isStrikethrough && c.isStrikethrough()) p.push("9");
+      if (c.isFgRGB()) p.push("38;2;" + rgb(c.getFgColor())); else if (c.isFgPalette()) p.push("38;2;" + rgb(pal[c.getFgColor()] || 0));
+      if (c.isBgRGB()) p.push("48;2;" + rgb(c.getBgColor())); else if (c.isBgPalette()) p.push("48;2;" + rgb(pal[c.getBgColor()] || 0));
+      return p.length ? "\x1b[" + p.join(";") + "m" : "";
+    }
+    // 一行：一格一格读出字和样子，样子变了才换（行尾没底色的空格不要）
+    function ccRowAnsi(line, cols) {
+      if (!line) return "";
+      var pal = ccPal(), cell, end = -1, x, out = "", cur = "";
+      for (x = 0; x < cols; x++) { cell = line.getCell(x, cell); if (!cell) break; var ch = cell.getChars(); if ((ch && ch !== " ") || !cell.isBgDefault() || cell.isInverse()) end = x; }
+      for (x = 0; x <= end; x++) {
+        cell = line.getCell(x, cell);
+        if (!cell || cell.getWidth() === 0) continue; // 两格宽的字的后一半
+        var sg = ccSgr(cell, pal);
+        if (sg !== cur) { out += RESET + sg; cur = sg; }
+        out += cell.getChars() || " ";
+      }
+      return out + (cur ? RESET : "");
+    }
+    function ccRows() {
+      var st = ccT;
+      if (!st) return [];
+      st.lines.forEach(function (l, i) { panel.map[i] = { cc: st.row0 + i }; });
+      return st.lines.slice();
+    }
+    // 键 → 终端里那几个字节（同 claude attach 送的）；⌘ 开头的归 App。Ctrl+C / Ctrl+D 不送（在它那里连按会退出会话）——当 Esc
+    function ccKeyBytes(e) {
+      var k = e.key, m = (e.shiftKey ? 1 : 0) + (e.altKey ? 2 : 0) + (e.ctrlKey ? 4 : 0), csi = function (f) { return m ? "\x1b[1;" + (m + 1) + f : "\x1b[" + f; };
+      switch (k) {
+        case "Enter": return e.shiftKey ? "\x1b\r" : "\r";
+        case "Escape": return "\x1b";
+        case "Backspace": return e.altKey ? "\x1b\x7f" : "\x7f";
+        case "Tab": return e.shiftKey ? "\x1b[Z" : "\t";
+        case "ArrowUp": return csi("A"); case "ArrowDown": return csi("B"); case "ArrowRight": return csi("C"); case "ArrowLeft": return csi("D");
+        case "Home": return csi("H"); case "End": return csi("F");
+        case "PageUp": return "\x1b[5~"; case "PageDown": return "\x1b[6~"; case "Delete": return "\x1b[3~";
+      }
+      if (e.metaKey || e.isComposing) return null;
+      if (e.ctrlKey && k.length === 1) { var lc = k.toLowerCase(), cc0 = lc.charCodeAt(0); if (lc === "c") return "\x1b"; if (lc === "d") return null; return cc0 >= 97 && cc0 <= 122 ? String.fromCharCode(cc0 - 96) : null; }
+      return k.length === 1 || /^[^\x00-\x7f]+$/.test(k) ? k : null;
+    }
+    function ccKey(e) { var bs = ccKeyBytes(e); if (bs != null && ccT) ccT.tui.send(bs); }
+    function ccClick(e, row) {
+      var st = ccT;
+      if (!st || !st.mouse) return;
+      var ir = P.input.getBoundingClientRect(), col = Math.max(0, Math.floor((e.clientX - ir.left) / P.chPx)), at = (col + 1) + ";" + (row + 1);
+      st.tui.send("\x1b[<0;" + at + "M"); st.tui.send("\x1b[<0;" + at + "m");
+    }
+    // 它在等你（Claude Code 登记成 waiting）、又不是在问你问题（那个这边自己画）：接上看一眼是不是它的面板。
+    //   每次「在等」只看一次（不是面板就算了，不反复接上）；这一格看得见时才看（接上会把它的终端改成这边的大小，别的终端里接着它的会跟着变）
+    var ccWaitSeen = 0, ccWaitT = 0; // 看过的那一回「在等」（rt.waitingDialog() 的记号）
+    V.ccState = function () { if (!ccT) return null; var b = ccT.term.buffer.active, tx = []; for (var i = 0; i < ccT.rows; i++) { var l = b.getLine(b.viewportY + i); tx.push(l ? l.translateToString(true) : ""); } return { seen: ccT.seen, lines: ccT.lines.length, row0: ccT.row0, screen: tx }; }; // 测试、排查用
+    function ccWatch() {
+      clearTimeout(ccWaitT);
+      var w = rt.waitingDialog ? rt.waitingDialog() : 0;
+      if (!w) { ccWaitSeen = 0; return; }
+      if (ccWaitSeen === w || ccT || !rt.tui || (rt.question && rt.question()) || P.closed || P.program !== V) return;
+      if (document.hidden || P.off || !P.el.offsetParent) { ccWaitT = setTimeout(ccWatch, 1500); return; } // 现在看不见（后面的标签页、App 在后台）：露出来再看
+      ccWaitSeen = w;
+      ccTuiOpen("wait");
+    }
     // 选择器：/model、/effort、/permissions、/statusline
     function picker(o) { openPanel(Object.assign({ kind: "pick", sel: Math.max(0, o.options.findIndex(function (x) { return x.current; })) }, o)); }
     // /model：两级——先选提供方，再选它的模型（Esc 回到提供方）
@@ -4504,7 +4635,7 @@
       var rows = ["", ""]; // 顶上不画线（以前是一条淡紫的横线）
       panel.map = {};
       panel.caretAt = null;
-      var body = panel.kind === "island" ? islandRows(fcols, indent) : panel.kind === "agents" ? agentsRows(fcols, indent) : panel.kind === "tasks" ? tasksRows(fcols, indent) : panel.kind === "resume" ? resumeRows(fcols, indent)
+      var body = panel.kind === "cc" ? ccRows() : panel.kind === "island" ? islandRows(fcols, indent) : panel.kind === "agents" ? agentsRows(fcols, indent) : panel.kind === "tasks" ? tasksRows(fcols, indent) : panel.kind === "resume" ? resumeRows(fcols, indent)
         : panel.kind === "pick" ? pickRows(fcols, indent) : settingsRows(fcols, indent);
       // map 的行号是相对 body 的：加上顶上两行
       var shifted = {};
@@ -4574,6 +4705,7 @@
       var r = P.foot.getBoundingClientRect(), row = Math.floor((e.clientY - r.top - padT) / P.rowH), col = Math.floor((e.clientX - r.left) / P.chPx), m = panel.map[row];
       if (!m) return;
       e.preventDefault();
+      if (m.cc !== undefined) { ccClick(e, m.cc); P.focus(); return; }
       if (m.tabs) { var hit = m.tabs.find(function (t) { return col >= t[0] - 1 && col <= t[1] + 1; }); if (hit) { panel.tab = hit[2]; panel.scroll = 0; panel.focus = TABS[hit[2]] === "Config" ? "search" : "tabs"; loadUsage(); } }
       else if (m.search) panel.focus = "search";
       else if (m.item !== undefined) { var items = filtered(); if (panel.focus === "list" && panel.sel === m.item && items[m.item]) items[m.item].next(); panel.focus = "list"; panel.sel = m.item; }
@@ -4590,6 +4722,7 @@
       if (panel) renderInput();
     };
     function panelKey(e) {
+      if (panel.kind === "cc") return ccKey(e);
       if (panel.kind === "island") return islandKey(e);
       if (panel.kind === "agents") return agentsKey(e);
       if (panel.kind === "tasks") return tasksKey(e);
@@ -4718,6 +4851,7 @@
     }
     V.paste = function (e) {
       var text = e.clipboardData && e.clipboardData.getData("text/plain"), ta = P.ta;
+      if (panel && panel.kind === "cc" && ccT) { e.preventDefault(); if (text) ccT.tui.send(ccT.paste ? "\x1b[200~" + text + "\x1b[201~" : text); return; }
       if (text && (text.split("\n").length > 10 || text.length > 1000)) {
         e.preventDefault();
         text = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
@@ -4848,7 +4982,9 @@
           if (rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { P.toBottom(); return; }
           if (now && rt.sendNowAfter && rt.sendNowAfter()) now = false; // ctrl+enter：这句照常送进它的队，送到了马上按它的 ctrl+x ctrl+s（同在它那里按，不打断）
           else if (now && rt.interrupt) rt.interrupt(); // 自己起的 claude -p：打断这一问，这句马上当下一问（它排着，打断后接着读）
-          rt.send(v, imgs); P.toBottom(); return;
+          rt.send(v, imgs); P.toBottom();
+          if (rt.tui && /^\/[\w:-]+(\s|$)/.test(v.trim()) && !imgs.length) setTimeout(function () { ccTuiOpen("cmd"); }, 120); // 斜杠命令：它可能弹面板（/config、/model…）——接上它的界面看一眼，没弹就断开
+          return;
         }
         // 斜杠命令只认「/单词」开头；/home/user/… 这种路径开头的是普通消息（同 Claude Code；从访达拖进来的路径也是这样）
         // 「/tmp 里有什么」这种：第一个词是沙盒里存在的路径，也是普通消息

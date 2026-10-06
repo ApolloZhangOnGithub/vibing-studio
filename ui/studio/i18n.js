@@ -486,6 +486,7 @@
   );
 
   // ---- 补漏（两个方向的普查，2026-09-29）：TUI 格子里画的提示、会话里记下的说明（claude.js / codex.js 经 tr 查）、新加的设置项 ----
+  words({ "与 Claude Code 的连接断开了": "Lost the connection to Claude Code" }); // Claude Code 自己的面板（live.js 的 cc 面板）接着时断开
   words({ "在上面输入网址，例如 localhost:3000": "Enter a URL above, e.g. localhost:3000", "回答已送出": "Answer sent",
     "该会话未在后台运行，无法在此回答，请在其终端中回答": "This session isn't running in the background, so it can't be answered here — answer in its terminal",
     "译文出现方式": "Translation Display", "先原文": "Original First", "只显示译文": "Translation Only",

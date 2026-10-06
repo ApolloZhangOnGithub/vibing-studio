@@ -11,6 +11,15 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.415", items: {
+      new: [
+        ["Claude Code 会弹面板的斜杠命令（/config、/model、/theme、/help、/permissions、/mcp 等）在这里也能用：它自己的面板原样出现在输入框的位置，用键盘操作，按 Esc 关掉回到输入框。面板在别处打开、还开着的，打开这个会话时也会接上。适用于后台运行的会话。", "Claude Code slash commands that open a panel (/config, /model, /theme, /help, /permissions, /mcp and others) now work here: Claude Code’s own panel appears in place of the input box, works with the keyboard, and Esc closes it. A panel left open elsewhere is picked up when you open the session. Applies to sessions running in the background."],
+      ],
+      fixed: [
+        ["发出斜杠命令后不再闪一下「在想」的转圈。", "Sending a slash command no longer flashes the thinking spinner."],
+        ["没登录时对话最上面不再出现「undefinedundefined」。", "“undefinedundefined” no longer appears at the top of a conversation when signed out."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.414", items: {
       improved: [
         ["Codex 会话的右键菜单同 Claude Code 一样：打开位置（拆分视图、终端、Visual Studio Code、访达）、固定、标为未读、重命名、移到分组、归档、删除（会话记录移到废纸篓）；固定的、分组的在 Codex 下面各成一组。", "Codex sessions now have the same context menu as Claude Code: Open in (Split View, Terminal, Visual Studio Code, Finder), Pin, Mark as Unread, Rename, Move to Group, Archive and Delete (the transcript moves to the Trash). Pinned and grouped sessions get their own sections under Codex."],

@@ -996,6 +996,7 @@
 
     // ---- 在跑吗：Claude Code 自己登记的（后台会话、别的终端）；这边自己起的那个（stream-json）----
     // waiting：它在等你处理对话框（Claude Code 登记的 status "waiting"）——这时它的输入框没有焦点，送进去的字落不进它的队（见 refreshLive）
+    var waitAt = 0, closedAt = 0;
     var busy = false, waiting = false, busyAt = 0, liveAt = 0, proc = null, outBuf = "", idleT = 0; // idleT：这一问答完、一阵子没再说：关掉 stdin 让 claude 自己退出（不一直占着会话，别的终端才打得开）
     function setBusy(on, t0) {
       if (on === busy) return;
@@ -1024,8 +1025,9 @@
         info.live = x.live || null; info.job = x.job || ""; info.cwd = x.cwd || info.cwd;
         // 它在等你处理一个对话框（权限确认、AskUserQuestion、MCP 要的输入、开着的面板：Claude Code 登记成 status "waiting"，claude agents 里的「needs input」）：
         //   这时它的输入框没有焦点——后台服务的 reply 粘贴进去的字落进那个对话框（或者被当成那个问题的回答），不会排进它的队。先排在这边，它回到 busy / idle 再送
-        var wt0 = !!(x.live && x.live.status === "waiting");
-        if (wt0 !== waiting) { waiting = wt0; emit("status"); if (!waiting && lq.length) flushSoon(); }
+        var wt0 = !!(x.live && x.live.status === "waiting") && !(closedAt && x.live.statusAt === closedAt), wAt = wt0 && x.live.statusAt || 0;
+        if (wt0 !== waiting) { waiting = wt0; waitAt = wAt; emit("status"); if (!waiting && lq.length) flushSoon(); }
+        else if (wt0 && wAt !== waitAt) { waitAt = wAt; emit("status"); } // 关了一个、又开了一个（中间没看到它闲着）：也算变了
         if (!proc || !proc.alive()) {
           var bz = !!(x.live && x.live.status === "busy");
           // 刚送进去一句、它的状态还没改过来（还是送之前写的「闲」）：这几秒当它在忙——不然排着的那句紧跟着送进去，落进它自己的队
@@ -1057,6 +1059,11 @@
     }
     rt.elsewhere = function () { return !!(info.live && (!proc || !proc.alive())); };
     // 能送进去：后台会话（claude --bg，经后台服务）；开在 Vibing Studio 自己终端标签页里的（敲进那个终端，同你在那里打字）
+    // 它在等你处理对话框 / 开着的面板（登记成 waiting）：这一回「在等」的记号（它登记的时间；关了又开一个是新的一回），不在等是 0
+    rt.waitingDialog = function () { return waiting && !(proc && proc.alive()) ? (info.live && info.live.statusAt) || 1 : 0; };
+    // 这边看着它的面板关了（屏幕上回到输入框）：不等它的登记改过来（几秒一次）——排着的马上送
+    //   它的登记还没改过来时（还是关掉的那一回的「在等」）不再当成在等
+    rt.dialogClosed = function () { if (!waiting) return; waiting = false; closedAt = (info.live && info.live.statusAt) || 0; emit("status"); if (lq.length) flushSoon(); };
     rt.canInject = function () { return !!(info.live && info.live.kind === "bg" && info.job && LOC.pty) || typable(); };
     // 能直接往它所在的终端里敲（不用接过来）：开在自己的终端标签页里；开在 iTerm2 里、试过一次能让 iTerm2 替你敲
     var typable = function () { return !!ownPane() || (itermOK === true && !!info.live && info.live.kind !== "bg"); };
@@ -1626,6 +1633,53 @@
         });
       });
     }
+    // ---- 它自己的界面（同 claude attach）：接上后台会话的终端，一条原样转发的通道——它画的（终端输出）给 h.data(字)，send(键) 原样送进去。
+    //   斜杠命令弹的面板（/config、/model、/theme、/help…）这边没有自己的版本：接上它，把它画的那一块原样搬过来（live.js 的 cc 面板）。
+    //   cols、rows：按这边的大小画（它改成这个大小；断开后保持，下一个接上的再改）。h.open(它开着的终端模式：鼠标、括号粘贴……)、h.close(原因，正常断开是 "")
+    //   走 proc（管道，不要伪终端）：perl 连上后台服务的控制口、说 attach，回话的第一行包成 OSC 1337;VSAttach=<base64> 交给这边，之后两头原样转发；stdin 关了就断开
+    //   页面没了（刷新、更新）它还接着：页面走的时候停掉（LIVE_PROCS），停不掉的看心跳文件（同 DAEMON_WATCH_PL：30 秒没写就自己退出）
+    var TUI_PL = 'use IO::Socket::UNIX; use IO::Select; use MIME::Base64; $| = 1; my ($q, $hb) = @ARGV;' +
+      ' my $fail = sub { print "\\e]1337;VSAttach=fail:" . $_[0] . "\\a"; exit 0 }; my ($sp) = glob("/tmp/cc-daemon-$</*/control.sock"); $fail->("ENOCONN") unless $sp;' +
+      ' open(my $kf, "<", "$ENV{HOME}/.claude/daemon/control.key") or $fail->("ENOKEY"); my $k = <$kf>; close $kf; $k =~ s/\\s+//g;' +
+      ' my $req = decode_base64($q); $req =~ s/__CCKEY__/$k/; my $s = IO::Socket::UNIX->new(Peer => $sp) or $fail->("ENOCONN"); print $s $req; $s->flush;' +
+      ' my $sel = IO::Select->new($s); my $buf = ""; my $t0 = time; while ($buf !~ /\\n/ && time - $t0 < 6) { if ($sel->can_read(0.2)) { my $n = sysread($s, my $c, 65536); last unless $n; $buf .= $c } }' +
+      ' my ($first, $rest) = split(/\\n/, $buf, 2); $fail->("ETIMEOUT") unless defined $first && length $first; print "\\e]1337;VSAttach=" . encode_base64($first, "") . "\\a"; exit 0 unless $first =~ /"ok":true/;' +
+      ' syswrite(STDOUT, $rest) if defined $rest && length $rest; my $all = IO::Select->new($s, \\*STDIN);' +
+      ' my $lc = time; while (1) { for my $fh ($all->can_read(1)) { my $n = sysread($fh, my $c, 65536); exit 0 unless $n; if ($fh == $s) { syswrite(STDOUT, $c) } else { syswrite($s, $c) } }' +
+      ' if ($hb && time - $lc >= 3) { $lc = time; my $m = (stat($hb))[9]; exit 0 if !$m || time - $m > 30; } }';
+    var tuiLast = "";
+    rt.tui = function (cols, rows, h) {
+      var job = String(info.job || "").replace(/[^\w-]/g, "");
+      if (!job || !LOC.proc || !(info.live && info.live.kind === "bg")) return null;
+      var head = "", opened = false, done = false, p = null;
+      var end = function (why) { if (done) return; done = true; if (p) { LIVE_PROCS.delete(p); p.close(); setTimeout(function () { p.kill(); }, 400); } if (h.close) h.close(why || ""); };
+      // 接上时它只在终端大小变了时整屏重画：和这边上次接上的一样大就差一行（一次 60 一次 59）——不然面板已经开着时这边什么都收不到。
+      //   不先去量它现在多大（要起一个登录 shell，一两秒）
+      var go = function () {
+        if (done) return;
+        if (tuiLast === cols + "x" + rows) rows = rows - 1;
+        tuiLast = cols + "x" + rows;
+        var req = JSON.stringify({ proto: 1, op: "attach", short: job, auth: "__CCKEY__", cols: cols, rows: rows, caps: { terminal: null, mux: null, ssh: false, colorLevel: 3 } }) + "\n";
+        p = LOC.proc({ argv: ["/usr/bin/perl", "-e", TUI_PL, btoa(unescape(encodeURIComponent(req))), HB.path || ""] }, function (s, isErr) {
+          if (isErr || done) return;
+          if (opened) return h.data(s);
+          head += s;
+          var m = /\x1b\]1337;VSAttach=([^\x07]*)\x07/.exec(head);
+          if (!m) { if (head.length > 65536) head = head.slice(-4096); return; }
+          var rest = head.slice(m.index + m[0].length), j = null;
+          head = "";
+          if (/^fail:/.test(m[1])) return end(m[1].slice(5));
+          try { j = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch (e) { j = null; }
+          if (!j || !j.ok) return end((j && (j.code || j.error)) || "refused");
+          opened = true;
+          if (h.open) h.open(Array.isArray(j.decModes) ? j.decModes : []);
+          if (rest) h.data(rest);
+        }, function (code) { LIVE_PROCS.delete(p); if (!done) { done = true; if (h.close) h.close(opened ? "" : "exit " + code); } });
+        LIVE_PROCS.add(p);
+      };
+      go();
+      return { rows: function () { return rows; }, send: function (s) { if (!done && opened) p.write(String(s)).catch(function () {}); }, close: function () { end(""); }, alive: function () { return !done; } };
+    };
     // 开在终端里的（自己的终端标签页、iTerm2）：同样一步一步按，要等提示的读它的屏幕
     function itermRead() {
       var pid = info.live && +info.live.pid;
@@ -1773,7 +1827,7 @@
     // 说一句：答着（或者前一句正在送进去、正在打断）就先排在这边（lq），完了跟排着的拼成一条一起发；闲着就直接送
     // 送进后台会话的：它马上就忙起来（状态文件要过一会儿才改）——先当它在忙；闲着时送的，这一轮从现在算
     // 斜杠命令（/goal、/model……）：Claude Code 收到当场就执行、不进它的队（记录里也不会出现原话）——送到了就不再画成「排着」（以前一直挂着 send now 三分钟）
-    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push({ text: st0, at: Date.now() }); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!busy) newRound(sentAt); setBusy(true, sentAt); // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
+    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push({ text: st0, at: Date.now() }); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
       setTimeout(poll, 600); refreshLive(); emit("status"); if (lq.length) flushSoon(); }
     // 没送成：放回排着的最前面，不自己一遍遍重试（等你 ctrl+enter 再试、再说一句，或者在终端里接上它处理）
     // dying：自己起的、正在退出的那个 claude -p（打断没停下来被停掉的、换模型停掉的、闲着关掉的）——它还没退干净时不另起一个 --resume 同一个会话，排着等它退了再发
