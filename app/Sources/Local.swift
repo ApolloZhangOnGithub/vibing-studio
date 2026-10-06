@@ -19,7 +19,7 @@ final class Local {
   let shell: String
   let binDir: String
   let tmp: String
-  private(set) var loginPath = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  private(set) var loginPath = Local.withCommonDirs("/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
   private var ptys: [String: PTY] = [:]
   private var jobs: [String: Job] = [:]
   private var procs: [String: Proc] = [:] // 长着跑、要往 stdin 里写的程序（Studio 驱动 Claude Code：claude -p --input-format stream-json …）
@@ -72,7 +72,7 @@ final class Local {
       killer.cancel()
       if let s = String(data: d, encoding: .utf8), let r = s.range(of: "\u{1e}", options: .backwards) {
         let path = String(s[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        if path.contains("/") { DispatchQueue.main.async { MainActor.assumeIsolated { self.loginPath = path } } }
+        if path.contains("/") { let full = Local.withCommonDirs(path); DispatchQueue.main.async { MainActor.assumeIsolated { self.loginPath = full } } }
       }
     }
   }
@@ -82,7 +82,8 @@ final class Local {
     case "local.info":
       let v = ProcessInfo.processInfo.operatingSystemVersion
       return ["home": home, "user": user, "shell": shell, "tmp": tmp, "host": Host.current().localizedName ?? "Mac",
-              "os": "macOS \(v.majorVersion).\(v.minorVersion)" + (v.patchVersion > 0 ? ".\(v.patchVersion)" : "")] as [String: Any]
+              "os": "macOS \(v.majorVersion).\(v.minorVersion)" + (v.patchVersion > 0 ? ".\(v.patchVersion)" : ""),
+              "caps": ["pty.argv"], "path": loginPath] as [String: Any] // caps：页面按它判断这一版原生能做什么（pty.argv：终端里直接跑一个程序，tmux 用）
     case "pty.open":
       let id = try idArg(a)
       let cwd = dirOr(a["cwd"] as? String, home)
@@ -98,7 +99,15 @@ final class Local {
       env["USER"] = user
       env["SHELL"] = shell
       if env["LANG"] == nil { env["LANG"] = Local.lang() }
-      let pty = try PTY(shell: shell, cwd: cwd, env: env, cols: int(a["cols"], 80), rows: int(a["rows"], 24),
+      // argv：直接跑这个程序（tmux 的终端），不跑登录 shell；程序名不带路径的在登录 shell 的 PATH 里找
+      var argv: [String]? = nil
+      if let v = a["argv"] as? [String], let first = v.first, !first.isEmpty {
+        var exe = first
+        if !exe.contains("/") { for d in (loginPath + ":" + (env["PATH"] ?? "")).split(separator: ":") where FileManager.default.isExecutableFile(atPath: String(d) + "/" + exe) { exe = String(d) + "/" + exe; break } }
+        guard exe.hasPrefix("/") else { throw BridgeError.failed("找不到程序：" + first) }
+        argv = [exe] + v.dropFirst()
+      }
+      let pty = try PTY(shell: shell, argv: argv, cwd: cwd, env: env, cols: int(a["cols"], 80), rows: int(a["rows"], 24),
         onData: { [weak self] d in DispatchQueue.main.async { MainActor.assumeIsolated { self?.queue(id, d) } } },
         onExit: { [weak self] code in DispatchQueue.main.async { MainActor.assumeIsolated { self?.flush(id); self?.ptys[id] = nil; self?.screens[id] = nil; self?.out("pty.exit", ["id": id, "code": Int(code)]) } } })
       ptys[id] = pty
@@ -348,6 +357,13 @@ final class Local {
     if let s = ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] { env["SSH_AUTH_SOCK"] = s }
     return env
   }
+  // 常装在登录 shell 的 PATH 之外的几个位置（Claude Code 的原生版在 ~/.local/bin，写在 ~/.zshrc 里——这里读 PATH 用的非交互登录 shell 读不到它）：有就补在后面
+  static func withCommonDirs(_ path: String) -> String {
+    let home = NSHomeDirectory(), have = Set(path.split(separator: ":").map(String.init))
+    let extra = [home + "/.local/bin", home + "/.claude/local", home + "/.npm-global/bin", home + "/.bun/bin", home + "/.cargo/bin", home + "/.volta/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+      .filter { !have.contains($0) && FileManager.default.fileExists(atPath: $0) }
+    return extra.isEmpty ? path : path + ":" + extra.joined(separator: ":")
+  }
   static func lang() -> String {
     let id = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
     return (id.contains("_") ? id.components(separatedBy: "@")[0] : "en_US") + ".UTF-8"
@@ -482,12 +498,12 @@ final class PTY: @unchecked Sendable {
   private let q: DispatchQueue
   private var paused = false // 页面叫停了（流控）：读的 source 挂起着。只在 q 上读写
 
-  init(shell: String, cwd: String, env: [String: String], cols: Int, rows: Int, onData: @escaping (Data) -> Void, onExit: @escaping (Int32) -> Void) throws {
+  init(shell: String, argv: [String]? = nil, cwd: String, env: [String: String], cols: Int, rows: Int, onData: @escaping (Data) -> Void, onExit: @escaping (Int32) -> Void) throws {
     // fork 以后子进程里只做 chdir、execve：要用的 C 字符串都先备好
     let argv0 = "-" + (shell as NSString).lastPathComponent // 登录 shell（同 Terminal、iTerm）
-    let cArgs: [UnsafeMutablePointer<CChar>?] = [strdup(argv0), nil]
+    let cArgs: [UnsafeMutablePointer<CChar>?] = (argv.map { [((($0.first ?? "") as NSString).lastPathComponent)] + $0.dropFirst() } ?? [argv0]).map { strdup($0) } + [nil] // argv：给了就跑它（程序名写短名）
     let cEnv: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0.key + "=" + $0.value) } + [nil]
-    let cShell = strdup(shell)!, cCwd = strdup(cwd)!
+    let cShell = strdup(argv?.first ?? shell)!, cCwd = strdup(cwd)!
     defer { cArgs.forEach { free($0) }; cEnv.forEach { free($0) }; free(cShell); free(cCwd) }
     var ws = winsize(ws_row: UInt16(clamping: rows), ws_col: UInt16(clamping: cols), ws_xpixel: 0, ws_ypixel: 0)
     var master: Int32 = -1

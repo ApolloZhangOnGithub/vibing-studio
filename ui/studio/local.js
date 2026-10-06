@@ -42,7 +42,7 @@
       if (ws.onclose) ws.onclose({ code: 1011, reason: e.message });
     };
     var open = function () {
-      N.call("pty.open", { id: ws.id, cols: o.cols || 80, rows: o.rows || 24, cwd: o.cwd || "" }).then(function () {
+      N.call("pty.open", Object.assign({ id: ws.id, cols: o.cols || 80, rows: o.rows || 24, cwd: o.cwd || "" }, o.argv ? { argv: o.argv } : {})).then(function () { // argv：不跑登录 shell，直接跑这个程序（tmux 的终端）
         ws.readyState = 1;
         if (ws.onopen) ws.onopen({});
       }, fail);
@@ -84,6 +84,10 @@
   }
 
   // ---- 一条命令：o = { cmd, cwd, access（user / none / read / rw）, workdir }；signal 中断（整组进程停）----
+  // 命令常装在登录 shell 的 PATH 之外：Claude Code 的原生版在 ~/.local/bin，安装时把它写进 ~/.zshrc——原生那边读 PATH 用的是非交互的登录 shell，读不到 .zshrc，
+  //   于是新装的 Mac 上「检测不到 claude」、起不了会话（Codex 装在 Homebrew 里，所以找得到）。跑命令、起程序时把这几个常见的位置补在后面
+  var EXTRA_PATH = "$HOME/.local/bin:$HOME/.claude/local:$HOME/.npm-global/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$HOME/.volta/bin:/opt/homebrew/bin:/usr/local/bin";
+  var PATH_PFX = 'PATH="$PATH:' + EXTRA_PATH + '"; ';
   function exec(o, signal, onChunk) {
     return new Promise(function (resolve, reject) {
       var id = nid("x"), out = "", err = "";
@@ -99,7 +103,7 @@
       });
       var kill = function () { N.call("exec.kill", { id: id }).catch(function () {}); };
       if (signal) { if (signal.aborted) return reject(Object.assign(new Error("aborted"), { name: "AbortError" })); signal.addEventListener("abort", kill); }
-      N.call("exec.start", { id: id, cmd: o.cmd, cwd: o.cwd || "", access: o.access || "user", workdir: o.workdir || "", extra: o.extra || [] }).catch(function (e) { offD(); offX(); reject(e); });
+      N.call("exec.start", { id: id, cmd: PATH_PFX + o.cmd, cwd: o.cwd || "", access: o.access || "user", workdir: o.workdir || "", extra: o.extra || [] }).catch(function (e) { offD(); offX(); reject(e); });
     });
   }
 
@@ -118,7 +122,9 @@
     var id = nid("r"), dead = false;
     var offD = N.on("proc.data", function (d) { if (d && d.id === id) { if (d.o) onOut(d.o, false); if (d.e) onOut(d.e, true); } });
     var offX = N.on("proc.exit", function (d) { if (!d || d.id !== id) return; dead = true; offD(); offX(); if (onExit) onExit(d.code); });
-    var started = N.call("proc.start", { id: id, argv: o.argv, cwd: o.cwd || "", env: o.env || {} }).catch(function (e) { dead = true; offD(); offX(); if (onExit) onExit(-1, e.message); throw e; });
+    // 程序名不带路径的（claude、codex）：经 sh 补上那几个位置再 exec（进程号不变，停它照旧整组停）
+    var argv0 = Array.isArray(o.argv) && o.argv.length && !/\//.test(String(o.argv[0])) ? ["/bin/sh", "-c", PATH_PFX + 'exec "$0" "$@"'].concat(o.argv) : o.argv;
+    var started = N.call("proc.start", { id: id, argv: argv0, cwd: o.cwd || "", env: o.env || {} }).catch(function (e) { dead = true; offD(); offX(); if (onExit) onExit(-1, e.message); throw e; });
     return {
       id: id, started: started, alive: function () { return !dead; },
       write: function (s) { return started.then(function () { return N.call("proc.write", { id: id, data: String(s) }); }); },

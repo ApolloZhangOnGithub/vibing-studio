@@ -38,6 +38,12 @@ function osName() {
   try { const m = /^PRETTY_NAME="?([^"\n]*)"?/m.exec(fs.readFileSync("/etc/os-release", "utf8")); if (m) return m[1]; } catch (e) { /* 没有这个文件 */ }
   return "Linux " + os.release();
 }
+// 常装在登录 shell 的 PATH 之外的几个位置（Claude Code 的原生版在 ~/.local/bin，写在 ~/.bashrc / ~/.zshrc 里）：有就补在后面
+function withCommonDirs(p) {
+  const h = os.homedir(), have = new Set(String(p).split(":"));
+  const extra = [h + "/.local/bin", h + "/.claude/local", h + "/.npm-global/bin", h + "/.bun/bin", h + "/.cargo/bin", h + "/.volta/bin", "/usr/local/bin", "/snap/bin"].filter((d) => !have.has(d) && fs.existsSync(d));
+  return extra.length ? p + ":" + extra.join(":") : p;
+}
 function lang() { const l = process.env.LANG; if (l) return l; const id = (Intl.DateTimeFormat().resolvedOptions().locale || "en-US").replace("-", "_"); return (id.includes("_") ? id : "en_US") + ".UTF-8"; }
 
 // ======== 伪终端最近的输出：页面刷新后接回来先写回去（同 Local.swift 的 Screen）========
@@ -155,7 +161,7 @@ class Local {
     this.binDir = (opts && opts.binDir) || path.join(__dirname, "..", "bin");
     this.tmp = real(os.tmpdir());
     this.version = (opts && opts.version) || "0";
-    this.loginPath = process.env.PATH || "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin";
+    this.loginPath = withCommonDirs(process.env.PATH || "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin");
     this.ptys = new Map(); this.screens = new Map(); this.pending = new Map();
     this.jobs = new Map(); this.procs = new Map(); this.execPend = new Map();
     this.cc = new CC.Index();
@@ -164,7 +170,7 @@ class Local {
     let out = "";
     const killer = setTimeout(() => { try { p.kill("SIGKILL"); } catch (e) { /* 已经退了 */ } }, 6000);
     p.stdout.on("data", (d) => { out += d; });
-    p.on("close", () => { clearTimeout(killer); const i = out.lastIndexOf("\x1e"); const v = i >= 0 ? out.slice(i + 1).trim() : ""; if (v.includes("/")) this.loginPath = v; });
+    p.on("close", () => { clearTimeout(killer); const i = out.lastIndexOf("\x1e"); const v = i >= 0 ? out.slice(i + 1).trim() : ""; if (v.includes("/")) this.loginPath = withCommonDirs(v); });
     p.on("error", () => clearTimeout(killer));
   }
   out(type, detail) { try { this.sink(type, detail); } catch (e) { /* 窗口没了 */ } }
@@ -173,7 +179,7 @@ class Local {
     a = a || {};
     switch (cmd) {
       case "local.info":
-        return { home: this.home, user: this.user, shell: this.shell, tmp: this.tmp, host: os.hostname(), os: osName(), platform: process.platform };
+        return { home: this.home, user: this.user, shell: this.shell, tmp: this.tmp, host: os.hostname(), os: osName(), platform: process.platform, caps: ["pty.argv"], path: this.loginPath };
       case "pty.open": return this.ptyOpen(a);
       case "pty.attach": {
         const id = this.idArg(a), p = this.ptys.get(id);
@@ -279,8 +285,15 @@ class Local {
     Object.assign(env, { TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "PaimonTerminal", TERM_PROGRAM_VERSION: this.version, TCB: "1",
       PATH: this.binDir + ":" + (env.PATH || "/usr/local/bin:/usr/bin:/bin"), HOME: this.home, USER: this.user, SHELL: this.shell });
     if (!env.LANG) env.LANG = lang();
-    // 登录 shell（同 Terminal、iTerm、GNOME 终端的「以登录 shell 运行」）
-    const term = ptyLib.spawn(this.shell, ["-l"], { name: "xterm-256color", cols: Math.max(2, int(a.cols, 80)), rows: Math.max(1, int(a.rows, 24)), cwd: cwd, env: env });
+    // 登录 shell（同 Terminal、iTerm、GNOME 终端的「以登录 shell 运行」）；argv：直接跑这个程序（tmux 的终端）
+    let file = this.shell, args = ["-l"];
+    if (Array.isArray(a.argv) && a.argv.length && a.argv[0]) {
+      file = String(a.argv[0]);
+      if (!file.includes("/")) file = which(file, this.loginPath + ":" + (env.PATH || "")) || "";
+      if (!file) throw BridgeError.failed("找不到程序：" + a.argv[0]);
+      args = a.argv.slice(1).map(String);
+    }
+    const term = ptyLib.spawn(file, args, { name: "xterm-256color", cols: Math.max(2, int(a.cols, 80)), rows: Math.max(1, int(a.rows, 24)), cwd: cwd, env: env });
     const P = { term: term, paused: false };
     this.ptys.set(id, P);
     this.screens.set(id, new Screen());

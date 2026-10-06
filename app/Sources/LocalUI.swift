@@ -26,6 +26,12 @@ enum LocalUI {
     return nil
   }
 
+  // 只有 App 里带的那一份（别的 Mac 上：没有仓库、没有部署过的本地界面）：联网时用网站上的（总是最新的），断网才用带的这份
+  static var bundledOnly: Bool {
+    guard let d = dir, let r = Bundle.main.resourceURL?.appendingPathComponent("web") else { return false }
+    return d.standardizedFileURL.path == r.standardizedFileURL.path
+  }
+
   // 这一格要不要用本地界面：只给 Vibing Studio；起始网址是线上默认的那个（--url 换了别的就照旧，测试用的本地开发服务器不受影响），
   //   或者 NADOS_LOCAL_UI=1（测试：换了 --url 也用本地界面）；defaults 里 localUI = NO 就关掉
   static func enabled(for start: URL) -> Bool {

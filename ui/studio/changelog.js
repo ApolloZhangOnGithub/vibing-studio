@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.410", items: {
+      fixed: [
+        ["新装的 Mac 上检测不到 Claude Code（Codex 正常）：Claude Code 装在 ~/.local/bin，安装时只写进了 ~/.zshrc，App 跑命令时读不到。现在跑命令、起会话都会补上 ~/.local/bin 等常见位置。", "Claude Code wasn't detected on a freshly set up Mac while Codex was: Claude Code lives in ~/.local/bin, which its installer adds only in ~/.zshrc. Commands and sessions now also look in ~/.local/bin and other common locations."],
+      ],
+    } },
     { date: "2026-10-06", ver: "0.2.408", items: {
       improved: [
         ["「App」里的图标换成同标签页上的那套细线图标，一行一个，只写名字。", "Apps now use the same line icons as their tabs, one per row with just the name."],

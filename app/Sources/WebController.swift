@@ -162,7 +162,11 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
           let failed = err != nil
           DispatchQueue.main.async {
             MainActor.assumeIsolated {
-              if let inj { UserDefaults.standard.set(inj, forKey: key); self.showLocal(page, inj); return }
+              if let inj {
+                UserDefaults.standard.set(inj, forKey: key)
+                if LocalUI.bundledOnly { self.trace("online, bundled UI only: load the site (latest UI)"); self.bypassOnce = true; self.webView.load(URLRequest(url: page)); return } // 别的 Mac：界面跟网站走，不停在打包时的那一版
+                self.showLocal(page, inj); return
+              }
               if failed, let old = UserDefaults.standard.string(forKey: key) { self.trace("offline: local UI with the last account"); self.showLocal(page, old); return }
               self.trace("not signed in (or site error): load the site page")
               self.bypassOnce = true
