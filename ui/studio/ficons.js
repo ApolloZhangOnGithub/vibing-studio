@@ -97,7 +97,15 @@
     if (!id) { var p = n.split("."); for (var i = 1; i < p.length && !id; i++) id = S.e[p.slice(i).join(".")]; }
     return S.i[id] || S.i[S.d] || null;
   }
+  // 换掉 Seti 里不好看的两个（同一个 200 格的坐标）：Markdown 用它的标志（圆角框里 M 和向下的箭头）；图片是一张相片（Seti 画的是一叠相册）
+  var OVR = {
+    md: { c: "#519aba", cl: "#498ba7", svg: '<g fill="none" stroke="currentColor" stroke-width="11" stroke-linejoin="round" stroke-linecap="round"><rect x="31" y="56" width="138" height="88" rx="15"/><path d="M54 123V79l19 23 19-23v44"/><path d="M130 79v34"/></g><path d="M112 106h36l-18 21z" fill="currentColor"/>' },
+    img: { c: "#a074c4", cl: "#8d63b0", svg: '<g fill="none" stroke="currentColor" stroke-width="11" stroke-linejoin="round"><rect x="33" y="45" width="134" height="110" rx="16"/></g><circle cx="79" cy="84" r="13" fill="currentColor"/><path d="M45 143l40-40 26 25 17-15 27 30z" fill="currentColor"/>' },
+  };
+  var OVR_EXT = { md: "md", markdown: "md", mdx: "md", mdown: "md", png: "img", jpg: "img", jpeg: "img", jpe: "img", gif: "img", webp: "img", bmp: "img", ico: "img", heic: "img", heif: "img", avif: "img", tif: "img", tiff: "img", svg: "img" };
   function icon(name, dir) {
+    var nm = String(name || "").split("/").pop().toLowerCase(), e0 = nm.lastIndexOf(".") > 0 ? nm.slice(nm.lastIndexOf(".") + 1) : "", ov = !dir && OVR[OVR_EXT[e0]];
+    if (ov) { var ok = "ovr|" + OVR_EXT[e0]; return cache[ok] || (cache[ok] = '<i class="st-ico st-fi st-seti" style="--c:' + ov.c + ";--cl:" + ov.cl + '"><svg viewBox="20 20 160 160" aria-hidden="true">' + ov.svg + "</svg></i>"); }
     var x = dir ? null : setiOf(name);
     if (x) { var sk = "seti|" + x[0] + "|" + x[1]; return cache[sk] || (cache[sk] = '<i class="st-ico st-fi st-seti" style="--c:' + x[1] + ";--cl:" + x[2] + '"><svg viewBox="20 20 160 160" aria-hidden="true"><path d="' + window.TSU_SETI.g[x[0]] + '"/></svg></i>'); }
     var k = pick(name, dir), key = k[0] + "|" + k[1];

@@ -580,7 +580,7 @@ html.termapp .termwin .tmain { border: 0; border-radius: 0; background: transpar
 html.termapp .st-mid > .st-ecol { border: 1px solid var(--st-line); border-radius: 8px; overflow: hidden; background: var(--st-bg); }
 /* 网格：主侧栏 | 缝 | 编辑区 | 缝 | 右侧栏；面板在第二行，从主侧栏底下到编辑区；右侧栏两行通到底 */
 html.termapp .termwin .tlab.st-grid { display: grid; grid-template-columns: auto auto minmax(0, 1fr) 0 0; grid-template-rows: minmax(0, 1fr) auto; }
-html.termapp .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 6px calc(var(--aside-r, 0.5) * (100% - 6px)); }
+html.termapp .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 6px min(var(--aside-col, 340px), 75%); } /* 右侧栏：默认 340px；拖过的按比例（studio.js 的 --aside-col） */
 html.termapp .tlab.st-grid > .tside { grid-column: 1; grid-row: 1; min-height: 0; }
 html.termapp .tlab.st-grid > .ts-grip { grid-column: 2; grid-row: 1; }
 html.termapp .tlab.st-grid > .tmain { grid-column: 3; grid-row: 1; min-height: 0; }
@@ -963,7 +963,7 @@ html.termapp.st-compact .termwin .tside { margin-right: 3px; border-radius: 6px;
 html.termapp.st-compact .termwin .tlab.st-sright > .tside { margin-right: 0; margin-left: 3px; }
 html.termapp.st-compact .tlab.st-grid > .st-panel { margin-top: 3px; border-radius: 6px; }
 html.termapp.st-compact .tlab.st-grid > .st-aside { border-radius: 6px; }
-html.termapp.st-compact .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 3px calc(var(--aside-r, 0.5) * (100% - 3px)); }
+html.termapp.st-compact .termwin .tlab.st-grid.st-aside-on { grid-template-columns: auto auto minmax(0, 1fr) 3px min(var(--aside-col, 340px), 75%); }
 /* 活动栏的大小只归「活动栏大小」管（宽裕 / 精致）：布局密度不再改它——以前密度紧凑时这里压着，「活动栏大小」怎么选都没反应 */
 
 /* 换配色的那一下：所有过渡先关掉（换完 40ms 后打开）——一起变，不是有的立刻变、有的慢慢淡过去 */

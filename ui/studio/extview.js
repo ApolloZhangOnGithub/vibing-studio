@@ -48,8 +48,8 @@
     plus: IC('<path d="M8 3v10M3 8h10"/>'),
   };
   // 连接器：插头（活动栏 24 格、标签页 16 格）
-  var PLUG24 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4.5M15 3v4.5"/><path d="M6.5 7.5h11v3.2a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.2V21"/></svg>';
-  var PLUG16 = IC('<path d="M6 2v3M10 2v3"/><path d="M4.3 5h7.4v2.2a3.7 3.7 0 0 1-7.4 0z"/><path d="M8 10.9V14"/>');
+  var PLUG24 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.2 13.8a4.2 4.2 0 0 0 5.9 0l3.1-3.1a4.2 4.2 0 0 0-5.9-5.9l-1.6 1.6"/><path d="M13.8 10.2a4.2 4.2 0 0 0-5.9 0l-3.1 3.1a4.2 4.2 0 0 0 5.9 5.9l1.6-1.6"/></svg>'; // 两节链环：把会话的运行时连进来（以前是插头，像充电器）
+  var PLUG16 = IC('<path d="M6.8 9.2a2.8 2.8 0 0 0 3.9 0l2-2a2.8 2.8 0 0 0-3.9-3.9l-1.1 1.1"/><path d="M9.2 6.8a2.8 2.8 0 0 0-3.9 0l-2 2a2.8 2.8 0 0 0 3.9 3.9l1.1-1.1"/>');
   var isConn = function (x) { return !!(x && C && C.get && C.get(x.id)); };
   var local = function () { return !!(window.nadosNative && nadosNative.local); };
   // 列表里的：连接器在前，真正额外装的扩展（现在没有）在后
@@ -309,7 +309,7 @@
   }
   // 活动栏上原来「扩展」那一格（id 不变：以前记下的显示 / 隐藏、顺序照旧）：现在是连接器
   S.addView("extensions", {
-    title: "连接器", icon: PLUG24, keys: "⇧⌘X", sym: "powerplug", order: 2,
+    title: "连接器", icon: PLUG24, keys: "⇧⌘X", sym: "link", order: 2,
     create: function (tw) { return makeView(tw); },
     show: function (el) { el.paint(); var i = el.querySelector(".xv-q"); if (i) { i.focus({ preventScroll: true }); i.select(); } },
   });

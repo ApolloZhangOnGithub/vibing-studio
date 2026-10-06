@@ -392,9 +392,19 @@
     if (!want) return null;
     var key = it.path + "|" + px + "|" + (it.time || 0);
     if (THUMB[key]) return THUMB[key];
-    if (!thumbWait[key]) { thumbWait[key] = true; nadosNative.call("fs.thumb", { path: it.path, size: px }).then(function (u) { if (u) { THUMB[key] = u; redrawSoon(); } }, function () {}); }
+    if (!thumbWait[key]) { thumbWait[key] = true; thumbQ.push({ key: key, path: it.path, px: px }); thumbPump(); }
     return null;
   }
+  // 排队要缩略图：以前一个文件夹里有几百个就同时向原生要几百个（快速查看一下子全在生成），每个都慢。现在同时最多 4 个，按画的先后（上面的先）
+  var thumbQ = [], thumbN = 0;
+  function thumbPump() {
+    while (thumbN < 4 && thumbQ.length) {
+      var j = thumbQ.shift();
+      thumbN++;
+      nadosNative.call("fs.thumb", { path: j.path, size: j.px }).then(function (u) { return u; }, function () { return null; }).then((function (j0) { return function (u) { thumbN--; if (u) { THUMB[j0.key] = u; redrawSoon(); } thumbPump(); }; })(j));
+    }
+  }
+  var DOCISH = /\.(pdf|docx?|pages|key|pptx?|xlsx?|numbers|rtf|txt|md)$/i; // 白底的文稿：深色下压暗一点
   var rdT = 0; function redrawSoon() { clearTimeout(rdT); rdT = setTimeout(function () { redrawAll(); }, 80); }
   var CLOUD_SVG = '<svg viewBox="0 0 48 48"><path d="M14 36h21a8 8 0 0 0 1.2-15.9A11 11 0 0 0 15 18.6 8.8 8.8 0 0 0 14 36z"/></svg>';
   function iconOf(it, size) {
@@ -403,7 +413,7 @@
     if (it.croot) return connIcon(it.conn, size, null, false, true); // 列出来的连接器都是开着的：彩色
     if (it.volume) return '<span class="xp-ic ' + (it.vol === "cloud" ? "dir" : "disk") + (size ? " " + (size === true ? "big" : size) : "") + (it.off ? " off" : "") + '">' + (it.vol === "cloud" ? CLOUD_SVG : ICONS.disk) + "</span>";
     var th = thumbOf(it, size === "huge" ? 256 : size ? 96 : 48);
-    if (th) return '<span class="xp-ic thumb' + (size ? " " + (size === true ? "big" : size) : "") + '"><img src="' + th + '" alt="" draggable="false"></span>';
+    if (th) return '<span class="xp-ic thumb' + (DOCISH.test(it.name || "") ? " doc" : "") + (size ? " " + (size === true ? "big" : size) : "") + '"><img src="' + th + '" alt="" draggable="false"></span>';
     var k = it.kind === "identity" ? "file" : it.kind, sz = size ? " " + (size === true ? "big" : size) : "", g = it.path && (it.kind === "dir" || it.path === "/") ? glyphOf(it.path) : it.cf && it.cdir ? glyphOf(it.cdir) : ""; // Claude Code / Codex 的文件夹也按真目录画（~ 是房子、Macintosh HD 是磁盘、文稿、桌面…）
     if (g === "disk") k = "disk";
     return '<span class="xp-ic ' + k + sz + '">' + ICONS[k] + (g && g !== "disk" && g !== "home" ? '<span class="xp-gl">' + glyphSvg(g) + "</span>" : g === "home" ? '<span class="xp-gl">' + glyphSvg("home") + "</span>" : "") +
@@ -1039,6 +1049,8 @@
 
   var SV = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   // File Finder、Agent Finder 的图标：同活动栏上「文件」「Agents」那两个（标签页上、App 里一样，不再各画一套）
+  // 访达（App 里、标签页上）：一张脸——圆角方块里一道竖着的分界、两只眼、一个笑（细线，同别的图标）
+  var FINDER_FACE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12.6 3.7c-1.2 2.6-1.8 5.2-1.8 8.1h1.9c0 3.2.4 5.9 1.3 8.5"/><path d="M8.4 8.6v2.2M15.6 8.6v2.2"/><path d="M7.4 15.3c2.9 1.9 6.3 1.9 9.2 0"/></svg>';
   var SV24 = function (b) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var FINDER_ICON = SV24('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'); // File Finder：两张纸
   var AGENTS_ICON = SV24('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'); // Agent Finder：✦
@@ -1182,10 +1194,10 @@
   // 这一处的规范地址（卷/文件夹…/名字.agent/…）：老的 <id>/… 进来也显示成这个
   var canonArg = function (w) { return w.conn ? connArg(w.conn, w.cdir) : w.a ? [agentArg(w.a)].concat(w.kind ? [w.kind] : []).concat(w.sub).join("/") : [volKey(w.vol)].concat(String(w.path || "").split("/").filter(Boolean)).join("/"); };
   S.pages.explorer = {
-    title: function (arg) { var w = where(arg); return w.root ? "Agent Finder" : titleOf(w); },
+    title: function (arg) { var w = where(arg); return w.root ? tr("访达", "Finder") : titleOf(w); }, // 一个「访达」：左下角在「文件」「Agent」两边之间切换
     // 两个 App 共用这一页：File Finder（finder.local.paimon/…：整台 Mac 的文件）、Agent Finder（agents.local.paimon/<卷>/<文件夹>/<名字>.agent/…）
     address: function (arg) { var w = where(arg); return w.fs ? "finder.local.paimon" + (!arg ? "" : arg === "/" ? "/" : "/" + arg) : "agents.local.paimon" + (w.root ? "" : "/" + canonArg(w)); },
-    icon: function (arg) { return where(arg).fs ? FINDER_ICON : AGENTS_ICON; },
+    icon: function () { return FINDER_FACE; }, // 标签页上：访达的图标（同 App 里那个，哪一边都一样）
     render: function (host, P, arg, V) {
       if (pages.indexOf(V) < 0) { V.gone = function () { return P.closed; }; pages.push(V); V.back = []; V.fwd = []; V.sel = -1; }
       V.host = host; // 快速查看要找这一项的图标（从那里放大、缩回那里）
@@ -1743,7 +1755,7 @@
         if (crm && S.menu) { var rr = crm.getBoundingClientRect(), hid = JSON.parse(crm.dataset.hidden || "[]"); return S.menu(hid.map(function (x) { return { label: x[1], icon: MI.tab, sym: "folder", run: function () { goTo(x[0]); } }; }), { x: rr.left, y: rr.bottom + 4 }); }
         var cr = e.target.closest(".xp-cr[data-go], .xp-link[data-go], .xp-pb[data-go]"), act = e.target.closest("[data-act]"), fb = e.target.closest("[data-filter]"), vb = e.target.closest("[data-view]"), it = e.target.closest("[data-i]"), sd = e.target.closest("[data-side]"), fold = e.target.closest("[data-fold]");
         var fsd = e.target.closest("[data-fside]"); // 左下角「文件 | Agent」：换到另一边（文件回主目录）
-        if (fsd) { var cur0 = where(V.arg).fs ? "files" : "agents"; if (fsd.dataset.fside !== cur0) goTo(fsd.dataset.fside === "agents" ? "agents" : ""); return; }
+        if (fsd) { var cur0 = where(V.arg).fs ? "files" : "agents"; try { localStorage.setItem("st-finder-side", fsd.dataset.fside); } catch (e1) { /* 满了 */ } if (fsd.dataset.fside !== cur0) goTo(fsd.dataset.fside === "agents" ? "agents" : ""); return; } // 记住上次在哪一边：App 里「访达」从这一边打开
         if (fold) { XV.fold[fold.dataset.fold] = !XV.fold[fold.dataset.fold]; localStorage.setItem("st-xp-side", JSON.stringify(XV.fold)); return redrawAll(); }
         if (sd) return goTo(sd.dataset.side);
         if (cr) return goTo(cr.dataset.go);

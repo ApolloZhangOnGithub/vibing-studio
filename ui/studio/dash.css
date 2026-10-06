@@ -437,3 +437,5 @@ html:not(.st-gui) .xp-mini.thumb { border-radius: 3px; }
 .xp-it.on .xp-mini.thumb { outline: 2px solid var(--st-focus, var(--st-blue, #0a84ff)); outline-offset: 1px; }
 .xp-gal-it .xp-agthumb { width: 64px; height: 48px; }
 .xp-gal-it .xp-mini.thumb { width: 64px; height: 48px; }
+/* 访达：白底文稿的缩略图在深色下压暗一点（不刺眼）；图片、影片照原样 */
+html:not(.light) .xp-ic.thumb.doc img { filter: brightness(.72) contrast(1.05); }

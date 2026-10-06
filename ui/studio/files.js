@@ -121,10 +121,24 @@
         (renaming ? '<input class="st-finput" spellcheck="false" autocomplete="off" value="' + esc(edit.value) + '">' : '<span class="st-fname">' + esc(r.name) + "</span>") + "</div>" + (renaming ? errHtml(r.depth) : "");
     }
     var errHtml = function (depth) { return edit && edit.err ? '<div class="st-ferr" style="--d:' + Math.max(0, depth) + '">' + esc(edit.err) + "</div>" : ""; };
+    var preQ = [], preN = 0;
+    function prePump() {
+      while (preN < 2 && preQ.length) {
+        var d = preQ.shift(), c = dirs[d];
+        if (c && (c.items || c.p)) continue;
+        preN++;
+        load(d).then(function () { preN--; prePump(); });
+      }
+    }
+    function prefetch(rows) {
+      preQ = rows.filter(function (r) { var c = dirs[r.path]; return r.dir && !r.root && !st.open[r.path] && !(c && (c.items || c.p)); }).slice(0, 40).map(function (r) { return r.path; });
+      prePump();
+    }
     function paint(v) {
       if (!v.el.isConnected && v.el.hidden) return;
       var list = v.list, top = list.scrollTop, had = document.activeElement && list.contains(document.activeElement) && document.activeElement.classList.contains("st-finput");
       v.rows = rowsOf();
+      setTimeout(function () { prefetch(v.rows); }, 120); // 看得见的文件夹先读好
       list.innerHTML = v.rows.map(rowHtml).join("");
       list.scrollTop = top;
       var ft = v.el.querySelector(".st-ftitle"); if (ft) ft.textContent = titleText(); // Claude 风格的文件卡片把标题行搬走了：没有就不管

@@ -1,6 +1,6 @@
 // apps.js —— 「App」：活动栏最下面（⚙ 下面）一个按钮，指上去 / 点一下从旁边弹出一块（同「开始」菜单：按内容的高度，不是整条侧栏），一格一个 App
 //   一份登记表，同连接器、扩展：id、名字、图标、find(tw)（开着的那一页，没有是 null）、open(tw, fresh)、ok()（这台设备上能不能用）；
-//   内置的现在四个：Agent Finder、File Finder（共用 dash.js 的 explorer 页）、终端（新开一个 shell 标签页，不进任何 agent）、浏览器（webview.js）。
+//   内置的现在三个：访达（dash.js 的 explorer 页：「文件」「Agent」两边，记住上次那一边）、终端（新开一个 shell 标签页，不进任何 agent）、浏览器（webview.js）。
 //   以后加的走 STUDIO.apps.add({ … })，弹出来的那块、命令面板跟着有。图标同活动栏上对应的那个（Agent Finder ↔ Agents 的 ✦，File Finder ↔ 文件）
 (function () {
   "use strict";
@@ -23,6 +23,7 @@
   // ---- App 的图标：同活动栏上对应的那个（24 格细线）——Agent Finder 用 Agents 的 ✦、File Finder 用「文件」的两张纸 ----
   var LI = function (b) { return function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; }; };
   var LOGO = {
+    finder: function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12.6 3.7c-1.2 2.6-1.8 5.2-1.8 8.1h1.9c0 3.2.4 5.9 1.3 8.5"/><path d="M8.4 8.6v2.2M15.6 8.6v2.2"/><path d="M7.4 15.3c2.9 1.9 6.3 1.9 9.2 0"/></svg>'; },
     agents: LI('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'),
     files: LI('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'),
     term: LI('<rect x="2.7" y="4.2" width="18.6" height="15.6" rx="2.7"/><path d="M7 9.3l3 2.7-3 2.7M12.6 15.2h4.5"/>'),
@@ -60,17 +61,14 @@
   }
 
   add({
-    id: "agent-finder", builtin: true, name: "Agent Finder", logo: LOGO.agents,
-    desc: function () { return t("按文件夹浏览会话", "Sessions by folder"); },
-    find: function (tw) { return findTab(tw, function (pr) { return pr.page === "explorer" && finderKind(pr.arg) === "agents"; }); },
-    open: function (tw, fresh) { return fresh ? newTab(tw, "explorer", "agents") : S.openPage(tw, "explorer", "agents"); },
-  });
-  add({
-    id: "file-finder", builtin: true, name: "File Finder", logo: LOGO.files,
-    desc: function () { return okOf(this) ? t("这台 Mac 上的文件", "Files on this Mac") : t("连接 Mac 后可用", "Available after connecting a Mac"); },
-    ok: function () { return !!window.TSU_LOCAL; }, // 没有 Mac 的文件（网页端还没连上 Mac）：灰着
-    find: function (tw) { return findTab(tw, function (pr) { return pr.page === "explorer" && finderKind(pr.arg) === "files"; }); },
-    open: function (tw, fresh) { return fresh ? newTab(tw, "explorer", "") : S.openPage(tw, "explorer", ""); },
+    id: "finder", builtin: true, name: function () { return t("访达", "Finder"); }, logo: LOGO.finder,
+    // 一个访达：左下角能在「文件」「Agent」两边切换，从上次停的那一边打开（这台设备没有 Mac 的文件时只有 Agent 那一边）
+    find: function (tw) { return findTab(tw, function (pr) { return pr.page === "explorer"; }); },
+    open: function (tw, fresh) {
+      var side = ""; try { side = localStorage.getItem("st-finder-side") || ""; } catch (e) { side = ""; }
+      var arg = side === "agents" || !window.TSU_LOCAL ? "agents" : "";
+      return fresh ? newTab(tw, "explorer", arg) : S.openPage(tw, "explorer", arg);
+    },
   });
   add({
     id: "terminal", builtin: true, always: true, name: function () { return t("终端", "Terminal"); }, logo: LOGO.term,

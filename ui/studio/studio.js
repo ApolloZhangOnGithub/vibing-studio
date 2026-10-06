@@ -512,11 +512,13 @@
     body.appendChild(status);
     var S = tw.st = { mid: mid, lab: lab, side: side, grip: grip, panel: panel, status: status, terms: [], cur: 0 };
     lab.classList.add("st-grid");
-    lab.style.setProperty("--aside-r", L.sideR);
+    // 右侧栏的宽度：没拖过 = 340px（studio.css 的默认；以前默认占一半，太宽）；拖过 = 记下占几成（L.sideR，L.sideRUser 标着是自己拖的）
+    var asideCol = function () { if (L.sideRUser && L.sideR > 0) lab.style.setProperty("--aside-col", "calc(" + L.sideR + " * (100% - 6px))"); else lab.style.removeProperty("--aside-col"); };
+    asideCol();
     panelHeight(tw);
-    // 右侧栏：拖左边缘调宽，双击恢复
-    var sideW = function (r) { L.sideR = r; lab.style.setProperty("--aside-r", r); fitTerms(tw); };
-    drag(grip, "x", function () { return side.offsetWidth; }, function (w0, d) { var W0 = lab.clientWidth || 1, sg = lab.classList.contains("st-sright") ? -1 : 1; sideW(Math.max(220, Math.min(Math.round(W0 * 0.75), w0 - sg * d)) / W0); }, function () { sideW(0.5); });
+    // 右侧栏：拖左边缘调宽，双击恢复成默认的宽度
+    var sideW = function (r) { if (r) { L.sideR = r; L.sideRUser = true; } else { L.sideRUser = false; } asideCol(); fitTerms(tw); };
+    drag(grip, "x", function () { return side.offsetWidth; }, function (w0, d) { var W0 = lab.clientWidth || 1, sg = lab.classList.contains("st-sright") ? -1 : 1; sideW(Math.max(220, Math.min(Math.round(W0 * 0.75), w0 - sg * d)) / W0); }, function () { sideW(0); });
     // 下面板：拖上边缘调高，双击恢复。Agent 那一层自己记一个高度（L.panelHA；没拖过 = 贴着内容，双击回到贴着内容）
     drag(panel.querySelector(".st-pgrip"), "y", function () { return panel.offsetHeight; }, function (h0, d) {
       var h = Math.max(90, Math.min(Math.round(lab.clientHeight * 0.85), h0 - d));

@@ -11,6 +11,21 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.413", items: {
+      improved: [
+        ["「文件」视图：看得见的文件夹先把里面读好，点开就是现成的，不再先空一下。", "Files view: visible folders are read ahead, so expanding one shows its contents right away."],
+        ["访达的缩略图排队生成（同时最多 4 个，先生成上面的），不再一下子全卡住；深色下白底文稿的缩略图压暗一点，不刺眼。", "Finder thumbnails are generated a few at a time, top first, instead of all at once; white document thumbnails are dimmed in dark mode."],
+        ["Markdown 文件的图标换成 Markdown 的标志，图片换成一张相片（以前是一叠相册）。", "Markdown files use the Markdown mark, and images a single photo instead of a stack."],
+      ],
+    } },
+    { date: "2026-10-07", ver: "0.2.412", items: {
+      improved: [
+        ["「App」挪到活动栏最下面（⚙ 下面），指上去从旁边弹出来（同「开始」菜单，按内容的高度）；不再占一整条侧栏。", "Apps moved to the bottom of the activity bar (below ⚙) and open as a pop-up beside it, like a Start menu, sized to its contents instead of a full side bar."],
+        ["Agent Finder 和 File Finder 合成一个「访达」：左下角在「文件」「Agent」两边切换，下次从上次那一边打开；图标同标签页上的。", "Agent Finder and File Finder are now one Finder: switch between Files and Agents at the bottom left, and it reopens on the side you used last; its icon matches its tab."],
+        ["连接器的图标换成两节链环（以前的插头像充电器）。", "The Connectors icon is now a chain link instead of a plug."],
+        ["右侧边栏默认 340 像素宽，不再占半个屏幕；拖过的宽度照旧记住，双击边缘回到默认。", "The secondary side bar now defaults to 340 px instead of half the window; a dragged width is still remembered, and double-clicking the edge restores the default."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.411", items: {
       new: [
         ["App 会自己检查更新（Mac 0.2.1.290 起）：有新版时在后台下好，状态栏出「App 有新版本 · 重启以更新」，点一下换上。别的 Mac 上联网时界面直接用网站上最新的。", "The app checks for updates on its own (Mac 0.2.1.290 and later): a new version downloads in the background and the status bar offers Restart to Update. On other Macs the interface follows the website when online."],
