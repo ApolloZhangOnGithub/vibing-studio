@@ -11,6 +11,12 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.418", items: {
+      fixed: [
+        ["标签页概览里，重开 App 后还没点开过的标签页（历史记录、设置等）不再是黑的一块：先画出来再缩小。", "In the tab overview, tabs not yet opened since launch (History, Settings and so on) are no longer black: they are drawn before being shown."],
+        ["标签页概览打开更快：不在眼前的会话不再整段重排来做缩略图，卡片上直接是它最后两问的字。", "The tab overview opens faster: sessions that aren’t on screen are no longer laid out in full for a thumbnail; their card shows the last two exchanges as text."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.417", items: {
       fixed: [
         ["对话里从下往上拖着选字时大片变黑：选区改成同终端的画法（第一行到行尾、中间整行、最后一行到选的地方，空行也算），离得远的那几段选着时也照常画，滚动时跟着重画。", "Dragging a selection upward no longer turns large areas black. Selections are now drawn the way a terminal draws them (first line to its end, whole lines in between including blank ones, last line up to the cursor), distant parts stay rendered while selected, and the highlight follows scrolling."],

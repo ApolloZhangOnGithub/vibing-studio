@@ -231,8 +231,8 @@
       return !!pr && !P.closed && (!P.el.parentNode || P.off) && pr.page !== "web" && !pr.pty && !P.el.querySelector("iframe, embed, object, video, audio"); // 藏在同一组后面的（挪到屏幕外的）也一样放上台子
     };
     function stageIn(P) {
-      // 这次打开后还没画过的（上次留下的标签页，一直没点开）：不为了一张缩略图把几千行的会话整段画一遍——卡片上是它的图标、名字
-      if (!P.drawn && P.program && P.program.agentId) return false;
+      // 不在眼前的会话：不搬到台子上重排（几千行的会话量一遍、排一遍就是概览打开慢的大头）——卡片上是它最后两问的字（lazyCard）
+      if (P.program && P.program.agentId) return false;
       if (!stage) { stage = document.createElement("div"); stage.className = "tov-stage"; host.appendChild(stage); }
       var nt = cards.get(P) ? cards.get(P).nat : { w: O.W, h: O.H };
       stage.style.width = nt.w + "px"; stage.style.height = nt.h + "px";
@@ -241,6 +241,7 @@
       // 画过、没变的：P.reshow 只量一下尺寸、回到原来看的位置；后来又有新内容（标脏了）的：也不整段重画，用上次画的那份（贴着底看）
       try {
         if (P.reshow && !P.dirty) P.reshow();
+        else if (!(P.program && P.program.agentId) && P.renderNow) P.renderNow(); // 页面（历史记录、设置、访达……）：这次还没画过的先画一遍（不然复制出来是黑的一块），画页面不贵
         else if (P.fit) { P.fit(); if (P.screen) P.screen.scrollTop = P.screen.scrollHeight; }
         else P.renderNow();
       } catch (e) { /* 画不出来：用原来的 */ }
@@ -260,8 +261,36 @@
       dot(c);
     }
     // 还没画过的：卡片上一个大图标 + 名字 + 地址（同 Safari 还没载入的标签页），点它照常切过去
+    // 会话的字：最后两问（❯ 你说的话、● 回答的头几行），同对话里的样子；拿不到就是 null
+    function convText(P) {
+      var id = P.program && P.program.agentId, A = window.TSU_AGENTS, rt = null;
+      try { rt = id && A && A.runtime ? A.runtime(id) : null; } catch (e) { rt = null; }
+      var ts = rt && rt.session ? (rt.session().turns || []) : [], out = [];
+      var asks = ts.filter(function (t) { return t && t.ask !== undefined && !t.system; }).slice(-2);
+      if (!asks.length) return null;
+      asks.forEach(function (t) {
+        if (out.length) out.push("");
+        String(t.ask || "").split("\n").slice(0, 2).forEach(function (l, i) { out.push((i ? "  " : "❯ ") + l); });
+        var ans = String(t.answer || (t.parts || []).filter(function (x) { return x.kind === "text"; }).map(function (x) { return x.text; }).join("\n") || "").replace(/\n{3,}/g, "\n\n").trim();
+        if (ans) { out.push(""); ans.split("\n").slice(0, 14).forEach(function (l, i) { out.push((i ? "  " : "● ") + l); }); }
+      });
+      return out.slice(-40).join("\n");
+    }
     function lazyCard(c) {
       var P = c.P, info = document.createElement("div"), fake = document.createElement("div");
+      var tx = convText(P);
+      if (tx) { // 有字：画成同终端预览那样的一块（底色同对话区）
+        var pre = document.createElement("pre"), sc = getComputedStyle(P.el);
+        pre.className = "tov-xtext tov-conv";
+        pre.textContent = tx;
+        if (sc.backgroundColor && !/rgba\(0, 0, 0, 0\)|transparent/.test(sc.backgroundColor)) pre.style.background = sc.backgroundColor;
+        if (sc.color) pre.style.color = sc.color;
+        c.view.textContent = "";
+        c.view.appendChild(pre);
+        c.dirty = false; c.at = Date.now(); c.lazy = true;
+        dot(c);
+        return;
+      }
       fake.innerHTML = "<span></span>";
       if (window.TSU_BROWSER && TSU_BROWSER.fav) try { TSU_BROWSER.fav(fake, P); } catch (e) { /* 没有图标 */ }
       var ico = fake.querySelector(".bfav, svg, img");
