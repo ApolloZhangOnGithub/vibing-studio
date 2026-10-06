@@ -333,7 +333,14 @@
       note: tr(inside.length + " 个 Agent", inside.length + (inside.length === 1 ? " agent" : " agents")), n: inside.length, time: inside.reduce(function (m, a) { return Math.max(m, a.active || 0); }, 0) };
   }
   function itemsOf(w, V, refresh) {
-    if (w.agents && w.root) return (pmVols() && A.volumes ? A.volumes() : []).map(function (v) { return vfItem(v.id, ""); }).concat(connKeys().map(connRootItem)); // 最外层：几个卷（同访达的「电脑」；Paimon Code 关了没有）、Claude Code、Codex
+    if (w.agents && w.root) { // 最外层：「最近」（同访达的「最近使用」）——各连接器的会话、Paimon 的 agent，按最近动过排；卷、Claude Code、Codex 在左边一栏，这里不再列一遍
+      var rec = [], loading = false;
+      connKeys().forEach(function (k) { var ss = connSessions(k, refresh); if (!ss) { loading = true; return; } ss.forEach(function (s0) { if (!s0.arch) { var it = sessItem(k, s0); it.sub = CONN[k].name; rec.push(it); } }); });
+      if (pmVols()) A.list().forEach(function (a0) { var it = agentItem(a0); it.sub = "Paimon"; rec.push(it); });
+      if (!rec.length && loading) return null;
+      rec.sort(function (a1, b1) { return (b1.time || 0) - (a1.time || 0); });
+      return rec.slice(0, 100);
+    }
     if (w.conn) return connItems(w, refresh);
     if (w.agents) { // 一个卷里的一层：子文件夹 + 住在这一层的 agent
       var all0 = agentsIn(w.vol);
@@ -376,6 +383,7 @@
     music: '<path d="M6 12V3.8l6.4-1.2v8"/><circle cx="4.6" cy="12" r="1.6"/><circle cx="11" cy="10.6" r="1.6"/>',
     movies: '<rect x="2.2" y="3.4" width="11.6" height="9.2" rx="1.2"/><path d="M5 3.4v9.2M11 3.4v9.2M2.2 8h11.6"/>',
     disk: '<rect x="1.8" y="4.4" width="12.4" height="7.2" rx="1.6"/><path d="M1.8 8.6h12.4"/><path d="M11.4 10.2h.01"/>',
+    recents: '<circle cx="8" cy="8" r="6"/><path d="M8 4.6V8l2.4 1.6"/>',
     agents: '<path d="M7 2.6c.4 2.9 1.9 4.4 4.8 4.8-2.9.4-4.4 1.9-4.8 4.8-.4-2.9-1.9-4.4-4.8-4.8 2.9-.4 4.4-1.9 4.8-4.8z"/><path d="M12.4 1.6c.1 1 .6 1.5 1.6 1.6-1 .1-1.5.6-1.6 1.6-.1-1-.6-1.5-1.6-1.6 1-.1 1.5-.6 1.6-1.6z"/>',
   };
   var CLOUD_GLYPH = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 12.4h7a2.8 2.8 0 0 0 .4-5.6A3.8 3.8 0 0 0 4.7 6a3 3 0 0 0-.1 6.4z"/></svg>';
@@ -528,7 +536,8 @@
       connKeys().forEach(function (k) { vols.push('<div class="xs-it' + (w.conn === k && (!w.cdir || w.cdir === home()) ? " on" : "") + '" data-side="' + esc(connHome(k)) + '" data-vfto="" title="' + esc(CONN[k].name) + '"><span class="xs-ic">' + connIcon(k, null, null, false, true) + '</span><span class="xs-l">' + esc(CONN[k].name) + "</span></div>"); }); // data-vfto：右键同卷的菜单、不是放文件的地方
       var pins = pmVols() ? A.list().filter(function (a) { return a.pinned; }).map(function (a) { return row("@" + a.id, agentArg(a), bundleIcon(a), a.name, ' data-agent="' + esc(a.id) + '"'); }) : []; // Paimon Code 连接器关了：没有它的卷、置顶
       if (!vols.length) return nav('<div class="xs-sec"><div class="xs-h"><span>' + esc(tr("没有打开的连接器（设置 › 连接器）", "No connectors are on (Settings › Connectors)")) + "</span></div></div>");
-      return nav((pins.length ? sec("pins", tr("置顶", "Pinned"), pins) : "") + sec("vols", tr("位置", "Locations"), vols));
+      var recent = row(w.root ? cur : "@recents", "agents", glyphSvg("recents"), tr("最近", "Recents"));
+      return nav(sec("afav", tr("个人收藏", "Favorites"), [recent]) + (pins.length ? sec("pins", tr("置顶", "Pinned"), pins) : "") + sec("vols", tr("位置", "Locations"), vols));
     }
     var fav = PLACES().map(function (p) { return row(p[1], argOf(p[1]), glyphSvg(p[0]), nameOf(p[1], p[1].split("/").pop())); });
     var locs = LOC() ? [row("/", "/", glyphSvg("disk"), "Macintosh HD")] : []; // 不再列「Agent 工作目录」：Paimon 的 agent 没有工作目录，它们在 Agent 那边
@@ -1208,14 +1217,14 @@
       var deep = q && w.agents && !w.a ? deepFind(w, q, function () { V.redraw(); }) : null; // Agent Finder：在这个位置里往下找（同访达的搜索）；包里、文件照旧只筛这一层
       if (deep) list = deep;
       else if (list && q) list = list.filter(function (x) { return (x.label || x.name).toLowerCase().indexOf(q) >= 0 || x.name.toLowerCase().indexOf(q) >= 0; });
-      if (list) list = sortItems(list);
-      if (list && XV.view !== "columns" && (w.agents ? XV.agroup !== "none" : XV.group !== "none")) { var gl = list.map(function (x, i) { return { x: x, g: groupOf(x), i: i }; }); var gord = function (g) { return w.agents && g === tr("文件夹", "Folders") ? -1 : GROUP_ORDER(g); }; gl.sort(function (a, b) { return gord(a.g) - gord(b.g) || String(a.g).localeCompare(String(b.g)) || a.i - b.i; }); list = gl.map(function (y) { y.x._grp = y.g; return y.x; }); } else if (list) list.forEach(function (x) { x._grp = ""; });
+      if (list && !(w.root && !deep)) list = sortItems(list); // 「最近」：照最近动过的先后（不按名字重排、不分组）
+      if (list && !(w.root && !deep) && XV.view !== "columns" && (w.agents ? XV.agroup !== "none" : XV.group !== "none")) { var gl = list.map(function (x, i) { return { x: x, g: groupOf(x), i: i }; }); var gord = function (g) { return w.agents && g === tr("文件夹", "Folders") ? -1 : GROUP_ORDER(g); }; gl.sort(function (a, b) { return gord(a.g) - gord(b.g) || String(a.g).localeCompare(String(b.g)) || a.i - b.i; }); list = gl.map(function (y) { y.x._grp = y.g; return y.x; }); } else if (list) list.forEach(function (x) { x._grp = ""; });
       V.items = list || [];
       if (V.pendingSel && list) { var ps = V.pendingSel; V.pendingSel = ""; V.sel = list.findIndex(function (x) { return x.name === ps; }); }
       if (V.sel >= V.items.length) V.sel = V.items.length - 1;
       var sel = V.sel >= 0 ? V.items[V.sel] : null, view = XV.view;
       var tool = '<div class="xp-tool"><button class="xp-tb" data-act="back" title="返回 (⌘[)"' + (V.back.length ? "" : " disabled") + '>‹</button><button class="xp-tb" data-act="fwd" title="前进 (⌘])"' + (V.fwd.length ? "" : " disabled") + ">›</button>" +
-        '<div class="xp-title">' + esc(w.root ? "Agent Finder" : titleOf(w)) + "</div><span class=\"xp-grow\"></span>" +
+        '<div class="xp-title">' + esc(w.root ? tr("最近", "Recents") : titleOf(w)) + "</div><span class=\"xp-grow\"></span>" +
         (false ? '<div class="xp-seg">' + [["all", "全部"], ["running", "运行中"], ["archived", "已归档"]].map(function (x) { return '<button data-filter="' + x[0] + '"' + ((V.filter || "all") === x[0] ? ' class="on"' : "") + ">" + x[1] + "</button>"; }).join("") + "</div>" : "") +
         '<div class="xp-seg st-seg" data-seg-key="xp-view">' + VIEWS.map(function (x) { return '<button data-view="' + x[0] + '" title="' + esc(tr(x[1], x[2])) + " (⌘" + x[4] + ')"' + (view === x[0] ? ' class="on"' : "") + ">" + x[3] + "</button>"; }).join("") + "</div>" +
         '<button class="xp-tb' + (XV.pane ? " on" : "") + '" data-act="pane" title="' + esc(tr("预览", "Preview")) + '"><svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 3v10"/></svg></button>' +
@@ -1224,11 +1233,11 @@
       if (view === "columns") body = columnsHtml(w, V, list); // 分栏：空的、正在读的、出错的都在最后一栏里说，不换看法（Agent Finder 也有）
       else if (!list) body = '<div class="xp-pempty">…</div>';
       else if (err) body = '<div class="xp-pempty">' + esc(tr("无法读取这个文件夹", "Can't read this folder")) + "</div>";
-      else if (!list.length) body = '<div class="xp-pempty">' + (q ? "未找到结果" : w.conn ? "暂无会话" : w.agents && !w.path ? "暂无 Agent" : "空文件夹") + "</div>";
+      else if (!list.length) body = '<div class="xp-pempty">' + (q ? "未找到结果" : w.conn ? "暂无会话" : w.root ? tr("最近没有会话", "No recent sessions") : w.agents && !w.path ? "暂无 Agent" : "空文件夹") + "</div>";
       else if (view === "gallery") body = galleryHtml(list, V);
       else if (view === "grid") body = '<div class="xp-grid">' + list.map(function (it, i) { return '<div class="xp-it' + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + ">" + thumbIcon(it, "grid") + '<span class="xp-name">' + esc(it.label || it.name) + "</span></div>"; }).join("") + "</div>";
       else body = '<div class="xp-table" style="' + colStyle() + '"><div class="xp-th">' + (w.agents ? [["name", tr("名称", "Name")], ["time", tr("上次活跃", "Last Active")], ["status", tr("状态", "Status")], ["kind", w.root ? tr("种类", "Kind") : w.conn && !w.cdir ? tr("位置", "Where") : tr("模型", "Model")]] : [["name", tr("名称", "Name")], ["time", tr("修改日期", "Date Modified")], ["size", tr("大小", "Size")], ["kind", tr("种类", "Kind")]]).map(function (h, ci) {
-          var st = XV.sort || { k: "name", d: 1 }, on = st.k === h[0];
+          var st = w.root && !deep ? { k: "time", d: -1 } : XV.sort || { k: "name", d: 1 }, on = st.k === h[0]; // 「最近」：照上次活跃（新的在前）
           return '<span class="xp-thc' + (on ? " on" : "") + '" data-sort="' + h[0] + '">' + esc(h[1]) + (on && h[1] ? '<i class="xp-sarr">' + (st.d > 0 ? "▲" : "▼") + "</i>" : "") + (ci < 3 ? '<i class="xp-colgrip" data-col="' + ci + '"></i>' : "") + "</span>";
         }).join("") + "</div>" + list.map(function (it, i) {
         var gh = it._grp && (i === 0 || list[i - 1]._grp !== it._grp) ? '<div class="xp-grp">' + esc(it._grp) + "</div>" : "";
