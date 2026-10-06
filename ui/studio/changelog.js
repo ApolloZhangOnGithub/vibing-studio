@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.417", items: {
+      fixed: [
+        ["对话里从下往上拖着选字时大片变黑：选区改成同终端的画法（第一行到行尾、中间整行、最后一行到选的地方，空行也算），离得远的那几段选着时也照常画，滚动时跟着重画。", "Dragging a selection upward no longer turns large areas black. Selections are now drawn the way a terminal draws them (first line to its end, whole lines in between including blank ones, last line up to the cursor), distant parts stay rendered while selected, and the highlight follows scrolling."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.416", items: {
       fixed: [
         ["往上翻时最上面那一行（这一段属于哪一问）回到最底下后有时还挂着：现在同 Claude Code——只在往上翻、那一问自己已经翻上去时才有；在最底下、在最顶上都没有，回到底、发出一句都会马上收起。", "The pinned prompt line at the top sometimes stayed after returning to the bottom. It now follows Claude Code: it appears only while scrolled up and only once that prompt itself is out of view, never at the bottom or the very top, and it disappears as soon as you return to the bottom or send a message."],

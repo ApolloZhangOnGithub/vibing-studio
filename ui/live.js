@@ -404,9 +404,17 @@
     P.footCols = function () { return Math.max(24, Math.floor(P.foot.clientWidth / P.chPx) || P.cols); }; // 输入框那块的宽度（格）
     // 离看着的那段很远的块才不画（content-visibility: hidden + 记住的高度）：前后三屏以内的照常排好、画好——
     //   以前是整段 content-visibility: auto，滚到哪儿才临时排哪儿，滚快了会露出排了一半的行（再滚几下才好）
+    //   选着字的时候（按着鼠标拖、或者有选区）只放不藏：藏起来的那几段里选不中、量不出位置——往上拖着选时选区会断，翻回来时那几行没画上底色、只剩黑字
+    var selActive = function () { var sl = document.getSelection(); return selDown || !!(sl && !sl.isCollapsed && sl.rangeCount && term.contains(sl.anchorNode)); };
+    var selDown = false;
     var farIO = window.IntersectionObserver ? new IntersectionObserver(function (es) {
-      es.forEach(function (e) { e.target.classList.toggle("cvfar", !e.isIntersecting); });
+      var keep = selActive(), shown = false;
+      es.forEach(function (e) { if (e.isIntersecting) { if (e.target.classList.contains("cvfar")) { e.target.classList.remove("cvfar"); shown = true; } } else if (!keep) e.target.classList.add("cvfar"); });
+      if (shown && keep) paintSoon(); // 露出来的那几段在选区里：底色补上
     }, { root: screen, rootMargin: "300% 0px 300% 0px" }) : null;
+    // 按着拖选时：顶上盖着的那几层（吸顶那一行、上下两条遮挡、「Jump to bottom」）让鼠标穿过去——拖到边上自动滚时，选区接着往新露出来的字里长
+    term.addEventListener("mousedown", function (e) { if (e.button === 0) { selDown = true; el.classList.add("tsel"); } }, true);
+    document.addEventListener("mouseup", function () { if (selDown) { selDown = false; el.classList.remove("tsel"); } }, true);
     P.block = function (html, before) {
       var b = document.createElement("span");
       b.className = "blk";
@@ -707,17 +715,24 @@
       var blocks = [], sel = document.getSelection();
       if (sel && !sel.isCollapsed && sel.rangeCount && term.contains(sel.anchorNode)) {
         var bx = term.getBoundingClientRect(), rows = new Map();
+        var put = function (row, c0, c1) { var cur = rows.get(row); rows.set(row, cur ? [Math.min(cur[0], c0), Math.max(cur[1], c1)] : [c0, c1]); };
         Array.prototype.forEach.call(sel.getRangeAt(0).getClientRects(), function (r) {
-          var midY = (r.top + r.bottom) / 2;
-          if (midY < bx.top || midY > bx.bottom || r.height > P.rowH * 1.5) return;
-          var row = Math.floor((midY - bx.top) / P.rowH);
+          if (r.width < 1 || r.height < 1 || r.bottom < bx.top || r.top > bx.bottom) return;
           var c0 = Math.round((r.left - bx.left - P.padL) / P.chPx), c1 = Math.round((r.right - bx.left - P.padL) / P.chPx);
-          var cur = rows.get(row);
-          rows.set(row, cur ? [Math.min(cur[0], c0), Math.max(cur[1], c1)] : [c0, c1]);
+          if (r.height > P.rowH * 1.5) { // 整块都选中的元素：它占的每一行
+            for (var rw = Math.max(0, Math.round((r.top - bx.top) / P.rowH)), rEnd = Math.round((r.bottom - bx.top) / P.rowH); rw < rEnd; rw++) put(rw, c0, c1);
+            return;
+          }
+          put(Math.floor(((r.top + r.bottom) / 2 - bx.top) / P.rowH), c0, c1);
         });
-        rows.forEach(function (c, row) {
-          if (c[1] > c[0]) blocks.push('<div style="top:' + row * P.rowH + "px;left:" + (P.padL + c[0] * P.chPx) + "px;width:" + (c[1] - c[0]) * P.chPx + "px;height:" + P.rowH + 'px"></div>');
-        });
+        // 同终端（iTerm）：跨行选时第一行从选的地方到行尾、中间每一行整行（空行也是）、最后一行从行首到选的地方——
+        //   中间那些行不再靠浏览器一行一行给框（整段选中的给一个大框、远处没画的给不出框，以前那几行就只剩黑字）
+        var keys = Array.from(rows.keys()).sort(function (a2, b2) { return a2 - b2; }), r0 = keys[0], r1 = keys[keys.length - 1], full = P.cols || 80;
+        var bar = function (row, c0, c1) { if (c1 > c0) blocks.push('<div style="top:' + row * P.rowH + "px;left:" + (P.padL + c0 * P.chPx) + "px;width:" + (c1 - c0) * P.chPx + "px;height:" + P.rowH + 'px"></div>'); };
+        if (keys.length) {
+          if (r0 === r1) bar(r0, rows.get(r0)[0], rows.get(r0)[1]);
+          else { bar(r0, rows.get(r0)[0], Math.max(full, rows.get(r0)[1])); for (var rm = r0 + 1; rm < r1; rm++) bar(rm, 0, Math.max(full, (rows.get(rm) || [0, 0])[1])); bar(r1, 0, rows.get(r1)[1]); }
+        }
       }
       var html = blocks.join("");
       if (html === lastSelHtml && !blocks.length && !marked.length) return;
@@ -732,6 +747,9 @@
       }
     }
     document.addEventListener("selectionchange", paintSelection);
+    var paintRaf = 0;
+    function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(function () { paintRaf = 0; paintSelection(); }); }
+    screen.addEventListener("scroll", function () { if (marked.length || lastSelHtml) paintSoon(); }, { passive: true }); // 选着字时滚动（拖到边上自动滚）：跟着重画
 
     // ---- 输入：透明 textarea；按键交给程序 ----
     P.focus = function () {

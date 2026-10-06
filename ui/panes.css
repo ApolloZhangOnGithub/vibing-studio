@@ -80,6 +80,8 @@ html.termapp .tpane.agentfoot:not(.tl) .term, html.termapp .tpane.agentfoot:not(
 .tpane .term .ttu-box.sel { filter: brightness(0); }
 .tpane .sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .tpane .sel > div { position: absolute; background: #b5d5ff; }
+/* 按着拖选时（live.js 给这一格加 tsel）：盖在对话上的几层不接鼠标，拖到边上自动滚时选区接着往新露出来的字里长 */
+.tpane.tsel .vs-stickyw, .tpane.tsel .vs-sticky, .tpane.tsel .topgap, .tpane.tsel .botgap, .tpane.tsel .jump { pointer-events: none; }
 
 /* 真输入框：透明地盖在输入栏上（中文输入法、粘贴、光标移动交给浏览器），内容与光标由 live.js 画 */
 .tpane .ta { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; z-index: 5; margin: 0; padding: 0 10px; border: 0; resize: none; outline: none; pointer-events: none; /* 看不见的输入框只收键盘：点不到它（以前它盖在底部最下面几行上，点那里由它自己按它的排版放光标，落点乱跳到上一行） */
