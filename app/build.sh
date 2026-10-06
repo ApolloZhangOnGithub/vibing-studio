@@ -17,8 +17,8 @@ if [ "$MODE" = terminal ]; then NAME="Vibing Studio"; BID="beer.paimon.terminal"
 # DEV=1：测试用的那份——bundle id 加 .dev、显示的名字加 Dev（路径不变），和装在「应用程序」里的那份互不干扰（双击、Dock、登录状态都分开）
 if [ "${DEV:-}" = 1 ]; then BID="$BID.dev"; SHOWN="$NAME Dev"; else SHOWN="$NAME"; fi
 APP="${APP_DIR:-$HOME/Applications}/$NAME.app"
-ARCH="$(uname -m)"
-# UNIVERSAL=1：发版用——Apple 芯片、Intel 的 Mac 都能跑（两份各编一次，lipo 合成一个）
+ARCH="${TARGET_ARCH:-$(uname -m)}" # TARGET_ARCH=arm64 / x86_64：发版时 Apple 芯片、Intel 各编一份（各自原生，不用 Rosetta）
+# UNIVERSAL=1：两份合成一个（包大一倍；发版不用它，按芯片分开下载）
 # 那里已经有一个别的同名 App：不覆盖
 if [ -f "$APP/Contents/Info.plist" ] && [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist" 2>/dev/null)" != "$BID" ]; then
   echo "$APP 是别的 App，不覆盖；用 APP_DIR=<目录> 换个地方" >&2; exit 1

@@ -16,7 +16,11 @@ const DEV_ORIGIN = "http://localhost:8787";
 const ALLOWED = [new URL(SERVICE).origin, DEV_ORIGIN]; // 桥只给这两个源（同 Config.swift 的 bridgeOrigins）
 const argUrl = (() => { const i = process.argv.indexOf("--url"); const u = i > 0 ? process.argv[i + 1] : ""; return /^https?:\/\//.test(u || "") ? u : ""; })();
 const START = argUrl || SERVICE + "/terminal.html";
-const HEADLESS = process.env.VS_HEADLESS === "1"; // 自动测试：窗口不露出来（离屏画），不打扰正在用电脑的人
+const HEADLESS = process.env.VS_HEADLESS === "1";
+const LINUX = process.platform === "linux";
+// 页面最上面那一条当标题栏：空白处能拖窗口、双击最大化；按钮、地址栏、标签不算；右边让出窗口按钮的位置（env(titlebar-area-*)，Window Controls Overlay）
+const TITLEBAR_CSS = "html.linux-app #win .bar { -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 6px) !important; }" +
+  "html.linux-app #win .bar :is(button, input, select, a, textarea, [contenteditable], [data-nodrag], .ts-addr, .st-lay, .st-glob, .st-tbacts, .tabs, .tab) { -webkit-app-region: no-drag; }"; // 自动测试：窗口不露出来（离屏画），不打扰正在用电脑的人
 
 // GPU：光栅化交给显卡、少一次拷贝（Linux 上 Chromium 默认没开）；显卡在黑名单里的老驱动照旧退回 CPU
 app.commandLine.appendSwitch("enable-gpu-rasterization");
@@ -96,6 +100,7 @@ function createWindow(open) {
     width: b.width || 1440, height: b.height || 900, x: b.x, y: b.y, minWidth: 480, minHeight: 320,
     title: "Vibing Studio", backgroundColor: (dark ? boot.dark : boot.light) || (dark ? "#1e1e1e" : "#ffffff"),
     icon: path.join(__dirname, "icons", "512x512.png"), autoHideMenuBar: true, show: false,
+    ...(LINUX ? { titleBarStyle: "hidden", titleBarOverlay: { color: dark ? "#181818" : "#f3f3f3", symbolColor: dark ? "#cccccc" : "#333333", height: 36 } } : {}),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, offscreen: HEADLESS },
   });
   creating = false;
@@ -140,6 +145,7 @@ function attach(win) {
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (e, url) => { if (!inApp(url)) { e.preventDefault(); shell.openExternal(url); } });
+  if (LINUX) win.webContents.on("dom-ready", () => { win.webContents.insertCSS(TITLEBAR_CSS).catch(() => {}); });
   void st;
 }
 app.on("browser-window-created", (_e, w) => {

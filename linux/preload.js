@@ -37,6 +37,19 @@ if (BOOT && Array.isArray(BOOT.allowed) && BOOT.allowed.indexOf(location.origin)
       Object.defineProperty(window, "nadosNative", { value: Object.freeze(api), enumerable: false, configurable: false, writable: false });
       var mark = function () { if (document.documentElement) document.documentElement.classList.add("linux-app"); }; // 页面的 <html class="termapp"> 还没解析出来时加上的会被换掉：解析完再加一次
       mark(); document.addEventListener("DOMContentLoaded", mark);
+      // 右上角的窗口按钮（Electron 画的）：颜色、高度同页面最上面那一条（换配色、换应用风格都跟上；量一下没变就不发）
+      var tbSig = "";
+      var tbSync = function () {
+        var bar = document.querySelector("#win .bar");
+        if (!bar || !bar.offsetParent) return;
+        var bg = getComputedStyle(bar).backgroundColor, fg = getComputedStyle(document.documentElement).getPropertyValue("--st-fg").trim() || getComputedStyle(bar).color, h = Math.round(bar.getBoundingClientRect().height);
+        if (/rgba\(.*,\s*0\)$/.test(bg) || bg === "transparent") bg = getComputedStyle(document.body).backgroundColor;
+        var sig = bg + "|" + fg + "|" + h;
+        if (sig === tbSig) return;
+        tbSig = sig;
+        api.call("window.titlebar", { color: bg, symbol: fg, height: h }).catch(function () {});
+      };
+      document.addEventListener("DOMContentLoaded", function () { tbSync(); setInterval(tbSync, 1000); });
 
       // ---- 键盘：Ctrl 当 ⌘ ----
       //   终端（xterm）、Agent / Claude Code 的对话和输入框、代码编辑器里：Ctrl+字母归它们（shell、Claude Code、编辑器自己的快捷键）；

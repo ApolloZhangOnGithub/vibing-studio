@@ -3470,7 +3470,7 @@
   var lastMono = null, lastScSig = null, lastRSig = "";
   function fitAll() { allWins().forEach(function (w) { if (w.st) fitTerms(w); }); }
   // 代码字体：设置里写了就用它（前面加上），后面跟着 Monaco、中文用苹方
-  function monoStack() { var f = String(getv("codeFont") || "").trim().replace(/["\\;{}]/g, ""); return (f ? '"' + f + '", ' : "") + 'Monaco, Menlo, "PingFang SC", monospace'; }
+  function monoStack() { var f = String(getv("codeFont") || "").trim().replace(/["\\;{}]/g, ""); return (f ? '"' + f + '", ' : "") + 'Monaco, Menlo, "DejaVu Sans Mono", "Ubuntu Mono", "Noto Sans Mono", "PingFang SC", "Noto Sans Mono CJK SC", "Noto Sans CJK SC", monospace'; } // 后面几个是 Linux 上常见的（Linux 版 App）
   // 这台 Mac 上装了的等宽字体（设置里「代码字体」的候选）：量一下宽度，和回退字体不一样就是有
   function monoFonts() {
     var c = document.createElement("canvas").getContext("2d"), probe = "mmmmmmmmmmlli10OoWw", base = {};

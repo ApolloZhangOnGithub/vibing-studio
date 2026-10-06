@@ -11,7 +11,7 @@ const { Local, BridgeError, COMMANDS: LOCAL_COMMANDS } = require("./local");
 
 const PROTOCOL = 1;
 const COMMANDS = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "badge", "attention", "window.fullscreen",
-  "window.title", "window.new", "window.appearance", "menu.set", "page.snapshot", "pdf.render", "app.activate", "app.quit", "open.pending", "ui.stamp"];
+  "window.title", "window.new", "window.appearance", "window.titlebar", "menu.set", "page.snapshot", "pdf.render", "app.activate", "app.quit", "open.pending", "ui.stamp"];
 
 // 菜单：页面给的 [{ title, place, items: [{ id, title, key?, mods?, enabled?, checked?, sep?, items? }] }] → Electron 的菜单栏；点了 → menu.action { id }
 //   mods 里的 cmd 在 Linux 上是 Ctrl（同 VS Code 的 Linux 版）
@@ -96,6 +96,15 @@ class Bridge {
         nativeTheme.themeSource = mode;
         if (w && !w.isDestroyed() && typeof a.bg === "string" && /^#[0-9a-f]{6}$/i.test(a.bg)) w.setBackgroundColor(a.bg);
         if (a.boot && this.opts.saveBoot) this.opts.saveBoot(a.boot);
+        return null;
+      }
+      case "window.titlebar": { // Linux：右上角窗口按钮那一块的底色、图标色、高度跟着页面最上面那一条
+        if (process.platform !== "linux" || !w || w.isDestroyed() || !w.setTitleBarOverlay) return null;
+        const o = {};
+        if (typeof a.color === "string" && a.color.length < 40) o.color = a.color;
+        if (typeof a.symbol === "string" && a.symbol.length < 40) o.symbolColor = a.symbol;
+        if (+a.height >= 24 && +a.height <= 64) o.height = Math.round(+a.height);
+        try { w.setTitleBarOverlay(o); } catch (e) { /* 老的 Electron、不支持的桌面 */ }
         return null;
       }
       case "menu.set": {

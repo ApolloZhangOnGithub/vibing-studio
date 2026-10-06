@@ -107,7 +107,7 @@
       var ok = okOf(a), open = ok && a.find && a.find(tw);
       return '<div class="apv-row' + (a.id === sel ? " on" : "") + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '">' +
         '<span class="apv-ic">' + (typeof a.logo === "function" ? a.logo() : a.logo || "") + "</span>" +
-        '<span class="apv-main"><span class="apv-name">' + esc(nameOf(a)) + '</span><span class="apv-desc">' + esc(descOf(a)) + "</span></span>" +
+        '<span class="apv-main"><span class="apv-name">' + esc(nameOf(a)) + "</span></span>" + // 只写名字（不再跟一句说明）
         (open ? '<i class="apv-dot" title="' + esc(t("已打开", "Open")) + '"></i>' : "") + "</div>";
     };
     el.paint = function () {

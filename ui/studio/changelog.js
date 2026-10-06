@@ -13,7 +13,7 @@
   var LOG = [
     { date: "2026-10-06", ver: "0.2.408", items: {
       improved: [
-        ["「App」里的图标换成同标签页上的那套细线图标，一行一个：名字后面一句说明。", "Apps now use the same line icons as their tabs, one per row with a short description."],
+        ["「App」里的图标换成同标签页上的那套细线图标，一行一个，只写名字。", "Apps now use the same line icons as their tabs, one per row with just the name."],
         ["编辑区的终端标签页底色同 TUI 的会话：深色是黑、浅色是白（以前是面板的灰）；终端标签页的图标改成画的。", "Terminal tabs in the editor use the same background as TUI sessions — black in dark, white in light — instead of the panel gray; the terminal tab icon is now drawn."],
       ],
       fixed: [
