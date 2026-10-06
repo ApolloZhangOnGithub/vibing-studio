@@ -17,3 +17,5 @@ web/.wrangler/
 *.pem
 *.p12
 *.mobileprovision
+# 发出去的 App（tools/release-mac.sh 放的，网站上给别的 Mac 下载）：不进仓库
+ui/downloads/

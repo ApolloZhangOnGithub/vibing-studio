@@ -1159,6 +1159,32 @@
   }
   setTimeout(checkAppUpdate, 6000);
   setInterval(checkAppUpdate, 30000);
+  // ---- 别的 Mac：网站上发了新版（tools/release-mac.sh 放在 downloads/，macos.json 写着最新的是哪一版）——比现在跑的新、「待更新」里也还没有：
+  //   自己下载（按这台 Mac 的芯片挑那一份）、解开放进「待更新」，状态栏照常出「App 有新版本 · 重启以更新」（同 tools/stage-app.sh 放的）。半小时内只看一次 ----
+  var remoteBusy = false, remoteAt = 0;
+  function checkRemoteApp() {
+    var N = window.nadosNative, dir = UPD_DIR();
+    if (!SLOC() || !N || !N.call || !dir || remoteBusy || Date.now() - remoteAt < 30 * 60000 || location.protocol !== "https:") return;
+    if (window.TSU_UI_LOCAL) return; // 用本地界面的（开发用的这台：新版自己编好放进「待更新」）：不从网站下
+    remoteAt = Date.now(); remoteBusy = true;
+    var fin = function () { remoteBusy = false; };
+    var q = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
+    Promise.all([N.call("info"), fetch("/downloads/macos.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })]).then(function (rs) {
+      var i = rs[0] || {}, m = rs[1], cur = +i.build || 0;
+      if (i.platform !== "macos" || !m || !(+m.build > cur) || (appUpd && appUpd.build >= +m.build)) return fin(); // 不是 Mac、没有更新的、已经放好了
+      var url = m[i.arch === "x86_64" ? "x86_64" : "arm64"];
+      if (!url) return fin();
+      return fetch("/" + String(url).replace(/^\/+/, ""), { credentials: "same-origin" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); }).then(function (buf) {
+        var zip = dir + "/download-" + m.build + ".zip", prev = dir.replace(/\/update$/, "/previous");
+        return LOC().write(zip, new Uint8Array(buf)).then(function () {
+          // 「待更新」里旧的那份先挪到 previous/（不删），再把新的解开放进去
+          return LOC().exec({ cmd: "U=" + q(dir) + "; P=" + q(prev) + '; if [ -d "$U/Vibing Studio.app" ]; then mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/staged-$(date +%Y%m%d-%H%M%S).app"; fi; /usr/bin/ditto -x -k ' + q(zip) + ' "$U"' });
+        });
+      }).then(function () { fin(); checkAppUpdate(); });
+    }).catch(fin);
+  }
+  setTimeout(checkRemoteApp, 20000);
+  setInterval(checkRemoteApp, 60 * 60000);
   // 点了更新：独立的小脚本等 App 退出再换（同一时间只有一个在等——两个一起换会把刚换上的新版也挪走）；
   //   请 App 退出：新版 App 有 app.quit（同 ⌘Q：有程序在跑会先问）；老版本没有就用 AppleScript。2.5 秒后还开着：状态栏改成「按 ⌘Q 退出后自动换上」，脚本等 30 分钟
   var updT = 0, updWait = false;

@@ -47,7 +47,7 @@ if [ "$MODE" = terminal ]; then
   UIDIR="${UIDIR:-$(cd ../ui && pwd)}" # 独立的 vibing-studio：界面在旁边的 ui/（老地方 teyvat-mac-simulator 里是 ../../public）
   plutil -insert VibingUIDir -string "$UIDIR" "$APP/Contents/Info.plist" # 路径里有空格：plutil 照原样写
   mkdir -p "$APP/Contents/Resources/web"
-  rsync -a --exclude '.DS_Store' "$UIDIR/" "$APP/Contents/Resources/web/"
+  rsync -a --exclude '.DS_Store' --exclude 'downloads' "$UIDIR/" "$APP/Contents/Resources/web/" # downloads/：发出去的 App 本身，不带
   mkdir -p "$APP/Contents/Resources/bin"
   cp Resources/bin/paimon Resources/bin/tcb "$APP/Contents/Resources/bin/"
   chmod 755 "$APP/Contents/Resources/bin/paimon" "$APP/Contents/Resources/bin/tcb"

@@ -26,5 +26,5 @@ d[v] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
 json.dump(d, open(p, "w"), ensure_ascii=False, indent=0)
 PY
 U="$HOME/Library/Application Support/Vibing Studio/ui"
-mkdir -p "$U" && ditto "$HERE/ui" "$U" && touch "$U/terminal.html" && defaults write beer.paimon.terminal uiDir "$U" && echo "local ui: $U"
+mkdir -p "$U" && rsync -a --exclude downloads "$HERE/ui/" "$U/" && touch "$U/terminal.html" && defaults write beer.paimon.terminal uiDir "$U" && echo "local ui: $U" # downloads/（发出去的 App）不拷
 cd "$WEB" && wrangler deploy 2>&1 | tail -2
