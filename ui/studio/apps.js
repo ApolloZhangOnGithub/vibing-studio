@@ -76,8 +76,10 @@
     desc: function () { return okOf(this) ? t("新的 shell 标签页", "A new shell tab") : t("连接 Mac 后可用", "Available after connecting a Mac"); },
     ok: function () { return !!window.TSU_LOCAL; },
     find: function (tw) { return findTab(tw, function (pr) { return !!pr.pty; }); },
-    // 从当前这个终端的目录开（同 iTerm 的新标签页）；不是终端就从家目录
-    open: function (tw) {
+    // 有名字的终端（terms.js，同 tmux）：先在 Agents 视图的「终端」里输名字（同新建文件夹，回车就开）；那里用不了时直接开一个（名字是「终端 N」，之后能改）。
+    //   从当前这个终端的目录开（同 iTerm 的新标签页）；不是终端就从家目录
+    open: function (tw, fresh) {
+      if (!fresh && tw.side && tw.side.newTerm && window.TSU_TERMS) return tw.side.newTerm();
       var P = tw.ws.active, L = window.TSU_LOCAL, i = L && L.info && L.info();
       var cwd = P && P.program && P.program.pty && P.shell && P.shell.cwd ? P.shell.cwd() : (i && i.home) || "";
       return tw.ws.newTab({ sh: { cwd: cwd, pty: true } });

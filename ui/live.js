@@ -918,7 +918,7 @@
   }
   function askRunning(panes, what, go) {
     var names = [];
-    panes.forEach(function (p) { var f = p.shell && p.program === p.shell && p.shell.fg; if (f && f.name && names.indexOf(f.name) < 0) names.push(f.name); });
+    panes.forEach(function (p) { var f = p.shell && p.program === p.shell && p.shell.fg; if (p.shell && p.shell.termId && window.TSU_TERMS && TSU_TERMS.get(p.shell.termId)) return; /* 有名字的终端：关了照跑 */ if (f && f.name && names.indexOf(f.name) < 0) names.push(f.name); });
     if (!names.length || !window.TSU_DESK || !TSU_DESK.alert) return go();
     TSU_DESK.alert({ title: "要终止此" + what + "中正在运行的进程吗？", message: "关闭此" + what + "将终止以下进程：" + names.join("、") + "。", icon: "caution",
       buttons: [{ label: "取消", role: "cancel" }, { label: "终止", role: "default", run: go }] });
@@ -929,7 +929,10 @@
     // Paimon Terminal：页面刷新前开着的那个 shell（原生那边还在跑）——显示出来时接回去；接不上（App 重开过）才写回留着的字、开新的
     var reattach = LOC && spec.pid ? spec.pid : null, osc = "", fgTitle = "";
     // 标题：程序自己设的（OSC 0 / 2）优先，没有就是「目录 — shell」；程序退了、它设的标题没被别人换掉，就回到「目录 — shell」
-    var retitle = function () { title = osc || (LOC ? macTitle(cwd) : title); P.win.syncTitles(); };
+    // 有名字的终端（terms.js，同 tmux 的会话）：标题就是它的名字——不再是「~ — -zsh」
+    var TERMS = function () { return LOC && window.TSU_TERMS; }, termName = function () { var t = V.termId && TERMS() ? TERMS().get(V.termId) : null; return t ? t.name : ""; };
+    var retitle = function () { title = termName() || osc || (LOC ? macTitle(cwd) : title); P.win.syncTitles(); };
+    var offTerms = TERMS() ? TERMS().on(function () { if (V.termId && termName() !== title) retitle(); }) : null;
     if (reattach) LOC.want(reattach);
     V.shell = true; V.pty = true;
     host.className = "xt";
@@ -963,7 +966,7 @@
     V.key = function () {};
     V.focus = function () { if (term) term.focus(); };
     V.detach = function () { host.style.display = "none"; shown = false; };
-    V.dispose = function () { ended = true; clearInterval(V.cwdT); try { if (ws) ws.close(); } catch (e) { /* 已关 */ } if (reattach && !ws) LOC.drop(reattach); if (glh) glh.dispose(); if (term) term.dispose(); host.remove(); };
+    V.dispose = function () { ended = true; clearInterval(V.cwdT); if (offTerms) offTerms(); var keep = !!(V.termId && TERMS() && TERMS().get(V.termId)); try { if (ws) { if (keep && ws.detach) ws.detach(); else ws.close(); } } catch (e) { /* 已关 */ } if (reattach && !ws && !(TERMS() && TERMS().get(reattach))) LOC.drop(reattach); if (glh) glh.dispose(); if (term) term.dispose(); host.remove(); };
     V.paste = function (text) { if (term) term.paste(text); }; // 拖进来的文件路径等：同粘贴（程序开了括号粘贴就包上）
     V.interrupt = function () { if (ws && ws.readyState === 1) ws.send("\x03"); };
     // 替用户敲一段（访达的「在终端中运行」等）：shell 出了第一个提示符（第一次 OSC 7）才发，早了会被 shell 的初始化吃掉
@@ -1075,6 +1078,7 @@
       ws.binaryType = "arraybuffer";
       ws.onopen = function () {
         alive = true;
+        if (TERMS() && ws.id) { if (!TERMS().get(ws.id)) TERMS().add({ id: ws.id, name: spec.name || "", cwd: cwd }); V.termId = ws.id; retitle(); }
         if (LOC && spec.back && !ws.attached) { writeBack(); spec.back = null; } // 原来的 shell 没了：留着的字写回去，下面接新的
         if (ws.attached) prompted = true;
         if (LOC) P.win.persist(); // 记下这个 shell 的 id：页面刷新后接回来
@@ -5438,6 +5442,15 @@
     function commitEdit(ok, blur) {
       var e0 = edit;
       if (!e0) return;
+      if (e0.kind === "term" || e0.kind === "rentm") { // 终端：名字不能空、不能和别的终端重名
+        var tn = String(e0.value || "").trim(), TMS0 = window.TSU_TERMS;
+        if (!ok || !tn || !TMS0) { edit = null; paintEdit(); if (!blur) list.focus({ preventScroll: true }); return; }
+        if (TMS0.list().some(function (x) { return x.id !== e0.id && x.name.toLowerCase() === tn.toLowerCase(); })) { if (blur) edit = null; else e0.err = tt("已经有叫「" + tn + "」的终端了。请选择其他名称。", "A terminal “" + tn + "” already exists. Please choose a different name."); paintEdit(); return; }
+        edit = null; paintEdit();
+        if (e0.kind === "rentm") TMS0.rename(e0.id, tn);
+        else { var i0 = window.TSU_LOCAL && TSU_LOCAL.info && TSU_LOCAL.info(); tw.ws.newTab({ sh: { cwd: (i0 && i0.home) || "", pty: true, name: tn } }); } // 同新建文件：建好就打开
+        return;
+      }
       var nm = String(e0.value || "").trim(), cur = e0.kind === "rename" ? (A.get(e0.id) || {}).name : e0.kind === "rendir" ? e0.dir.split("/").pop() : null;
       if (!ok || !nm || nm === cur) { edit = null; paintEdit(); if (!blur) list.focus({ preventScroll: true }); return; }
       var base = e0.kind === "rendir" ? vpParent(e0.dir) : e0.path, full = (base ? base + "/" : "") + nm, err = "";
@@ -5636,7 +5649,7 @@
             if (!started && !dis && !icon) { var sp = /^ */.exec(t)[0].length; lead += sp; t = t.slice(sp); }
             if (!t) return;
             if (CHV[t.charAt(0)]) { dis = '<span class="' + CHV[t.charAt(0)] + '"></span>'; t = t.slice(1).replace(/^ +/, ""); if (!t) return; }
-            if (!started && /^[✻◎✦✳\uE030-\uE035] *$/.test(t)) { var col = colorOf(c + raw); icon = '<span class="ts-dic"' + (col ? ' style="color:' + col + '"' : "") + ">" + escHtml(t.trim()) + "</span>"; return; }
+            if (!started && /^[✻◎✦✳\uE030-\uE036] *$/.test(t)) { var col = colorOf(c + raw); icon = '<span class="ts-dic"' + (col ? ' style="color:' + col + '"' : "") + ">" + escHtml(t.trim()) + "</span>"; return; }
             started = true;
             label += ansiHtml(c + t + RESET);
           });
@@ -5849,6 +5862,30 @@
           }
         }
       }
+      // ---- 终端（terms.js：有名字的终端，同 tmux 的会话）：关掉标签页它照跑，这里找回来；前面是终端的图标，右边是前台在跑的程序或者多久前有过输出 ----
+      var TMS = window.TSU_TERMS, tmAll = TMS ? TMS.list().filter(function (x) { return !qToks.length || qHit(x.name, x.id); }) : [];
+      if (TMS && (!qToks.length || tmAll.length || (edit && edit.kind === "term"))) {
+        out += "\n" + row("ts-fold ts-head", foldAt("tm", false), [[chev("tm"), ""], [tt("终端", "Terminals"), BOLD]], [["new-tm", "", tt("新建终端", "New Terminal")]]);
+        if (!folded("tm")) {
+          var TMI = '<i class="ts-ccl ts-tml"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4l2 1.6-2 1.6M8.4 10h3"/></svg></i>';
+          var tmIn = function (h) { return String(h).replace(//g, TMI); };
+          var tmOpen = {}; tw.ws.all().forEach(function (p) { var sh = p.shell; if (sh && sh.termId && p.program === sh) tmOpen[sh.termId] = p; });
+          var tmEditRow = function (val) {
+            var inp = '<input class="st-finput ts-in" spellcheck="false" autocomplete="off" value="' + escHtml(val || "") + '">';
+            var errH = edit.err ? '<span class="st-ferr ts-err" style="--ind:4;--d:1">' + escHtml(edit.err) + "</span>\n" : "";
+            return dom ? '<span class="ts-row ts-edit"><span class="ts-dl" style="--d:1"><span class="ts-dic">' + TMI + "</span>" + inp + "</span></span>\n" + errH
+              : '<span class="ts-row ts-edit">' + tmIn(H("   ")) + inp + "</span>\n" + errH;
+          };
+          if (edit && edit.kind === "term") out += tmEditRow(edit.value);
+          if (!tmAll.length && !(edit && edit.kind === "term")) out += H("  " + DIMC + tt("没有终端", "No terminals") + RESET) + "\n";
+          tmAll.forEach(function (x) {
+            if (edit && edit.kind === "rentm" && edit.id === x.id) { out += tmEditRow(edit.value); return; }
+            var pv = tmOpen[x.id], isCur = !!pv && pv === tw.ws.active, fg = TMS.fg(x.id), last = TMS.last(x.id);
+            var rt0 = fg ? fg : last ? agoCN(last) : "", rc = fg ? CYAN : DIMC;
+            out += '<span class="ts-it' + (isCur ? " cur" : "") + '" data-term="' + escHtml(x.id) + '" title="' + escHtml(x.cwd || "") + '">' + tmIn(HR([["  ", ""], [" ", pv ? "" : DIMC]].concat(marks(x.name, pv ? BOLD : "")), rc + rt0 + RESET, true)) + "</span>\n";
+          });
+        }
+      }
       out = out.replace(/^\n+/, ""); // Paimon 那组没开：Claude Code 那组前面隔开用的空行不要（搜索框下面空出一大块）
       if (qToks.length && !out.trim()) out = H("  " + DIMC + tt("没有找到「" + treeQ.trim() + "」", "No results for “" + treeQ.trim() + "”") + RESET) + "\n"; // 搜着的时候一个都没有
       list.classList.toggle("ttu-light", light);
@@ -5857,7 +5894,7 @@
       out = out.replace(/<span style="display:inline-block;width:var\(--ttu-cell,1ch\)">([\uE020-\uE027])<\/span>/g, function (m, c) { return '<span class="' + { "\uE020": "ts-chev r", "\uE021": "ts-chev d", "\uE022": "ts-ic filter", "\uE023": "ts-ic filter on", "\uE024": "ts-ic collapse", "\uE025": "ts-ic newagent", "\uE026": "ts-ic newfolder", "\uE027": "ts-ic newsess" }[c] + '"></span>'; });
       if (out !== lastHtml) { lastHtml = out; list.innerHTML = out; breathSync(list); if (S.paintFocus) S.paintFocus(); }
       var tin = edit && list.querySelector(".ts-in"); // 新建 / 重命名的输入框：拿到焦点（改名的全选上）
-      if (tin && document.activeElement !== tin) { tin.focus({ preventScroll: true }); tin.setSelectionRange(edit.kind === "rename" || edit.kind === "rendir" ? 0 : tin.value.length, tin.value.length); tin.scrollIntoView({ block: "nearest" }); }
+      if (tin && document.activeElement !== tin) { tin.focus({ preventScroll: true }); tin.setSelectionRange(edit.kind === "rename" || edit.kind === "rendir" || edit.kind === "term" || edit.kind === "rentm" ? 0 : tin.value.length, tin.value.length); tin.scrollIntoView({ block: "nearest" }); }
     }
     // ---- Claude Code（Paimon Terminal：这台 Mac 上的，~/.claude）：同上面 agent 的 FBO——[F] 开在这个窗口的某个标签页里、[B] 在别处跑着（后台会话、别的终端里）、
     // [O] 没在跑；[W] 在干活、[NW] 闲着。点一下：开着就跳过去；后台会话 claude attach；别的回到开它的目录 claude --resume（Claude Code 按目录找会话）----
@@ -6027,6 +6064,34 @@
       TSU_DESK.alert({ title: tt("删除「" + name + "」？", "Delete “" + name + "”?"), message: tt("会话记录会移到废纸篓，需要时可以从废纸篓放回来。", "The transcript moves to the Trash; you can put it back from there."), icon: "caution",
         buttons: [{ label: tt("取消", "Cancel"), role: "cancel" }, { label: tt("删除", "Delete"), role: "default", run: go }] });
     }
+    // ---- 终端（terms.js）：打开（开着就跳过去，没开就新开一个标签页接上它）、新建（先在「终端」里输名字，同新建文件夹）、改名、结束 ----
+    S.openTerm = function (id) {
+      var x = window.TSU_TERMS && TSU_TERMS.get(id);
+      if (!x) return;
+      var hit = null;
+      tw.ws.all().forEach(function (p) { if (!hit && p.shell && p.shell.termId === id && p.program === p.shell) hit = p; });
+      if (hit) { if (tw.ws.show) tw.ws.show(hit); else tw.ws.activate(hit); hit.focus(); return; }
+      tw.ws.newTab({ sh: { cwd: x.cwd || "", pty: true, pid: id } });
+    };
+    S.newTerm = function () {
+      if (!window.TSU_TERMS) return;
+      if (treeQ) setTreeQ("");
+      fold.tm = false;
+      edit = { kind: "term", value: TSU_TERMS.nextName(), err: "" };
+      if (!S.shown()) S.toggle(true);
+      if (window.STUDIO && STUDIO.showView && tw.stView && tw.stView !== "agents") STUDIO.showView(tw, "agents");
+      paintEdit();
+    };
+    S.renameTerm = function (id) { var x = window.TSU_TERMS && TSU_TERMS.get(id); if (!x) return; edit = { kind: "rentm", id: id, value: x.name, err: "" }; paintEdit(); };
+    S.endTerm = function (id) {
+      var x = window.TSU_TERMS && TSU_TERMS.get(id);
+      if (!x) return;
+      var fg = TSU_TERMS.fg(id), go = function () { tw.ws.all().filter(function (p) { return p.shell && p.shell.termId === id; }).forEach(function (p) { tw.ws.closePane(p); }); TSU_TERMS.end(id); };
+      if (!fg || !window.TSU_DESK || !TSU_DESK.alert) return go();
+      TSU_DESK.alert({ title: tt("结束终端「" + x.name + "」？", "End terminal “" + x.name + "”?"), message: tt("里面正在运行的「" + fg + "」会被终止。", "“" + fg + "”, which is running in it, will be terminated."), icon: "caution",
+        buttons: [{ label: tt("取消", "Cancel"), role: "cancel" }, { label: tt("结束", "End"), role: "default", run: go }] });
+    };
+    if (window.TSU_TERMS) TSU_TERMS.on(function () { S.render(true); });
     S.viewCC = function (id, info) {
       ccMarkRead(id); // 打开了：已读
       if (!window.TSU_CLAUDE) return S.openCC(id);
@@ -6087,6 +6152,7 @@
       if (r.dataset.fold) return toggleRow(r);
       if (r.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(r.dataset.cc) : S.openCC(r.dataset.cc);
       if (r.dataset.cx) return S.viewCX(r.dataset.cx);
+      if (r.dataset.term) return S.openTerm(r.dataset.term);
       if (r.dataset.sess) { var ps = r.dataset.sess.split(":"), rt3 = A.runtime(ps[0]); if (rt3.session().id !== ps[1]) rt3.resume(ps[1]); return S.open(ps[0]); }
       if (r.dataset.id) return S.open(r.dataset.id);
     }
@@ -6186,11 +6252,13 @@
       if (act0 && act0.dataset.act === "new-pm-folder") { startEdit("folder"); return; }
       if (act0 && act0.dataset.act === "new-cc-sess") { if (!(canNewIn0("claude-code") && TSU_CONNECTORS.newSession("claude-code", ""))) S.newCC(); return; }
       if (act0 && act0.dataset.act === "new-cx-sess") { if (canNewIn0("codex")) TSU_CONNECTORS.newSession("codex", ""); return; }
+      if (act0 && act0.dataset.act === "new-tm") { S.newTerm(); return; }
       if (act0 && /^only-(pm|cc|cx)$/.test(act0.dataset.act)) { var ok0 = "only:" + act0.dataset.act.slice(5); fold[ok0] = !fold[ok0]; saveSidePref(); return S.render(true); }
       if (act0 && (act0.dataset.act === "fold-pm" || act0.dataset.act === "fold-cc")) return collapseAll(act0.dataset.act.slice(5));
       var it = e.target.closest(".ts-it"), act = e.target.closest(".ts-act");
       if (it && it.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(it.dataset.cc) : S.openCC(it.dataset.cc);
       if (it && it.dataset.cx) return S.viewCX(it.dataset.cx);
+      if (it && it.dataset.term) return S.openTerm(it.dataset.term);
       if (it) return S.open(it.dataset.id);
       if (!act) return;
       if (act.dataset.act === "cc-new") return S.newCC();
@@ -6291,6 +6359,18 @@
           { sep: true },
           { label: exN.arch[kk] ? tt("取消归档", "Unarchive") : tt("归档", "Archive"), acc: "A", icon: MIc0.archive, run: function () { setExt(function (ex) { if (ex.arch[kk]) delete ex.arch[kk]; else { ex.arch[kk] = Date.now(); delete ex.pin[kk]; } }); } },
           canFs ? { label: tt("删除", "Delete"), acc: "D", danger: true, disabled: !!x0.live, run: function () { ccDelete(x0); } } : null,
+        ], { x: e.clientX, y: e.clientY });
+        return;
+      }
+      if (it.dataset.term) {
+        e.preventDefault();
+        var tid = it.dataset.term;
+        TSU_DESK.popup([
+          { label: tt("打开", "Open"), run: function () { S.openTerm(tid); } },
+          { sep: true },
+          { label: tt("重命名…", "Rename…"), acc: "R", run: function () { S.renameTerm(tid); } },
+          { sep: true },
+          { label: tt("结束", "End"), danger: true, run: function () { S.endTerm(tid); } },
         ], { x: e.clientX, y: e.clientY });
         return;
       }

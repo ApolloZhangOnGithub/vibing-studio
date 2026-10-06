@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.421", items: {
+      new: [
+        ["终端像 tmux 一样有名字：新建时先在 Agents 视图的「终端」里输名字（同新建文件夹，回车就开）；关掉标签页它照跑（里面的程序不停），在「终端」里点一下接回来；右键能重命名、结束。标签页的标题就是它的名字，不再是「~ — -zsh」。", "Terminals now have names, like tmux sessions. A new terminal first asks for a name in the Terminals section of the Agents view, the way a new folder does, and opens on Return. Closing its tab leaves it running, programs included; click it under Terminals to reattach, or right-click to rename or end it. The tab title is its name instead of “~ — -zsh”."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.420", items: {
       new: [
         ["Claude Code 会话快到自动压缩时，底部右侧显示「N% until auto-compact」，算法同 Claude Code 2.1.281（离自动压缩的门槛不到 2 万 token 时出现）；它的自动压缩关着时显示红字「Context low」。设置 › 高级 里能关，默认开。", "Claude Code sessions now show “N% until auto-compact” at the bottom right as the context nears auto-compact, computed the way Claude Code 2.1.281 does (it appears within 20k tokens of the threshold). With auto-compact off, a red “Context low” notice appears instead. It can be turned off in Settings › Advanced and is on by default."],
