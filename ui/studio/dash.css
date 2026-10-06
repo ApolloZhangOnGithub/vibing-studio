@@ -6,7 +6,7 @@
 .xb-ic { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; color: var(--st-dim); line-height: 1; }
 .xb-ic > svg { display: block; width: 15px; height: 15px; }
 .xb-ic.on.c-claude > svg { color: #d97757; } html.light .xb-ic.on.c-claude > svg { color: #c96442; } /* 活着的：Claude 的橙 */
-.xb-ic.on.c-codex > svg { color: var(--st-hi); } /* 活着的：OpenAI 的黑 / 白（深色里是白的、浅色里是黑的；用户：不要绿） */
+.xb-ic.on.c-codex > svg, .xb-ic.on.c-pi > svg { color: var(--st-hi); } /* 活着的：OpenAI 的黑 / 白（深色里是白的、浅色里是黑的；用户：不要绿） */
 .xb-ic > img.pm-av { display: block; width: 15px; height: 15px; vertical-align: 0; } /* 派蒙的头像：同记号一样大；带底块的（tile）里大一些 */
 .xb-ic.tile > img.pm-av { width: 58%; height: 58%; }
 .xs-ic .xb-ic > img.pm-av { width: 14px; height: 14px; }

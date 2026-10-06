@@ -47,11 +47,12 @@
   var CLG = function () { return (window.TSU_LOGOS && TSU_LOGOS.claude) || ""; }; // Claude 自己的标志（ext.js）
   var CXL = function () { return (window.TSU_LOGOS && TSU_LOGOS.codex) || "◎"; }; // Codex：ChatGPT / OpenAI 的结（ext.js）
   var PMAV = function () { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || "✦"; }; // Paimon：派蒙的头像（ext.js）
+  var PIL = function () { return (window.TSU_LOGOS && TSU_LOGOS.pi) || ""; }; // pi：画出来的 π（ext.js）
   var CLOCK = '<svg class="bf-clock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/></svg>'; // 历史记录：画的钟（不用 ◷ 这种字符当图标）
-  var FAV = { claude: '<span class="bfav bf-claude">' + CLG() + '</span>', paimon: '<span class="bfav bf-paimon">' + PMAV() + '</span>', shell: '<span class="bfav bf-shell">›_</span>', history: '<span class="bfav bf-hist">' + CLOCK + '</span>', codex: '<span class="bfav bf-codex">' + CXL() + '</span>', web: '<span class="bfav bf-web">◍</span>' };
+  var FAV = { claude: '<span class="bfav bf-claude">' + CLG() + '</span>', paimon: '<span class="bfav bf-paimon">' + PMAV() + '</span>', shell: '<span class="bfav bf-shell">›_</span>', history: '<span class="bfav bf-hist">' + CLOCK + '</span>', codex: '<span class="bfav bf-codex">' + CXL() + '</span>', pi: '<span class="bfav bf-pi">' + PIL() + '</span>', web: '<span class="bfav bf-web">◍</span>' };
   // 主页里每行前面：状态点（在干活绿、开着闲着灰圈、没在跑不画），同一页里不用每行都挂同一个图标
   var DOT = function (st) { return '<span class="bdot' + (st ? " " + st : "") + '"></span>'; };
-  var kindOfURL = function (u) { return /^(local\.)?claude[:.]/.test(u) ? "claude" : /^(local\.)?codex[:.]/.test(u) ? "codex" : /^((dash|explorer)\.)?(local\.)?paimon[:.]?/.test(u) ? "paimon" : /^(~|\/)/.test(u) ? "shell" : /^https?:/.test(u) ? "web" : "history"; };
+  var kindOfURL = function (u) { return /^(local\.)?claude[:.]/.test(u) ? "claude" : /^(local\.)?codex[:.]/.test(u) ? "codex" : /^(local\.)?pi[:.]/.test(u) ? "pi" : /^((dash|explorer)\.)?(local\.)?paimon[:.]?/.test(u) ? "paimon" : /^(~|\/)/.test(u) ? "shell" : /^https?:/.test(u) ? "web" : "history"; };
 
   // ---- 面板现在的地址：{ url, title, kind } ----
   function ccOf(tw) { return tw && tw.side && tw.side.cc ? tw.side.cc() : { list: [], panes: {} }; }
@@ -67,6 +68,7 @@
     if (prog.page) return { url: prog.page === "history" ? "" : prog.page === "claude" || prog.page === "paimon" ? "local." + prog.page + ":" : prog.page, title: prog.title(), kind: prog.page, page: prog.page };
     if (prog.agentId && /^cc:/.test(prog.agentId)) return { url: ccURL(prog.agentId.slice(3)), title: prog.title(), kind: "claude" };
     if (prog.agentId && /^cx:/.test(prog.agentId)) { var xid = window.TSU_CODEX ? TSU_CODEX.real(prog.agentId.slice(3)) : prog.agentId.slice(3); return { url: /^new-/.test(xid) ? "local.codex:" : "local.codex:" + xid.slice(0, 8) + "/", title: prog.title(), kind: "codex" }; } // Codex 的会话（连接器）：local.codex:<会话 id 前 8 位>/
+    if (prog.agentId && /^pi:/.test(prog.agentId)) { var pid = prog.agentId.slice(3); return { url: "local.pi:" + pid.slice(0, 8) + "/", title: prog.title(), kind: "pi" }; } // pi 的会话（连接器）：local.pi:<会话 id 前 8 位>/
     if (prog.agentId) return { url: pmURL(prog.agentId), title: prog.title(), kind: "paimon" };
     var cc = ccOf(P.win), id = null;
     Object.keys(cc.panes).forEach(function (k) { if (cc.panes[k] === P) id = k; });
@@ -116,6 +118,18 @@
       var hitX = pick();
       if (hitX) { tw.side.viewCX(hitX.id, hitX); return true; }
       CX.refresh(true).then(function () { var x3 = pick(); if (x3) tw.side.viewCX(x3.id, x3); else flash(tw, "本机没有此 Codex 会话：" + cid); });
+      return true;
+    }
+    // pi 的会话（连接器）：local.pi:<会话 id 或前几位>/
+    var pim = /^(?:local\.)?pi:\/*([0-9A-Za-z_-]*)\/*$/i.exec(s);
+    if (pim) {
+      var PIc = window.TSU_PI;
+      if (!PIc) return flash(tw, "pi 连接器没开（设置 › 连接器）");
+      var pidq = pim[1], pickP = function () { return pidq ? PIc.list().filter(function (y) { return y.id.indexOf(pidq) === 0; })[0] : null; };
+      if (!pidq) { if (window.STUDIO && STUDIO.showView) STUDIO.showView(tw, "agents"); return true; }
+      var hitP = pickP();
+      if (hitP && tw.side.viewPI) { tw.side.viewPI(hitP.id, hitP); return true; }
+      PIc.refresh(true).then(function () { var x4 = pickP(); if (x4 && tw.side.viewPI) tw.side.viewPI(x4.id, x4); else flash(tw, "本机没有此 pi 会话：" + pidq); });
       return true;
     }
     // 资源管理器（explorer.local.paimon/<agent>/… 是进到那个 agent 的包里）。仪表盘（dash.local.paimon）没有了
@@ -504,7 +518,7 @@
     if (a.page && PAGE_ICON[a.page]) return PAGE_ICON[a.page];
     if (PAGE_ICON[a.kind]) return PAGE_ICON[a.kind];
     if (a.kind === "file") { if (window.TSU_FICON) return TSU_FICON(a.path); var e = String(a.path || "").split(".").pop().toLowerCase(), x = EXT_ICON[e] || ["cfg", "≡"]; return '<i class="st-ico st-i-' + x[0] + '">' + x[1] + "</i>"; } // 文件：同「文件」视图的图标（ficons.js）
-    return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
+    return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', pi: '<i class="st-ico st-i-cx st-i-pi">' + PIL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
   }
   function fav(tabEl, P) {
     var span = tabEl.querySelector("span");

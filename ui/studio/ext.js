@@ -16,12 +16,16 @@
   var PM_PATH = "img/paimon.png", PM_SRC = PM_PATH; // 派蒙（用户给的那一只：闭着眼、头上光环；192×192，透明底，不裁）
   // 连接器的图标：同 macOS App 图标的形状（超椭圆 n=5 的「连续圆角」，不是普通圆角矩形），记号的比例照各自 App 图标量出来的
   var SQ_D = "M64.0 32.0 L63.97 42.75 L63.89 46.17 L63.75 48.64 L63.56 50.64 L63.31 52.32 L63.0 53.79 L62.64 55.09 L62.21 56.25 L61.72 57.3 L61.17 58.24 L60.55 59.09 L59.86 59.86 L59.09 60.55 L58.24 61.17 L57.3 61.72 L56.25 62.21 L55.09 62.64 L53.79 63.0 L52.32 63.31 L50.64 63.56 L48.64 63.75 L46.17 63.89 L42.75 63.97 L32.0 64.0 L21.25 63.97 L17.83 63.89 L15.36 63.75 L13.36 63.56 L11.68 63.31 L10.21 63.0 L8.91 62.64 L7.75 62.21 L6.7 61.72 L5.76 61.17 L4.91 60.55 L4.14 59.86 L3.45 59.09 L2.83 58.24 L2.28 57.3 L1.79 56.25 L1.36 55.09 L1.0 53.79 L0.69 52.32 L0.44 50.64 L0.25 48.64 L0.11 46.17 L0.03 42.75 L0.0 32.0 L0.03 21.25 L0.11 17.83 L0.25 15.36 L0.44 13.36 L0.69 11.68 L1.0 10.21 L1.36 8.91 L1.79 7.75 L2.28 6.7 L2.83 5.76 L3.45 4.91 L4.14 4.14 L4.91 3.45 L5.76 2.83 L6.7 2.28 L7.75 1.79 L8.91 1.36 L10.21 1.0 L11.68 0.69 L13.36 0.44 L15.36 0.25 L17.83 0.11 L21.25 0.03 L32.0 0.0 L42.75 0.03 L46.17 0.11 L48.64 0.25 L50.64 0.44 L52.32 0.69 L53.79 1.0 L55.09 1.36 L56.25 1.79 L57.3 2.28 L58.24 2.83 L59.09 3.45 L59.86 4.14 L60.55 4.91 L61.17 5.76 L61.72 6.7 L62.21 7.75 L62.64 8.91 L63.0 10.21 L63.31 11.68 L63.56 13.36 L63.75 15.36 L63.89 17.83 L63.97 21.25Z";
+  var PI_D = "M4.6 7.4h14.8M9.3 7.6c0 4.4-.6 8.2-2.5 11.1M15.3 7.6v8.3c0 1.9 1 2.8 2.9 2.5";
   var OAI_D = "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z";
   window.TSU_LOGOS = { claudePath: CLAUDE_D, claude: '<svg class="cc-logo-svg" viewBox="0 0 100 101" aria-hidden="true"><path fill="currentColor" d="' + CLAUDE_D + '"/></svg>',
     paimonSrc: PM_SRC, paimon: '<img class="pm-av" src="' + PM_SRC + '" alt="" draggable="false">',
     // Codex：ChatGPT / OpenAI 的结（Codex 自己那朵紫蓝的云不好看；用户定的），单色跟着字色；oaiPath 给别处画大图标用
     oaiPath: OAI_D,
-    codex: '<svg class="cx-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + OAI_D + '"/></svg>' };
+    codex: '<svg class="cx-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + OAI_D + '"/></svg>',
+    // pi（pi coding agent）：画出来的 π——一横、左边一条带弯的腿、右边一条收尾往右勾的腿；单色跟着字色
+    piPath: PI_D,
+    pi: '<svg class="cx-logo-svg pi-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="' + PI_D + '"/></svg>' };
   // 派蒙的图只要一次：读进内存变成 blob: 地址，到处用这一个（左边的树、标签页、连接器的方块、设置）——
   //   以前每画一次都按路径重新要（App 里本地界面文件一律不缓存），连接器页面的派蒙一闪一闪、要等一下才出来。keep：留一张解码好的，别被回收
   var pmKeep = null;
@@ -95,6 +99,19 @@
       readme: {
         zh: "# Codex\n\n在 Vibing Studio 里看、接着用这台 Mac 上的 Codex 会话（`~/.codex/sessions`）。会话用你选的外壳显示——比如 Claude Code 风格的 TUI。\n\n## 功能\n\n- **会话列表**：侧栏、Agent Finder 里列出这台 Mac 上的 Codex 会话。\n- **记录**：`local.codex:<会话>` 打开一段会话；它在别处跑，这里跟着读新写进来的。\n- **接着说**：`codex exec resume <会话>`；它正开在 Codex 里时用 `codex queue` 排进去。\n\n## 要求\n\n- 这台 Mac 上装有 Codex（`codex` 命令）。\n",
         en: "# Codex\n\nRead and continue the Codex sessions on this Mac (`~/.codex/sessions`) inside Vibing Studio, shown with the wrapper you choose — for example the Claude Code style TUI.\n\n## Features\n\n- **Sessions**: the side bar and Agent Finder list the Codex sessions on this Mac.\n- **Transcripts**: `local.codex:<session>` opens a session; while it runs elsewhere, new output streams in.\n- **Keep talking**: `codex exec resume <session>`; when it's open in Codex, messages are queued with `codex queue`.\n\n## Requirements\n\n- Codex installed on this Mac (the `codex` command).\n" } },
+    { id: "pi", name: "pi", icon: "", cmd: "pi", third: true, desc: "在 Vibing Studio 中使用 pi：这台电脑上的 pi 会话都能接着说", descEn: "Work with pi in Vibing Studio: pick up any pi session on this computer and keep going",
+      publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "pi.dev", homepage: "https://github.com/earendil-works/pi", version: "0.1.0", updated: "2026-10-07", builtin: false, files: ["studio/pi.js"],
+      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#141414"/><g transform="translate(12 12) scale(1.667)"><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="' + PI_D + '"/></g></svg>', // 黑底白色的 π
+      categories: [{ zh: "AI", en: "AI" }, { zh: "聊天", en: "Chat" }],
+      links: [{ zh: "pi 的源代码", en: "pi on GitHub", url: "https://github.com/earendil-works/pi" }, { zh: "设置文件", en: "Settings File", file: "~/.pi/agent/settings.json" }],
+      readme: {
+        zh: "# pi\n\n在 Vibing Studio 里看、接着用这台电脑上的 pi 会话（`~/.pi/agent/sessions`）。会话用你选的外壳显示——比如 Claude Code 风格的 TUI。\n\n## 功能\n\n- **会话列表**：主侧栏「pi」一组按目录列出这台电脑上的 pi 会话；Agent Finder 里也有。\n- **记录**：读 pi 的记录（一棵树：/tree 回到前面接着说会分出一支），只画现在这一支；它在终端里跑时，这里跟着读新写进来的。\n- **接着说**：`pi -p --mode json --session <记录>`；新会话 `pi --session-id <id>`，在你选的目录里建。\n- **打断**：Esc 停掉这边起的那一问。\n\n## 要求\n\n- 这台电脑上装有 pi（`pi` 命令），并且已经在 pi 里设好模型和登录。\n",
+        en: "# pi\n\nRead and continue the pi sessions on this computer (`~/.pi/agent/sessions`) inside Vibing Studio, shown with the wrapper you choose — for example the Claude Code style TUI.\n\n## Features\n\n- **Sessions**: the \"pi\" group in the Primary Side Bar lists pi sessions by folder; Agent Finder lists them too.\n- **Transcripts**: pi stores a session as a tree (going back with /tree starts a new branch); only the current branch is shown, and new output streams in while it runs in a terminal.\n- **Keep talking**: `pi -p --mode json --session <file>`; new sessions use `pi --session-id <id>` in the folder you choose.\n- **Interrupt**: Esc stops a turn started here.\n\n## Requirements\n\n- pi installed on this computer (the `pi` command), with a model and sign-in set up in pi.\n",
+      },
+      features: {
+        commands: [{ zh: "新建 pi 会话", en: "New pi Session", where: "主侧栏「pi」一组的标题行", whereEn: "pi group header in the Primary Side Bar" }],
+        views: [{ zh: "pi 会话目录树", en: "pi session tree", where: "主侧栏", whereEn: "Primary Side Bar" }],
+      } },
     { id: "paimon", name: "Paimon", icon: "✦", builtin: true, core: true, version: "0.1.0", publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, desc: "Vibing Studio 内置助手：监看各个 Agent 的运行，并在需要时协助处理", descEn: "Your helper in Vibing Studio: keeps an eye on your agents and lends a hand",
       // 派蒙：夜空的底（她斗篷上的星空），几颗星、一点光，派蒙整只在中间——同另外两个一样满，不空
       logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="pmTileG" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#34528f"/><stop offset="1" stop-color="#1b2552"/></linearGradient>' +
@@ -168,7 +185,7 @@
   function detect() {
     var L = window.TSU_LOCAL;
     if (!L || !L.exec) return Promise.resolve(found);
-    var sh = "for c in claude codex; do p=$(command -v $c 2>/dev/null); if [ -n \"$p\" ]; then v=$($c --version 2>/dev/null | head -1); echo \"$c|$p|$v\"; else echo \"$c||\"; fi; done";
+    var sh = "for c in claude codex pi; do p=$(command -v $c 2>/dev/null); if [ -n \"$p\" ]; then v=$($c --version 2>/dev/null | head -1); echo \"$c|$p|$v\"; else echo \"$c||\"; fi; done";
     return (L.ready || Promise.resolve()).then(function () { return L.exec({ cmd: sh }); }).then(function (r) {
       var next = {};
       String(r.out || "").split("\n").forEach(function (l) { var m = l.split("|"); if (m.length < 3) return; var id = m[0] === "claude" ? "claude-code" : m[0]; next[id] = { found: !!m[1], path: m[1], version: m.slice(2).join("|").trim(), at: Date.now() }; });

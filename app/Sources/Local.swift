@@ -469,23 +469,31 @@ struct Screen {
   // ESC [ ? Pm h / l（DEC 私有模式）和 ESC = / ESC >（小键盘）；切在两块中间的留到下一块（carry）
   static func track(_ d: Data, _ modes: inout [Int: Bool], _ keypad: inout Bool, _ carry: inout Data) {
     carry = Data()
-    var i = d.startIndex
-    while i < d.endIndex, let e = d[i...].firstIndex(of: 0x1B) {
-      guard e + 2 < d.endIndex else { carry = Data(d[e...]); return }
-      let n = d[e + 1]
-      if n == 0x3D || n == 0x3E { keypad = n == 0x3D; i = e + 2; continue }
-      guard n == 0x5B, d[e + 2] == 0x3F else { i = e + 1; continue }
-      var j = e + 3, params: [Int] = [], cur = 0
-      while j < d.endIndex, j - e < 64 {
-        let b = d[j]
-        if b >= 0x30 && b <= 0x39 { cur = min(cur * 10 + Int(b - 0x30), 99999) } else if b == 0x3B { params.append(cur); cur = 0 } else { break }
-        j += 1
+    var m = modes, kp = keypad, cy = Data()
+    d.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in // 按字节扫（memchr 找 ESC）：大量带颜色的输出时，以前一个一个下标取，主线程跟不上
+      guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+      let n = raw.count
+      var i = 0
+      while i < n {
+        guard let hit = memchr(base + i, 0x1B, n - i) else { return }
+        let e = UnsafeRawPointer(hit).assumingMemoryBound(to: UInt8.self) - base
+        if e + 2 >= n { cy = Data(bytes: base + e, count: n - e); return }
+        let c1 = base[e + 1]
+        if c1 == 0x3D || c1 == 0x3E { kp = c1 == 0x3D; i = e + 2; continue }
+        if c1 != 0x5B || base[e + 2] != 0x3F { i = e + 1; continue }
+        var j = e + 3, params: [Int] = [], cur = 0
+        while j < n && j - e < 64 {
+          let b = base[j]
+          if b >= 0x30 && b <= 0x39 { cur = min(cur * 10 + Int(b - 0x30), 99999) } else if b == 0x3B { params.append(cur); cur = 0 } else { break }
+          j += 1
+        }
+        if j >= n { cy = Data(bytes: base + e, count: n - e); return }
+        params.append(cur)
+        if base[j] == 0x68 || base[j] == 0x6C { for p in params { m[p] = base[j] == 0x68 } }
+        i = j + 1
       }
-      if j >= d.endIndex { carry = Data(d[e...]); return }
-      params.append(cur)
-      if d[j] == 0x68 || d[j] == 0x6C { for p in params { modes[p] = d[j] == 0x68 } }
-      i = j + 1
     }
+    modes = m; keypad = kp; carry = cy
   }
 }
 
@@ -493,10 +501,14 @@ struct Screen {
 final class PTY: @unchecked Sendable {
   let pid: pid_t
   let fd: Int32
-  private var readSrc: DispatchSourceRead?
   private var procSrc: DispatchSourceProcess?
   private let q: DispatchQueue
-  private var paused = false // 页面叫停了（流控）：读的 source 挂起着。只在 q 上读写
+  // 读：一个自己的线程一直读（有就读、读空了 poll 等）——以前用 DispatchSource，伪终端一次只给 1KB 左右，每读一次都要排一次队、唤醒一次，
+  //   吞吐只有 8 MB/s（这台 Mac 上伪终端本身能到 150 MB/s 以上，iTerm 也是这样一直读）。
+  //   攒着交：同一批最多 4ms 或 1MB 交一次（页面一次收一大块）；读空了、4ms 内没有更多的就马上交（打字的回显不晚）
+  // 读的线程和这个对象共用的状态（线程强引用它：对象先没了，线程照样把剩下的输出读完、读到头再关 fd）
+  private final class RS: @unchecked Sendable { let cond = NSCondition(); var paused = false, closed = false, fdOpen = true } // 都在 cond 里读写
+  private let rs = RS()
 
   init(shell: String, argv: [String]? = nil, cwd: String, env: [String: String], cols: Int, rows: Int, onData: @escaping (Data) -> Void, onExit: @escaping (Int32) -> Void) throws {
     // fork 以后子进程里只做 chdir、execve：要用的 C 字符串都先备好
@@ -518,15 +530,47 @@ final class PTY: @unchecked Sendable {
     fd = master
     q = DispatchQueue(label: "pty.\(p)")
     _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
-    let rs = DispatchSource.makeReadSource(fileDescriptor: fd, queue: q)
-    let fd0 = fd
-    rs.setEventHandler { [weak self] in
+    let fd0 = fd, st = rs
+    let t = Thread {
       var buf = [UInt8](repeating: 0, count: 65536)
-      let n = read(fd0, &buf, buf.count)
-      if n > 0 { onData(Data(buf[0..<n])) } else if n == 0 || (errno != EAGAIN && errno != EINTR) { self?.readSrc?.cancel() }
+      var acc = Data(), t0: UInt64 = 0
+      var pfd = pollfd(fd: fd0, events: Int16(POLLIN), revents: 0)
+      let now = { DispatchTime.now().uptimeNanoseconds }
+      func give() { if !acc.isEmpty { onData(acc); acc = Data() } }
+      loop: while true {
+        st.cond.lock()
+        if st.paused && !st.closed { st.cond.unlock(); give(); st.cond.lock(); while st.paused && !st.closed { st.cond.wait() } } // 页面叫停（流控）：手上的先交，再等
+        let stop = st.closed
+        st.cond.unlock()
+        if stop { break }
+        let n = buf.withUnsafeMutableBytes { read(fd0, $0.baseAddress, $0.count) }
+        if n > 0 {
+          if acc.isEmpty { t0 = now() }
+          buf.withUnsafeBufferPointer { acc.append($0.baseAddress!, count: n) }
+          if acc.count >= 1 << 20 || now() - t0 >= 4_000_000 { give() }
+          continue
+        }
+        if n < 0 && errno == EINTR { continue }
+        if n < 0 && errno == EAGAIN {
+          // 读空了：手上有、还没到 4ms——最多等到 4ms 看还有没有（大量输出时一次交一大块）；没有就交。空着时每 250ms 醒一次看是不是关了
+          var timeout: Int32 = 250
+          if !acc.isEmpty { let el = now() - t0; if el >= 4_000_000 { give() } else { timeout = Int32((4_000_000 - el) / 1_000_000) + 1 } }
+          pfd.revents = 0
+          let r = poll(&pfd, 1, timeout)
+          if r == 0 { give(); continue }
+          if r < 0 { if errno == EINTR { continue } else { break loop } }
+          if (pfd.revents & Int16(POLLNVAL)) != 0 { break loop }
+          continue
+        }
+        break // 读到头了（shell 退了：EIO / 0）
+      }
+      give()
+      // fd 由读的这边关（另一个线程还在 poll 它时关掉，fd 号可能被别处重用、读到别人的东西）
+      st.cond.lock(); if st.fdOpen { st.fdOpen = false; Darwin.close(fd0) }; st.cond.unlock()
     }
-    rs.resume()
-    readSrc = rs
+    t.name = "pty.\(p).read"
+    t.qualityOfService = .userInteractive
+    t.start()
     let ps = DispatchSource.makeProcessSource(identifier: p, eventMask: .exit, queue: q)
     ps.setEventHandler { [weak self] in
       var st: Int32 = 0
@@ -538,6 +582,8 @@ final class PTY: @unchecked Sendable {
     procSrc = ps
   }
   func write(_ d: Data) {
+    rs.cond.lock(); let ok = rs.fdOpen && !rs.closed; rs.cond.unlock()
+    if !ok { return }
     d.withUnsafeBytes { (p: UnsafeRawBufferPointer) in
       guard let base = p.baseAddress else { return }
       var off = 0, tries = 0
@@ -553,19 +599,15 @@ final class PTY: @unchecked Sendable {
     var ws = winsize(ws_row: UInt16(clamping: rows), ws_col: UInt16(clamping: cols), ws_xpixel: 0, ws_ypixel: 0)
     _ = ioctl(fd, TIOCSWINSZ, &ws)
   }
-  // 流控：挂起 / 恢复读的 source（成对：挂起几次就得恢复几次，所以用 paused 记着，都在 q 上做）
-  func pause() { q.async { [self] in if !paused, let rs = readSrc { rs.suspend(); paused = true } } }
-  func resume() { q.async { [self] in unpause() } }
-  private func unpause() { if paused, let rs = readSrc { rs.resume(); paused = false } } // 在 q 上调
+  // 流控：页面叫停 / 接着读
+  func pause() { rs.cond.lock(); rs.paused = true; rs.cond.unlock() }
+  func resume() { rs.cond.lock(); rs.paused = false; rs.cond.broadcast(); rs.cond.unlock() }
   func close() {
     Darwin.kill(-pid, SIGHUP)
     Darwin.kill(pid, SIGHUP)
-    q.sync { unpause() } // 挂起着的 source 不能直接 cancel、放掉（libdispatch 会崩）
-    readSrc?.cancel()
-    Darwin.close(fd)
+    rs.cond.lock(); rs.closed = true; rs.paused = false; rs.cond.broadcast(); rs.cond.unlock() // 读的线程 250ms 内停下、由它关 fd
   }
-  // shell 自己退了（没走 close）时页面还叫停着：同上，先恢复再 cancel（剩下没读的输出不要了——shell 已经没了）
-  deinit { if paused { readSrc?.resume(); readSrc?.cancel() } }
+  deinit { resume() } // 叫停着就没了：让读的线程接着把剩下的读完（读到头它自己关 fd）
 }
 
 // ======== 一条命令（非交互）：zsh -f -c；自己一个进程组（中断时整组停）；stdout / stderr 边读边给；退出时报最后在哪个目录 ========

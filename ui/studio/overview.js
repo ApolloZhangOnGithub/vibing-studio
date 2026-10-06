@@ -85,11 +85,12 @@
   }
   var titleOf = function (P) { try { return P.title ? P.title() : ""; } catch (e) { return ""; } };
   // 这个标签页是哪一种「App」（App Exposé 按这个挑）：Claude Code、Codex、Paimon 的会话，代码（文件），网页，设置（设置、快捷键、扩展、更新说明…），文件（资源管理器），终端
-  var KINDS = { claude: "Claude Code", codex: "Codex", paimon: "Paimon", code: "代码", web: "网页", settings: "设置", files: "文件", terminal: "终端", other: "其他" };
+  var KINDS = { claude: "Claude Code", codex: "Codex", pi: "pi", paimon: "Paimon", code: "代码", web: "网页", settings: "设置", files: "文件", terminal: "终端", other: "其他" };
   function kindOf(P) {
     var pr = (P && P.program) || {}, aid = String(pr.agentId || ""), pg = String(pr.page || "");
     if (/^cc:/.test(aid) || pg === "claude") return "claude";
     if (/^cx:/.test(aid) || pg === "codex") return "codex";
+    if (/^pi:/.test(aid)) return "pi";
     if (aid || pg === "paimon" || pg === "ca-new") return "paimon";
     if (pr.pty) return "terminal";
     if (pg === "file") return "code";

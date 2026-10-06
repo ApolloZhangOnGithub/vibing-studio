@@ -58,7 +58,7 @@
     document.addEventListener("keydown", onDocKey, true);
     var f = ov.querySelector(".ap-opt"); if (f) f.focus();
   }
-  function logoOf(aid) { var Lg = window.TSU_LOGOS || {}; return /^cc:/.test(aid) ? '<span class="ap-logo cc">' + (Lg.claude || "") + "</span>" : /^cx:/.test(aid) ? '<span class="ap-logo">' + (Lg.codex || "") + "</span>" : ""; }
+  function logoOf(aid) { var Lg = window.TSU_LOGOS || {}; return /^cc:/.test(aid) ? '<span class="ap-logo cc">' + (Lg.claude || "") + "</span>" : /^cx:/.test(aid) ? '<span class="ap-logo">' + (Lg.codex || "") + "</span>" : /^pi:/.test(aid) ? '<span class="ap-logo">' + (Lg.pi || "") + "</span>" : ""; }
   function draw() {
     var c = cur, qs = c.q.questions, x = qs[c.qi], a = c.ans[c.qi], opts = x.options || [], multi = !!x.multiSelect, ctx = c.qi === 0 ? contextOf(c.rt) : "";
     var tabs = qs.length > 1 ? '<div class="ap-tabs">' + qs.map(function (y, i) { var done = c.ans[i].pick.length || c.ans[i].text; return '<span class="ap-tab' + (i === c.qi ? " on" : "") + (done ? " done" : "") + '">' + esc(tq(y.header || (tr("问题 ", "Question ") + (i + 1)), c.aid)) + "</span>"; }).join("") + "</div>" : "";

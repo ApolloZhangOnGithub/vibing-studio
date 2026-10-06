@@ -917,8 +917,8 @@
     var lab = S.side.querySelector(".st-sagent");
     if (!lab) { lab = document.createElement("button"); lab.type = "button"; lab.className = "st-sagent"; lab.dataset.st = "side-agent"; var lv = S.side.querySelector(".st-sidehdr .st-sidelv"); if (lv) lv.after(lab); }
     // 名字左边是这个 agent 的标志（同右边的「···」一左一右）：Claude Code 的会话是 Claude 的标志（橙）、Codex 的是它的记号、Paimon 的是派蒙的头像
-    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : LG.paimon;
-    var lk = /^cc:/.test(aid || "") ? "cc" : /^cx:/.test(aid || "") ? "cx" : "pm";
+    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : /^pi:/.test(aid || "") ? LG.pi : LG.paimon;
+    var lk = /^cc:/.test(aid || "") ? "cc" : /^(cx|pi):/.test(aid || "") ? "cx" : "pm"; // pi 的标志同 Codex 的一样单色
     var lh = aid ? (alg ? '<i class="st-salogo st-salogo-' + lk + '" aria-hidden="true">' + alg + "</i>" : "") + '<span class="st-cut">' + esc(nm || aid) + "</span>" : "";
     if (lab.dataset.h !== lh) { lab.dataset.h = lh; lab.innerHTML = lh; }
     lab.hidden = !aid;
@@ -1431,14 +1431,14 @@
     rts.forEach(function (rt) {
       var a = rt.agent;
       if (!a || a.deleted) return;
-      var cn = /^cc:/.test(a.id || "") ? "cc" : /^cx:/.test(a.id || "") ? "cx" : "pm", ts = rt.tasks || [];
+      var cn = /^cc:/.test(a.id || "") ? "cc" : /^cx:/.test(a.id || "") ? "cx" : /^pi:/.test(a.id || "") ? "pi" : "pm", ts = rt.tasks || [];
       var st = cn === "pm" ? (rt.state ? rt.state() : "idle") : rt.stream ? "working" : "idle";
       if (cn === "pm" && !ts.length && st !== "working") return;
       var tt = rt.stream && rt.stream.turn, fg = tt && tt.parts ? tt.parts.filter(function (p) { return isFg(p) && p.status === "running"; }) : [];
       groups.push({ a: a, cn: cn, rt: rt, st: st, fg: fg, run: ts.filter(function (x) { return x.status === "running"; }).sort(taskOrder), done: ts.filter(function (x) { return x.status !== "running"; }).sort(taskOrder) });
     });
     if (!groups.length) return '<div class="st-dim st-pempty">现在没有打开的会话</div>';
-    var LG = window.TSU_LOGOS || {}, logo = function (g) { return g.cn === "cc" ? '<span class="st-alogo cc">' + (LG.claude || "") + "</span>" : g.cn === "cx" ? '<span class="st-alogo cx">' + (LG.codex || "›_") + "</span>" : '<span class="st-alogo pm">' + (LG.paimon || "✦") + "</span>"; };
+    var LG = window.TSU_LOGOS || {}, logo = function (g) { return g.cn === "cc" ? '<span class="st-alogo cc">' + (LG.claude || "") + "</span>" : g.cn === "cx" ? '<span class="st-alogo cx">' + (LG.codex || "›_") + "</span>" : g.cn === "pi" ? '<span class="st-alogo cx">' + (LG.pi || "") + "</span>" : '<span class="st-alogo pm">' + (LG.paimon || "✦") + "</span>"; };
     var fgLine = function (p, id) { var a0 = p.input || {}, raw = String(a0.description || a0.command || a0.file_path || a0.pattern || a0.url || p.name || "").replace(/\s+/g, " ").trim(), t = trT(raw, id); return '<div class="st-prw st-sub st-afg"><i class="st-tg st-fgdot">●</i> <span class="st-cut"' + trTitle(t, raw) + ">" + esc(t) + '</span><span class="st-fill"></span><span class="st-tick st-dim" data-t0="' + (p.t0 || 0) + '"></span></div>'; };
     groups.sort(function (x, y) { var r = function (g) { return g.st === "working" ? 0 : g.run.length ? 1 : 2; }; return r(x) - r(y) || String(x.a.name || "").localeCompare(String(y.a.name || "")); });
     var html = groups.map(function (g) {
@@ -5296,7 +5296,7 @@
     if (!prog) parts0 = [];
     else if (prog.page === "file") parts0 = path(prog.arg);
     else if (prog.page) parts0 = []; // 设置、主页这些页面：名字就是标签上那个，不再写一遍
-    else if (prog.agentId && /^c[cx]:/.test(prog.agentId)) { var crt = TSU_AGENTS.runtime(prog.agentId); parts0 = [/^cx:/.test(prog.agentId) ? "Codex" : "Claude Code", crt && crt.info && crt.info.cwd ? base(crt.info.cwd) : "", "<b>" + esc(crt ? crt.agent.name : "") + "</b>"].filter(Boolean); }
+    else if (prog.agentId && /^(c[cx]|pi):/.test(prog.agentId)) { var crt = TSU_AGENTS.runtime(prog.agentId); parts0 = [/^cx:/.test(prog.agentId) ? "Codex" : /^pi:/.test(prog.agentId) ? "pi" : "Claude Code", crt && crt.info && crt.info.cwd ? base(crt.info.cwd) : "", "<b>" + esc(crt ? crt.agent.name : "") + "</b>"].filter(Boolean); }
     else if (prog.agentId) { var ag = window.TSU_AGENTS && TSU_AGENTS.get(prog.agentId), rt = ag && TSU_AGENTS.runtime(ag.id); parts0 = ["Paimon Code", ag ? "<b>" + esc(ag.name) + "</b>" : "", rt && rt.session().title && rt.session().title !== ag.name ? esc(rt.session().title) : ""].filter(Boolean); }
     else if (ccOn() && P.shell && P.shell.fg && /claude/i.test(P.shell.fg.name || "")) { var osc0 = P.shell.oscTitle ? P.shell.oscTitle().replace(/^[^\p{L}\p{N}]+/u, "") : ""; parts0 = ["Claude Code", base(P.shell.fg.cwd || P.shell.cwd())].concat(osc0 ? ["<b>" + esc(osc0) + "</b>"] : []); }
     else if (P.shell && P.shell.cwd) parts0 = path(P.shell.cwd());

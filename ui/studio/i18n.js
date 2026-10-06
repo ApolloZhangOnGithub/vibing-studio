@@ -39,7 +39,7 @@
   // ---- 活动栏、主侧栏（Agent 的树）----
   words({
     "搜索 (⇧⌘F)": "Search (⇧⌘F)", "扩展 (⇧⌘X)": "Extensions (⇧⌘X)", "管理": "Manage",
-    "新建 Agent": "New Agent", "+ 新建 Agent": "+ New Agent", "新建 Agent…": "New Agent…", "新建 Codex 会话": "New Codex Session", "新建 Claude Code 会话": "New Claude Code Session", "+ 新建 Claude Code 会话": "+ New Claude Code Session",
+    "新建 Agent": "New Agent", "+ 新建 Agent": "+ New Agent", "新建 Agent…": "New Agent…", "新建 Codex 会话": "New Codex Session", "新建 pi 会话": "New pi Session", "新建 Claude Code 会话": "New Claude Code Session", "+ 新建 Claude Code 会话": "+ New Claude Code Session",
     "全部折叠": "Collapse All", "隐藏主侧栏": "Hide Primary Side Bar", "切换主侧栏 (⌃⌘S)": "Toggle Primary Side Bar (⌃⌘S)",
     "显示全部": "Show All", "仅显示运行中": "Show Running Only", "暂无 Agent": "No agents yet", "无运行中的 Agent": "No running agents",
     "无已归档的 Agent": "No archived agents", "无已归档的 Agent。": "No archived agents.", "暂无会话": "No sessions yet", "无运行中的会话": "No running sessions",
@@ -398,6 +398,10 @@
     [/^本机没有此 Codex 会话：(.+)$/, "No Codex session like this on this Mac: $1"],
     [/^找不到 Codex 会话：(.+)$/, "Codex session not found: $1"],
     [/^Codex 已退出（(.+)）$/, "Codex exited ($1)"],
+    [/^本机没有此 pi 会话：(.+)$/, "No pi session like this on this computer: $1"],
+    [/^找不到 pi 会话：(.+)$/, "pi session not found: $1"],
+    [/^pi 已退出（(.+)）$/, "pi exited ($1)"],
+    [/^这条命令只能在 pi 自己的终端界面里用：(.+)$/, "$1 is only available in pi's own terminal interface"],
     [/^没排进 Codex[：（]([\s\S]+?)）?$/, "Couldn't queue into Codex: $1"],
     [/^这台 Mac 上没有找到 (\S+) 命令$/, "The $1 command wasn't found on this Mac"],
     [/^上下文已压缩（原 (.+) tokens）$/, "Context compacted (was $1 tokens)"],
@@ -621,7 +625,7 @@
     "上一句还在送进去，稍等一下再发": "The previous message is still being delivered; send again in a moment",
     "无法连接后台会话（12 秒内未响应）": "Couldn't attach to the background session (its screen didn't appear within 12 s)", "claude attach 启动失败": "claude attach didn't start",
     "正开在 Codex 里：模型要在 Codex 里换（这里说的话照样排进去）": "Open in Codex: switch the model in Codex (messages from here are still queued)",
-    "Codex 连接器没开（设置 › 连接器）": "The Codex connector is off (Settings › Connectors)", "Claude Code 连接器没开（设置 › 连接器）": "The Claude Code connector is off (Settings › Connectors)",
+    "Codex 连接器没开（设置 › 连接器）": "The Codex connector is off (Settings › Connectors)", "pi 连接器没开（设置 › 连接器）": "The pi connector is off (Settings › Connectors)", "Claude Code 连接器没开（设置 › 连接器）": "The Claude Code connector is off (Settings › Connectors)",
     "Claude Code、Codex 现在是连接器：设置 › 连接器": "Claude Code and Codex are now connectors: Settings › Connectors",
     "上下文已压缩 · 摘要": "Context compacted · summary", "上下文已压缩": "Context compacted", "新会话": "New Session", "全部折叠": "Collapse All", "下一句起生效": "applies from the next message"});
   words({"启动配置文件…": "Launch Profile…", "新建终端 (⌃⇧`)": "New Terminal (⌃⇧`)", "配置终端设置": "Configure Terminal Settings", "选择默认配置文件": "Select Default Profile", "（默认）": " (Default)", "重命名…": "Rename…", "终端名称": "Terminal name", "更改颜色": "Change Color", "更改图标": "Change Icon", "终止终端": "Kill Terminal", "红色": "Red", "绿色": "Green", "黄色": "Yellow", "蓝色": "Blue", "橙色": "Orange", "紫色": "Magenta", "青色": "Cyan"});
