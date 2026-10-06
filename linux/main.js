@@ -46,6 +46,10 @@ function uiStamp() {
 }
 // 网站给的页面里那一段（账号 id、有没有真沙盒）：<script>window.TSU_UID = 1; window.TSU_SBX = false;</script>——本地页面插上它
 let lastInjection = "";
+// 装好的 App（界面只有 App 里带的那一份）：联网时整页用网站上的（总是最新的，部署了就生效、出「重新载入以更新」），断网才用带的这份——同 macOS 版（LocalUI.swift 的 bundledOnly）。
+//   开发时（仓库里的 ../ui、VS_UI_DIR）照旧读本地文件，改了就生效
+const BUNDLED_ONLY = !!UI_DIR && !process.env.VS_UI_DIR && app.isPackaged && path.resolve(UI_DIR) === path.resolve(path.join(process.resourcesPath || "", "ui"));
+let siteMode = false;
 function buildLocal(inj) {
   let page = fs.readFileSync(path.join(UI_DIR, "terminal.html"), "utf8");
   const info = JSON.stringify({ dir: UI_DIR, stamp: uiStamp() });
@@ -55,11 +59,13 @@ function buildLocal(inj) {
 async function localPage(req) {
   let r;
   try { r = await net.fetch(req, { bypassCustomProtocolHandlers: true }); }
-  catch (e) { if (lastInjection) return buildLocal(lastInjection); return new Response("Vibing Studio: can't reach " + SERVICE, { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }); } // 断网：用上次那一段照样打开本地界面
+  catch (e) { siteMode = false; if (lastInjection) return buildLocal(lastInjection); return new Response("Vibing Studio: can't reach " + SERVICE, { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }); } // 断网：用上次那一段照样打开本地界面
   const html = await r.text();
   const m = /<script>window\.TSU_UID = [^<]*<\/script>/.exec(html);
   if (!m) return new Response(html, { status: r.status, headers: { "content-type": r.headers.get("content-type") || "text/html; charset=utf-8", "cache-control": "no-store" } }); // 没登录（给的是登录页）、网站出错：照旧给网站的
   lastInjection = m[0];
+  siteMode = BUNDLED_ONLY && r.ok;
+  if (siteMode) return new Response(html, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }); // 联网：网站上最新的那一份
   return buildLocal(lastInjection);
 }
 function setupLocalUI() {
@@ -69,6 +75,7 @@ function setupLocalUI() {
     try { u = new URL(req.url); } catch (e) { return net.fetch(req, { bypassCustomProtocolHandlers: true }); }
     if (u.host !== SERVICE_HOST || req.method !== "GET" || /^\/(api|auth)\//.test(u.pathname)) return net.fetch(req, { bypassCustomProtocolHandlers: true });
     if (u.pathname === "/terminal.html" || u.pathname === "/terminal") return localPage(req);
+    if (siteMode) return net.fetch(req, { bypassCustomProtocolHandlers: true });
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, "");
     const file = path.join(UI_DIR, rel);
     if (rel && !rel.includes("..") && file.startsWith(UI_DIR + path.sep)) {

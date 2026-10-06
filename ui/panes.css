@@ -77,9 +77,9 @@ html.termapp .tpane.agentfoot:not(.tl) .term, html.termapp .tpane.agentfoot:not(
 /* 选区自己画（同 iTerm：浅蓝底、黑字）；制表符选中后跟着变黑 */
 .tpane .term::selection, .tpane .term ::selection { background: transparent; color: #000; }
 .tpane .term .ttu-box::selection { color: transparent; -webkit-text-fill-color: transparent; }
-.tpane .term .ttu-box.sel { filter: brightness(0); }
-.tpane .sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.tpane .sel > div { position: absolute; background: #b5d5ff; }
+.tpane .term .ttu-box.tsb { filter: brightness(0); } /* 选中的表格线跟选中文字一样变黑（tsb：不能叫 sel——下面选区那一层的规则会把它们挪到左上角，选区的框跟着从最上面画到最下面，整片变蓝） */
+.tpane .term > .sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.tpane .term > .sel > div { position: absolute; background: #b5d5ff; }
 /* 按着拖选时（live.js 给这一格加 tsel）：盖在对话上的几层不接鼠标，拖到边上自动滚时选区接着往新露出来的字里长 */
 .tpane.tsel .vs-stickyw, .tpane.tsel .vs-sticky, .tpane.tsel .topgap, .tpane.tsel .botgap, .tpane.tsel .jump { pointer-events: none; }
 

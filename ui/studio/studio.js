@@ -266,7 +266,8 @@
     if (d.main) {
       var mr = d.main.rt, mbusy = !!(mr && mr.stream), mname = (mr && mr.agent && mr.agent.name) || (mr && mr.info && mr.info.title) || d.main.sid.slice(0, 8), mact = "";
       if (mbusy && mr.stream.turn && mr.stream.turn.parts) { var lastP = mr.stream.turn.parts.filter(function (p) { return p.kind === "tool" && p.status === "running"; }).pop(); if (lastP) mact = String((lastP.input && (lastP.input.description || lastP.input.command || lastP.input.file_path)) || lastP.name).replace(/\s+/g, " ").trim(); }
-      var nestedPar = /^sub-/.test(d.main.sid); // 再往下一层的子 agent：上面那一行是开它的那个子 agent，不是主 agent
+      var nestedPar = /^sub-/.test(d.main.sid); // 再往下一层的子 agent：上面那一行是开它的那个子 agent，不是主 agent（名字不带标签页上的「↳」）
+      if (nestedPar) mname = String(mname).replace(/^↳\s*/, "");
       mainHtml = sec("main", nestedPar ? "上一级 Agent" : "主 Agent", "", '<div class="st-prw st-frow st-mainrow" data-st="open-main-' + esc(d.main.sid) + '" title="' + esc(mname) + '"><i class="st-tg st-maindot">●</i> <b class="st-fgn">' + (nestedPar ? "parent" : "main") + '</b> <span class="st-cut">' + esc(mname) + '</span><span class="st-fill"></span><span class="st-dim">' + esc(mbusy ? (mact ? trT(mact, aid) : "运行中") : "空闲") + "</span></div>");
     }
     if (famTui() && P && P.toHtml) return familyTuiHtml(P, d, fgItems);
@@ -1126,16 +1127,19 @@
   var readVer = function () { return fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.version ? String(j.version) : ""; }, function () { return ""; }); };
   readVer().then(function (v) { uiVer.cur = v; });
   document.addEventListener("st-update-ready", function () { readVer().then(function (v) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); }); });
+  var localVer = ""; // 本地界面：页面载入后第一次读到的 version.json
   function checkVersion(force) {
     if ((document.hidden && force !== true) || updateReady) return;
     // App 从这台 Mac 上读界面文件（原生的 LocalUI）：看本地文件改没改（不问网站）；改了就是有新版本（点「重新载入以更新」/ ⌘R）
     var LU = window.TSU_UI_LOCAL, NN = window.nadosNative;
     if (LU && NN && NN.call) {
-      NN.call("ui.stamp").then(function (r) {
-        if (!r || !r.stamp || !(r.stamp > (LU.stamp || 0)) || updateReady) return;
-        updateReady = true;
-        allWins().forEach(function (w) { renderSoon(w); syncAct(w); });
-        document.dispatchEvent(new Event("st-update-ready"));
+      var ready = function () { if (updateReady) return; updateReady = true; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); document.dispatchEvent(new Event("st-update-ready")); };
+      NN.call("ui.stamp").then(function (r) { if (r && r.stamp && r.stamp > (LU.stamp || 0)) ready(); }, function () {});
+      // 原生那边只看界面目录最上面一层的改动时间（只改了 studio/ 里的不算）：再看一眼目录里的 version.json——每次部署都会改它
+      if (LU.dir && LOC() && LOC().read) LOC().read(LU.dir + "/version.json").then(function (b) {
+        var v = ""; try { v = String(JSON.parse(new TextDecoder().decode(new Uint8Array(b))).version || ""); } catch (e) { v = ""; }
+        if (!v) return;
+        if (!localVer) localVer = v; else if (v !== localVer) ready();
       }, function () {});
       return;
     }
@@ -1176,7 +1180,8 @@
   function checkRemoteApp() {
     var N = window.nadosNative, dir = UPD_DIR();
     if (!SLOC() || !N || !N.call || !dir || remoteBusy || Date.now() - remoteAt < 30 * 60000 || location.protocol !== "https:") return;
-    if (window.TSU_UI_LOCAL) return; // 用本地界面的（开发用的这台：新版自己编好放进「待更新」）：不从网站下
+    // 用本地界面的也查（以前跳过）：发出去的 App 记着编它那台 Mac 上仓库的路径，别的 Mac 上同一个用户名、「文稿」走 iCloud 时那个路径也在，
+    //   它们用的就是本地界面——以前因此从不查新版。只在比现在跑的、「待更新」里放好的都新时才下（上面比的构建号），开发这台自己放进去的更新的不会被盖掉
     remoteAt = Date.now(); remoteBusy = true;
     var fin = function () { remoteBusy = false; };
     var q = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
@@ -3667,8 +3672,8 @@
         { key: "lang", label: "显示语言", desc: "菜单、设置和提示使用的语言", must: true, kind: "seg", options: [["auto", "跟随系统"], ["en", "English"], ["zh", "简体中文"]], value: getv("lang"), def: SET_DEF.lang },
       ], tr0.length ? [{ head: "翻译" }].concat(tr0, [{ head: "" }]) : [], [
         { key: "linkOpen", label: "打开链接", desc: "在对话和终端中点按链接时使用的浏览器", must: true, kind: "seg", options: [["builtin", "内置浏览器"], ["system", "系统浏览器"]], value: getv("linkOpen"), def: SET_DEF.linkOpen },
-        { key: "askPopup", label: "提问卡片", desc: "会话问你问题而你没在看它时，在窗口中间弹出问题卡片，可直接回答；按 Esc 稍后再答", must: true, kind: "toggle", value: getv("askPopup") !== false, def: true },
-        window.nadosNative ? { key: "askFront", label: "提问时切到前台", desc: "会话问你问题时，如果 Vibing Studio 在后台，把窗口切到最前面", must: true, kind: "toggle", value: getv("askFront") !== false, def: true } : null,
+        { key: "askPopup", label: "提问卡片", desc: "会话问你问题而你没在看它时，在窗口中间弹出问题卡片，可直接回答；按 Esc 稍后再答", must: true, kind: "toggle", value: getv("askPopup") === true, def: false },
+        window.nadosNative ? { key: "askFront", label: "提问时切到前台", desc: "会话问你问题时，如果 Vibing Studio 在后台，把窗口切到最前面", must: true, kind: "toggle", value: getv("askFront") === true, def: false } : null,
         window.nadosNative ? { key: "menuBarIcon", label: "菜单栏图标", desc: "在菜单栏中显示 Vibing Studio 的图标。关闭窗口时 App 继续在后台运行，Agent 和命令不受影响", must: true, kind: "toggle", value: getv("menuBarIcon") !== false, def: true } : null,
         { key: "agentNotify", label: "通知", desc: "App 不在前台时，Agent 完成任务后发送系统通知", must: true, kind: "seg", options: [["off", "关"], ["done", "Agent 完成时"]], value: getv("agentNotify") || "off", def: SET_DEF.agentNotify },
         { key: "settingsDesc", label: "设置说明", desc: "在每项设置下方显示说明", page: "advanced", kind: "seg", options: [["key", "仅必要项"], ["all", "详细"]], value: getv("settingsDesc"), def: SET_DEF.settingsDesc },
@@ -5253,6 +5258,7 @@
         var b = e.target.closest("[data-l]");
         if (!b) return;
         if (b.dataset.l === "concise") return layMenu(tw, b);
+        if (b.dataset.l === "update") { if (appUpd) appUpdateNow(); else location.reload(); return; }
         if (b.dataset.l === "custom") layoutPick(tw);
         if (b.dataset.l === "newtab") (tw.ws.newTabUser || tw.ws.newTab)();
         if (b.dataset.l === "overview" && window.TSU_BROWSER && TSU_BROWSER.overview) TSU_BROWSER.overview(tw);
@@ -5268,6 +5274,8 @@
     var zl = !!(zen && zen.hid.side && !sideOn), zp = !!(zen && zen.hid.panel && !L.panel);
     var h = '<button data-l="newtab" title="新建标签页 (⌘T)">' + ICO.plus + '</button><button data-l="custom" title="自定义布局"' + hb("custom") + ">" + LAY_ICONS.custom + '</button><button data-l="left" title="' + (zl ? "主侧栏：禅模式里收起（点一下拿回来）" : "切换主侧栏 (⌘B)") + '"' + hb("left") + ">" + (zl ? LAY_ICONS.leftAuto() : LAY_ICONS.left(sideOn)) + '</button><button data-l="panel" title="' + (zp ? "面板：禅模式里收起（点一下拿回来）" : "切换面板 (⌘J)") + '"' + hb("panel") + ">" + (zp ? LAY_ICONS.panelAuto() : LAY_ICONS.panel(!!L.panel)) + '</button><button data-l="right" title="' + (sideAuto(tw) ? "辅助侧栏：暂时收起（离开这一页会自动恢复）" : "切换辅助侧栏 (⌥⌘I)") + '"' + hb("right") + ">" + (sideAuto(tw) ? LAY_ICONS.rightAuto() : LAY_ICONS.right(!!L.side)) + '</button><button data-l="web" title="浏览器"' + hb("web") + ">" + LAY_ICONS.web() + '</button><button data-l="overview" title="标签页概览 (⇧⌘\\)">' + LAY_ICONS.overview + "</button>"; // 标签页概览在最右边（同 Safari）
     if (layConcise()) h = '<button data-l="concise" title="布局：侧栏、面板、浏览器、新建标签页">' + LAY_ICONS.custom + "</button>"; // 精简：一个按钮，点开再选
+    // 有新版本：状态栏默认关着、⚙ 上那个小点看不出来——标题栏右边放一个按钮（同 Chrome 右上角的「更新」），点了重新载入 / 重启换上新版
+    if (updateReady || appUpd) h = '<button data-l="update" class="st-lupd" title="' + esc(appUpd ? "重启以换上新版本：标签页、会话都会接回去" : "重新载入以使用新版本") + '">' + esc(appUpd ? (updWait ? "按 ⌘Q 退出后换上新版本" : "重启以更新") : "重新载入以更新") + "</button>" + h;
     root.classList.toggle("st-lay-concise", layConcise()); // 手机上：标题栏整条不要，标签页在最上面（灵动岛正下方），这些收进标签栏的 ···（studio.css）
     islandSync();
     if (box.dataset.h !== h) { box.dataset.h = h; box.innerHTML = h; }

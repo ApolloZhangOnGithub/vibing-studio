@@ -103,7 +103,7 @@ enum LocalUI {
         t = max(t, m.timeIntervalSince1970 * 1000)
       }
     }
-    scan(d, deep: false)
+    scan(d, deep: true) // studio/、sim/ 里的也算（以前只看最上面一层：只改了 studio/*.js 时不提示「重新载入以更新」）
     scan(d.appendingPathComponent("vendor/xterm"), deep: false)
     return t.rounded()
   }

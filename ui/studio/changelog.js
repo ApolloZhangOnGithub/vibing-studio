@@ -11,6 +11,28 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.423", items: {
+      new: [
+        ["子 Agent 再开的子 Agent 挂在它下面一层（再往下也一样）：右侧栏里一眼看出谁开了谁，点一行打开它自己的记录；前台跑着、还没交回结果的子 Agent 也认得出来、点得进去。进到下一层的标签页里，最上面那行是「上一级 Agent」。", "Subagents started by a subagent now appear nested under it, at any depth, so the side bar shows who started whom; click a row to open its own transcript. Foreground subagents that are still running can be opened too. In a nested tab, the top row is the parent agent."],
+        ["子 Agent 的弹窗在它自己的标签页里也能处理：要权限、它自己的界面那一块原样出现，键盘、鼠标照常；它问你问题，在它的标签页里直接答，经主会话送进去。", "Dialogs from a subagent can be handled in its own tab: permission prompts appear exactly as Claude Code draws them, and questions it asks can be answered right there; answers go through the main session."],
+        ["Linux 版：GitHub Release 里有 AppImage 和 deb（x86_64、ARM64）；装好的 Linux 版联网时界面直接用网站上最新的，断网才用自带的那一份。", "Linux builds: AppImage and deb packages (x86_64 and ARM64) are now on the GitHub release. When online, the Linux app uses the latest interface from the website and falls back to its bundled copy offline."],
+        ["有新版本时标题栏右边出一个按钮「重新载入以更新」/「重启以更新」（以前只在默认关着的状态栏里写，别的 Mac 上看不到）。", "When an update is available, a “Reload to Update” or “Restart to Update” button appears at the right of the title bar. Previously this only showed in the status bar, which is off by default."],
+      ],
+      improved: [
+        ["问答面板（Claude Code 问你问题时）：直接打字就是在写「Type something」的回答，回车交（输入法选字时的回车不算），输入框里是真的光标；问题很长、选项很多时整块缩到放得下，选项和按键提示一定看得见。", "Question panel: just start typing to answer in “Type something” and press Return to submit (Return while composing with an input method doesn't submit); the input shows a real caret. Long questions shrink to fit, so the options and key hints are always visible."],
+        ["Claude Code 自己的面板（/config 这类长单子、权限确认）比窗口高时，只画放得下的那一截，在面板上用滚轮往上翻。", "When Claude Code's own panel (long lists like /config, permission prompts) is taller than the window, only the part that fits is shown; scroll over it to see the rest."],
+        ["别的会话在问你时，问题卡片默认不再弹出、不再把窗口叫到前面；标签页图标、状态行最右边的「● N awaiting input · 名字」照常提示（设置里还能打开卡片）。", "Questions from other sessions no longer pop up a card or bring the window to the front by default; the tab icon and “● N awaiting input · name” at the far right of the status row still show it. The card can be turned back on in Settings."],
+        ["一轮中间打的 /goal：排着时上面一行是「❯ /goal 条件」，下面「⎿ Goal set: …」，不再只有孤零零一行挂在正在跑的工具下面。", "A /goal typed mid-turn now shows as “❯ /goal condition” with “⎿ Goal set: …” under it while queued, instead of a lone line under the running tools."],
+        ["空输入时按 ← 不再展开 agent 列表（用 /agents）。", "Pressing ← in an empty prompt no longer opens the agent list (use /agents)."],
+      ],
+      fixed: [
+        ["选中一大段文字时整片变成浅蓝、看不见字：选中的表格线被挪到了左上角，选区的框跟着从最上面画到最下面。表格、代码框选中后也不再丢边框。", "Selecting a long passage no longer turns the whole view light blue with no visible text. Selected table borders were being moved to the top-left, which stretched the selection from the very top. Tables and code frames keep their borders when selected."],
+        ["问题等你超过 10 分钟没答时，问答面板会消失，换成 Claude Code 自己那一块（比窗口高，下面的选项被裁掉、点不到）。", "If a question waited more than 10 minutes, the question panel used to disappear and Claude Code's own panel showed instead, taller than the window, with its options cut off."],
+        ["问答时在输入框里打的话被当成回答收下后，还挂在对话最下面，排到它的回复后面。", "Text typed in the prompt while a question was open, and taken as the answer, no longer stays at the bottom of the conversation below the reply."],
+        ["「● N awaiting input」有时跑到一行的中间：现在固定在最下面状态行的最右边。", "“● N awaiting input” sometimes landed mid-row; it now sits at the far right of the bottom status row."],
+        ["前台跑的子 Agent 跑完了还一直显示「在跑」、拿不到它的记录。", "Foreground subagents no longer stay “running” after they finish, and their transcripts can be opened."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.422", items: {
       new: [
         ["新 App「设备」（参考 AirPort 实用工具）：你的设备画成一张图——最上面是账户，下面是 Mac 和别的设备，在用某台 Mac 的 iPad、iPhone 挂在那台下面；绿点是在线。点一台出它的卡片：另一台在线的 Mac 能「在这里使用」，这台能改名，这台 Mac 能开关「允许其他设备使用」、撤销允许过的设备。", "New Devices app, modeled on AirPort Utility: your devices drawn as a map, with your account at the top and your Macs and other devices below it. An iPad or iPhone using a Mac hangs under that Mac, and a green dot means online. Click a device for its card: use another online Mac from here, rename this device, turn sharing of this Mac on or off, and revoke devices you allowed."],

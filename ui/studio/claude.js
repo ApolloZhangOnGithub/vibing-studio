@@ -215,6 +215,7 @@
       return { head: a, end: end, lines: end > a ? new TextDecoder().decode(u8.subarray(a, end)).split("\n") : [] };
     }
     function withPath() {
+      if (!path && info.path) path = info.path; // 子 agent：建的时候还不知道它的记录在哪，后来补上的
       if (path) return Promise.resolve(path);
       return ccFindL().then(function (x) {
         if (!x) throw new Error(info.fresh ? "" : "找不到 Claude Code 会话：" + sid);
@@ -240,7 +241,8 @@
     // 从哪来：Agent / 后台 Bash 的调用和结果（agentId、后台命令 ID、输出文件）、后来的 <task-notification>（跑完、失败、停了、到上限；用量）、TaskStop、
     //   SendMessage 给停下来的子 agent（「Resuming agent …」：又跑起来了）。读进来的那段之前的：载入后用 grep 只挑相关的几行补上（只读）
     var taskById = {}, taskByTool = {}, noteSeen = new Set(), taskEvents = [], inOlder = false, preFrom = -1, taskDirty = false, goalSeen = false;
-    var TASK_RE = /"name":"(Agent|Task|TaskStop|KillShell|KillBash)"|"run_in_background":true|<task-notification>|async_launched|backgroundTaskId|resumedAgentId|Resuming agent/;
+    // 前台跑的子 agent 跑完的那条结果（{ status: "completed", prompt, agentId, … }，正文末尾「agentId: … (use SendMessage …)」）也要：不然它一直「在跑」、拿不到 agentId（点不进去、看不到它再开的子 agent）
+    var TASK_RE = /"name":"(Agent|Task|TaskStop|KillShell|KillBash)"|"run_in_background":true|<task-notification>|async_launched|backgroundTaskId|resumedAgentId|Resuming agent|"status":"completed","prompt"|agentId: \w+ \(/;
     function resetTasks() { rt.tasks.length = 0; taskById = {}; taskByTool = {}; noteSeen = new Set(); }
     function addTask(t) { rt.tasks.push(t); if (t.id) taskById[t.id] = t; if (t.toolUseId) taskByTool[t.toolUseId] = t; return t; }
     function newTask(o) { return addTask(Object.assign({ id: "", kind: "agent", desc: "", prompt: "", cmd: "", type: "", background: true, status: "running", partial: false, t0: 0, end: null, ms: 0, tools: 0, tokens: 0, tokensIn: 0, tokensOut: 0, code: null, result: "", error: "", summary: "", out: "", transcript: "", log: [], toolUseId: "", resumedAt: null }, o)); }
@@ -339,7 +341,7 @@
       preFrom = from;
       var g = gen, q = function (s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; };
       // 用系统自带的 perl 挑（几百 MB 几秒；BSD grep 多个 -F 碰上很长的行要慢十几倍）；出队（remove）、附件是同一条通知的另外几份，不要
-      var pick = '/usr/bin/perl -ne \'print if /"name":"(?:Agent|Task|TaskStop|KillShell|KillBash)"|"run_in_background":true|<task-notification>|async_launched|backgroundTaskId|resumedAgentId|Resuming agent|"is_error":true/ && !/"operation":"remove"|"type":"attachment"/\'';
+      var pick = '/usr/bin/perl -ne \'print if /"name":"(?:Agent|Task|TaskStop|KillShell|KillBash)"|"run_in_background":true|<task-notification>|async_launched|backgroundTaskId|resumedAgentId|Resuming agent|"status":"completed","prompt"|agentId: \\w+ \\(|"is_error":true/ && !/"operation":"remove"|"type":"attachment"/\'';
       LOC.exec({ cmd: "head -c " + from + " " + q(path) + " | " + pick }).then(function (r) {
         if (g !== gen) return;
         var evs = String(r && r.out || "").split("\n").map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
@@ -443,8 +445,25 @@
         });
       }).catch(function () {}).then(function () { t._pBusy = false; });
     }
+    // 前台跑着的子 agent：结果回来之前记录里没有它的 agentId——Claude Code 一开它就写的 agent-<id>.meta.json 里记着开它的那次调用（toolUseId），
+    //   按这个认出来（认出来才点得进去、看得到它再开的子 agent）。只在有这样的子 agent 时看，3 秒最多一次，只读
+    var metaAt = 0, metaBusy = false;
+    function metaLink() {
+      var want = rt.tasks.filter(function (t) { return t.kind === "agent" && !t.id && t.status === "running" && t.toolUseId; });
+      if (!want.length || metaBusy || !path || !LOC.exec || Date.now() - metaAt < 3000) return;
+      metaAt = Date.now(); metaBusy = true;
+      var dir = /\/subagents\//.test(path) ? path.replace(/\/[^/]*$/, "") : path.replace(/\.jsonl$/, "") + "/subagents";
+      LOC.exec({ cmd: "cd '" + dir.replace(/'/g, "'\\''") + "' 2>/dev/null && grep -Ho '\"toolUseId\": *\"[^\"]*\"' -- *.meta.json 2>/dev/null" }).then(function (r) {
+        metaBusy = false;
+        var by = {}, ch = false;
+        String(r && r.out || "").split("\n").forEach(function (l) { var m = /^agent-([\w-]+)\.meta\.json:"toolUseId": *"([^"]+)"/.exec(l); if (m) by[m[2]] = m[1]; });
+        want.forEach(function (t) { var id = by[t.toolUseId]; if (id && !t.id && !taskById[id]) { bindId(t, id); ch = true; } });
+        if (ch) emit("tasks");
+      }, function () { metaBusy = false; });
+    }
     function refreshTaskLogs() {
       rt.tasks.forEach(function (t) { if (t.kind === "agent" && t.transcript && t.status === "running") agentProg(t); }); // 跑完的用它通知里的 token 数，不再去读
+      metaLink();
       if (Date.now() - tailAt < 8000) return;
       tailAt = Date.now();
       rt.tasks.filter(function (t) { return t.status === "running" && (t.kind === "agent" ? t.transcript : t.out); }).slice(0, 12).forEach(function (t) {
@@ -668,6 +687,16 @@
     function unqueue(t) { var k = qnorm(t); if (!k) return; for (var qi = 0; qi < queue.length; qi++) if (qnorm(queue[qi].text) === k) { queue.splice(qi, 1); break; } if (inj) inj = inj.filter(function (x) { return qnorm(x.text) !== k; }); }
     // 记录里出现了这一问 / 这条附件（几句排着的会拼成一条）：拿走时挂着的那几句不再挂
     function untake(t) { var k = qnorm(t); if (!k || !taken.length) return; taken = taken.filter(function (x) { var xn = qnorm(x.text); return !xn || k.indexOf(xn) < 0; }); }
+    // 在输入框里打的一句、送进去时它正问着你（或者开着对话框）：被它当成了回答（记在 AskUserQuestion 的结果里），不会再作为一问出现在记录里——
+    //   不再挂成「在发 / 排着」（不然一直挂在对话最下面，排到它的回复后面去）
+    function answeredBy(list) {
+      var ks = list.map(qnorm).filter(Boolean);
+      if (!ks.length) return;
+      var hit = function (x) { var xn = qnorm(x.text); return !!xn && ks.some(function (k) { return k.indexOf(xn) >= 0; }); };
+      if (inj.length) inj = inj.filter(function (x) { return !hit(x); });
+      if (taken.length) taken = taken.filter(function (x) { return !hit(x); });
+      if (unc.length) { var n0 = unc.length; unc = unc.filter(function (x) { return !hit(x); }); if (unc.length !== n0) lqSave(); }
+    }
     function takeOut(text) { if (!readOnce || inOlder || !text || !text.trim() || /^\s*[\/<]/.test(text)) return; taken.push({ text: text, at: Date.now() }); } // 斜杠命令、它自己塞的（<…>）不挂
     // ---- 一行记录 → Paimon 的对话 ----
     // 这一问做完：补一行「✻ …for 5s」——它还在等你回答选择题（AskUserQuestion 没结果）的不算做完（同 Claude Code：问着的时候没有这一行）
@@ -925,6 +954,7 @@
         p.answers = r && r.answers && typeof r.answers === "object" ? r.answers : null;
         p.response = r && typeof r.response === "string" ? r.response : "";
         p.followUp = !!(r && r.followUp);
+        answeredBy([out, p.response].concat(p.answers ? Object.keys(p.answers).map(function (k) { return String(p.answers[k]); }) : []));
         p.detail = []; return;
       }
       var fp = (p.input && (p.input.file_path || p.input.path)) || (r && (r.filePath || (r.file && r.file.filePath))) || "";
@@ -1026,9 +1056,9 @@
       //   以前按「查不到进程」当成停了：转圈那一行一直是空的，在跑的那条命令也被画成跑完（用户：子 agent 的状态栏一直是空的）
       if (info.sub) {
         var pr = rts["cc:" + info.parent], tk = pr && (pr.tasks || []).filter(function (x) { return x.id === String(sid).replace(/^sub-/, ""); })[0];
-        var run0 = !!(tk && tk.status === "running");
+        var run0 = !!(tk && tk.status === "running"), root0 = rootOf(rt); // 会话还开着没有：看主会话（再往下一层的子 agent，它的上一级也没有自己的进程）
         setBusy(run0, tk && tk.t0);
-        settle(run0 || !!(pr && pr.info && pr.info.live));
+        settle(run0 || !!(root0 && root0.info && root0.info.live));
         return;
       }
       ccFindL().then(function (x) {
@@ -1064,7 +1094,8 @@
       alive = alive || !!(proc && proc.alive());
       var ch = false, tch = false;
       // 会话还开着（别的终端里跑着）：还没结果的就是还在跑——不因为「忙不忙」一时没对上就画成跑完（不然在跑的那条一会儿出来、一会儿没了）；开着却十分钟都没结果的才算停在一半
-      if (!busy) turns.slice(-4).forEach(function (t) { (t.parts || []).forEach(function (p) { if (p.kind === "tool" && p.status === "running" && (!alive || Date.now() - (p.t0 || 0) > 600000)) { p.status = "done"; p.stale = true; ch = true; } }); if (ch) emit("turn", t); });
+      //   它在问你（AskUserQuestion）、在等你处理对话框（waiting）：会话开着就一直算还在等——你过一个小时再答也一样（以前十分钟后当成停在一半，问答面板没了，只剩它自己界面里那一块）
+      if (!busy) turns.slice(-4).forEach(function (t) { (t.parts || []).forEach(function (p) { if (p.kind === "tool" && p.status === "running" && (!alive || (Date.now() - (p.t0 || 0) > 600000 && !waiting && p.name !== "AskUserQuestion"))) { p.status = "done"; p.stale = true; ch = true; } }); if (ch) emit("turn", t); });
       if (!alive) rt.tasks.forEach(function (t) { if (t.status === "running") { t.status = "stopped"; t.summary = t.summary || "会话已结束"; tch = true; } });
       if (tch) emit("tasks");
       if (ch || tch) emit("status");
@@ -2295,13 +2326,27 @@
     var aid = "cc:" + sid, sub = /^sub-/.test(sid);
     if (!rts[aid]) {
       var fr = !info && !sub && freshMap()[sid];
-      if (sub) info = Object.assign({ sub: true, custom: true }, subMap()[sid] || {}, info || {});
+      if (sub) { info = Object.assign({ sub: true, custom: true }, subMap()[sid] || {}, info || {}); subFind(sid, info); subRemember(sid, info); }
       rts[aid] = new Runtime(aid, Object.assign({ id: sid }, fr ? { cwd: fr.cwd, title: tr("新会话"), fresh: true } : {}, info || {}));
       if (sub) { readOnly(rts[aid]); subDelegate(rts[aid]); }
       A.registerExternal(aid, rts[aid]);
-    } else if (info) Object.assign(rts[aid].info, info);
+    } else if (info) { Object.assign(rts[aid].info, info); if (sub) subRemember(sid, rts[aid].info); }
     return rts[aid];
   }
+  // 子 agent 的记录在哪、谁开的它：没给的从已经读进来的会话（主会话、别的子 agent）的任务里找
+  function subFind(sid, info) {
+    if (info.path) return;
+    var id = sid.slice(4);
+    Object.keys(rts).some(function (k) {
+      var t = (rts[k].tasks || []).filter(function (x) { return x.kind === "agent" && x.id === id && x.transcript; })[0];
+      if (!t) return false;
+      info.path = t.transcript; info.parent = info.parent || rts[k].sid;
+      if (!info.title) { info.title = "↳ " + (t.desc || t.type || id); info.agentName = info.agentName || t.desc || t.type || id; }
+      return true;
+    });
+  }
+  // 知道了它的记录在哪：记下（刷新后它的标签页照样打开；再往下一层的标签页先恢复出来时，也找得到它这个上一级）
+  function subRemember(sid, info) { var m0 = subMap()[sid]; if (info.path && (!m0 || m0.path !== info.path || (!m0.parent && info.parent))) subKeep(sid, info); }
   // 子 agent 的记录（辅助侧栏里点一个子 agent 进去看）：cc:sub-<agentId>，读它自己的记录（<会话>/subagents/agent-<id>.jsonl）。
   //   只读：它不是一段能接着说的会话——不送话、不打断、不 claude --bg --resume（那会拿子 agent 的 id 去起一个后台会话）；
   //   打开过的记着记录在哪、叫什么（刷新后标签页还在，照样能打开）
@@ -2325,9 +2370,11 @@
   }
   // 子 agent（再往下的也一样）的那段会话所在的主会话：顺着 parent 往上找；主会话还没建（刷新后先开的是子 agent 的标签页）就建起来
   function rootOf(r) {
+    var pm = r && r.info && r.info.sub ? /\/([^/]+)\/subagents\/agent-[^/]+\.jsonl$/.exec(String(r.info.path || "")) : null;
+    if (pm && !/^sub-/.test(pm[1])) return rts["cc:" + pm[1]] || ensure(pm[1]);
     var cur = r, n = 0;
     while (cur && cur.info && cur.info.sub && cur.info.parent && n++ < 8) {
-      var par = String(cur.info.parent), next = rts["cc:" + par] || (/^sub-/.test(par) ? null : ensure(par));
+      var par = String(cur.info.parent), next = rts["cc:" + par] || (!/^sub-/.test(par) || subMap()[par] ? ensure(par) : null);
       if (!next) return null;
       cur = next;
     }
@@ -2342,21 +2389,29 @@
     r.waitingDialog = function () { var root = rootOf(r); return root && root.waitingDialog ? root.waitingDialog() : 0; };
     r.dialogClosed = function () { var root = rootOf(r); if (root && root.dialogClosed) root.dialogClosed(); };
     r.tui = function (c, rows, h) { var root = rootOf(r); return root && root.tui ? root.tui(c, rows, h) : null; };
+    //   它在不在跑看它上一级的任务单：上一级也是子 agent 的，跟着读它的记录（不然它的任务单不动，这边一直「在跑」/ 一直停着）
     var on0 = r.on;
     r.on = function (fn) {
-      var off = on0.call(r, fn), root = rootOf(r), offR = root && root !== r ? root.on(function (type) { if (type === "status" || type === "state") fn(type); }) : null;
-      return function () { off(); if (offR) offR(); };
+      var off = on0.call(r, fn), root = rootOf(r), offs = [];
+      if (root && root !== r) offs.push(root.on(function (type) { if (type === "status" || type === "state") fn(type); }));
+      var ps = String(r.info.parent || ""), par = /^sub-/.test(ps) ? rts["cc:" + ps] || (subMap()[ps] ? ensure(ps) : null) : null;
+      if (par && par !== r && par !== root) offs.push(par.on(function () {}));
+      return function () { off(); offs.forEach(function (f) { f(); }); };
     };
   }
-  // 家谱里一个子 agent 的子 agent（studio.js 的「子 Agent」那一块往下一层）：在跑的跟着读它自己的记录（最多同时看 8 个），跑完的读过就留着
-  var nestWatch = {};
+  // 家谱里一个子 agent 的子 agent（studio.js 的「子 Agent」那一块往下一层）：在跑的跟着读它自己的记录（最多同时看 8 个）；
+  //   跑完的读一遍就够（它开过的子 agent 不会再变；最多 60 个），读完重画一次
+  var nestWatch = {}, nestRead = {};
+  var famRedraw = function () { if (window.STUDIO && STUDIO.familyChanged) STUDIO.familyChanged(); };
   function subTasks(t, prt) {
     if (!t || t.kind !== "agent" || !t.id || !t.transcript) return [];
-    var sid = "sub-" + t.id, aid = "cc:" + sid, r = rts[aid];
-    if (!r && t.status === "running" && Object.keys(nestWatch).length < 8) r = ensure(sid, { path: t.transcript, title: "↳ " + (t.desc || t.type || t.id), agentName: t.desc || t.type || t.id, cwd: (prt && prt.info && prt.info.cwd) || "", parent: prt ? prt.sid : "" });
+    var sid = "sub-" + t.id, aid = "cc:" + sid, r = rts[aid], run = t.status === "running";
+    if (!r && (run ? Object.keys(nestWatch).length < 8 : Object.keys(nestRead).length < 60)) r = ensure(sid, { path: t.transcript, title: "↳ " + (t.desc || t.type || t.id), agentName: t.desc || t.type || t.id, cwd: (prt && prt.info && prt.info.cwd) || "", parent: prt ? prt.sid : "" });
     if (!r) return [];
-    if (t.status === "running" && !nestWatch[aid]) nestWatch[aid] = r.on(function (type) { if (type === "tasks" && window.STUDIO && STUDIO.familyChanged) STUDIO.familyChanged(); });
-    else if (t.status !== "running" && nestWatch[aid]) { nestWatch[aid](); delete nestWatch[aid]; }
+    if (!r.info.path) { r.info.path = t.transcript; r.info.parent = r.info.parent || (prt ? prt.sid : ""); subRemember(sid, r.info); if (run) r.latest(); else delete nestRead[aid]; } // 早先建的、当时不知道记录在哪（没读出来）：补上再读
+    if (run && !nestWatch[aid]) nestWatch[aid] = r.on(function (type) { if (type === "tasks") famRedraw(); });
+    else if (!run && nestWatch[aid]) { nestWatch[aid](); delete nestWatch[aid]; nestRead[aid] = 1; } // 跟着读到它跑完：不用再读
+    if (!run && !nestRead[aid]) { nestRead[aid] = 1; r.latest().then(famRedraw, function () {}); }
     return (r.tasks || []).filter(function (x) { return x.kind === "agent"; });
   }
   // 进去看一个子 agent（t：主会话 rt.tasks 里的那一条；prt：主会话）：开一个标签页，标题是它的说明（「↳ 说明」），已经开着就跳过去

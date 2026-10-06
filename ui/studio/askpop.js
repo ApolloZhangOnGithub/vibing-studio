@@ -24,7 +24,7 @@
     return md.length > 700 ? "…" + md.slice(-700) : md;
   }
   function frontApp(qid) {
-    if (fronted[qid] || getv("askFront") === false) return;
+    if (fronted[qid] || getv("askFront") !== true) return; // 默认不把窗口叫到前面（打断你手上的事）；设置里能开
     fronted[qid] = 1;
     if (!document.hidden && document.hasFocus()) return;
     var N = window.nadosNative;
@@ -34,7 +34,7 @@
     var A = window.TSU_AGENTS;
     if (!A || !A.runtime || !S.needsList) return;
     if (cur) { var q0 = cur.rt.question ? cur.rt.question() : null; if (!q0 || q0.id !== cur.q.id) close(false); return; } // 别处答了：收起
-    if (getv("askPopup") === false) return;
+    if (getv("askPopup") !== true) return; // 默认不弹：会话问你时标签页图标变蓝、状态行写「awaiting input」、通知里有；想要卡片在设置里开
     var nd = S.needsList(), fa = frontAid();
     for (var i = 0; i < nd.length; i++) {
       var x = nd[i], rt = null;

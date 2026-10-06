@@ -14,7 +14,7 @@ mkdir -p "$OUT" "$DL"
 cd "$HERE/app"
 for A in arm64 x86_64; do
   mkdir -p "$OUT/$A"
-  APP_DIR="$OUT/$A" BUILD=$B TARGET_ARCH=$A MODE=terminal ./build.sh | tail -1
+  APP_DIR="$OUT/$A" BUILD=$B TARGET_ARCH=$A MODE=terminal RELEASE=1 ./build.sh | tail -1
 done
 AS="Vibing-Studio-$V-macOS-AppleSilicon.zip"; IN="Vibing-Studio-$V-macOS-Intel.zip"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/arm64/Vibing Studio.app" "$OUT/$AS"

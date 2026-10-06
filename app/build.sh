@@ -45,7 +45,8 @@ if [ "$MODE" = terminal ]; then
   /usr/libexec/PlistBuddy -c "Merge DocTypes.plist" "$APP/Contents/Info.plist" # 能打开的文件（「打开方式」里有它；打开的交给页面，见 AppDelegate 的 application(_:open:)）
   # 本地界面（Sources/LocalUI.swift）：界面文件从这台 Mac 上读，不用部署网站——先用仓库里的 public/（改了按 ⌘R 就生效），这台 Mac 上没有仓库时用 App 里带的一份
   UIDIR="${UIDIR:-$(cd ../ui && pwd)}" # 独立的 vibing-studio：界面在旁边的 ui/（老地方 teyvat-mac-simulator 里是 ../../public）
-  plutil -insert VibingUIDir -string "$UIDIR" "$APP/Contents/Info.plist" # 路径里有空格：plutil 照原样写
+  # 发出去的（tools/release-mac.sh 设 RELEASE=1）不记仓库路径：别的 Mac 上同一个用户名、「文稿」走 iCloud 时这个路径也在，App 就读那份正在改的仓库，不跟网站走
+  [ "${RELEASE:-}" = 1 ] || plutil -insert VibingUIDir -string "$UIDIR" "$APP/Contents/Info.plist" # 路径里有空格：plutil 照原样写
   mkdir -p "$APP/Contents/Resources/web"
   rsync -a --exclude '.DS_Store' --exclude 'downloads' "$UIDIR/" "$APP/Contents/Resources/web/" # downloads/：发出去的 App 本身，不带
   mkdir -p "$APP/Contents/Resources/bin"

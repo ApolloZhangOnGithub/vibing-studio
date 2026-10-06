@@ -83,6 +83,9 @@ html.st-act-compact .st-glob.st-globbar button svg { width: 14px; height: 14px; 
 .st-lay button:hover { color: var(--st-hi); background: var(--st-hover2); }
 .st-lay button[hidden] { display: none; } /* 右键里取消勾选的、默认不摆出来的（浏览器）：上面的 display: flex 盖不过它 */
 .st-lay svg { width: 16px; height: 16px; }
+/* 有新版本：标题栏右边一个蓝色的按钮（studio.js layBar） */
+.st-lay button.st-lupd { width: auto; margin-right: 6px; padding: 0 10px; border-radius: 11px; background: var(--st-blue, #0a84ff); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.st-lay button.st-lupd:hover { background: var(--st-blue, #0a84ff); color: #fff; filter: brightness(1.1); }
 /* 顶栏上显示哪些（顶栏右键勾选）：地址栏、布局控件默认有；新建标签页、标签页概览默认没有 */
 html.termapp:not(.st-tb-address) #win .bar > .ts-addr { visibility: hidden; }
 html.termapp:not(.st-tb-layout) .st-lay > :is([data-l="custom"], [data-l="left"], [data-l="panel"], [data-l="right"]) { display: none; }
@@ -1086,7 +1089,7 @@ html.termapp .termwin .tab.needs > .st-ico, html.termapp .termwin .tab.needs.bus
 html.termapp .termwin .tab.needs > span::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: #4c9bff; vertical-align: middle; }
 /* 底部在跑那一行右边：别的会话在等你（live.js renderInput） */
 .tpane .foot .input { position: relative; }
-.tpane .vs-needs { position: absolute; right: 10px; height: var(--ttu-row, 1.3em); line-height: var(--ttu-row, 1.3em); color: #6eaaff; cursor: pointer; white-space: pre; }
+.tpane .vs-needs { color: #6eaaff; cursor: pointer; white-space: pre; } /* 排在那一行的字里、靠右（live.js 用空格补齐）：不绝对定位——以前有时跑到一行中间 */
 .tpane .vs-needs:hover { text-decoration: underline dashed; text-underline-offset: 0.2em; }
 html.light.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #c96442; }
 @keyframes st-tabbeat { 0%, 100% { transform: scale(1); } 18% { transform: scale(1.28); } 34% { transform: scale(.94); } 50% { transform: scale(1.08); } 66% { transform: scale(1); } }

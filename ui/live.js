@@ -731,19 +731,24 @@
         var bar = function (row, c0, c1) { if (c1 > c0) blocks.push('<div style="top:' + row * P.rowH + "px;left:" + (P.padL + c0 * P.chPx) + "px;width:" + (c1 - c0) * P.chPx + "px;height:" + P.rowH + 'px"></div>'); };
         if (keys.length) {
           if (r0 === r1) bar(r0, rows.get(r0)[0], rows.get(r0)[1]);
-          else { bar(r0, rows.get(r0)[0], Math.max(full, rows.get(r0)[1])); for (var rm = r0 + 1; rm < r1; rm++) bar(rm, 0, Math.max(full, (rows.get(rm) || [0, 0])[1])); bar(r1, 0, rows.get(r1)[1]); }
+          else {
+            bar(r0, rows.get(r0)[0], Math.max(full, rows.get(r0)[1]));
+            // 中间那些行：一整块（以前一行一个框，选一大段时上千个）
+            if (r1 - r0 > 1) { var mw = full; for (var rm = r0 + 1; rm < r1; rm++) mw = Math.max(mw, (rows.get(rm) || [0, 0])[1]); blocks.push('<div style="top:' + (r0 + 1) * P.rowH + "px;left:" + P.padL + "px;width:" + mw * P.chPx + "px;height:" + (r1 - r0 - 1) * P.rowH + 'px"></div>'); }
+            bar(r1, 0, rows.get(r1)[1]);
+          }
         }
       }
       var html = blocks.join("");
       if (html === lastSelHtml && !blocks.length && !marked.length) return;
       lastSelHtml = html;
       if (selLayer.innerHTML !== html) selLayer.innerHTML = html;
-      marked.forEach(function (x) { x.classList.remove("sel"); });
+      marked.forEach(function (x) { x.classList.remove("tsb"); });
       marked = [];
       if (blocks.length) {
         var range = sel.getRangeAt(0), scope = range.commonAncestorContainer;
         if (scope.nodeType !== 1) scope = scope.parentElement;
-        Array.prototype.forEach.call(scope.querySelectorAll(".ttu-box"), function (x) { if (range.intersectsNode(x)) { x.classList.add("sel"); marked.push(x); } });
+        Array.prototype.forEach.call(scope.querySelectorAll(".ttu-box"), function (x) { if (range.intersectsNode(x)) { x.classList.add("tsb"); marked.push(x); } });
       }
     }
     document.addEventListener("selectionchange", paintSelection);
@@ -2197,7 +2202,7 @@
     }
     stk.addEventListener("mousedown", function (e) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); stickyGo(); });
     stk.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
-    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
+    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); P.foot.removeEventListener("wheel", onCcWheel); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
     // 跳到某一问（搜索结果）：滚过去，闪一下
     // 跳到一问（搜索里点的那一处）：给了找到的字就在这一问里找到第 nth 处、滚到它在屏幕上三分之一的地方、亮一下（不是只跳到这一问开头——一问很长时差好几屏）；
     //   折行、行首的缩进不算（照字连起来找），不分大小写；这一问里没画出来（收着的工具输出里）就退回到这一问开头
@@ -3850,11 +3855,12 @@
       //   放进那一行的字里、靠右对齐；那一行先截短留出位置——两段字不会叠在一起
       var nd = window.STUDIO && STUDIO.needsList ? STUDIO.needsList().filter(function (x) { return x.aid !== agentId; }) : [];
       needsAid = nd.length ? nd[0].aid : "";
-      if (nd.length && work.length) {
-        var wi = above.length + inputLen + Math.max(0, spare), fc0 = P.footCols(), ind = "● " + nd.length + " awaiting input" + (nd.length === 1 ? " · " + nd[0].name : "");
-        if (W(ind) > fc0 / 2) ind = "● " + nd.length + " awaiting input";
-        var base = clipLine(String(rows[wi] || ""), Math.max(8, fc0 - W(ind) - 2));
-        rows[wi] = base + RESET + " ".repeat(Math.max(1, fc0 - W(base) - W(ind))) + "\uE009" + ind + "\uE008";
+      if (nd.length && !focusNow) {
+        var fc0 = P.footCols(), ind = "● " + nd.length + " awaiting input" + (nd.length === 1 ? " · " + nd[0].name : "");
+        if (W(ind) > fc0 / 2) ind = clip(ind, Math.max(18, Math.floor(fc0 / 2)));
+        var wi = rows.length - 1, base = String(rows[wi] || "");
+        if (wi < above.length + inputLen || W(base) + W(ind) + 4 > fc0) { rows.push(""); wi = rows.length - 1; base = ""; }
+        rows[wi] = base + RESET + " ".repeat(Math.max(1, fc0 - W(base) - W(ind) - 1)) + "\uE009" + ind + "\uE008";
       }
       P.input.innerHTML = logoMarks(P.rowsHtml(rows, P.footCols()));
       var ne0 = P.input.querySelector(".vs-needs");
@@ -3863,10 +3869,18 @@
       var under = v ? (ta.selectionEnd > ta.selectionStart ? "" : Array.from(v.slice(ta.selectionStart))[0]) : attach.length ? "" : Array.from(placeholder)[0];
       var fg = !v && placeholder ? (P.light ? "#828282" : "#787878") : bang && ta.selectionStart === 0 ? "#fd5db1" : null;
       if (bang && ta.selectionStart === 0) { under = "!"; caretCol = indent.length; caretRow = 1 + above.length; }
-      if (panel) return P.hideCaret(); // 选项面板开着：键盘给面板，输入框不闪光标
+      if (panel && !askTyping()) return P.hideCaret(); // 选项面板开着：键盘给面板，输入框不闪光标（在写问题的回答时照常有光标）
       P.drawCaret({ where: "foot", row: caretRow, col: caretCol, ch: under, color: fg });
     }
-    V.inputChanged = function (t) { if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
+    // 问答面板开着、还没在写回答，输入框里来了字（输入法上屏、粘贴）：选上「Type something」，这些字就是回答
+    function askStartTyping() {
+      if (!panel || panel.kind !== "ask" || panel.review || panel.typing) return false;
+      var x0 = panel.q.questions[panel.qi];
+      if (!x0) return false;
+      panel.sel = (x0.options || []).length; panel.typing = true;
+      return true;
+    }
+    V.inputChanged = function (t) { if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
 
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
     function openPanel(p) { panel = p; P.jump.classList.remove("on"); renderInput(); P.fit(); P.stick(); }
@@ -3959,12 +3973,27 @@
       }
       return out + (cur ? RESET : "");
     }
+    // 它的面板比这一格高（/config 那种长单子、很长的问题）：只画放得下的那一截，默认贴着下面（选项、按键提示都在下面）；在面板上滚轮往上翻看上面的
+    function ccMax() { return Math.max(8, Math.floor((P.el.clientHeight || 600) / (P.rowH || 16) * 0.85) - 3); }
     function ccRows() {
       var st = ccT;
       if (!st) return [];
-      st.lines.forEach(function (l, i) { panel.map[i] = { cc: st.row0 + i }; });
-      return st.lines.slice();
+      var n = st.lines.length, mx = ccMax(), up = Math.max(0, Math.min(st.up || 0, n - mx)), s0 = Math.max(0, n - mx - up);
+      st.up = up;
+      var out = st.lines.slice(s0, s0 + mx);
+      out.forEach(function (l, i) { panel.map[i] = { cc: st.row0 + s0 + i }; });
+      return out;
     }
+    var onCcWheel = function (e) {
+      var st = ccT;
+      if (!st || !panel || panel.kind !== "cc") return;
+      var n = st.lines.length, mx = ccMax();
+      if (n <= mx) return;
+      e.preventDefault();
+      var up = Math.max(0, Math.min(n - mx, (st.up || 0) + (e.deltaY < 0 ? 3 : -3)));
+      if (up !== st.up) { st.up = up; renderInput(); }
+    };
+    P.foot.addEventListener("wheel", onCcWheel, { passive: false });
     // 键 → 终端里那几个字节（同 claude attach 送的）；⌘ 开头的归 App。Ctrl+C / Ctrl+D 不送（在它那里连按会退出会话）——当 Esc
     function ccKeyBytes(e) {
       var k = e.key, m = (e.shiftKey ? 1 : 0) + (e.altKey ? 2 : 0) + (e.ctrlKey ? 4 : 0), csi = function (f) { return m ? "\x1b[1;" + (m + 1) + f : "\x1b[" + f; };
@@ -4577,7 +4606,7 @@
     //   下面当前这一问：❯ 1. 选项（后面淡的说明），多选的是 [ ] / [✔]；最后一项「Type something」自己写。↑↓ 选、回车定（多选是切换）、←→ / Tab 换问题、数字直接选、Esc 先收起（它还在等，底下点「回答」再打开）
     // 稍后再答：选了一半、写了一半的回答记着（同一问再打开时接着；问题卡片那边也用这一份）
     var askDrafts = window.TSU_ASKDRAFT = window.TSU_ASKDRAFT || {};
-    function openAsk(q) { if (!q) return; var d = askDrafts[q.id]; openPanel({ kind: "ask", q: q, qi: d ? Math.min(d.qi || 0, q.questions.length - 1) : 0, sel: 0, ans: d && d.ans && d.ans.length === q.questions.length ? JSON.parse(JSON.stringify(d.ans)) : q.questions.map(function () { return { pick: [], text: "" }; }) }); }
+    function openAsk(q) { if (!q) return; var d = askDrafts[q.id], st0 = P.ta.value || ""; if (st0) { P.ta.value = ""; draftSet(agentId, "", pastes); } openPanel({ kind: "ask", stash: st0, q: q, qi: d ? Math.min(d.qi || 0, q.questions.length - 1) : 0, sel: 0, ans: d && d.ans && d.ans.length === q.questions.length ? JSON.parse(JSON.stringify(d.ans)) : q.questions.map(function () { return { pick: [], text: "" }; }) }); }
     function askKeep() { if (!panel || panel.kind !== "ask") return; if (panel.typing) { var tv = String(P.ta.value || "").trim(); if (tv) panel.ans[panel.qi].text = tv; } askDrafts[panel.q.id] = { qi: panel.qi, ans: JSON.parse(JSON.stringify(panel.ans)) }; }
     function askDone(a) { return a.pick.length > 0 || !!a.text; }
     function askRows(fcols, indent) {
@@ -4599,15 +4628,24 @@
       }
       var x = qs[panel.qi], a = panel.ans[panel.qi], opts = x.options || [], multi = !!x.multiSelect;
       var tq = function (s0) { s0 = String(s0 || ""); return window.TSU_TRANSLATE && TSU_TRANSLATE.text ? TSU_TRANSLATE.text(s0, agentId) || s0 : s0; }; // 问题、选项、说明按「任务翻译」译出来看（交回去的还是原文）
-      wrap(tq(x.question), fcols - 4).forEach(function (l) { rows.push(indent + BOLD + l + RESET); });
+      // 放得下才全画：问题很长、选项说明很多时，整块不超过这一格高度的大约七成（输入框、状态行还要在下面）——
+      //   先把每个选项的说明减到一行、再不行就不要说明，问题本身最后才截短（末尾「…」）；选项、提示那一行一定看得见（以前整块比窗口还高，下面的选项被裁掉、点不到）
+      var all = opts.concat([{ label: "Type something", other: true }]), qLines = wrap(tq(x.question), fcols - 4);
+      var budget = Math.max(10, Math.floor((P.el.clientHeight || 600) / (P.rowH || 16) * 0.72) - 7), fixed = rows.length + 1 + (multi ? 1 : 0) + 2;
+      var descOf = all.map(function (o) { return o.description ? wrap(tq(o.description), fcols - 10) : []; });
+      var optN = function (dn) { return all.length + descOf.reduce(function (n, d) { return n + Math.min(dn, d.length); }, 0); }, descN = 2;
+      while (descN > 0 && fixed + qLines.length + optN(descN) > budget) descN--;
+      var qMax = Math.max(2, budget - fixed - optN(descN));
+      if (qLines.length > qMax) { qLines = qLines.slice(0, qMax); qLines[qMax - 1] = clip(qLines[qMax - 1], Math.max(8, fcols - 6)).replace(/…?$/, "…"); }
+      qLines.forEach(function (l) { rows.push(indent + BOLD + l + RESET); });
       rows.push("");
-      opts.concat([{ label: "Type something", other: true }]).forEach(function (o, i) {
+      all.forEach(function (o, i) {
         var on = i === panel.sel, chosen = o.other ? !!a.text : a.pick.indexOf(i) >= 0;
         var mark = multi ? (chosen ? "[✔] " : "[ ] ") : (i + 1) + ". ";
         map[rows.length] = { askOpt: i };
         var typed = o.other && on && panel.typing ? String(P.ta.value || "").replace(/\s+/g, " ").trim() : "", lab = o.other && (typed || a.text) ? "Type something: " + (typed || a.text) : o.other ? "Type something" : tq(o.label);
-        rows.push(indent + (on ? LAV + "❯ " : "  ") + mark + clip(lab, Math.max(12, fcols - 10)) + (chosen && !multi ? " ✔" : "") + RESET + (o.other && on && !typed ? D + (panel.typing ? "  type your answer below, Enter to submit" : "  Enter to type your answer") + RESET : ""));
-        if (o.description) wrap(tq(o.description), fcols - 10).slice(0, 2).forEach(function (l) { rows.push(indent + "     " + D + l + RESET); });
+        rows.push(indent + (on ? LAV + "❯ " : "  ") + mark + clip(lab, Math.max(12, fcols - 10)) + (chosen && !multi ? " ✔" : "") + RESET + (o.other && on && !typed ? D + (panel.typing ? "  type your answer below, Enter to submit" : "  start typing to answer") + RESET : ""));
+        descOf[i].slice(0, descN).forEach(function (l, j, arr) { rows.push(indent + "     " + D + (j === arr.length - 1 && descOf[i].length > arr.length ? clip(l, Math.max(8, fcols - 12)).replace(/…?$/, "…") : l) + RESET); });
       });
       if (multi) { map[rows.length] = { askNext: true }; rows.push(indent + (panel.sel === opts.length + 1 ? LAV + "❯ " : "  ") + (panel.qi === qs.length - 1 ? "Submit" : "Next") + RESET); }
       rows.push("", indent + D + (multi ? "Enter to toggle · " : "Enter to select · ") + "↑↓ to move · 1–" + Math.min(9, opts.length + 1) + " to choose · " + (qs.length > 1 || multi ? "Tab/←→ to switch questions · " : "") + "Esc to hide" + RESET + (panel.stash ? D + " · your draft comes back after you answer" + RESET : ""));
@@ -4641,7 +4679,7 @@
       // 「Type something」：交的是下面输入框里打的字（打完回车）；还没打字时点它 / 回车只是选上它、光标进输入框
       // 「Type something」：第一次回车——输入框腾出来给你写回答（里面原来打着的话先收起来，答完放回去）；写好了再回车交
       var pickOther = function () {
-        if (!panel.typing) { panel.stash = panel.stash || P.ta.value || ""; P.ta.value = a.text || ""; panel.typing = true; P.focus(); renderInput(); return; }
+        if (!panel.typing) { if (String(P.ta.value || "").trim()) panel.typing = true; else { P.ta.value = a.text || ""; panel.typing = true; P.focus(); renderInput(); return; } }
         var tv = String(P.ta.value || "").trim();
         if (!tv) { P.focus(); renderInput(); return; }
         a.text = tv; askUnstash();
@@ -4916,7 +4954,13 @@
     function pendRows(r, list, D) {
       list.forEach(function (q) {
         if (q.from) { var fl = []; String(q.text || "").split("\n").forEach(function (p0) { fl.push.apply(fl, wrap(p0, P.cols - 4)); }); r.text(["", D + "› Message from @" + q.from + RESET].concat(fl.slice(0, 6).map(function (l) { return "  " + D + l + RESET; }), fl.length > 6 ? ["  " + D + "… +" + (fl.length - 6) + " lines" + RESET] : [])); return; }
-        if (q.sys) { r.text([""].concat(wrap(String(q.text || ""), P.cols - 4).slice(0, 4).map(function (l, i) { return (i ? "    " : "  " + D + "⎿  ") + D + l + RESET; }))); return; } // 它自己排的（/goal 的「Goal set: …」）：照样列出来，淡的、不能改、不出 send now
+        if (q.sys) { // 它自己排的（/goal 的「Goal set: …」）：上面一行是你打的那条命令（排着的样子），下面「⎿ Goal set: …」——不再只有孤零零的一行挂在正在跑的工具下面；淡的、不能改、不出 send now
+          var gs = /^\s*Goal set:\s*([\s\S]*)$/.exec(String(q.text || "")), gc = /^\s*Goal cleared\b/.test(String(q.text || "")), head = gs ? "/goal " + gs[1].replace(/\s+/g, " ").trim() : gc ? "/goal clear" : "";
+          r.text([""]);
+          if (head) r.block('<span class="ask q">' + P.toHtml(wrap(head, P.cols - 2).slice(0, 4).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
+          r.text(wrap(String(q.text || ""), P.cols - 6).slice(0, 4).map(function (l, i) { return (i ? "     " : "  " + D + "⎿  ") + D + l + RESET; }));
+          return;
+        }
         var pl = []; String(q.text || "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, P.cols - 2)); }); // 附的图：只写 [Image #N]，不露路径
         r.text([""]);
         r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
@@ -4981,6 +5025,7 @@
     var cxAt = 0; // ctrl+x ctrl+s：马上发（同 Claude Code 的「ctrl+x ctrl+s to send now」；ctrl+enter 一样）
     V.key = function (e) {
       var ta = P.ta, k = e.key;
+      if (panel && panel.kind === "ask" && !panel.review && !askTyping() && !e.metaKey && !e.ctrlKey && !e.altKey && (e.isComposing || e.keyCode === 229 || (k.length === 1 && !((/^[1-9]$/.test(k) || k === " ") && !ta.value)))) { askStartTyping(); renderInput(); return; } // 问答面板开着时直接打字：就是在写「Type something」的回答（同 Claude Code），不用先回车
       if (panel && askTyping() && !(e.key === "Enter" || e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Tab" || e.key === "Escape") || (panel && askTyping() && e.isComposing)) return; // 「Type something」：字直接打进下面的输入框（同 Claude Code 在那一行里写），不弹框
       if (panel) { if (!(e.metaKey && !e.ctrlKey)) { e.preventDefault(); panelKey(e); } return; }
       if (e.metaKey && !e.ctrlKey) return;
@@ -4993,7 +5038,7 @@
       if (e.ctrlKey && (k === "b" || k === "B")) { if (rt.detachBash()) { e.preventDefault(); P.flash("Moved to background"); } return; }
       if (e.ctrlKey && (k === "t" || k === "T")) { e.preventDefault(); showTodo = window.STUDIO && STUDIO.toggleTodo ? STUDIO.toggleTodo(agentId) : !showTodo; renderStatus(); P.fit(); P.flash(showTodo ? "Task list shown (ctrl+t to hide)" : "Task list hidden (ctrl+t to show)"); return; } // 同 Claude Code；清单在哪（输入框上方、抽屉、侧栏）都跟着收起 / 展开；思考的显示方式用 /thinking
       if (e.ctrlKey && (k === "o" || k === "O")) { e.preventDefault(); verbose = !verbose; P.renderNow(); P.flash(verbose ? "Showing full tool output (ctrl+o to collapse)" : "Tool output collapsed"); return; }
-      if (k === "ArrowLeft" && !ta.value && !e.shiftKey && !e.altKey) { e.preventDefault(); return openAgents(); }
+      // （以前空输入按 ← 打开 agent 列表：一按左键就弹出一大块，误触多——去掉；要看用 /agents，或者左边栏）
       // （以前空输入按 ↓ 打开后台任务列表：任务、后台任务、子 Agent 都在右侧栏里看，不再在输入框里弹一块）
       if (items.length && (k === "ArrowDown" || k === "ArrowUp")) { e.preventDefault(); menuIdx = (menuIdx + (k === "ArrowDown" ? 1 : items.length - 1)) % items.length; renderInput(); return; }
       if (items.length && k === "Tab") { e.preventDefault(); ta.value = items[menuIdx].name + (items[menuIdx].args ? " " : ""); renderInput(); return; }
