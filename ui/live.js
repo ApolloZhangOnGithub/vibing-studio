@@ -3876,11 +3876,12 @@
     //   面板的上边是它画的一整行 ▔（同它自己的样子），按这个找；找不到（不是面板、或者命令直接就有结果）一会儿就断开，什么都不显示
     var ccT = null, ccPalC = null, ccPalL = null;
     function ccTuiOpen(why) {
-      if (ccT || !agent.claude || !rt.tui || !window.Terminal || (rt.tuiBy && rt.tuiBy !== V)) return; // 同一个会话开在几处：只一处接上（不然几处一起改它的终端大小）
+      var own = rt.tuiRoot ? rt.tuiRoot() : rt; // 子 agent 的标签页：接的是主会话的界面，「谁接着」也记在主会话上
+      if (ccT || !agent.claude || !rt.tui || !window.Terminal || (own.tuiBy && own.tuiBy !== V)) return; // 同一个会话开在几处（主会话、它的子 agent 的标签页）：只一处接上（不然几处一起改它的终端大小）
       var cols = Math.max(40, P.footCols() - 1), rows = 60, term = new Terminal({ cols: cols, rows: rows, scrollback: 0, allowProposedApi: true });
       try { if (window.Unicode11Addon) { term.loadAddon(new Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = "11"; } } catch (e) { /* 没有就按默认宽度 */ }
       var st = ccT = { term: term, cols: cols, rows: rows, lines: [], row0: 0, seen: false, mouse: false, paste: false, t: 0, give: 0 };
-      rt.tuiBy = V;
+      own.tuiBy = V; st.own = own;
       st.tui = rt.tui(cols, rows, {
         open: function (modes) {
           st.mouse = modes.indexOf(1006) >= 0 && (modes.indexOf(1000) >= 0 || modes.indexOf(1002) >= 0 || modes.indexOf(1003) >= 0); st.paste = modes.indexOf(2004) >= 0;
@@ -3890,14 +3891,14 @@
         data: function (d) { term.write(d, function () { if (!st.t) st.t = setTimeout(function () { st.t = 0; ccTuiScan(st); }, 30); }); },
         close: function (err) { if (ccT === st) ccTuiDrop(err && st.seen ? uiT("与 Claude Code 的连接断开了") : ""); },
       });
-      if (!st.tui) { ccT = null; rt.tuiBy = null; term.dispose(); return; }
+      if (!st.tui) { ccT = null; own.tuiBy = null; term.dispose(); return; }
       st.give = setTimeout(function () { if (ccT === st && !st.seen) { ccTuiDrop(""); setTimeout(ccWatch, 200); } }, 4000); // 送了命令没弹面板（直接就有结果的）：一会儿就断开；那时它要是在等（命令排着、后来才弹）再看一眼
     }
     function ccTuiDrop(msg) {
       var st = ccT;
       if (!st) return;
       ccT = null;
-      if (rt.tuiBy === V) rt.tuiBy = null;
+      if (st.own && st.own.tuiBy === V) st.own.tuiBy = null;
       clearTimeout(st.give); clearTimeout(st.t); clearTimeout(st.re);
       try { st.tui.close(); } catch (e) { /* 已经断了 */ }
       try { st.term.dispose(); } catch (e) { /* 已经没了 */ }

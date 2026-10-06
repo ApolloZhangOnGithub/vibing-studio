@@ -1104,6 +1104,8 @@ html.light.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #c96442; }
 .st-alogo svg, .st-alogo img { display: block; width: 15px; height: 15px; }
 .st-alogo.cc { color: #d97757; }
 .st-actv .st-afg .st-fgdot { color: var(--st-dim); animation: none; font-size: 9px; }
+/* 子 agent 再开的子 agent：往里缩一层，左边一条细线连着它的上一级（同 Claude Code 的 ⎿ 那一层） */
+.st-sanest { margin-left: 9px; padding-left: 8px; border-left: 1px solid var(--st-line); }
 .st-actv .st-sa2 .st-sasub { display: none; } /* 这里一行放不下两层：token 省掉，用时留在右边 */
 
 /* 「读取中…」：读得快（大多数文件）的时候根本不出现，慢了 0.35 秒才淡出来——不在每次点开时闪一下 */

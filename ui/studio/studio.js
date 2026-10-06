@@ -223,7 +223,15 @@
     };
     // 点开看详情的：那一行也换行显示全文。子 Agent：Claude Code 的会话里点一下进去看它自己的记录（只读的标签页）；Paimon 的就地看详情
     var saAid = d.main ? "cc:" + d.main.sid : aid; // 子 agent 的标签页里：列的是主 agent 的子 agent（点了开那一个）
-    var row1 = function (x) { var ra = x.kind === "shell" ? aid : saAid, op = !!TDET[ra + ":" + tkey(x)], me = d.main && x.id === d.main.me; return (x.kind === "shell" ? taskRow(x, aid, "st-frow" + (op ? " wrap" : ""), "task-det") : subRow(x, ra, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), /^cc:/.test(ra) ? "sub-open" : "task-det")) + (op ? taskDet(x, ra) : ""); };
+    // 子 agent 再开的子 agent：挂在它下面一层（再往下也一样，最多四层）；点一行同样进去看它自己的记录
+    var nestRows = function (x, ownerAid, depth) {
+      if (x.kind === "shell" || !/^cc:/.test(ownerAid) || depth > 4 || !window.TSU_CLAUDE || !TSU_CLAUDE.subTasks) return "";
+      var kids = TSU_CLAUDE.subTasks(x, tdRt(ownerAid));
+      if (!kids.length) return "";
+      var kAid = "cc:sub-" + x.id;
+      return '<div class="st-sanest" style="--nd:' + depth + '">' + kids.slice().sort(taskOrder).map(function (k) { var op = !!TDET[kAid + ":" + tkey(k)], me = d.main && k.id === d.main.me; return subRow(k, kAid, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), "sub-open") + nestRows(k, kAid, depth + 1); }).join("") + "</div>";
+    };
+    var row1 = function (x) { var ra = x.kind === "shell" ? aid : saAid, op = !!TDET[ra + ":" + tkey(x)], me = d.main && x.id === d.main.me; return (x.kind === "shell" ? taskRow(x, aid, "st-frow" + (op ? " wrap" : ""), "task-det") : subRow(x, ra, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), /^cc:/.test(ra) ? "sub-open" : "task-det")) + (op ? taskDet(x, ra) : "") + nestRows(x, ra, 1); };
     // 在跑的一行行列着；跑完的（完成、失败、停了）收成一行「n 个已结束」，点开看（同任务清单的「n 项已完成」）
     var rows = function (l, k, rf) {
       rf = rf || row1;
@@ -258,7 +266,8 @@
     if (d.main) {
       var mr = d.main.rt, mbusy = !!(mr && mr.stream), mname = (mr && mr.agent && mr.agent.name) || (mr && mr.info && mr.info.title) || d.main.sid.slice(0, 8), mact = "";
       if (mbusy && mr.stream.turn && mr.stream.turn.parts) { var lastP = mr.stream.turn.parts.filter(function (p) { return p.kind === "tool" && p.status === "running"; }).pop(); if (lastP) mact = String((lastP.input && (lastP.input.description || lastP.input.command || lastP.input.file_path)) || lastP.name).replace(/\s+/g, " ").trim(); }
-      mainHtml = sec("main", "主 Agent", "", '<div class="st-prw st-frow st-mainrow" data-st="open-main-' + esc(d.main.sid) + '" title="' + esc(mname) + '"><i class="st-tg st-maindot">●</i> <b class="st-fgn">main</b> <span class="st-cut">' + esc(mname) + '</span><span class="st-fill"></span><span class="st-dim">' + esc(mbusy ? (mact ? trT(mact, aid) : "运行中") : "空闲") + "</span></div>");
+      var nestedPar = /^sub-/.test(d.main.sid); // 再往下一层的子 agent：上面那一行是开它的那个子 agent，不是主 agent
+      mainHtml = sec("main", nestedPar ? "上一级 Agent" : "主 Agent", "", '<div class="st-prw st-frow st-mainrow" data-st="open-main-' + esc(d.main.sid) + '" title="' + esc(mname) + '"><i class="st-tg st-maindot">●</i> <b class="st-fgn">' + (nestedPar ? "parent" : "main") + '</b> <span class="st-cut">' + esc(mname) + '</span><span class="st-fill"></span><span class="st-dim">' + esc(mbusy ? (mact ? trT(mact, aid) : "运行中") : "空闲") + "</span></div>");
     }
     if (famTui() && P && P.toHtml) return familyTuiHtml(P, d, fgItems);
     // 右上角「TUI / 图形」的切换先关掉（TUI 的样子不能折叠，没做好）：<div class="st-fmode"><button … data-st="fam-tui">TUI</button></div>

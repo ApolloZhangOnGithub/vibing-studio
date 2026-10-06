@@ -245,7 +245,12 @@
     function addTask(t) { rt.tasks.push(t); if (t.id) taskById[t.id] = t; if (t.toolUseId) taskByTool[t.toolUseId] = t; return t; }
     function newTask(o) { return addTask(Object.assign({ id: "", kind: "agent", desc: "", prompt: "", cmd: "", type: "", background: true, status: "running", partial: false, t0: 0, end: null, ms: 0, tools: 0, tokens: 0, tokensIn: 0, tokensOut: 0, code: null, result: "", error: "", summary: "", out: "", transcript: "", log: [], toolUseId: "", resumedAt: null }, o)); }
     var bashIn = {}; // 前台的命令（还没结果的）：超时转到后台时拿它的说明、命令
-    function bindId(t, id) { if (id && !t.id) { t.id = id; taskById[id] = t; } if (t.kind === "agent" && t.id && path) t.transcript = path.replace(/\.jsonl$/, "") + "/subagents/agent-" + t.id + ".jsonl"; }
+    // 子 agent 自己的记录：同 Claude Code 2.1.281（eh()）——一段会话的子 agent（子 agent 再开的子 agent 也一样）都在 <会话>/subagents/agent-<id>.jsonl，一层，不往下套；
+    //   这一段本身就是子 agent 的记录（在 subagents/ 里）：它开的子 agent 和它在同一个目录
+    function bindId(t, id) {
+      if (id && !t.id) { t.id = id; taskById[id] = t; }
+      if (t.kind === "agent" && t.id && path) t.transcript = (/\/subagents\//.test(path) ? path.replace(/\/[^/]*$/, "") : path.replace(/\.jsonl$/, "") + "/subagents") + "/agent-" + t.id + ".jsonl";
+    }
     function taskLine(j) {
       var at = ts(j), m = j.message || {}, c = m.content, changed = false;
       if (j.type === "assistant" && Array.isArray(c)) c.forEach(function (b) {
@@ -2292,7 +2297,7 @@
       var fr = !info && !sub && freshMap()[sid];
       if (sub) info = Object.assign({ sub: true, custom: true }, subMap()[sid] || {}, info || {});
       rts[aid] = new Runtime(aid, Object.assign({ id: sid }, fr ? { cwd: fr.cwd, title: tr("新会话"), fresh: true } : {}, info || {}));
-      if (sub) readOnly(rts[aid]);
+      if (sub) { readOnly(rts[aid]); subDelegate(rts[aid]); }
       A.registerExternal(aid, rts[aid]);
     } else if (info) Object.assign(rts[aid].info, info);
     return rts[aid];
@@ -2317,6 +2322,42 @@
     r.localQueued = function () { return 0; };
     ["interrupt", "canInject", "canSendNow", "canInterrupt", "canCycle", "cycleMode", "setModel"].forEach(function (k) { r[k] = function () { return false; }; });
     r.hint = function () { return tr("子 Agent 的记录 · 只读"); };
+  }
+  // 子 agent（再往下的也一样）的那段会话所在的主会话：顺着 parent 往上找；主会话还没建（刷新后先开的是子 agent 的标签页）就建起来
+  function rootOf(r) {
+    var cur = r, n = 0;
+    while (cur && cur.info && cur.info.sub && cur.info.parent && n++ < 8) {
+      var par = String(cur.info.parent), next = rts["cc:" + par] || (/^sub-/.test(par) ? null : ensure(par));
+      if (!next) return null;
+      cur = next;
+    }
+    return cur && !(cur.info && cur.info.sub) ? cur : null;
+  }
+  // 子 agent 的弹窗（要权限、问你问题）画在主会话的界面里：子 agent 的标签页里照样看得见、答得了——
+  //   它在问的（AskUserQuestion）答了经主会话送进去；别的弹窗（权限确认……）接上主会话的界面原样搬过来（live.js 的 cc 面板）。
+  //   主会话「在等你」的状态也跟过来（子 agent 的标签页开着时，主会话照常跟着读）
+  function subDelegate(r) {
+    r.tuiRoot = function () { return rootOf(r) || r; };
+    r.answerQuestion = function (text) { var root = rootOf(r); return root ? root.answerQuestion(text) : Promise.reject(new Error(tr("找不到它的主会话，在这里答不了"))); };
+    r.waitingDialog = function () { var root = rootOf(r); return root && root.waitingDialog ? root.waitingDialog() : 0; };
+    r.dialogClosed = function () { var root = rootOf(r); if (root && root.dialogClosed) root.dialogClosed(); };
+    r.tui = function (c, rows, h) { var root = rootOf(r); return root && root.tui ? root.tui(c, rows, h) : null; };
+    var on0 = r.on;
+    r.on = function (fn) {
+      var off = on0.call(r, fn), root = rootOf(r), offR = root && root !== r ? root.on(function (type) { if (type === "status" || type === "state") fn(type); }) : null;
+      return function () { off(); if (offR) offR(); };
+    };
+  }
+  // 家谱里一个子 agent 的子 agent（studio.js 的「子 Agent」那一块往下一层）：在跑的跟着读它自己的记录（最多同时看 8 个），跑完的读过就留着
+  var nestWatch = {};
+  function subTasks(t, prt) {
+    if (!t || t.kind !== "agent" || !t.id || !t.transcript) return [];
+    var sid = "sub-" + t.id, aid = "cc:" + sid, r = rts[aid];
+    if (!r && t.status === "running" && Object.keys(nestWatch).length < 8) r = ensure(sid, { path: t.transcript, title: "↳ " + (t.desc || t.type || t.id), agentName: t.desc || t.type || t.id, cwd: (prt && prt.info && prt.info.cwd) || "", parent: prt ? prt.sid : "" });
+    if (!r) return [];
+    if (t.status === "running" && !nestWatch[aid]) nestWatch[aid] = r.on(function (type) { if (type === "tasks" && window.STUDIO && STUDIO.familyChanged) STUDIO.familyChanged(); });
+    else if (t.status !== "running" && nestWatch[aid]) { nestWatch[aid](); delete nestWatch[aid]; }
+    return (r.tasks || []).filter(function (x) { return x.kind === "agent"; });
   }
   // 进去看一个子 agent（t：主会话 rt.tasks 里的那一条；prt：主会话）：开一个标签页，标题是它的说明（「↳ 说明」），已经开着就跳过去
   function openSub(t, prt, tw) {
@@ -2422,7 +2463,7 @@
     };
     for (var i = 0; i < 3; i++) next();
   }
-  var API = { ensure: ensure, openSub: openSub, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; } };
+  var API = { ensure: ensure, openSub: openSub, subTasks: subTasks, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; } };
   if (window.TSU_CONNECTORS && TSU_CONNECTORS.provide) TSU_CONNECTORS.provide("claude-code", { newSession: newSession });
   A.setExternalResolver(function (aid) { return window.TSU_CLAUDE ? ensure(aid.slice(3)) : null; });
   var EXT = window.TSU_EXT;
