@@ -1129,7 +1129,8 @@
   document.addEventListener("st-update-ready", function () { readVer().then(function (v) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); }); });
   var localVer = ""; // 本地界面：页面载入后第一次读到的 version.json
   function checkVersion(force) {
-    if ((document.hidden && force !== true) || updateReady) return;
+    if (updateReady) { if (!document.hidden || force === true) readVer().then(function (v) { if (v && v !== uiVer.next) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); } }); return; }
+    if (document.hidden && force !== true) return;
     // App 从这台 Mac 上读界面文件（原生的 LocalUI）：看本地文件改没改（不问网站）；改了就是有新版本（点「重新载入以更新」/ ⌘R）
     var LU = window.TSU_UI_LOCAL, NN = window.nadosNative;
     if (LU && NN && NN.call) {
@@ -4795,7 +4796,7 @@
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
       mi("检查更新…", "", function () { checkNow(); }, { icon: MI.update, sym: "arrow.down.circle" }),
-    ].filter(Boolean).concat(appUpd ? [{ sep: true }, mi("重启以更新 App（" + appUpd.ver + "）", "", function () { appUpdateNow(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []).concat(updateReady ? [{ sep: true }, mi("重新载入以更新" + (uiVer.next ? "（v" + uiVer.next + "）" : ""), "", function () { location.reload(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
+    ].filter(Boolean).concat(appUpd ? [{ sep: true }, mi("重启以更新 App（v" + String(appUpd.ver).replace(/^v/, "") + "）", "", function () { appUpdateNow(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []).concat(updateReady ? [{ sep: true }, mi("重新载入以更新" + (uiVer.next ? "（v" + uiVer.next + "）" : ""), "", function () { location.reload(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
   }
   // 选连哪台 Mac（网页版 / iPad）：这个账号现在在线的 Mac；连着的时候多一项「断开」
   function pickMac(tw) {
@@ -5258,7 +5259,6 @@
         var b = e.target.closest("[data-l]");
         if (!b) return;
         if (b.dataset.l === "concise") return layMenu(tw, b);
-        if (b.dataset.l === "update") { if (appUpd) appUpdateNow(); else location.reload(); return; }
         if (b.dataset.l === "custom") layoutPick(tw);
         if (b.dataset.l === "newtab") (tw.ws.newTabUser || tw.ws.newTab)();
         if (b.dataset.l === "overview" && window.TSU_BROWSER && TSU_BROWSER.overview) TSU_BROWSER.overview(tw);
@@ -5274,8 +5274,6 @@
     var zl = !!(zen && zen.hid.side && !sideOn), zp = !!(zen && zen.hid.panel && !L.panel);
     var h = '<button data-l="newtab" title="新建标签页 (⌘T)">' + ICO.plus + '</button><button data-l="custom" title="自定义布局"' + hb("custom") + ">" + LAY_ICONS.custom + '</button><button data-l="left" title="' + (zl ? "主侧栏：禅模式里收起（点一下拿回来）" : "切换主侧栏 (⌘B)") + '"' + hb("left") + ">" + (zl ? LAY_ICONS.leftAuto() : LAY_ICONS.left(sideOn)) + '</button><button data-l="panel" title="' + (zp ? "面板：禅模式里收起（点一下拿回来）" : "切换面板 (⌘J)") + '"' + hb("panel") + ">" + (zp ? LAY_ICONS.panelAuto() : LAY_ICONS.panel(!!L.panel)) + '</button><button data-l="right" title="' + (sideAuto(tw) ? "辅助侧栏：暂时收起（离开这一页会自动恢复）" : "切换辅助侧栏 (⌥⌘I)") + '"' + hb("right") + ">" + (sideAuto(tw) ? LAY_ICONS.rightAuto() : LAY_ICONS.right(!!L.side)) + '</button><button data-l="web" title="浏览器"' + hb("web") + ">" + LAY_ICONS.web() + '</button><button data-l="overview" title="标签页概览 (⇧⌘\\)">' + LAY_ICONS.overview + "</button>"; // 标签页概览在最右边（同 Safari）
     if (layConcise()) h = '<button data-l="concise" title="布局：侧栏、面板、浏览器、新建标签页">' + LAY_ICONS.custom + "</button>"; // 精简：一个按钮，点开再选
-    // 有新版本：状态栏默认关着、⚙ 上那个小点看不出来——标题栏右边放一个按钮（同 Chrome 右上角的「更新」），点了重新载入 / 重启换上新版
-    if (updateReady || appUpd) h = '<button data-l="update" class="st-lupd" title="' + esc(appUpd ? "重启以换上新版本：标签页、会话都会接回去" : "重新载入以使用新版本") + '">' + esc(appUpd ? (updWait ? "按 ⌘Q 退出后换上新版本" : "重启以更新") : "重新载入以更新") + "</button>" + h;
     root.classList.toggle("st-lay-concise", layConcise()); // 手机上：标题栏整条不要，标签页在最上面（灵动岛正下方），这些收进标签栏的 ···（studio.css）
     islandSync();
     if (box.dataset.h !== h) { box.dataset.h = h; box.innerHTML = h; }

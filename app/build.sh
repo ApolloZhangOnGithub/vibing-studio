@@ -11,7 +11,8 @@ cd "$(dirname "$0")"
 
 CONFIG="${CONFIG:-release}"
 MODE="${MODE:-desktop}"
-VERSION="0.2.1" # 版本号 x.y.z.构建号：x.y.z 手动改；构建号是提交数（每次构建自动变），显示成 0.2.0.160 这样
+# 版本号：同界面的那一个（ui/version.json，部署一次 +1，如 0.2.424）——一个产品一套号；构建号（CFBundleVersion）另记，比新旧用它
+VERSION="${VERSION:-$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$(cd "$(dirname "$0")/../ui" && pwd)/version.json" 2>/dev/null || echo 0.2.0)}"
 BUILD="${BUILD:-$(cat ../tools/app-build.txt 2>/dev/null || echo 288)}" # 构建号：tools/app-build.txt 里记着的（发版、待更新时传 BUILD=<比装着的大>；以前按提交数，换成独立仓库后会从 1 重新数，不能再用）
 if [ "$MODE" = terminal ]; then NAME="Vibing Studio"; BID="beer.paimon.terminal"; ICON="AppIcon-terminal"; else NAME="macOS Simulator"; BID="beer.paimon.desktop"; ICON="AppIcon"; fi
 # DEV=1：测试用的那份——bundle id 加 .dev、显示的名字加 Dev（路径不变），和装在「应用程序」里的那份互不干扰（双击、Dock、登录状态都分开）
@@ -39,7 +40,7 @@ else
 fi
 
 # ---- Info.plist、资源 ----
-sed -e "s/__VERSION__/$VERSION.$BUILD/" -e "s/__BUILD__/$BUILD/" -e "s/__COPYRIGHT__/© 2026 $NAME/" Info.plist > "$APP/Contents/Info.plist"
+sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" -e "s/__COPYRIGHT__/© 2026 $NAME/" Info.plist > "$APP/Contents/Info.plist"
 if [ "$MODE" = terminal ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleName $SHOWN" -c "Set :CFBundleDisplayName $SHOWN" -c "Set :CFBundleIdentifier $BID" -c "Set :CFBundleIconFile $ICON" -c "Add :PaimonMode string terminal" "$APP/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Merge DocTypes.plist" "$APP/Contents/Info.plist" # 能打开的文件（「打开方式」里有它；打开的交给页面，见 AppDelegate 的 application(_:open:)）
@@ -79,4 +80,4 @@ for _ in $(seq 60); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$PID" 2>/dev/null; then kill "$PID" 2>/dev/null || true; echo "签名等太久（钥匙串在问？），改用 ad-hoc" >&2; ID="-"; sign -; fi
 wait "$PID" 2>/dev/null || { [ "$ID" = "-" ] || { echo "用证书签名失败，改用 ad-hoc" >&2; ID="-"; sign -; }; }
 codesign --verify --strict "$APP"
-echo "built $APP ($CONFIG, $VERSION.$BUILD, signed with ${ID/#-/ad-hoc})"
+echo "built $APP ($CONFIG, $VERSION ($BUILD), signed with ${ID/#-/ad-hoc})"

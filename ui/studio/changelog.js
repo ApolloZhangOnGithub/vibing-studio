@@ -11,12 +11,26 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.425", items: {
+      improved: [
+        ["Linux 版登录交给系统的默认浏览器（同 macOS 版）：用浏览器里已经登录着的 GitHub，通行密钥、两步验证都在浏览器里完成，登好了自动回到 App。以前在 App 窗口里打开 GitHub 的登录页，输了密码也没反应。", "The Linux app now signs in through your default browser, like the Mac app: it uses the GitHub session already in your browser (passkeys and two-factor happen there) and returns to the app when done. Previously GitHub's sign-in page opened inside the app window and submitting the password did nothing."],
+        ["Linux 版的窗口用系统自己的标题栏（GNOME、KDE 的按钮和拖动），不再自己画左上角那三个圆按钮。", "The Linux app's window uses the system title bar (GNOME or KDE buttons and dragging) instead of drawing its own three round buttons in the corner."],
+      ],
+    } },
+    { date: "2026-10-07", ver: "0.2.424", items: {
+      improved: [
+        ["版本号统一成一套：App 和界面都写 0.2.x（这一版 App 是 0.2.424），GitHub 上的发行版也用同一个号；构建号只在内部比新旧。以前 App 写 0.2.1.291、界面写 0.2.423，看着像倒退。", "One version number for everything: the app and the interface both use 0.2.x (this app release is 0.2.424), and so do GitHub releases; the build number is only used internally. Previously the app said 0.2.1.291 while the interface said 0.2.423, which looked like a downgrade."],
+        ["有新版本时照旧在 ⚙ 菜单最下面写「重新载入以更新（v…）」/「重启以更新 App（v…）」，⚙ 上有蓝点；写的总是最新的那一版（以前停在第一次发现的那一版）。标题栏不再放按钮。", "Updates still appear at the bottom of the ⚙ menu (“Reload to Update (v…)” / “Restart to Update App (v…)”) with a blue dot on ⚙, and the version shown is always the newest one. The title-bar button is gone."],
+      ],
+      fixed: [
+        ["只发图片、没有字的一句：发出去以后还一直挂在最下面当成排着的，30 秒后又报「Claude Code 没有收到」（其实收到了，再点重试就会重复发）。", "Messages with only images no longer stay at the bottom as queued after being delivered, and no longer report “Claude Code didn't receive it” after 30 seconds (retrying would have sent them twice)."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.423", items: {
       new: [
         ["子 Agent 再开的子 Agent 挂在它下面一层（再往下也一样）：右侧栏里一眼看出谁开了谁，点一行打开它自己的记录；前台跑着、还没交回结果的子 Agent 也认得出来、点得进去。进到下一层的标签页里，最上面那行是「上一级 Agent」。", "Subagents started by a subagent now appear nested under it, at any depth, so the side bar shows who started whom; click a row to open its own transcript. Foreground subagents that are still running can be opened too. In a nested tab, the top row is the parent agent."],
         ["子 Agent 的弹窗在它自己的标签页里也能处理：要权限、它自己的界面那一块原样出现，键盘、鼠标照常；它问你问题，在它的标签页里直接答，经主会话送进去。", "Dialogs from a subagent can be handled in its own tab: permission prompts appear exactly as Claude Code draws them, and questions it asks can be answered right there; answers go through the main session."],
         ["Linux 版：GitHub Release 里有 AppImage 和 deb（x86_64、ARM64）；装好的 Linux 版联网时界面直接用网站上最新的，断网才用自带的那一份。", "Linux builds: AppImage and deb packages (x86_64 and ARM64) are now on the GitHub release. When online, the Linux app uses the latest interface from the website and falls back to its bundled copy offline."],
-        ["有新版本时标题栏右边出一个按钮「重新载入以更新」/「重启以更新」（以前只在默认关着的状态栏里写，别的 Mac 上看不到）。", "When an update is available, a “Reload to Update” or “Restart to Update” button appears at the right of the title bar. Previously this only showed in the status bar, which is off by default."],
       ],
       improved: [
         ["问答面板（Claude Code 问你问题时）：直接打字就是在写「Type something」的回答，回车交（输入法选字时的回车不算），输入框里是真的光标；问题很长、选项很多时整块缩到放得下，选项和按键提示一定看得见。", "Question panel: just start typing to answer in “Type something” and press Return to submit (Return while composing with an input method doesn't submit); the input shows a real caret. Long questions shrink to fit, so the options and key hints are always visible."],

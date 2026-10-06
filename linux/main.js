@@ -7,6 +7,8 @@
 const { app, BrowserWindow, ipcMain, protocol, net, session, shell, dialog, Menu } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
+const crypto = require("crypto");
 const { Bridge } = require("./native/bridge");
 
 const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
@@ -18,9 +20,7 @@ const argUrl = (() => { const i = process.argv.indexOf("--url"); const u = i > 0
 const START = argUrl || SERVICE + "/terminal.html";
 const HEADLESS = process.env.VS_HEADLESS === "1";
 const LINUX = process.platform === "linux";
-// 页面最上面那一条当标题栏：空白处能拖窗口、双击最大化；按钮、地址栏、标签不算；右边让出窗口按钮的位置（env(titlebar-area-*)，Window Controls Overlay）
-const TITLEBAR_CSS = "html.linux-app #win .bar { -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 6px) !important; }" +
-  "html.linux-app #win .bar :is(button, input, select, a, textarea, [contenteditable], [data-nodrag], .ts-addr, .st-lay, .st-glob, .st-tbacts, .tabs, .tab) { -webkit-app-region: no-drag; }"; // 自动测试：窗口不露出来（离屏画），不打扰正在用电脑的人
+// 窗口的标题栏用系统自己的（GNOME、KDE 的按钮、拖动、双击最大化），不再自己画（以前用 Window Controls Overlay 自己画三个圆按钮，和系统风格对不上）
 
 // GPU：光栅化交给显卡、少一次拷贝（Linux 上 Chromium 默认没开）；显卡在黑名单里的老驱动照旧退回 CPU
 app.commandLine.appendSwitch("enable-gpu-rasterization");
@@ -95,7 +95,7 @@ function loadState() { try { return JSON.parse(fs.readFileSync(statePath(), "utf
 function saveState(o) { try { fs.mkdirSync(path.dirname(statePath()), { recursive: true }); fs.writeFileSync(statePath(), JSON.stringify(Object.assign(loadState(), o))); } catch (e) { /* 写不了就算了 */ } }
 let pendingOpen = []; // 命令行、文件管理器里用这个 App 打开的文件、文件夹：页面来要（open.pending）
 const inApp = (u) => {
-  try { const x = new URL(u); if (!/^https?:$/.test(x.protocol)) return false; return x.host === SERVICE_HOST || x.origin === new URL(START).origin || x.hostname === "localhost" || x.hostname === "127.0.0.1" || x.hostname === "github.com"; }
+  try { const x = new URL(u); if (!/^https?:$/.test(x.protocol)) return false; return x.host === SERVICE_HOST || x.origin === new URL(START).origin || x.hostname === "localhost" || x.hostname === "127.0.0.1"; }
   catch (e) { return false; }
 };
 let creating = false;
@@ -107,7 +107,6 @@ function createWindow(open) {
     width: b.width || 1440, height: b.height || 900, x: b.x, y: b.y, minWidth: 480, minHeight: 320,
     title: "Vibing Studio", backgroundColor: (dark ? boot.dark : boot.light) || (dark ? "#1e1e1e" : "#ffffff"),
     icon: path.join(__dirname, "icons", "512x512.png"), autoHideMenuBar: true, show: false,
-    ...(LINUX ? { titleBarStyle: "hidden", titleBarOverlay: { color: dark ? "#181818" : "#f3f3f3", symbolColor: dark ? "#cccccc" : "#333333", height: 36 } } : {}),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false, offscreen: HEADLESS },
   });
   creating = false;
@@ -118,6 +117,42 @@ function createWindow(open) {
   if (open) { try { const u = new URL(START); u.searchParams.set("open", String(open)); url = u.toString(); } catch (e) { /* 照旧 */ } }
   win.loadURL(url);
   return win;
+}
+// ======== 登录：交给系统浏览器（同 macOS 版的 BrowserAuth.swift）——用浏览器里已经登录着的 GitHub（通行密钥、两步验证都在浏览器里），做完回到 App ========
+//   同 PKCE：App 生成随机的 verifier，只把它的 sha256（challenge）交给网站；网站做完把一次性的 code 交回这台电脑上 App 临时开的一个本机端口（127.0.0.1，RFC 8252），
+//   App 再带着 code + verifier 去换会话（Cookie 存在 App 自己的会话里）——别的程序截到 code 也换不了。?dev=：本地开发的测试登录，照旧在 App 里
+const isLogin = (u) => { try { const x = new URL(u); return x.origin === new URL(SERVICE).origin && x.pathname === "/auth/login" && !x.searchParams.has("dev"); } catch (e) { return false; } };
+const b64url = (b) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+let loginSrv = null;
+const DONE_PAGE = '<!doctype html><meta charset="utf-8"><title>Vibing Studio</title><style>body{font:15px -apple-system,system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0;background:#1e1e1e;color:#ddd}div{text-align:center}b{display:block;font-size:20px;margin-bottom:8px;color:#fff}</style><div><b>已登录</b>回到 Vibing Studio 就能用了，这个页面可以关掉。</div>';
+function browserLogin(win, url) {
+  let next = "/terminal.html";
+  try { const n = new URL(url).searchParams.get("next"); if (n && n[0] === "/" && n[1] !== "/") next = n; } catch (e) { /* 照旧 */ }
+  if (loginSrv) { try { loginSrv.close(); } catch (e) { /* 已经关了 */ } loginSrv = null; }
+  const verifier = b64url(crypto.randomBytes(32)), challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
+  const srv = http.createServer((req, res) => {
+    let u; try { u = new URL(req.url, "http://127.0.0.1"); } catch (e) { res.writeHead(400); res.end(); return; }
+    if (u.pathname !== "/auth") { res.writeHead(404); res.end(); return; }
+    const code = u.searchParams.get("code") || "";
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(DONE_PAGE);
+    if (loginSrv === srv) loginSrv = null;
+    setTimeout(() => { try { srv.close(); } catch (e) { /* 已经关了 */ } }, 500);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(code) || win.isDestroyed()) return;
+    // 换会话：网站回的 Cookie 存进这个 App 的会话（net.fetch 用的就是它），然后打开 App 的页面
+    net.fetch(SERVICE + "/auth/app?code=" + code + "&verifier=" + verifier + "&next=" + encodeURIComponent(next), { bypassCustomProtocolHandlers: true })
+      .catch(() => null)
+      .then(() => { if (win.isDestroyed()) return; win.loadURL(SERVICE + next); if (win.isMinimized()) win.restore(); win.show(); win.focus(); });
+  });
+  srv.on("error", () => { if (loginSrv === srv) loginSrv = null; });
+  srv.listen(0, "127.0.0.1", () => {
+    const port = srv.address().port;
+    const to = SERVICE + "/auth/login?app=" + challenge + "&port=" + port + "&next=" + encodeURIComponent(next);
+    if (HEADLESS) net.fetch(to, { bypassCustomProtocolHandlers: true }).catch(() => {}); // 自动测试：不开真的浏览器，在后台把这一串跳转走完
+    else shell.openExternal(to);
+  });
+  loginSrv = srv;
+  setTimeout(() => { if (loginSrv === srv) { try { srv.close(); } catch (e) { /* 已经关了 */ } loginSrv = null; } }, 15 * 60 * 1000); // 15 分钟没登完：不等了
 }
 // 一个窗口接上桥：createWindow 开的、页面 window.open 开的（同站的新窗口）都一样
 function attach(win) {
@@ -147,12 +182,15 @@ function attach(win) {
   win.on("closed", () => { bridge.dispose(); wins.delete(id); });
   // 站外的链接交给默认浏览器；站内的新窗口（window.open 同站）开成 App 的窗口
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isLogin(url)) { browserLogin(win, url); return { action: "deny" }; }
     if (inApp(url)) return { action: "allow", overrideBrowserWindowOptions: { autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true } } };
     shell.openExternal(url);
     return { action: "deny" };
   });
-  win.webContents.on("will-navigate", (e, url) => { if (!inApp(url)) { e.preventDefault(); shell.openExternal(url); } });
-  if (LINUX) win.webContents.on("dom-ready", () => { win.webContents.insertCSS(TITLEBAR_CSS).catch(() => {}); });
+  win.webContents.on("will-navigate", (e, url) => {
+    if (isLogin(url)) { e.preventDefault(); browserLogin(win, url); return; }
+    if (!inApp(url)) { e.preventDefault(); shell.openExternal(url); }
+  });
   void st;
 }
 app.on("browser-window-created", (_e, w) => {

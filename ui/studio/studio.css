@@ -83,9 +83,6 @@ html.st-act-compact .st-glob.st-globbar button svg { width: 14px; height: 14px; 
 .st-lay button:hover { color: var(--st-hi); background: var(--st-hover2); }
 .st-lay button[hidden] { display: none; } /* 右键里取消勾选的、默认不摆出来的（浏览器）：上面的 display: flex 盖不过它 */
 .st-lay svg { width: 16px; height: 16px; }
-/* 有新版本：标题栏右边一个蓝色的按钮（studio.js layBar） */
-.st-lay button.st-lupd { width: auto; margin-right: 6px; padding: 0 10px; border-radius: 11px; background: var(--st-blue, #0a84ff); color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.st-lay button.st-lupd:hover { background: var(--st-blue, #0a84ff); color: #fff; filter: brightness(1.1); }
 /* 顶栏上显示哪些（顶栏右键勾选）：地址栏、布局控件默认有；新建标签页、标签页概览默认没有 */
 html.termapp:not(.st-tb-address) #win .bar > .ts-addr { visibility: hidden; }
 html.termapp:not(.st-tb-layout) .st-lay > :is([data-l="custom"], [data-l="left"], [data-l="panel"], [data-l="right"]) { display: none; }

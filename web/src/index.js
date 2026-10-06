@@ -233,6 +233,9 @@ const isAdmin = (env, user) => ids(env.ADMIN_IDS).includes(String(user.github_id
 // ---- 登录 ----
 // app=<challenge>：原生 App 在系统浏览器里发起的登录（ASWebAuthenticationSession）。challenge = base64url(sha256(verifier))，verifier 只有 App 知道
 const appChallenge = (s) => (/^[A-Za-z0-9_-]{43}$/.test(s || "") ? s : "");
+// port=<端口>：Linux 版（Electron）没有 ASWebAuthenticationSession——在本机开一个临时端口等回调（127.0.0.1，同 RFC 8252 的做法），code 交到那里
+const appPort = (s) => (/^\d{4,5}$/.test(s || "") && +s >= 1024 && +s <= 65535 ? s : "");
+const APP_PORT_COOKIE = "tsu_app_port";
 async function login(req, env, url) {
   const app = appChallenge(url.searchParams.get("app"));
   // 本地开发：DEV_LOGIN 设了就直接以这个账号登录，不走 GitHub（只该出现在 .dev.vars 里）
@@ -240,7 +243,7 @@ async function login(req, env, url) {
     const test = url.searchParams.get("dev") === "2";
     const user = await upsertUser(env, test ? { id: 2, login: "dev-test", avatar_url: "" } : { id: 1, login: env.DEV_LOGIN, avatar_url: "" });
     const next = url.searchParams.get("next") || "/";
-    return app ? toApp(env, url, user, app) : finishLogin(env, url, user, safeNext(next));
+    return app ? toApp(env, url, user, app, appPort(url.searchParams.get("port"))) : finishLogin(env, url, user, safeNext(next));
   }
   if (!env.GITHUB_CLIENT_ID) return json({ error: "GITHUB_CLIENT_ID is not configured" }, 500);
   const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
@@ -252,6 +255,8 @@ async function login(req, env, url) {
   const headers = new Headers({ location: to.toString() });
   headers.append("set-cookie", setCookie(url, STATE_COOKIE, state, 600));
   headers.append("set-cookie", setCookie(url, APP_COOKIE, app, app ? 600 : 0));
+  const port = app ? appPort(url.searchParams.get("port")) : "";
+  headers.append("set-cookie", setCookie(url, APP_PORT_COOKIE, port, port ? 600 : 0));
   const nx = safeNext(url.searchParams.get("next") || "/");
   headers.append("set-cookie", setCookie(url, NEXT_COOKIE, nx === "/" ? "" : encodeURIComponent(nx), nx === "/" ? 0 : 600));
   return new Response(null, { status: 302, headers });
@@ -277,15 +282,16 @@ async function callback(req, env, url) {
   const nx = cookies(req)[NEXT_COOKIE];
   let next = "/";
   try { next = safeNext(nx ? decodeURIComponent(nx) : "/"); } catch { next = "/"; }
-  return app ? toApp(env, url, user, app) : finishLogin(env, url, user, next);
+  return app ? toApp(env, url, user, app, appPort(cookies(req)[APP_PORT_COOKIE])) : finishLogin(env, url, user, next);
 }
 // 原生 App：浏览器这边不设会话，给 App 一个一次性的 code（2 分钟、用一次），跳回 App（paimon://auth）
-async function toApp(env, url, user, challenge) {
+async function toApp(env, url, user, challenge, port) {
   const code = b64url(crypto.getRandomValues(new Uint8Array(32)));
   await env.DB.prepare("INSERT INTO app_codes (code, github_id, challenge, expires) VALUES (?, ?, ?, ?)").bind(code, user.github_id, challenge, now() + 120e3).run();
-  const headers = new Headers({ location: "paimon://auth?code=" + code });
+  const headers = new Headers({ location: port ? "http://127.0.0.1:" + port + "/auth?code=" + code : "paimon://auth?code=" + code });
   headers.append("set-cookie", setCookie(url, STATE_COOKIE, "", 0));
   headers.append("set-cookie", setCookie(url, APP_COOKIE, "", 0));
+  headers.append("set-cookie", setCookie(url, APP_PORT_COOKIE, "", 0));
   return new Response(null, { status: 302, headers });
 }
 // App 拿 code + verifier 换会话（Cookie 设在 App 自己的网页里）：code 对、没过期、没用过，sha256(verifier) 对得上 challenge

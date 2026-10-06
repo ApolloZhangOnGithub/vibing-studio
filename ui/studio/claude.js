@@ -683,7 +683,14 @@
     // 排着的那几句：比较时规整（去掉 [Image #n]、所有空白），按字认出来划掉（被读进去了 / 出队了 / 闲着时直接当问题收了）
     // 别的会话发来的（<cross-session-message …>正文</cross-session-message>）：排进去时带 hop-chain、读进去时不带——只按正文认，不然永远「排着」
     var XS_RE = /^\s*<cross-session-message\b([^>]*)>\n?([\s\S]*?)(\n?<\/cross-session-message>)?\s*$/;
-    var qnorm = function (t) { t = String(t || ""); var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2]; return t.replace(/\[Image(?: #\d+)?(?:: "[^"\n]*")?\]/g, "").replace(/[\s\u200b"`]+/g, ""); }; // 引号、反引号也不算（开头的路径送出去时加了引号，图片路径包了反引号）
+    var IMG_ANY = /\[Image(?: #\d+)?(?:: "[^"\n]*")?\]/g;
+    var qnorm = function (t) {
+      t = String(t || ""); var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2];
+      var k = t.replace(IMG_ANY, "").replace(/[\s\u200b"`]+/g, ""); // 引号、反引号也不算（开头的路径送出去时加了引号，图片路径包了反引号）
+      if (k) return k;
+      var n = (t.match(IMG_ANY) || []).length; // 只有图的一句（「[Image #1][Image #2]」）：去掉图就什么都不剩了——按几张图认（以前认不出：排着的一直挂着、30 秒后误报「没有收到」，再点就重复发）
+      return n ? "\u0001img" + n : "";
+    };
     function unqueue(t) { var k = qnorm(t); if (!k) return; for (var qi = 0; qi < queue.length; qi++) if (qnorm(queue[qi].text) === k) { queue.splice(qi, 1); break; } if (inj) inj = inj.filter(function (x) { return qnorm(x.text) !== k; }); }
     // 记录里出现了这一问 / 这条附件（几句排着的会拼成一条）：拿走时挂着的那几句不再挂
     function untake(t) { var k = qnorm(t); if (!k || !taken.length) return; taken = taken.filter(function (x) { var xn = qnorm(x.text); return !xn || k.indexOf(xn) < 0; }); }
@@ -840,8 +847,9 @@
         var qimgs = Array.isArray(pr) ? pr.filter(function (b) { return b && b.type === "image" && b.source && b.source.type === "base64"; }).map(function (b) { return { media_type: b.source.media_type, data: b.source.data }; }) : [];
         if ((!qtext.trim() && !qimgs.length) || /^\s*<(task-notification|system-reminder|local-command)/.test(qtext)) return null;
         qtext = qtext.replace(/^\u200b/, "");
-        unqueue(qtext); untake(qtext); lqDrop(qtext);
-        if (inj.length) { var qn0 = qnorm(qtext); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || qn0.indexOf(xn) < 0; }); } // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
+        var qmt = qtext.trim() || qimgs.map(function () { return "[Image]"; }).join(" ");
+        unqueue(qmt); untake(qmt); lqDrop(qmt);
+        if (inj.length) { var qn0 = qnorm(qmt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || qn0.indexOf(xn) < 0; }); } // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
         var qsp = splitShots(qtext, qimgs);
         cur = { ask: qsp.text, images: qsp.images, imgIds: Array.isArray(j.attachment.imagePasteIds) ? j.attachment.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, queued: true };
         turns.push(cur); byUuid[j.uuid] = cur;
@@ -889,11 +897,12 @@
           if (j.parentUuid) for (var fk = turns.length - 1; fk >= 0; fk--) { if (turns[fk].ask !== undefined && turns[fk].parentUuid === j.parentUuid) { turns.splice(fk); cur = null; forkN++; break; } }
           finishTurn();
           text = text.replace(/^\u200b/, "");
+          var mt = text.trim() || imgs.map(function () { return "[Image]"; }).join(" "); // 只有图、没有字的一问：用占位去认这边送的那句
           // 这边送进去、还没出现在记录里的：这一问里有它（原样，或者被它接在放回输入框的那句后面一起发了）就不再画成另一句
-          if (inj.length) { var tn0 = qnorm(text); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || tn0.indexOf(xn) < 0; }); }
+          if (inj.length) { var tn0 = qnorm(mt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || tn0.indexOf(xn) < 0; }); }
           newRound(ts(j));
-          unqueue(text); untake(text); // 闲着时直接收下的问题：它也不再排着
-          lqDrop(text);
+          unqueue(mt); untake(mt); // 闲着时直接收下的问题：它也不再排着
+          lqDrop(mt);
           var tsp = splitShots(text, imgs);
           cur = { ask: tsp.text, images: tsp.images, imgIds: Array.isArray(j.imagePasteIds) ? j.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, parentUuid: j.parentUuid || "" };
           turns.push(cur);

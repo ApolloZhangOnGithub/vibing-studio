@@ -7,7 +7,7 @@
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 B=${BUILD:-$(( $(cat "$HERE/tools/app-build.txt" 2>/dev/null || echo 289) + 1 ))}
-V="0.2.1.$B"
+V="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$HERE/ui/version.json")" # 同界面的版本号（tools/deploy.sh 每次 +1）；构建号 $B 另记
 OUT="$HOME/Library/Caches/VibingStudio/release/$B"
 DL="$HERE/ui/downloads"
 mkdir -p "$OUT" "$DL"
@@ -25,5 +25,5 @@ echo "$B" > "$HERE/tools/app-build.txt"
 echo "released $V → $DL（tools/deploy.sh 之后别的 Mac 会自己更新）"
 if [ "${GH:-}" = 1 ]; then
   cd "$HERE"
-  gh release create "v$V" --title "Vibing Studio $V" --notes "macOS：Apple 芯片下载 $AS，Intel 下载 $IN（各自原生）。装过的 App 会自己更新（状态栏「App 有新版本 · 重启以更新」）。" "$OUT/$AS" "$OUT/$IN"
+  gh release create "v$V" --title "Vibing Studio $V" --notes "macOS：Apple 芯片下载 $AS，Intel 下载 $IN（各自原生）。装过的 App 会自己更新（⚙ 菜单里「重启以更新 App」）。构建号 $B。" "$OUT/$AS" "$OUT/$IN"
 fi
