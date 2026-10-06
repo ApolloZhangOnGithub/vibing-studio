@@ -228,6 +228,8 @@
       });
     }
     // 这一轮（转圈那一行）：从它最近读进去的那句话（你说的、别的 agent 发来的、一轮中间被读进去的）算起的用时、写了多少 token；还排着没被读到的（queue）
+    // taken：刚被它从队里拿走、记录里那一问 / 那条附件还没读到的几句——这段空档照样挂着（画成「在发」），不然先消失一下再出来（一轮中间读进去时尤其明显）
+    var taken = [];
     var queue = [], turnAt = 0, tokById = {}, forkN = 0, qopAt = 0, shotPath = {}, sentShots = []; // shotPath / sentShots：这边送出去的图（编号 → 路径），排进队后找回来画 // qopAt：最近一次读到它的队有动静（queue-operation）
     // 打断后退回输入框的那几句（Claude Code 把它从这一问里撤回、放回输入框）：记录里还留着它（被换掉的那一支），重新载入时也不再画
     var RWK = "vs-rewound:" + sid, rewound = (function () { try { return new Set(JSON.parse(sessionStorage.getItem(RWK) || "[]")); } catch (e) { return new Set(); } })(); // forkN：换掉过一支（拿掉了已经画出来的几问）——这一次读到的要整段重画
@@ -515,7 +517,7 @@
         var n = Math.min(size - start, WINDOW);
         return LOC.read(path, { offset: start, max: n }).then(function (buf) {
           if (g !== gen) return; // 这期间又重读了：这一份作废
-          turns.length = 0; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; byUuid = {}; seen = new Set(); queue = []; turnAt = 0; tokById = {};
+          turns.length = 0; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; byUuid = {}; seen = new Set(); queue = []; taken = []; turnAt = 0; tokById = {};
           resetTasks(); taskEvents = []; preFrom = -1; goalSeen = false;
           // 没从头读的：头一行是半截，丢掉（往前接着读时从它开头接上）。更早的不显示提示——滚到顶自动接着往前读（同终端的回滚，一直往上翻都有）
           var r = linesOf(buf, start > 0);
@@ -659,6 +661,9 @@
     var XS_RE = /^\s*<cross-session-message\b([^>]*)>\n?([\s\S]*?)(\n?<\/cross-session-message>)?\s*$/;
     var qnorm = function (t) { t = String(t || ""); var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2]; return t.replace(/\[Image(?: #\d+)?(?:: "[^"\n]*")?\]/g, "").replace(/[\s\u200b"`]+/g, ""); }; // 引号、反引号也不算（开头的路径送出去时加了引号，图片路径包了反引号）
     function unqueue(t) { var k = qnorm(t); if (!k) return; for (var qi = 0; qi < queue.length; qi++) if (qnorm(queue[qi].text) === k) { queue.splice(qi, 1); break; } if (inj) inj = inj.filter(function (x) { return qnorm(x.text) !== k; }); }
+    // 记录里出现了这一问 / 这条附件（几句排着的会拼成一条）：拿走时挂着的那几句不再挂
+    function untake(t) { var k = qnorm(t); if (!k || !taken.length) return; taken = taken.filter(function (x) { var xn = qnorm(x.text); return !xn || k.indexOf(xn) < 0; }); }
+    function takeOut(text) { if (!readOnce || inOlder || !text || !text.trim() || /^\s*[\/<]/.test(text)) return; taken.push({ text: text, at: Date.now() }); } // 斜杠命令、它自己塞的（<…>）不挂
     // ---- 一行记录 → Paimon 的对话 ----
     // 这一问做完：补一行「✻ …for 5s」——它还在等你回答选择题（AskUserQuestion 没结果）的不算做完（同 Claude Code：问着的时候没有这一行）
     function finishTurn() { if (cur && cur.last && !cur.stats && cur.at && !(cur.parts || []).some(function (p) { return p.kind === "tool" && p.name === "AskUserQuestion" && p.status === "running"; })) cur.stats = { secs: Math.max(1, Math.round((cur.last - cur.at) / 1000)), verb: doneVerb(cur.at), at: cur.last, auto: true }; }
@@ -766,7 +771,7 @@
         var qc = typeof j.content === "string" ? j.content : "";
         qc = qc.replace(/^\u200b/, "");
         if (j.operation === "enqueue") { queue.push({ text: qc, at: ts(j) }); lqDrop(qc); }
-        else if (j.operation === "dequeue") queue.shift();
+        else if (j.operation === "dequeue") { var dq = queue.shift(); if (dq && Date.now() - ts(j) < 60000) takeOut(dq.text); }
         else if (j.operation === "remove" || j.operation === "popAll" || j.operation === "popOne") { // remove：一轮中间读进去了（这一轮接着算，同 Claude Code 的转圈那一行）；popAll / popOne：按 ↑ 拿回输入框改了
           var qi0 = qc ? queue.findIndex(function (q) { return qnorm(q.text) === qnorm(qc); }) : -1;
           if (readOnce && qc.trim() && Date.now() - ts(j) < 120000) {
@@ -780,6 +785,8 @@
               lqSave(); emit("status");
             }
           }
+          var absorbed = j.operation === "remove" && !/^(dropped_by_hook|cleared_on_cancel)$/.test(j.reason || "") && Date.now() - ts(j) < 60000; // 一轮中间读进去了：附件那条到之前照样挂着
+          if (absorbed) { if (qi0 > 0) queue.slice(0, qi0).forEach(function (q) { if (!/^\s*\//.test(q.text)) takeOut(q.text); }); takeOut(qc); }
           if (qi0 > 0 && j.operation !== "popOne") { var keepQ = queue.filter(function (q, i) { return i >= qi0 || /^\s*\//.test(q.text); }); queue.length = 0; Array.prototype.push.apply(queue, keepQ); } // 它是按先后一起读进去 / 一起拿回去的：排在它前面的普通的话还在这边挂着的，是早就不在它队里的（不然挂成发不出去的「死消息」）
           unqueue(qc);
         }
@@ -799,7 +806,7 @@
         var qimgs = Array.isArray(pr) ? pr.filter(function (b) { return b && b.type === "image" && b.source && b.source.type === "base64"; }).map(function (b) { return { media_type: b.source.media_type, data: b.source.data }; }) : [];
         if ((!qtext.trim() && !qimgs.length) || /^\s*<(task-notification|system-reminder|local-command)/.test(qtext)) return null;
         qtext = qtext.replace(/^\u200b/, "");
-        unqueue(qtext); lqDrop(qtext);
+        unqueue(qtext); untake(qtext); lqDrop(qtext);
         if (inj.length) { var qn0 = qnorm(qtext); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || qn0.indexOf(xn) < 0; }); } // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
         var qsp = splitShots(qtext, qimgs);
         cur = { ask: qsp.text, images: qsp.images, imgIds: Array.isArray(j.attachment.imagePasteIds) ? j.attachment.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, queued: true };
@@ -851,7 +858,7 @@
           // 这边送进去、还没出现在记录里的：这一问里有它（原样，或者被它接在放回输入框的那句后面一起发了）就不再画成另一句
           if (inj.length) { var tn0 = qnorm(text); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || tn0.indexOf(xn) < 0; }); }
           newRound(ts(j));
-          unqueue(text); // 闲着时直接收下的问题：它也不再排着
+          unqueue(text); untake(text); // 闲着时直接收下的问题：它也不再排着
           lqDrop(text);
           var tsp = splitShots(text, imgs);
           cur = { ask: tsp.text, images: tsp.images, imgIds: Array.isArray(j.imagePasteIds) ? j.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, parentUuid: j.parentUuid || "" };
@@ -1255,6 +1262,8 @@
         var xs = XS_RE.exec(q.text), xn = xs && (/\bfrom-name="([^"]*)"/.exec(xs[1]) || /\bfrom="([^"]*)"/.exec(xs[1])); // 别的会话发来的：同 agent 的消息，一行「› Message from @名字」
         return xs ? { text: xs[2], from: xn ? xn[1] : "session", at: q.at } : { text: q.text, at: q.at, sending: now0 || idleSent(q.text) };
       });
+      taken = taken.filter(function (x) { return Date.now() - x.at < 20000; }); // 20 秒还没在记录里出现：不再挂
+      taken.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: x.text, at: x.at, sending: true }); });
       inj.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: x.text, at: x.at, ours: true, sending: now0 || !x.q }); });
       lq.forEach(function (x) { out.push({ text: x.text, at: x.at, local: true, sending: now0 && !lqHold, err: lqHold && qErr ? qErr : "" }); });
       // 附的图（[Image #N: "路径"]）：字里留 [Image #N]，图另给（images，同已经发出去的那几问：下面一张一行「⎿  [Image #N]」，悬停看、点开）

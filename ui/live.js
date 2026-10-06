@@ -552,7 +552,7 @@
     P.unread = 0;
     var maxY = function () { return screen.scrollHeight - screen.clientHeight; };
     var atBottom = function () { return maxY() - screen.scrollTop < 2; };
-    P.toBottom = function () { following = true; if (P.off) return; screen.scrollTop = screen.scrollHeight; ownTop = screen.scrollTop; }; // 藏在同一组后面的：不量（一量就要排版），露出来时 reshow 贴底
+    P.toBottom = function () { following = true; if (P.off) return; screen.scrollTop = screen.scrollHeight; ownTop = screen.scrollTop; if (P.program && P.program.afterScroll) P.program.afterScroll(); }; // 藏在同一组后面的：不量（一量就要排版），露出来时 reshow 贴底；回到底了外壳跟着改（吸顶那一行收起）
     P.stick = function () { if (P.off) return; if (following && cfg.autoscroll !== false) P.toBottom(); if (P.program && P.program.afterScroll) P.program.afterScroll(); };
     P.following = function () { return following; };
     P.scrollByRows = function (n) {
@@ -2124,6 +2124,7 @@
       stkRaf = 0;
       var sc0 = P.screen, atBottom = sc0.scrollHeight - sc0.scrollTop - sc0.clientHeight < (P.rowH || 16) * 1.5; // 回到最底下（跟着最新的）：不挂（同 Claude Code）——自己量，不只看 following（有的路回到底时它没跟上）
       if (P.program !== V || P.footOnly || P.off || !stickyOn() || P.following() || atBottom) return stickyHide();
+      if (sc0.scrollTop < (P.rowH || 16) * 1.5) return stickyHide(); // 最上面（第一问上面没有别的了）：不挂（同 Claude Code：第一条之上没有东西）
       var sc = P.screen, top = sc.getBoundingClientRect().top, ts = rt.session().turns, lo = 0, hi = ts.length - 1, at = -1, rh = P.rowH || 16; // 最上面那一行被这一条盖着：算到它下沿（盖住的也算翻上去了）
       var topOf = function (i) { var b = blocks.get(ts[i]); return b && b.isConnected ? b.getBoundingClientRect().top : null; };
       while (lo <= hi) { var mid = (lo + hi) >> 1, tm = topOf(mid); if (tm === null) { var j = mid; while (j <= hi && topOf(j) === null) j++; if (j > hi) { hi = mid - 1; continue; } mid = j; tm = topOf(mid); } if (tm <= top + rh + 1) { at = mid; lo = mid + 1; } else hi = mid - 1; } // 最后一个开头已经在顶上（或上面）的那一问
@@ -5056,7 +5057,7 @@
     V.interrupt = function () { rt.interrupt(); };
     V.clearScrollback = function () { rt.clear(); };
     V.exportText = function () { return rt.session().turns.map(function (t) { return (t.ask ? "❯ " + t.ask + "\n\n" : "") + (t.answer || "") + "\n"; }).join("\n"); };
-    V.afterScroll = function () {};
+    V.afterScroll = function () { stickySoon(); }; // 跟随状态变了（回到底、发了一句、往上翻）都再看一次吸顶那一行：不留一个过时的挂在最上面
   }
 
   // ======== 窗口：标签页 × 分屏（同 iTerm / Terminal.app）========

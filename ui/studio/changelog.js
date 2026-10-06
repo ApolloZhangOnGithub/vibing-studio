@@ -11,6 +11,12 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.416", items: {
+      fixed: [
+        ["往上翻时最上面那一行（这一段属于哪一问）回到最底下后有时还挂着：现在同 Claude Code——只在往上翻、那一问自己已经翻上去时才有；在最底下、在最顶上都没有，回到底、发出一句都会马上收起。", "The pinned prompt line at the top sometimes stayed after returning to the bottom. It now follows Claude Code: it appears only while scrolled up and only once that prompt itself is out of view, never at the bottom or the very top, and it disappears as soon as you return to the bottom or send a message."],
+        ["发出去的消息有时先消失一下再出来（Claude Code 一轮中间读进去、或者从队里拿走时）：现在一直挂着，直到对话里出现那一问。", "Sent messages no longer vanish for a moment before reappearing when Claude Code picks them up from its queue, including mid-turn while a command runs; they stay visible until they appear in the conversation."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.415", items: {
       new: [
         ["Claude Code 会弹面板的斜杠命令（/config、/model、/theme、/help、/permissions、/mcp 等）在这里也能用：它自己的面板原样出现在输入框的位置，用键盘操作，按 Esc 关掉回到输入框。面板在别处打开、还开着的，打开这个会话时也会接上。适用于后台运行的会话。", "Claude Code slash commands that open a panel (/config, /model, /theme, /help, /permissions, /mcp and others) now work here: Claude Code’s own panel appears in place of the input box, works with the keyboard, and Esc closes it. A panel left open elsewhere is picked up when you open the session. Applies to sessions running in the background."],
