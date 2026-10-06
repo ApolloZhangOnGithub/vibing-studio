@@ -1038,8 +1038,10 @@
   }
 
   var SV = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
-  var FINDER_ICON = SV('<path d="M1.8 4.2c0-.6.4-1 1-1h3.1l1.4 1.5h5.9c.6 0 1 .4 1 1v6.6c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z"/><path d="M1.8 6.6h12.4"/>'); // File Finder：文件夹
-  var AGENTS_ICON = SV('<rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><path d="M11.5 9.2c.2 1.2.8 1.8 2 2-1.2.2-1.8.8-2 2-.2-1.2-.8-1.8-2-2 1.2-.2 1.8-.8 2-2z"/>'); // Agent Finder：一格格的包，一颗 ✦
+  // File Finder、Agent Finder 的图标：同活动栏上「文件」「Agents」那两个（标签页上、App 里一样，不再各画一套）
+  var SV24 = function (b) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
+  var FINDER_ICON = SV24('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'); // File Finder：两张纸
+  var AGENTS_ICON = SV24('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'); // Agent Finder：✦
   // ---- 排序（同访达：名称、种类、修改日期、大小，正反两个方向；文件夹在前）、列表的列宽、拖动 ----
   XV.sort = store("st-xp-sort", { k: "name", d: 1 });
   XV.group = localStorage.getItem("st-xp-group") || "kind"; // none | kind | time | size（默认同访达：按种类分组）

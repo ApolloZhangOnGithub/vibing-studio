@@ -1,8 +1,7 @@
-// apps.js —— 活动栏上的「App」（连接器下面那一格，图标是一格格的点，同启动台）：Vibing Studio 里的 App 从这里打开
-//   一份登记表，同连接器、扩展：id、名字、说明、图标、find(tw)（开着的那一页，没有是 null）、open(tw, fresh)（开着就切过去；fresh 是新开一页）、
-//   ok()（这台设备上能不能用）；内置的现在四个：Agent Finder、File Finder（共用 dash.js 的 explorer 页）、终端（新开一个 shell 标签页，不进任何 agent）、浏览器（webview.js）。
-//   以后加的走 STUDIO.apps.add({ … })，列表、命令面板跟着有
-//   主侧栏「App」：一组「内置」（不折叠），一行一个——图标、名字、一句说明，开着的右边一个点；单击打开，右键「打开」「在新标签页中打开」
+// apps.js —— 「App」：活动栏最下面（⚙ 下面）一个按钮，指上去 / 点一下从旁边弹出一块（同「开始」菜单：按内容的高度，不是整条侧栏），一格一个 App
+//   一份登记表，同连接器、扩展：id、名字、图标、find(tw)（开着的那一页，没有是 null）、open(tw, fresh)、ok()（这台设备上能不能用）；
+//   内置的现在四个：Agent Finder、File Finder（共用 dash.js 的 explorer 页）、终端（新开一个 shell 标签页，不进任何 agent）、浏览器（webview.js）。
+//   以后加的走 STUDIO.apps.add({ … })，弹出来的那块、命令面板跟着有。图标同活动栏上对应的那个（Agent Finder ↔ Agents 的 ✦，File Finder ↔ 文件）
 (function () {
   "use strict";
   var S = window.STUDIO;
@@ -21,22 +20,18 @@
     return '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">' + d + "</svg>";
   })();
 
-  // ---- App 的图标：同标签页上的那个（16 格的细线，跟着主题的字色）——不另画一套彩色的方块 ----
-  var LI = function (b) { return function () { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; }; };
+  // ---- App 的图标：同活动栏上对应的那个（24 格细线）——Agent Finder 用 Agents 的 ✦、File Finder 用「文件」的两张纸 ----
+  var LI = function (b) { return function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; }; };
   var LOGO = {
-    // Agent Finder：一格格的包、一颗 ✦（同 dash.js 的 AGENTS_ICON）
-    agents: LI('<rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><path d="M11.5 9.2c.2 1.2.8 1.8 2 2-1.2.2-1.8.8-2 2-.2-1.2-.8-1.8-2-2 1.2-.2 1.8-.8 2-2z"/>'),
-    // File Finder：文件夹（同 FINDER_ICON）
-    files: LI('<path d="M1.8 4.2c0-.6.4-1 1-1h3.1l1.4 1.5h5.9c.6 0 1 .4 1 1v6.6c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z"/><path d="M1.8 6.6h12.4"/>'),
-    // 终端：一个窗口里一个提示符（同终端标签页上的）
-    term: LI('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/>'),
-    // 浏览器：地球（同浏览器标签页上的）
-    web: LI('<circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c1.8 1.8 2.6 3.8 2.6 6s-.8 4.2-2.6 6M8 2C6.2 3.8 5.4 5.8 5.4 8s.8 4.2 2.6 6"/>'),
+    agents: LI('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'),
+    files: LI('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'),
+    term: LI('<rect x="2.7" y="4.2" width="18.6" height="15.6" rx="2.7"/><path d="M7 9.3l3 2.7-3 2.7M12.6 15.2h4.5"/>'),
+    web: LI('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.7 2.7 3.9 5.7 3.9 9s-1.2 6.3-3.9 9M12 3C9.3 5.7 8.1 8.7 8.1 12s1.2 6.3 3.9 9"/>'),
   };
 
   // ---- 登记表 ----
-  var APPS = [], views = []; // views：开着的「App」视图（每个窗口一个），登记表变了跟着重画
-  function paintAll() { views.forEach(function (el) { if (el.paint) el.paint(); }); }
+  var APPS = [];
+  function paintAll() { if (pop && popFor) openPop(popTw, popFor); } // 登记表变了：开着的那块重画
   // 这个窗口里开着的、test(program) 为真的那一页（几组编辑器都找）
   function findTab(tw, test) {
     var hit = null;
@@ -97,72 +92,67 @@
     open: function (tw, fresh) { return fresh || iosApp() ? newTab(tw, "web", "") : S.openBrowser ? S.openBrowser(tw) : S.openPage(tw, "web", ""); },
   });
 
-  // ======== 主侧栏的「App」视图 ========
-  function makeView(tw) {
-    var el = document.createElement("div"), sel = "";
-    el.className = "apv";
-    el.innerHTML = '<div class="st-shdr"><span class="st-vtitle"></span><span class="st-fill"></span></div><div class="apv-list" tabindex="0"></div>';
-    var box = el.querySelector(".apv-list");
-    var rowHtml = function (a) {
+  // ======== 弹出来的那块（同「开始」菜单）：活动栏最下面的按钮旁边，底边对齐按钮；在标题栏里（活动栏在顶部）时开在按钮下面、右边对齐 ========
+  var pop = null, popFor = null, popTw = null, openT = 0, closeT = 0;
+  var byId = function (id) { return APPS.filter(function (a) { return a.id === id; })[0] || null; };
+  function closePop() { clearTimeout(openT); clearTimeout(closeT); if (pop) { pop.remove(); pop = null; } if (popFor) popFor.classList.remove("on"); popFor = null; }
+  function openPop(tw, anchor) {
+    closePop();
+    var el = pop = document.createElement("div");
+    popFor = anchor; popTw = tw;
+    anchor.classList.add("on");
+    el.className = "apv-pop";
+    el.setAttribute("role", "menu");
+    el.innerHTML = '<div class="apv-grid">' + APPS.map(function (a) {
       var ok = okOf(a), open = ok && a.find && a.find(tw);
-      return '<div class="apv-row' + (a.id === sel ? " on" : "") + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '">' +
-        '<span class="apv-ic">' + (typeof a.logo === "function" ? a.logo() : a.logo || "") + "</span>" +
-        '<span class="apv-main"><span class="apv-name">' + esc(nameOf(a)) + "</span></span>" + // 只写名字（不再跟一句说明）
-        (open ? '<i class="apv-dot" title="' + esc(t("已打开", "Open")) + '"></i>' : "") + "</div>";
-    };
-    el.paint = function () {
-      el.querySelector(".st-vtitle").textContent = t("App", "Apps");
-      var top = box.scrollTop, groups = [{ title: t("内置", "Built-in"), items: APPS.filter(function (a) { return a.builtin; }) }, { title: t("已添加", "Added"), items: APPS.filter(function (a) { return !a.builtin; }) }];
-      // 组标题不折叠（App 不多）；没有东西的组不画
-      box.innerHTML = groups.filter(function (g) { return g.items.length; }).map(function (g) {
-        return '<div class="apv-sec"><div class="apv-sech">' + esc(g.title) + '</div><div class="apv-rows">' + g.items.map(rowHtml).join("") + "</div></div>";
-      }).join("");
-      box.scrollTop = top;
-    };
-    var byId = function (id) { return APPS.filter(function (a) { return a.id === id; })[0] || null; };
-    var order = function () { return Array.prototype.map.call(box.querySelectorAll(".apv-row:not(.off)"), function (r) { return r.dataset.app; }); };
-    var select = function (id) { sel = id; box.querySelectorAll(".apv-row").forEach(function (r) { r.classList.toggle("on", r.dataset.app === id); }); var r = box.querySelector('.apv-row[data-app="' + CSS.escape(id) + '"]'); if (r) r.scrollIntoView({ block: "nearest" }); };
-    var menuFor = function (a) {
-      return [
-        { label: t("打开", "Open"), disabled: !okOf(a), run: function () { openApp(a, tw); } },
-        { label: t("在新标签页中打开", "Open in New Tab"), disabled: !okOf(a), run: function () { openApp(a, tw, true); } },
-      ];
-    };
-    box.addEventListener("click", function (e) {
-      var r = e.target.closest(".apv-row"), a = r && byId(r.dataset.app);
-      if (!a) return;
-      select(a.id);
-      if (!okOf(a)) return;
-      openApp(a, tw, e.metaKey || e.ctrlKey); // ⌘ 点：新开一页（同浏览器里 ⌘ 点链接）
-      el.paint();
+      return '<button type="button" class="apv-tile' + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '"' + (ok ? "" : ' aria-disabled="true"') + ' title="' + esc(ok ? nameOf(a) : t("连接 Mac 后可用", "Available after connecting a Mac")) + '">' +
+        '<span class="apv-tic">' + (typeof a.logo === "function" ? a.logo() : a.logo || "") + '</span><span class="apv-tn">' + esc(nameOf(a)) + "</span>" + (open ? '<i class="apv-dot"></i>' : "") + "</button>";
+    }).join("") + "</div>";
+    document.body.appendChild(el);
+    var r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, inBar = !!anchor.closest(".st-globbar");
+    if (inBar) { el.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + "px"; el.style.top = Math.round(r.bottom + 6) + "px"; el.classList.add("down"); }
+    else { el.style.left = Math.round(r.right + 8) + "px"; el.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.bottom - h)) + "px"; }
+    el.addEventListener("mouseenter", function () { clearTimeout(closeT); });
+    el.addEventListener("mouseleave", function () { closeSoon(); });
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest(".apv-tile"), a = b && byId(b.dataset.app);
+      if (!a || !okOf(a)) return;
+      var tw0 = popTw;
+      closePop();
+      openApp(a, tw0, e.metaKey || e.ctrlKey); // ⌘ 点：新开一页
     });
-    box.addEventListener("contextmenu", function (e) {
-      var r = e.target.closest(".apv-row"), a = r && byId(r.dataset.app);
+    el.addEventListener("contextmenu", function (e) {
+      var b = e.target.closest(".apv-tile"), a = b && byId(b.dataset.app);
       if (!a) return;
       e.preventDefault();
-      select(a.id);
-      S.menu(menuFor(a), { x: e.clientX, y: e.clientY });
+      var tw0 = popTw;
+      S.menu([
+        { label: t("打开", "Open"), disabled: !okOf(a), run: function () { closePop(); openApp(a, tw0); } },
+        { label: t("在新标签页中打开", "Open in New Tab"), disabled: !okOf(a), run: function () { closePop(); openApp(a, tw0, true); } },
+      ], { x: e.clientX, y: e.clientY });
     });
-    box.addEventListener("keydown", function (e) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      var ids = order(), i = ids.indexOf(sel);
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (ids.length) select(ids[Math.max(0, Math.min(ids.length - 1, i < 0 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1)))]); }
-      else if (e.key === "Home" || e.key === "End") { e.preventDefault(); if (ids.length) select(ids[e.key === "Home" ? 0 : ids.length - 1]); }
-      else if (e.key === "Enter" && sel) { e.preventDefault(); var a = byId(sel); if (a) { openApp(a, tw); el.paint(); } }
-    });
-    el.paint();
-    views.push(el);
-    return el;
   }
-  // 活动栏：连接器下面（Agents、文件、搜索、连接器、App）
-  S.addView("apps", {
-    title: "App", icon: ICON24, sym: "square.grid.3x3", order: 4,
-    create: function (tw) { return makeView(tw); },
-    show: function (el, tw, fromBar) { el.paint(); if (!fromBar) el.querySelector(".apv-list").focus({ preventScroll: true }); },
+  function closeSoon() { clearTimeout(closeT); closeT = setTimeout(function () { if (!(S.menuOpen && S.menuOpen())) closePop(); }, 260); }
+  // 指上去（停一下）就弹出来；移开（按钮、那一块都不在指针下）就收起；点按钮是开 / 关
+  document.addEventListener("mouseover", function (e) {
+    var b = e.target.closest && e.target.closest('.st-glob [data-a="apps"]');
+    if (!b) return;
+    clearTimeout(closeT);
+    if (pop && popFor === b) return;
+    clearTimeout(openT);
+    openT = setTimeout(function () { var w = (window.TSU_TERM && TSU_TERM.wins ? TSU_TERM.wins() : []).filter(function (x) { return x.el && x.el.contains(b); })[0] || front(); if (w && b.isConnected) openPop(w, b); }, 140);
   });
-  // 开着的点：标签页开了、关了跟着变（看得见时才画）
-  setInterval(function () { views.forEach(function (el) { if (el.isConnected && el.offsetParent) el.paint(); }); }, 1500);
-  if (I18N && I18N.onChange) I18N.onChange(paintAll);
+  document.addEventListener("mouseout", function (e) {
+    var b = e.target.closest && e.target.closest('.st-glob [data-a="apps"]');
+    if (!b || (e.relatedTarget && b.contains(e.relatedTarget))) return;
+    clearTimeout(openT);
+    if (pop && popFor === b) closeSoon();
+  });
+  document.addEventListener("keydown", function (e) { if (pop && e.key === "Escape") { e.preventDefault(); closePop(); } }, true);
+  document.addEventListener("mousedown", function (e) { if (pop && !pop.contains(e.target) && !(popFor && popFor.contains(e.target)) && !(e.target.closest && e.target.closest(".st-menu"))) closePop(); }, true);
+  window.addEventListener("blur", function () { closePop(); });
+  function popup(tw, anchor) { if (pop && popFor === anchor) return closePop(); openPop(tw || front(), anchor); }
+  if (I18N && I18N.onChange) I18N.onChange(function () { if (pop && popFor) openPop(popTw, popFor); });
 
-  S.apps = { add: add, list: function () { return APPS.slice(); }, open: function (id, tw, fresh) { var a = APPS.filter(function (x) { return x.id === id; })[0]; return a ? openApp(a, tw, fresh) : null; } };
+  S.apps = { add: add, popup: popup, close: closePop, icon: ICON24, list: function () { return APPS.slice(); }, open: function (id, tw, fresh) { var a = APPS.filter(function (x) { return x.id === id; })[0]; return a ? openApp(a, tw, fresh) : null; } };
 })();

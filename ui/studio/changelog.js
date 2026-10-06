@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.411", items: {
+      new: [
+        ["App 会自己检查更新（Mac 0.2.1.290 起）：有新版时在后台下好，状态栏出「App 有新版本 · 重启以更新」，点一下换上。别的 Mac 上联网时界面直接用网站上最新的。", "The app checks for updates on its own (Mac 0.2.1.290 and later): a new version downloads in the background and the status bar offers Restart to Update. On other Macs the interface follows the website when online."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.410", items: {
       fixed: [
         ["新装的 Mac 上检测不到 Claude Code（Codex 正常）：Claude Code 装在 ~/.local/bin，安装时只写进了 ~/.zshrc，App 跑命令时读不到。现在跑命令、起会话都会补上 ~/.local/bin 等常见位置。", "Claude Code wasn't detected on a freshly set up Mac while Codex was: Claude Code lives in ~/.local/bin, which its installer adds only in ~/.zshrc. Commands and sessions now also look in ~/.local/bin and other common locations."],

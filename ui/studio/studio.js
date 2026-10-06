@@ -4179,12 +4179,14 @@
     // 扩展：三块拼成 L、一块在右上角分开（同 VS Code）
     extensions: SVG('<rect x="3.5" y="9.5" width="6" height="6" rx=".6"/><rect x="3.5" y="15.5" width="6" height="6" rx=".6"/><rect x="9.5" y="15.5" width="6" height="6" rx=".6"/><rect x="13.5" y="3.5" width="7" height="7" rx=".6"/>'),
     account: SVG('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3.2"/><path d="M6.3 18.4c1.2-2.3 3.3-3.5 5.7-3.5s4.5 1.2 5.7 3.5"/>'),
+    // App：三行三列的点（同启动台）——活动栏最下面，指上去弹出 App（apps.js）
+    apps: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">' + [5.5, 12, 18.5].map(function (y) { return [5.5, 12, 18.5].map(function (x) { return '<circle cx="' + x + '" cy="' + y + '" r="1.8"/>'; }).join(""); }).join("") + "</svg>",
     manage: SVG('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
   };
   // ---- 活动栏：上面各视图的图标（Agent、搜索、扩展……，别的文件用 addView 加），下面「账户」「管理」两个全局的；
   //      位置：默认（左边一条）/ 顶部（主侧栏标题栏里一排）/ 底部（主侧栏最下面一排）/ 隐藏；不在左边一条时「账户」「管理」到标题栏最右边（同 VS Code）----
   var VIEWS = {}; // 别的文件加的视图：id → { title, icon（24 格线条图标）, keys?, sym?, order?, create(tw, side) → 元素（第一个孩子是 .st-shdr 标题栏）, show?(el, tw, fromBar) }
-  var GLOBAL_ACTS = { account: 1, manage: 1 };
+  var GLOBAL_ACTS = { account: 1, manage: 1, apps: 1 };
   function addView(id, v) {
     VIEWS[id] = v;
     ACT_ICONS[id] = v.icon;
@@ -4201,7 +4203,7 @@
     a.innerHTML = '<span class="st-grow"></span>';
     g.className = "st-glob";
     g.dataset.nodrag = ""; // 在标题栏里时：这一块能点，不算拖窗口的地方（native.js 按这个算拖动区）
-    g.innerHTML = '<button data-a="account" title="账户">' + ACT_ICONS.account + '</button><button data-a="manage" title="管理">' + ACT_ICONS.manage + "</button>";
+    g.innerHTML = '<button data-a="account" title="账户">' + ACT_ICONS.account + '</button><button data-a="manage" title="管理">' + ACT_ICONS.manage + '</button><button data-a="apps" title="App">' + ACT_ICONS.apps + "</button>"; // App 在最下面（同「开始」按钮）
     a.appendChild(g);
     paintAct(tw);
     var row = document.createElement("div");
@@ -4221,6 +4223,7 @@
       var k = b.dataset.a, inBar = g.parentNode !== a;
       if (k === "manage") manageMenu(tw, b, inBar ? "below-end" : "right-up");
       else if (k === "account") accountMenu(tw, b, inBar ? "below-end" : "right-up");
+      else if (k === "apps") { if (STUDIO.apps && STUDIO.apps.popup) STUDIO.apps.popup(tw, b); }
       else showView(tw, k, true);
       syncAct(tw);
     };
