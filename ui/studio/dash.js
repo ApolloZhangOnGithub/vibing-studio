@@ -689,7 +689,7 @@
     L("");
     if (t.compact) { L(D + "── " + L10("上下文已压缩 · 摘要") + " ──" + RST); return; } // 连接器那边压缩了上下文：一条分隔线（摘要不放进缩略图）
     if (t.recap !== undefined) { wrapW("※ recap: " + t.recap, cols - 2).forEach(function (l, i) { L(D + (i ? "  " : "") + l + RST); }); return; }
-    if (t.cmd !== undefined) { ask(t.cmd, "❯ "); wrapW(String(t.note || ""), cols - 6).forEach(function (l, i) { if (l) L((i ? "     " : sub) + D + l + RST); }); return; }
+    if (t.cmd !== undefined) { ask(t.cmd, "❯ "); wrapW([t.note, t.err].filter(Boolean).join("\n"), cols - 6).forEach(function (l, i) { if (l) L((i ? "     " : sub) + D + l + RST); }); return; }
     if (t.bash !== undefined) {
       ask(t.bash, o.PINK + "!" + RST + " ");
       var ol = String(t.out || "").replace(/\s+$/, "").split("\n");
@@ -768,7 +768,7 @@
     var md = window.TSU_GUI ? TSU_GUI.md : esc, cfg = A.cfg || {};
     if (t.compact) return '<div class="gv-compact"><button class="gv-sum" tabindex="-1"><span class="gv-st">' + esc(L10("上下文已压缩 · 摘要")) + "</span></button></div>";
     if (t.recap !== undefined) return cfg.recaps === false ? "" : '<div class="gv-note">' + esc(L10("回顾：" + t.recap)) + "</div>";
-    if (t.cmd !== undefined) return '<div class="gv-cmdrec"><span class="gv-dim">' + esc(t.cmd) + "</span>" + (t.note ? '<div class="gv-note">' + md(t.note) + "</div>" : "") + "</div>";
+    if (t.cmd !== undefined) return '<div class="gv-cmdrec"><span class="gv-dim">' + esc(t.cmd) + "</span>" + (t.note ? '<div class="gv-note">' + md(t.note) + "</div>" : "") + (t.err ? '<div class="gv-note gv-err">' + esc(t.err) + "</div>" : "") + "</div>";
     if (t.bash !== undefined) return '<div class="gv-user"><div class="gv-bubble gv-mono">! ' + esc(t.bash) + '</div></div><div class="gv-ai">' + guiTool({ name: "Bash", input: { command: t.bash }, status: t.code === null ? "running" : t.code ? "error" : "done" }) + "</div>";
     if (t.note !== undefined && t.ask === undefined) return '<div class="gv-note">' + md(t.note) + "</div>";
     if (t.system) return (t.social || []).map(function (m) { return '<div class="gv-note"><b>' + esc(m.from_name || m.from) + "</b>：" + esc(m.text || "") + "</div>"; }).join("");
@@ -1050,7 +1050,7 @@
   var SV = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   // File Finder、Agent Finder 的图标：同活动栏上「文件」「Agents」那两个（标签页上、App 里一样，不再各画一套）
   // 访达（App 里、标签页上）：一张脸——圆角方块里一道竖着的分界、两只眼、一个笑（细线，同别的图标）
-  var FINDER_FACE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12.6 3.7c-1.2 2.6-1.8 5.2-1.8 8.1h1.9c0 3.2.4 5.9 1.3 8.5"/><path d="M8.4 8.6v2.2M15.6 8.6v2.2"/><path d="M7.4 15.3c2.9 1.9 6.3 1.9 9.2 0"/></svg>';
+  var FINDER_FACE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M14.6 3.6C12.7 5.1 11.6 6.6 11.3 8.4L10.5 12.7l1.6.6c0 1.6.1 2.9.5 3.9.4 1.1.7 2.1 1 3.2"/><path d="M8.25 9.25v.7M15.2 9.25v.7"/><path d="M7.4 15c2.9 2.1 6 2.1 8.95-.1"/></svg>';
   var SV24 = function (b) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var FINDER_ICON = SV24('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'); // File Finder：两张纸
   var AGENTS_ICON = SV24('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'); // Agent Finder：✦

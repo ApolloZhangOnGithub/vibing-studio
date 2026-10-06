@@ -1,4 +1,4 @@
-// apps.js —— 「App」：活动栏最下面（⚙ 下面）一个按钮，指上去 / 点一下从旁边弹出一块（同「开始」菜单：按内容的高度，不是整条侧栏），一格一个 App
+// apps.js —— 「App」：活动栏上面那一组的最后一个按钮，点一下从旁边弹出一块（同「开始」菜单：按内容的高度，不是整条侧栏），再点一下、点别处、按 Esc 收起；一格一个 App
 //   一份登记表，同连接器、扩展：id、名字、图标、find(tw)（开着的那一页，没有是 null）、open(tw, fresh)、ok()（这台设备上能不能用）；
 //   内置的现在三个：访达（dash.js 的 explorer 页：「文件」「Agent」两边，记住上次那一边）、终端（新开一个 shell 标签页，不进任何 agent）、浏览器（webview.js）。
 //   以后加的走 STUDIO.apps.add({ … })，弹出来的那块、命令面板跟着有。图标同活动栏上对应的那个（Agent Finder ↔ Agents 的 ✦，File Finder ↔ 文件）
@@ -23,7 +23,8 @@
   // ---- App 的图标：同活动栏上对应的那个（24 格细线）——Agent Finder 用 Agents 的 ✦、File Finder 用「文件」的两张纸 ----
   var LI = function (b) { return function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; }; };
   var LOGO = {
-    finder: function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12.6 3.7c-1.2 2.6-1.8 5.2-1.8 8.1h1.9c0 3.2.4 5.9 1.3 8.5"/><path d="M8.4 8.6v2.2M15.6 8.6v2.2"/><path d="M7.4 15.3c2.9 1.9 6.3 1.9 9.2 0"/></svg>'; },
+    // 访达：照 macOS 的访达图标——眼睛短、一样高（左 8.25、右 15.2，同它的位置），侧脸的额头、鼻子、下巴、笑的弧线照它的轮廓
+    finder: function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M14.6 3.6C12.7 5.1 11.6 6.6 11.3 8.4L10.5 12.7l1.6.6c0 1.6.1 2.9.5 3.9.4 1.1.7 2.1 1 3.2"/><path d="M8.25 9.25v.7M15.2 9.25v.7"/><path d="M7.4 15c2.9 2.1 6 2.1 8.95-.1"/></svg>'; },
     agents: LI('<path d="M10 4.5C10.5 9.2 12.8 11.5 17.5 12C12.8 12.5 10.5 14.8 10 19.5C9.5 14.8 7.2 12.5 2.5 12C7.2 11.5 9.5 9.2 10 4.5Z"/><path d="M18.5 2.8C18.7 4.6 19.4 5.3 21.2 5.5C19.4 5.7 18.7 6.4 18.5 8.2C18.3 6.4 17.6 5.7 15.8 5.5C17.6 5.3 18.3 4.6 18.5 2.8Z"/>'),
     files: LI('<path d="M9.5 3.5h5.2l4.3 4.3v8.7a1.5 1.5 0 0 1-1.5 1.5h-8a1.5 1.5 0 0 1-1.5-1.5V5a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M14.5 3.7v3.1a1 1 0 0 0 1 1h3.3"/><path d="M5 7.5v11.2a1.8 1.8 0 0 0 1.8 1.8H15"/>'),
     term: LI('<rect x="2.7" y="4.2" width="18.6" height="15.6" rx="2.7"/><path d="M7 9.3l3 2.7-3 2.7M12.6 15.2h4.5"/>'),
@@ -90,28 +91,36 @@
     open: function (tw, fresh) { return fresh || iosApp() ? newTab(tw, "web", "") : S.openBrowser ? S.openBrowser(tw) : S.openPage(tw, "web", ""); },
   });
 
-  // ======== 弹出来的那块（同「开始」菜单）：活动栏最下面的按钮旁边，底边对齐按钮；在标题栏里（活动栏在顶部）时开在按钮下面、右边对齐 ========
-  var pop = null, popFor = null, popTw = null, openT = 0, closeT = 0;
+  // ======== 弹出来的那块（同「开始」菜单）：点活动栏上的按钮开 / 关（不是指上去就弹）；开在按钮旁边：
+  //   活动栏竖着在左边——按钮右边、顶边对齐按钮；在右边（主侧栏移到右侧）——按钮左边；横着（顶部 / 底部 / 标题栏里）——按钮下面（底部时上面）
+  var pop = null, popFor = null, popTw = null;
   var byId = function (id) { return APPS.filter(function (a) { return a.id === id; })[0] || null; };
-  function closePop() { clearTimeout(openT); clearTimeout(closeT); if (pop) { pop.remove(); pop = null; } if (popFor) popFor.classList.remove("on"); popFor = null; }
-  function openPop(tw, anchor) {
+  function closePop(back) { if (pop) { pop.remove(); pop = null; } if (popFor) { popFor.classList.remove("apv-on"); if (back) popFor.focus(); } popFor = null; }
+  function place(el, anchor) {
+    var r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, bar = anchor.parentNode && anchor.parentNode.getBoundingClientRect ? anchor.parentNode.getBoundingClientRect() : r;
+    var flat = bar.width > bar.height * 1.5, x, y, cls = "";
+    if (flat) { x = r.left; y = r.top > innerHeight / 2 ? r.top - h - 6 : r.bottom + 6; cls = y < r.top ? "up" : "down"; }
+    else if (r.left + r.width / 2 > innerWidth / 2) { x = r.left - w - 8; y = r.top; cls = "left"; }
+    else { x = r.right + 8; y = r.top; }
+    el.style.left = Math.round(Math.max(8, Math.min(innerWidth - w - 8, x))) + "px";
+    el.style.top = Math.round(Math.max(8, Math.min(innerHeight - h - 8, y))) + "px";
+    if (cls) el.classList.add(cls);
+  }
+  function tiles() { return pop ? Array.prototype.slice.call(pop.querySelectorAll(".apv-tile")) : []; }
+  function openPop(tw, anchor, kbd) {
     closePop();
     var el = pop = document.createElement("div");
     popFor = anchor; popTw = tw;
-    anchor.classList.add("on");
+    anchor.classList.add("apv-on");
     el.className = "apv-pop";
     el.setAttribute("role", "menu");
     el.innerHTML = '<div class="apv-grid">' + APPS.map(function (a) {
       var ok = okOf(a), open = ok && a.find && a.find(tw);
-      return '<button type="button" class="apv-tile' + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '"' + (ok ? "" : ' aria-disabled="true"') + ' title="' + esc(ok ? nameOf(a) : t("连接 Mac 后可用", "Available after connecting a Mac")) + '">' +
+      return '<button type="button" role="menuitem" class="apv-tile' + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '"' + (ok ? "" : ' aria-disabled="true"') + ' title="' + esc(ok ? nameOf(a) : t("连接 Mac 后可用", "Available after connecting a Mac")) + '">' +
         '<span class="apv-tic">' + (typeof a.logo === "function" ? a.logo() : a.logo || "") + '</span><span class="apv-tn">' + esc(nameOf(a)) + "</span>" + (open ? '<i class="apv-dot"></i>' : "") + "</button>";
     }).join("") + "</div>";
     document.body.appendChild(el);
-    var r = anchor.getBoundingClientRect(), w = el.offsetWidth, h = el.offsetHeight, inBar = !!anchor.closest(".st-globbar");
-    if (inBar) { el.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + "px"; el.style.top = Math.round(r.bottom + 6) + "px"; el.classList.add("down"); }
-    else { el.style.left = Math.round(r.right + 8) + "px"; el.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.bottom - h)) + "px"; }
-    el.addEventListener("mouseenter", function () { clearTimeout(closeT); });
-    el.addEventListener("mouseleave", function () { closeSoon(); });
+    place(el, anchor);
     el.addEventListener("click", function (e) {
       var b = e.target.closest(".apv-tile"), a = b && byId(b.dataset.app);
       if (!a || !okOf(a)) return;
@@ -129,27 +138,22 @@
         { label: t("在新标签页中打开", "Open in New Tab"), disabled: !okOf(a), run: function () { closePop(); openApp(a, tw0, true); } },
       ], { x: e.clientX, y: e.clientY });
     });
+    // 键盘：方向键在格子里走（两列），回车 / 空格打开，Tab 不出这一块
+    el.addEventListener("keydown", function (e) {
+      var ts = tiles(), i = ts.indexOf(document.activeElement), k = e.key, step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -2, ArrowDown: 2 }[k];
+      if (step === undefined && k !== "Tab" && k !== "Home" && k !== "End") return;
+      e.preventDefault();
+      var n = k === "Home" ? 0 : k === "End" ? ts.length - 1 : k === "Tab" ? (i + (e.shiftKey ? -1 : 1) + ts.length) % ts.length : Math.max(0, Math.min(ts.length - 1, (i < 0 ? 0 : i + step)));
+      if (ts[n]) ts[n].focus();
+    });
+    if (kbd) { var f = el.querySelector(".apv-tile:not(.off)"); if (f) f.focus(); } // 用键盘开的：焦点到第一个
   }
-  function closeSoon() { clearTimeout(closeT); closeT = setTimeout(function () { if (!(S.menuOpen && S.menuOpen())) closePop(); }, 260); }
-  // 指上去（停一下）就弹出来；移开（按钮、那一块都不在指针下）就收起；点按钮是开 / 关
-  document.addEventListener("mouseover", function (e) {
-    var b = e.target.closest && e.target.closest('.st-glob [data-a="apps"]');
-    if (!b) return;
-    clearTimeout(closeT);
-    if (pop && popFor === b) return;
-    clearTimeout(openT);
-    openT = setTimeout(function () { var w = (window.TSU_TERM && TSU_TERM.wins ? TSU_TERM.wins() : []).filter(function (x) { return x.el && x.el.contains(b); })[0] || front(); if (w && b.isConnected) openPop(w, b); }, 140);
-  });
-  document.addEventListener("mouseout", function (e) {
-    var b = e.target.closest && e.target.closest('.st-glob [data-a="apps"]');
-    if (!b || (e.relatedTarget && b.contains(e.relatedTarget))) return;
-    clearTimeout(openT);
-    if (pop && popFor === b) closeSoon();
-  });
-  document.addEventListener("keydown", function (e) { if (pop && e.key === "Escape") { e.preventDefault(); closePop(); } }, true);
+  document.addEventListener("keydown", function (e) { if (pop && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePop(pop.contains(document.activeElement)); } }, true);
   document.addEventListener("mousedown", function (e) { if (pop && !pop.contains(e.target) && !(popFor && popFor.contains(e.target)) && !(e.target.closest && e.target.closest(".st-menu"))) closePop(); }, true);
-  window.addEventListener("blur", function () { closePop(); });
-  function popup(tw, anchor) { if (pop && popFor === anchor) return closePop(); openPop(tw || front(), anchor); }
+  window.addEventListener("blur", function () { if (!(S.menuOpen && S.menuOpen())) closePop(); });
+  window.addEventListener("resize", function () { closePop(); });
+  // 点按钮：开着就收起，没开就开（kbd：用键盘按的——焦点进到格子里）
+  function popup(tw, anchor, kbd) { if (pop && popFor === anchor) return closePop(); openPop(tw || front(), anchor, kbd); }
   if (I18N && I18N.onChange) I18N.onChange(function () { if (pop && popFor) openPop(popTw, popFor); });
 
   S.apps = { add: add, popup: popup, close: closePop, icon: ICON24, list: function () { return APPS.slice(); }, open: function (id, tw, fresh) { var a = APPS.filter(function (x) { return x.id === id; })[0]; return a ? openApp(a, tw, fresh) : null; } };

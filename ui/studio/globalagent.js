@@ -89,7 +89,7 @@
   function turnText(t) {
     var L = [];
     if (t.recap !== undefined) return ["※ recap: " + clip(t.recap, 400)];
-    if (t.cmd !== undefined) return ["❯ " + clip(t.cmd, 200) + (t.note ? "  ⎿ " + clip(t.note, 200) : "")];
+    if (t.cmd !== undefined) return ["❯ " + clip(t.cmd, 200) + (t.note || t.err ? "  ⎿ " + clip(t.note || t.err, 200) : "")];
     if (t.bash !== undefined) return ["! " + clip(t.bash, 200) + (t.out ? "  ⎿ " + clip(t.out, 300) : "")];
     if (t.system && t.social) (t.social || []).forEach(function (m) { L.push("➤ from " + (m.from_name || m.from) + ": " + clip(m.text, 300)); });
     else if (t.system) L.push("(system: " + clip(t.ask || "notice", 160) + ")");

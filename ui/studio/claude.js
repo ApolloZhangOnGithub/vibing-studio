@@ -665,6 +665,32 @@
     var lastIn = 0, lastOut = 0;
     // 它从哪一刻起在想（等模型回）：忙着、最后一条是你的话或工具结果、它还没写出东西；不在想是 0
     rt.thinkSince = function () { return rt.stream && lastIn > lastOut ? lastIn : 0; };
+    // 斜杠命令（同 Claude Code 2.1.281）：命令那一条——「local」类的是一条用户消息，结果显示成 system 的那种（/rename 这类）命令、结果都是 system / local_command；
+    //   结果是 <local-command-stdout>（淡字）/ <local-command-stderr>（红字），以前的版本是用户消息、新版在 system / local_command 里。空的、「(no content)」不画那一行 ⎿（同它的 pl()）
+    function cmdOpen(text, j) {
+      var cm = /<command-name>([^<]*)<\/command-name>/.exec(text);
+      if (!cm) return null;
+      finishTurn(); cur = null;
+      var ca = /<command-args>([^<]*)<\/command-args>/.exec(text);
+      if (cm[1] === "/model" && ca && ca[1].trim()) modelCmd = ca[1].trim();
+      if (cm[1] === "/goal") goalSeen = true;
+      if (cm[1] === "/goal" && ca && /^\s*(clear|off|stop|cancel)\b/i.test(ca[1])) agent.goal = null;
+      lastCmd = { cmd: (cm[1] + " " + (ca ? ca[1] : "")).trim(), note: "", at: ts(j) };
+      unqueue(lastCmd.cmd); lqDrop(lastCmd.cmd); // 这边送进去的那句命令：不再挂成「在发」
+      turns.push(lastCmd); byUuid[j.uuid] = lastCmd;
+      return lastCmd;
+    }
+    function cmdOut(text, j) {
+      var so = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(text), se = /<local-command-stderr>([\s\S]*?)<\/local-command-stderr>/.exec(text);
+      if (!so && !se) return undefined;
+      if (!lastCmd) return null;
+      var clean = function (x) { x = String(x || "").replace(/\x1b\[[\d;]*m/g, "").trim(); return x === "(no content)" ? "" : x; };
+      if (so) lastCmd.note = clean(so[1]);
+      if (se) lastCmd.err = clean(se[1]);
+      if (j.contextUsage) lastCmd.ctxUsage = j.contextUsage;
+      if (j.usageReport) lastCmd.usageReport = j.usageReport;
+      return lastCmd;
+    }
     function feedLine(line) {
       if (!line || line.length < 10) return null;
       var j;
@@ -700,6 +726,13 @@
         if (!tt) return null;
         tt.stats = { secs: Math.max(1, Math.round(j.durationMs / 1000)), verb: doneVerb(tt.at), at: ts(j) };
         return tt;
+      }
+      // 斜杠命令和它的结果记成 system / local_command 的（新版 Claude Code：结果都在这里；/rename 这种连命令那一条也是）
+      if (j.type === "system" && j.subtype === "local_command" && typeof j.content === "string") {
+        var lco = cmdOpen(j.content, j);
+        if (lco) return lco;
+        var lcr = cmdOut(j.content, j);
+        return lcr === undefined ? null : lcr;
       }
       // 别的 agent / 会话发来的消息（它们的 SendMessage）：闲着时是一条 isMeta 的用户消息，忙着时是一条 queued_command 附件（下一轮工具时读到）；
       // 都带 origin（kind: "peer"，from、name、body）→ 一问「别的 agent 发来的话」（同 Paimon 的 social：外壳按自己的样子画），它接下来的回答接在这一问里
@@ -799,10 +832,10 @@
           if (bi) { finishTurn(); cur = null; lastBash = { bash: bi[1], out: "", code: null, at: ts(j) }; turns.push(lastBash); byUuid[j.uuid] = lastBash; return lastBash; }
           var bo = /<bash-stdout>([\s\S]*?)<\/bash-stdout>/.exec(text), be = /<bash-stderr>([\s\S]*?)<\/bash-stderr>/.exec(text);
           if ((bo || be) && lastBash) { var er = be ? be[1].trim() : ""; lastBash.out = ((bo ? bo[1] : "") + (er ? "\n" + er : "")).replace(/\x1b\[[\d;]*m/g, "").trim(); lastBash.code = er ? 1 : 0; var lb = lastBash; lastBash = null; return lb; }
-          var cm = /<command-name>([^<]*)<\/command-name>/.exec(text);
-          if (cm) { finishTurn(); cur = null; var ca = /<command-args>([^<]*)<\/command-args>/.exec(text); if (cm[1] === "/model" && ca && ca[1].trim()) modelCmd = ca[1].trim(); if (cm[1] === "/goal") goalSeen = true; if (cm[1] === "/goal" && ca && /^\s*(clear|off|stop|cancel)\b/i.test(ca[1])) agent.goal = null; lastCmd = { cmd: (cm[1] + " " + (ca ? ca[1] : "")).trim(), note: "", at: ts(j) }; turns.push(lastCmd); byUuid[j.uuid] = lastCmd; return lastCmd; }
-          var so = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(text);
-          if (so) { if (lastCmd) { lastCmd.note = so[1].replace(/\x1b\[[\d;]*m/g, "").trim(); return lastCmd; } return null; }
+          var co = cmdOpen(text, j);
+          if (co) return co;
+          var cr = cmdOut(text, j);
+          if (cr !== undefined) return cr;
           // 打断记在真的被打断的那一问上：从后往前，跳过刚被读进来、还没回的那几句（排着的、一轮中间读进去的）——「Interrupted」画在被打断的那一块下面（同 Claude Code），不画到最后一句你说的话下面
           if (/^\s*\[Request interrupted/.test(text)) {
             for (var ii = turns.length - 1; ii >= 0; ii--) { var ti0 = turns[ii]; if (ti0.ask === undefined) continue; if (ti0.queued && !(ti0.parts || []).length && !ti0.answer) continue; ti0.error = "Interrupted by user"; return ti0; }

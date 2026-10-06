@@ -2523,7 +2523,9 @@
         if (!vmode("prompts")) return [];
         mark(turn.at);
         askBlock(r, turn.cmd, "❯ ");
-        wrap(String(uiT(turn.note) || ""), P.cols - 6).forEach(function (l, i) { r.text([(i ? "     " : "  " + D + "⎿" + RESET + "  ") + D + l + RESET]); }); // 记下的说明：英文时按词典换（Paimon 的原样存着）
+        // 结果：淡字（stdout）、红字（stderr）；没有结果的（空的、「(no content)」）不画 ⎿（同 Claude Code）。记下的说明：英文时按词典换（Paimon 的原样存着）
+        var cmdL = (turn.note ? wrap(String(uiT(turn.note)), P.cols - 6).map(function (l) { return D + l + RESET; }) : []).concat(turn.err ? wrap(String(turn.err), P.cols - 6).map(function (l) { return RED + l + RESET; }) : []);
+        cmdL.forEach(function (l, i) { r.text([(i ? "     " : "  " + D + "⎿" + RESET + "  ") + l]); });
         return done();
       }
       if (turn.bash !== undefined) {
@@ -5612,9 +5614,11 @@
       }
       // ---- Codex（连接器，codex.js）：同 Claude Code，按目录分组；最近 40 个，「全部」看其余的；已归档的在最后一组（收着）----
       //   目录行带 data-conn="codex" data-dir="<绝对路径>"（在那里开新会话：TSU_CONNECTORS.newSession("codex", 目录)）
-      var cxQ = window.TSU_LOCAL && cxOn() && window.TSU_CODEX && qToks.length ? TSU_CODEX.list().filter(function (x) { return qHit(x.title, x.id); }) : null; // 搜着的时候：全部会话里搜到的（不止最近 40 个）
+      var cxQ = window.TSU_LOCAL && cxOn() && window.TSU_CODEX && qToks.length ? TSU_CODEX.list().filter(function (x) { return qHit(EXTc.name["cx:" + x.id] || x.title, x.id); }) : null; // 搜着的时候（改过名的按新名字搜）：全部会话里搜到的（不止最近 40 个）
       if (window.TSU_LOCAL && cxOn() && window.TSU_CODEX && (!cxQ || cxQ.length)) {
-        var CX = TSU_CODEX, cxAll = cxQ || CX.list(), cxLive = cxAll.filter(function (x) { return !x.archived; }), cxArch = cxAll.filter(function (x) { return x.archived; });
+        var kx = function (x) { return "cx:" + x.id; }, UNRx = ccUnread(); // 固定、改名、归档、分组、未读：同 Claude Code（同一份 st-claude-ext，键是 cx:<id>）
+        var CX = TSU_CODEX, cxAll = cxQ || CX.list(), cxArchQ = function (x) { return x.archived || EXTc.arch[kx(x)]; }, cxLive = cxAll.filter(function (x) { return !cxArchQ(x); }), cxArch = cxAll.filter(cxArchQ);
+        var cxPinL = cxLive.filter(function (x) { return EXTc.pin[kx(x)]; }), cxGrpOf = function (x) { return !EXTc.pin[kx(x)] && EXTc.group && EXTc.group[kx(x)] || ""; };
         var home1 = (TSU_LOCAL.info() || {}).home || "", seeX = {};
         tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^cx:/.test(ag)) seeX[CX.real(ag.slice(3))] = p; });
         var grpX = function (x) { return seeX[x.id] ? "f" : x.live ? "b" : "o"; };
@@ -5625,11 +5629,20 @@
         var cxRow = function (x, ind) {
           var g = grpX(x), busy = x.live && x.live.status === "busy", pv = seeX[x.id], isCur = !!pv && pv === tw.ws.active;
           var when = g === "o" ? agoCN(x.mtime) : durCN(Date.now() - (x.live && x.live.since || x.mtime)), icC = busy || g !== "o" ? "" : DIMC; // 活着的用字色（OpenAI 的黑 / 白；同 Claude Code 的会话用它的橙），没在跑的淡灰
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(x.title, pv ? BOLD : x.dimTitle ? DIMC : "")), DIMC + when + RESET, true), busy) + "</span>\n"; // 没有像样标题的（只有 /exit 这种）：目录名 + 时间，淡的
+          if (isCur && UNRx[kx(x)]) { delete UNRx[kx(x)]; ccUnreadSave(UNRx); } // 正看着：已读
+          var nm = EXTc.name[kx(x)] || x.title, unDot = UNRx[kx(x)] ? [[" ●", rgb("61;123;245")]] : [];
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy) + "</span>\n"; // 没有像样标题的（只有 /exit 这种）：目录名 + 时间，淡的
         };
         out += "\n" + row("ts-fold ts-head", foldAt("cx", false), [[chev("cx"), ""], ["Codex", BOLD]], headActs("cx"));
         if (!folded("cx")) {
-          var cut0 = fold["cx:all"] || cxQ ? cxLive.length : 40, shownX = cxLive.filter(function (x, i) { return i < cut0 || grpX(x) !== "o"; });
+          var cxOrd = function (a, b) { return ({ f: 0, b: 1, o: 2 }[grpX(a)] - { f: 0, b: 1, o: 2 }[grpX(b)]) || b.mtime - a.mtime; };
+          // 已固定、自己分的组：放在目录树上面（同 Claude Code）
+          var pinX = cxPinL.filter(function (x) { return !only("cx") || grpX(x) !== "o"; });
+          if (pinX.length) { var kpx = "cx:#pinned"; out += row("ts-fold", foldAt(kpx, false) + ' data-ic="pin"', [["  " + chev(kpx, false), ""], ["已固定", DIMC]]); if (!folded(kpx, false)) pinX.sort(cxOrd).forEach(function (x) { out += cxRow(x, "  "); }); }
+          var cxG = {}; cxLive.forEach(function (x) { var g0 = cxGrpOf(x); if (g0 && (!only("cx") || grpX(x) !== "o")) (cxG[g0] = cxG[g0] || []).push(x); });
+          Object.keys(cxG).sort().forEach(function (gn) { var kgx = "cx:#g:" + gn; out += row("ts-fold", foldAt(kgx, false) + ' data-ic="grp"', [["  " + chev(kgx, false), ""], [gn, DIMC]]); if (!folded(kgx, false)) cxG[gn].sort(cxOrd).forEach(function (x) { out += cxRow(x, "  "); }); });
+          var treeX = cxLive.filter(function (x) { return !EXTc.pin[kx(x)] && !cxGrpOf(x); });
+          var cut0 = fold["cx:all"] || cxQ ? treeX.length : 40, shownX = treeX.filter(function (x, i) { return i < cut0 || grpX(x) !== "o"; });
           var topX = { kids: {}, items: [] };
           shownX.forEach(function (x) {
             var parts = tlX(x.cwd || "?").split("/"), n = topX, at = "";
@@ -5823,6 +5836,24 @@
       TSU_DESK.alert({ title: tt("删除「" + name + "」？", "Delete “" + name + "”?"), message: tt("会话记录会移到废纸篓，需要时可以从废纸篓放回来。", "The transcript moves to the Trash; you can put it back from there."), icon: "caution",
         buttons: [{ label: tt("取消", "Cancel"), role: "cancel" }, { label: tt("删除", "Delete"), role: "default", run: go }] });
     }
+    function cxDelete(x) {
+      var L0 = window.TSU_LOCAL;
+      if (!x || !x.path || !L0 || !L0.exec) return;
+      var name = ccExt().name["cx:" + x.id] || x.title || String(x.id || "").slice(0, 8), go = function () {
+        var cmd = "f=" + shq(x.path) + "; [ -e \"$f\" ] || exit 0; if [ -x /usr/bin/trash ]; then /usr/bin/trash \"$f\"; elif command -v gio >/dev/null 2>&1; then gio trash \"$f\"; else osascript -e 'on run a' -e 'tell application \"Finder\" to delete (POSIX file (item 1 of a) as alias)' -e 'end run' \"$f\" >/dev/null; fi && echo TRASH-OK";
+        L0.exec({ cmd: cmd }).then(function (r) {
+          if (!/TRASH-OK/.test(String((r && r.out) || ""))) throw new Error(String((r && (r.err || r.out)) || "").trim().slice(0, 200) || tt("没能移到废纸篓", "Couldn't move it to the Trash"));
+          var aid = "cx:" + x.id;
+          tw.ws.all().filter(function (p) { return p.program && p.program.agentId === aid; }).forEach(function (p) { tw.ws.closePane(p); });
+          var ex = ccExt(); ["pin", "arch", "name", "group"].forEach(function (k) { delete ex[k][aid]; }); ccExtSave(ex); var u = ccUnread(); delete u[aid]; ccUnreadSave(u);
+          if (window.TSU_CODEX && TSU_CODEX.refresh) TSU_CODEX.refresh();
+          S.render(true); document.dispatchEvent(new Event("tsu-cc"));
+        }).catch(function (e) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: tt("没删掉", "Couldn't delete"), message: String(e && e.message || e), icon: "caution" }); });
+      };
+      if (!window.TSU_DESK || !TSU_DESK.alert) return;
+      TSU_DESK.alert({ title: tt("删除「" + name + "」？", "Delete “" + name + "”?"), message: tt("会话记录会移到废纸篓，需要时可以从废纸篓放回来。", "The transcript moves to the Trash; you can put it back from there."), icon: "caution",
+        buttons: [{ label: tt("取消", "Cancel"), role: "cancel" }, { label: tt("删除", "Delete"), role: "default", run: go }] });
+    }
     S.viewCC = function (id, info) {
       ccMarkRead(id); // 打开了：已读
       if (!window.TSU_CLAUDE) return S.openCC(id);
@@ -5849,6 +5880,7 @@
     S.viewCX = function (id, info) {
       var CX = window.TSU_CODEX;
       if (!CX) return null;
+      var u0 = ccUnread(); if (u0["cx:" + id]) { delete u0["cx:" + id]; ccUnreadSave(u0); } // 打开了：已读
       var x = info || CX.get(id) || {}, aid = CX.id(id), hit = null;
       CX.ensure(id, info || (CX.get(id) || undefined));
       tw.ws.tabs.forEach(function (t, ti) { ws0(t).forEach(function (p) { var ag = p.program && p.program.agentId; if (!hit && ag && (ag === aid || /^cx:/.test(ag) && CX.real(ag.slice(3)) === id)) hit = { ti: ti, p: p }; }); });
@@ -6091,13 +6123,39 @@
       }
       if (it.dataset.cx) {
         e.preventDefault();
-        var xid = it.dataset.cx, xi = window.TSU_CODEX && TSU_CODEX.get(xid), mx = function (label, run) { return { label: label, keys: "", run: run }; };
+        var xid = it.dataset.cx, xi = (window.TSU_CODEX && TSU_CODEX.get(xid)) || {}, kx0 = "cx:" + xid, exX = ccExt(), LCx = window.TSU_LOCAL, MIx = window.STUDIO && STUDIO.menuIcons ? STUDIO.menuIcons() : {};
+        var setExtX = function (f) { var ex = ccExt(); f(ex); ccExtSave(ex); S.render(true); document.dispatchEvent(new Event("tsu-cc")); };
+        var isUnX = !!ccUnread()[kx0], curGX = exX.group[kx0] || "", canFsX = !!(xi.path && LCx && LCx.exec);
         TSU_DESK.popup([
-          mx("打开", function () { S.viewCX(xid); }),
-          xi && xi.cwd ? mx("在终端中继续", function () { if (window.STUDIO && STUDIO.newTerm) STUDIO.newTerm(tw, null, xi.cwd, "codex resume " + xid); }) : null,
+          { label: tt("打开位置", "Open in"), icon: MIx.open, items: function () { return [
+            { label: tt("拆分视图", "Split View"), icon: MIx.splitR, run: function () { if (tw.ws.active && tw.ws.drop && window.TSU_CODEX && xi.id) { TSU_CODEX.ensure(xi.id, xi); tw.ws.drop({ kind: "agent", id: "cx:" + xi.id }, tw.ws.active, "right"); } else S.viewCX(xid); } },
+            xi.cwd && window.STUDIO && STUDIO.newTerm ? { label: tt("终端", "Terminal"), icon: MIx.term, run: function () { STUDIO.newTerm(tw, null, xi.cwd, "codex resume " + xid); } } : null,
+            xi.cwd && LCx && LCx.exec ? { sep: true } : null,
+            xi.cwd && LCx && LCx.exec && CC_VSCODE ? { label: "Visual Studio Code", icon: MIx.json, run: function () { LCx.exec({ cmd: "open -a " + shq(CC_VSCODE) + " " + shq(xi.cwd) }).catch(function () {}); } } : null,
+            xi.cwd && LCx && LCx.exec ? { label: tt("访达", "Finder"), icon: MIx.window, run: function () { LCx.exec({ cmd: "open " + shq(xi.cwd) }).catch(function () {}); } } : null,
+          ].filter(Boolean); } },
           { sep: true },
-          xi && xi.cwd && window.STUDIO && STUDIO.openPage ? mx(tt("在 Agent Finder 中显示", "Reveal in Agent Finder"), function () { STUDIO.openPage(tw, "explorer", finderArg("codex", xi.cwd)); }) : null,
-        ].filter(Boolean), { x: e.clientX, y: e.clientY });
+          { label: exX.pin[kx0] ? tt("取消固定", "Unpin") : tt("固定", "Pin"), acc: "P", run: function () { setExtX(function (ex) { if (ex.pin[kx0]) delete ex.pin[kx0]; else { ex.pin[kx0] = Date.now(); delete ex.arch[kx0]; } }); } },
+          { label: isUnX ? tt("标为已读", "Mark as Read") : tt("标为未读", "Mark as Unread"), acc: "U", run: function () { var u = ccUnread(); if (u[kx0]) delete u[kx0]; else u[kx0] = 1; ccUnreadSave(u); S.render(true); document.dispatchEvent(new Event("tsu-cc")); } },
+          { label: tt("重命名…", "Rename…"), acc: "R", icon: MIx.rename, run: function () {
+            if (!window.STUDIO || !STUDIO.ask) return;
+            STUDIO.ask({ title: tt("重命名", "Rename"), value: exX.name[kx0] || xi.title || "" }).then(function (v) { if (v == null || v === true) return; v = String(v).trim().slice(0, 80); setExtX(function (ex) { if (v) ex.name[kx0] = v; else delete ex.name[kx0]; }); });
+          } },
+          { sep: true },
+          { label: tt("移到分组", "Move to Group"), items: function () {
+            return ccGroupNames().map(function (g) { return { label: g, radio: true, checked: g === curGX, close: true, run: function () { setExtX(function (ex) { ex.group[kx0] = g; delete ex.pin[kx0]; delete ex.arch[kx0]; }); } }; }).concat([
+              ccGroupNames().length ? { sep: true } : null,
+              { label: tt("新建分组…", "New Group…"), run: function () {
+                if (!window.STUDIO || !STUDIO.ask) return;
+                STUDIO.ask({ title: tt("新建分组", "New Group"), value: "" }).then(function (v) { if (v == null || v === true) return; v = String(v).trim().slice(0, 40); if (v) setExtX(function (ex) { ex.group[kx0] = v; delete ex.pin[kx0]; delete ex.arch[kx0]; }); });
+              } },
+              curGX ? { label: tt("移出分组", "Remove from Group"), run: function () { setExtX(function (ex) { delete ex.group[kx0]; }); } } : null,
+            ]).filter(Boolean);
+          } },
+          { sep: true },
+          { label: exX.arch[kx0] ? tt("取消归档", "Unarchive") : tt("归档", "Archive"), acc: "A", icon: MIx.archive, disabled: !!xi.archived && !exX.arch[kx0], run: function () { setExtX(function (ex) { if (ex.arch[kx0]) delete ex.arch[kx0]; else { ex.arch[kx0] = Date.now(); delete ex.pin[kx0]; } }); } },
+          canFsX ? { label: tt("删除", "Delete"), acc: "D", danger: true, disabled: !!(xi.live && xi.live.status === "busy"), run: function () { cxDelete(xi); } } : null,
+        ], { x: e.clientX, y: e.clientY });
         return;
       }
       e.preventDefault();

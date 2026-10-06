@@ -11,6 +11,16 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.414", items: {
+      improved: [
+        ["Codex 会话的右键菜单同 Claude Code 一样：打开位置（拆分视图、终端、Visual Studio Code、访达）、固定、标为未读、重命名、移到分组、归档、删除（会话记录移到废纸篓）；固定的、分组的在 Codex 下面各成一组。", "Codex sessions now have the same context menu as Claude Code: Open in (Split View, Terminal, Visual Studio Code, Finder), Pin, Mark as Unread, Rename, Move to Group, Archive and Delete (the transcript moves to the Trash). Pinned and grouped sessions get their own sections under Codex."],
+        ["「App」挪到活动栏上面那一组（连接器下面），点一下打开、再点一下或点别处收起，不再指上去就弹；也能用方向键选。", "Apps moved to the top group of the activity bar, below Connectors. It now opens on click and closes on a second click or a click elsewhere, instead of on hover, and works with the arrow keys."],
+        ["访达的图标照 macOS 的访达重画：眼睛短了，侧脸、笑的弧线和它对齐。", "The Finder icon is redrawn after the macOS Finder icon: shorter eyes, with the profile and smile matching it."],
+      ],
+      fixed: [
+        ["Claude Code 的斜杠命令（/rename、/cost、/add-dir 等）结果不显示、下面只有一个空的「⎿」：新版把结果记在 system 消息里，现在照它的样子显示；出错的是红字，没有结果的不再画那一行。", "Results of Claude Code slash commands such as /rename, /cost and /add-dir were missing, leaving an empty “⎿”. Newer versions record them as system messages; they now show the way Claude Code shows them, errors in red, and commands with no output no longer draw that line."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.413", items: {
       improved: [
         ["「文件」视图：看得见的文件夹先把里面读好，点开就是现成的，不再先空一下。", "Files view: visible folders are read ahead, so expanding one shows its contents right away."],

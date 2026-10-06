@@ -1,6 +1,8 @@
-/* apps.css —— 「App」弹出来的那块（apps.js）：活动栏最下面的按钮旁边，同「开始」菜单——按内容的高度，两列，一格一个 App（图标在上、名字在下） */
-.apv-pop { --apv-font: var(--st-ui-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); position: fixed; z-index: 2000; padding: 6px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-bg2); color: var(--st-fg); box-shadow: 0 12px 34px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .2); -webkit-user-select: none; user-select: none; transform-origin: left bottom; animation: apv-in .12s cubic-bezier(.2, 0, 0, 1); }
-.apv-pop.down { transform-origin: right top; }
+/* apps.css —— 「App」弹出来的那块（apps.js）：活动栏上那个按钮旁边，同「开始」菜单——按内容的高度，两列，一格一个 App（图标在上、名字在下） */
+.apv-pop { --apv-font: var(--st-ui-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); position: fixed; z-index: 2000; padding: 6px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-bg2); color: var(--st-fg); box-shadow: 0 12px 34px rgba(0, 0, 0, .38), 0 1px 3px rgba(0, 0, 0, .2); -webkit-user-select: none; user-select: none; animation: apv-in .12s cubic-bezier(.2, 0, 0, 1); }
+.apv-pop { transform-origin: left top; }
+.apv-pop.left { transform-origin: right top; }
+.apv-pop.up { transform-origin: left bottom; }
 html.light .apv-pop { box-shadow: 0 12px 34px rgba(0, 0, 0, .14), 0 1px 3px rgba(0, 0, 0, .08); }
 @keyframes apv-in { from { opacity: 0; transform: scale(.97); } }
 .apv-grid { display: grid; grid-template-columns: repeat(2, 100px); gap: 2px; }
@@ -14,4 +16,4 @@ html.light .apv-pop { box-shadow: 0 12px 34px rgba(0, 0, 0, .14), 0 1px 3px rgba
 /* 开着的：名字下面一个小点（同程序坞里开着的 App） */
 .apv-dot { position: absolute; bottom: 6px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--st-dim); }
 /* 活动栏上那个按钮：弹出来时同点着的样子 */
-.st-glob button[data-a="apps"].on { color: var(--st-hi); background: var(--st-hover2); border-radius: 6px; }
+.st-act button[data-a="apps"].apv-on { color: var(--st-hi); background: var(--st-hover2); }

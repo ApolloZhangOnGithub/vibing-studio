@@ -302,7 +302,7 @@
         return '<div class="gv-compact' + (co ? " open" : "") + '" data-k="' + ck + '"><button class="gv-sum"><span class="gv-st">' + ctl + "</span><i></i></button>" + (co && t.compact.summary ? '<div class="gv-det gv-md">' + md(t.compact.summary) + "</div>" : "") + "</div>";
       }
       if (t.recap !== undefined) return !on("recaps") ? "" : tsw(t.at, '<div class="gv-note">回顾：' + esc(t.recap) + "</div>");
-      if (t.cmd !== undefined) return tsw(t.at, '<div class="gv-cmdrec"><span class="gv-dim">' + esc(t.cmd) + "</span>" + (t.note ? '<div class="gv-note">' + md(t.note) + "</div>" : "") + "</div>");
+      if (t.cmd !== undefined) return tsw(t.at, '<div class="gv-cmdrec"><span class="gv-dim">' + esc(t.cmd) + "</span>" + (t.note ? '<div class="gv-note">' + md(t.note) + "</div>" : "") + (t.err ? '<div class="gv-note gv-err">' + esc(t.err) + "</div>" : "") + "</div>");
       if (t.bash !== undefined) { // 你自己用 ! 跑的命令：输出按「你的 ! 命令输出」（完整 / 前几行 / 隐藏）
         var bm = vm("bashOut") || "preview", bp = { kind: "tool", name: "Bash", input: { command: t.bash }, status: t.code === null ? "running" : t.code ? "error" : "done", detail: String(t.out || "").replace(/\n$/, "").split("\n") };
         return '<div class="gv-user">' + tsEl(t.at) + '<div class="gv-bubble gv-mono">! ' + esc(t.bash) + "</div></div>" + (bm === "hidden" ? "" : '<div class="gv-ai">' + toolOne(bp, ti + ":b", bm === "expanded" ? "full" : "preview") + "</div>");
