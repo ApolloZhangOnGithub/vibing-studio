@@ -36,7 +36,7 @@
   // Claude Code 的模型（全名；带 [1m] 的是 1M 上下文那种，原样传给 --model）。def：~/.claude/settings.json 里的默认模型
   // 模型：同 Claude Desktop 的选择器——上面常用的四个（最新的每家一个），「更多模型」里是 1M 上下文的和上一代的（这一版 Claude Code 认得的）
   var CC = { MODELS: ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5", "claude-haiku-4-5-20251001"], MORE: ["claude-opus-5-5[1m]", "claude-sonnet-5[1m]", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"], def: "" };
-  (LOC.ready || Promise.resolve()).then(function () { return LOC.read(LOC.info().home + "/.claude/settings.json"); }).then(function (b) { try { var sj = JSON.parse(new TextDecoder().decode(new Uint8Array(b))); CC.def = String(sj.model || ""); CC.defMode = String((sj.permissions && sj.permissions.defaultMode) || ""); } catch (e) { /* 没设 */ } }, function () {});
+  (LOC.ready || Promise.resolve()).then(function () { return LOC.read(LOC.info().home + "/.claude/settings.json"); }).then(function (b) { try { var sj = JSON.parse(new TextDecoder().decode(new Uint8Array(b))); CC.def = String(sj.model || ""); CC.defMode = String((sj.permissions && sj.permissions.defaultMode) || ""); CC.autoCompact = sj.autoCompactEnabled !== false; } catch (e) { /* 没设 */ } }, function () {}); // autoCompact：它的自动压缩开着没（/config 里那一项；没设就是开）
   // 5 小时、7 天的限额用了多少：Claude Code 不写到本机文件里，只在它自己的输出里报（stream-json 的 rate_limit_event）——
   // 这边起的 claude -p 每次报了就记下来（带时间），状态行、设置 › 用量都用这一份；从没报过就是 n/a
   CC.limits = (function () { try { return JSON.parse(localStorage.getItem("tsu-cc-limits") || "null"); } catch (e) { return null; } })();
@@ -2422,7 +2422,7 @@
     };
     for (var i = 0; i < 3; i++) next();
   }
-  var API = { ensure: ensure, openSub: openSub, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; } };
+  var API = { ensure: ensure, openSub: openSub, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; } };
   if (window.TSU_CONNECTORS && TSU_CONNECTORS.provide) TSU_CONNECTORS.provide("claude-code", { newSession: newSession });
   A.setExternalResolver(function (aid) { return window.TSU_CLAUDE ? ensure(aid.slice(3)) : null; });
   var EXT = window.TSU_EXT;

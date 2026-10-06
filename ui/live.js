@@ -4119,6 +4119,18 @@
     var MODE_LOOK = { bypassPermissions: ["⏵⏵ bypass permissions on", "255;107;128"], acceptEdits: ["⏵⏵ accept edits on", "175;135;255"], plan: ["⏸ plan mode on", "72;150;140"] };
     var islandRunning = 0;
     function connWhere() { var inf = rt.info || {}; if (!(rt.elsewhere && rt.elsewhere())) return ""; return inf.live && inf.live.kind === "bg" ? "background" : "other terminal"; }
+    // 「N% until auto-compact」（同 Claude Code 2.1.281 输入框右下角那一句）：自动压缩的门槛 = 上下文窗口 − 13k，离门槛不到 20k 才出现，
+    //   百分比 = 离门槛还剩多少 / 门槛；它的自动压缩关了：「Context low (N% remaining) · Run /compact to compact & continue」（红字，按整个窗口算）。
+    //   设置 › 高级 里能关（默认开）；Codex 的会话不算（它的压缩规则不一样）
+    function ctxLeft() {
+      if ((A.cfg && A.cfg.ctxLeft === false) || agent.connector === "codex") return null;
+      var c = rt.ctx ? rt.ctx() : null;
+      if (!c || !c.window || !c.tokens) return null;
+      var on = !(window.TSU_CLAUDE && TSU_CLAUDE.autoCompact && !TSU_CLAUDE.autoCompact()), th = c.window - 13000, ref = on ? th : c.window;
+      if (ref <= 0 || c.tokens < ref - 20000) return null;
+      var left = Math.max(0, Math.round((ref - c.tokens) / ref * 100));
+      return on ? { text: left + "% until auto-compact", err: false } : { text: "Context low (" + left + "% remaining) · Run /compact to compact & continue", err: true };
+    }
     function connFoot(indent, fcols) {
       var D = P.DIM, out = [], L = rt.limits ? rt.limits() : null, c = rt.ctx ? rt.ctx() : null;
       var pcs = function (v) { return v === null || v === undefined ? "n/a" : v + "%"; };
@@ -4129,7 +4141,13 @@
       if (sh) bits.push(CYAN + sh + " shell" + (sh === 1 ? "" : "s") + RESET);
       if (wh) bits.push(D + wh + RESET);
       var line = look ? rgb(look[1]) + look[0] + RESET + (rt.canCycle && rt.canCycle() ? D + " (shift+tab to cycle)" + RESET : "") : "";
-      if (line || bits.length) out.push(indent + "  " + line + (line && bits.length ? D + " · " + RESET : "") + bits.join(D + " · " + RESET));
+      var row2 = line || bits.length ? indent + "  " + line + (line && bits.length ? D + " · " + RESET : "") + bits.join(D + " · " + RESET) : "", cl = ctxLeft();
+      if (cl) { // 右对齐在这一行的右边（同它）；放不下就单独一行
+        var clS = (cl.err ? RED : D) + cl.text + RESET;
+        if (row2 && W(row2) + W(cl.text) + 3 <= fcols) row2 += " ".repeat(fcols - W(row2) - W(cl.text) - 1) + clS;
+        else { if (row2) out.push(row2); row2 = indent + "  " + clS; }
+      }
+      if (row2) out.push(row2);
       return out;
     }
     // 「← N agents」：它别的正在干活的后台会话（← 那一块里「Working」的，不算自己）；隔一阵问一次
@@ -7593,6 +7611,7 @@
           { key: "autoscroll", label: "自动滚动", desc: "有新内容时自动滚动到底部（向上翻阅时不滚动）", kind: "seg", options: [["on", "开（默认）"], ["off", "关"]], value: c.autoscroll !== false ? "on" : "off", def: "on" },
           { key: "copyOnSelect", label: "选中即复制", desc: "选中文字时自动复制到剪贴板", kind: "seg", options: [["on", "开（默认）"], ["off", "关"]], value: c.copyOnSelect !== false ? "on" : "off", def: "on" },
           // 往上翻时最上面一行挂着所在的那一问（同 Claude Code）：只在「高级」里
+          { key: "ctxLeft", label: "快到自动压缩时显示剩余百分比", desc: "上下文快满时，在 Claude Code 会话底部右侧显示「N% until auto-compact」（同 Claude Code）", page: "advanced", kind: "seg", options: [["on", "开（默认）"], ["off", "关"]], value: c.ctxLeft !== false ? "on" : "off", def: "on" },
           { key: "stickyPrompt", label: "往上翻时显示所在的那一问", desc: "向上翻阅对话时，最上面一行显示这一段属于哪一问；点按跳到那一问", page: "advanced", kind: "seg", options: [["on", "开（默认）"], ["off", "关"]], value: c.stickyPrompt !== false ? "on" : "off", def: "on" },
         ];
       },
@@ -7601,7 +7620,7 @@
         if (k === "font") return TSU_APP.setFont(+v);
         if (k === "side") return tw && tw.side && tw.side.toggle(!!v);
         if (k === "insp") return tw && STUDIO.toggle(tw, !!v);
-        if (k === "autoscroll" || k === "copyOnSelect" || k === "stickyPrompt") v = v === "on" || v === true; // 选块给的是 on / off
+        if (k === "autoscroll" || k === "copyOnSelect" || k === "stickyPrompt" || k === "ctxLeft") v = v === "on" || v === true; // 选块给的是 on / off
         if (A.setCfg(k, v)) redraw();
       },
     });

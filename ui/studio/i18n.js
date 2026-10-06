@@ -486,7 +486,9 @@
   );
 
   // ---- 补漏（两个方向的普查，2026-09-29）：TUI 格子里画的提示、会话里记下的说明（claude.js / codex.js 经 tr 查）、新加的设置项 ----
-  words({ "与 Claude Code 的连接断开了": "Lost the connection to Claude Code" }); // Claude Code 自己的面板（live.js 的 cc 面板）接着时断开
+  words({ "与 Claude Code 的连接断开了": "Lost the connection to Claude Code" });
+  words({ "快到自动压缩时显示剩余百分比": "Show context left before auto-compact", "上下文快满时，在 Claude Code 会话底部右侧显示「N% until auto-compact」（同 Claude Code）": "When the context is nearly full, show “N% until auto-compact” at the bottom right of Claude Code sessions, as Claude Code does",
+    "往上翻时显示所在的那一问": "Show the current prompt when scrolled up", "向上翻阅对话时，最上面一行显示这一段属于哪一问；点按跳到那一问": "While scrolling up, the top line shows which prompt the visible part belongs to; click it to jump there" }); // Claude Code 自己的面板（live.js 的 cc 面板）接着时断开
   words({ "在上面输入网址，例如 localhost:3000": "Enter a URL above, e.g. localhost:3000", "回答已送出": "Answer sent",
     "该会话未在后台运行，无法在此回答，请在其终端中回答": "This session isn't running in the background, so it can't be answered here — answer in its terminal",
     "译文出现方式": "Translation Display", "先原文": "Original First", "只显示译文": "Translation Only",

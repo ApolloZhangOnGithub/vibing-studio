@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.420", items: {
+      new: [
+        ["Claude Code 会话快到自动压缩时，底部右侧显示「N% until auto-compact」，算法同 Claude Code 2.1.281（离自动压缩的门槛不到 2 万 token 时出现）；它的自动压缩关着时显示红字「Context low」。设置 › 高级 里能关，默认开。", "Claude Code sessions now show “N% until auto-compact” at the bottom right as the context nears auto-compact, computed the way Claude Code 2.1.281 does (it appears within 20k tokens of the threshold). With auto-compact off, a red “Context low” notice appears instead. It can be turned off in Settings › Advanced and is on by default."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.419", items: {
       improved: [
         ["访达的 Agent 那一边，最外层不再把左边一栏的「位置」（Claude Code、Codex）再列一遍：改成「最近」——各连接器的会话按上次活跃排，同访达的「最近使用」；左边一栏最上面多了「最近」。", "On the Agent side of Finder, the top level no longer repeats the sidebar’s Locations (Claude Code, Codex). It is now Recents: sessions from every connector, most recently active first, like Finder’s Recents, with a Recents item at the top of the sidebar."],
