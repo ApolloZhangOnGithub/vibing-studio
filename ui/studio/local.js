@@ -76,6 +76,8 @@
       if (!held && backlog > 1048576 && localStorage.getItem("tsu-flow") !== "off") { held = true; ws.pause(); }
     };
     ws.close = function () { if (ws.readyState <= 1) { delete mine[ws.id]; N.call("pty.close", { id: ws.id }).catch(function () {}); } };
+    // 不看了、但 shell 照跑（有名字的终端：关掉标签页 ≠ 结束，同 tmux 的 detach）：这个页面不再收它的输出，留在「要的」里（不被 gc 关掉），下次 attach 接回来
+    ws.detach = function () { if (ws.readyState > 1) return; ws.readyState = 3; offD(); offX(); };
     var last = null;
     ws.cwd = function () { return ws.readyState === 1 ? N.call("pty.cwd", { id: ws.id }).then(function (r) { last = r; return r && r.cwd; }, function () { return null; }) : Promise.resolve(null); };
     ws.fg = function () { return Promise.resolve(last && last.fg || null); }; // 上一次 cwd() 顺带问到的前台进程 { pid, name, cwd }
