@@ -4991,8 +4991,10 @@
         if (pl.length > 12) r.text(["  " + D + "… +" + (pl.length - 12) + " lines" + RESET]);
         if (q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
         if (q.err) {
-          var en = enLang(), el = wrap((en ? "Not sent: " : "未发送：") + q.err, Math.max(20, P.cols - 14)), rl = en ? "retry" : "重试";
-          r.block('<span class="blk vs-unsent">' + P.toHtml(el.map(function (l, i) { return "  " + (i ? "   " : RED + "⎿  ") + RED + l + RESET + (i === el.length - 1 ? D + " · " + RESET : ""); })).replace(/\n?$/, "") + '<span class="vs-retry">' + rl + "</span></span>");
+          // 后面两个能点：重试（再送一次）、编辑（拿回输入框改，同按 ↑；这边排着的才有）
+          var en = enLang(), el = wrap((en ? "Not sent: " : "未发送：") + q.err, Math.max(20, P.cols - 22)), rl = en ? "retry" : "重试", ql = en ? "edit" : "编辑", canE = q.local && q.li != null && !!rt.editUnsent;
+          r.block('<span class="blk vs-unsent">' + P.toHtml(el.map(function (l, i) { return "  " + (i ? "   " : RED + "⎿  ") + RED + l + RESET + (i === el.length - 1 ? D + " · " + RESET : ""); })).replace(/\n?$/, "") + '<span class="vs-retry">' + rl + "</span>" +
+            (canE ? P.toHtml([D + " · " + RESET]).replace(/\n?$/, "") + '<span class="vs-unsent-edit" data-li="' + q.li + '" data-at="' + (q.at || 0) + '" title="' + (en ? "Put it back in the input to edit" : "放回输入框修改") + '">' + ql + "</span>" : "") + "</span>");
         }
       });
       var st = rt.sendNowState ? rt.sendNowState() : list.some(function (q) { return !q.sending && !q.from && !q.sys; }) ? "ready" : null;
@@ -5008,18 +5010,30 @@
     // 「ctrl+x ctrl+s to send now」那一行：send now 这几个字能点（iPad 上没有这组键）——点了同按 ctrl+x ctrl+s：排着的马上发
     // tail === "edit"：后面接「· ↑ to edit」，edit 也能点（取回排着的最新那句，同在 Claude Code 里按 ↑ 再回车）
     function sendNowRow(D, tail) { return '<span class="blk vs-sendnow-row">' + P.toHtml(["  " + D + "ctrl+x ctrl+s to " + RESET]) + '<span class="vs-sendnow" title="立即发送">send now</span>' + (tail === "edit" ? P.toHtml([D + " · ↑ to " + RESET]) + '<span class="vs-qedit" title="取回排着的最新一句，放进输入框修改">edit</span>' : tail ? P.toHtml([D + tail + RESET]) : "") + "</span>"; }
-    // 取回排着的那句：放回输入框（图跟着回来），光标放最后
+    // 取回排着的那句：放回输入框（图跟着回来），光标放在拿回来的那段最后（输入框里原来有字的接在后面，同 Claude Code 按 ↑ 取回）
+    function putBack(r) {
+      if (!r || P.closed) return;
+      var ta = P.ta, t = String(r.text || "");
+      (r.images || []).forEach(function (im) {
+        if (!im) return;
+        if (!im.no && rt.takeImageNo) { im.no = rt.takeImageNo(); t = "[Image #" + im.no + "] " + t; } // 老的写法（没有号）：编一个号，放在最前面
+        if (im.no) attach.push({ no: im.no, tag: "[Image #" + im.no + "]", media_type: im.media_type || "image/png", data: im.data || "", path: im.path });
+      });
+      ta.value = t + (ta.value ? "\n" + ta.value : ""); ta.selectionStart = ta.selectionEnd = t.length;
+      draftSet(agentId, ta.value, pastes); renderInput(); ta.focus();
+    }
     function editQueuedNow() {
       if (!rt.editQueued) return false;
-      rt.editQueued().then(function (r) {
-        if (!r || P.closed) return;
-        var ta = P.ta, t = String(r.text || "");
-        (r.images || []).forEach(function (im) { if (im && im.no) attach.push({ no: im.no, tag: "[Image #" + im.no + "]", media_type: im.media_type || "image/png", data: "", path: im.path }); });
-        ta.value = t + (ta.value ? "\n" + ta.value : ""); ta.selectionStart = ta.selectionEnd = t.length;
-        draftSet(agentId, ta.value, pastes); renderInput(); ta.focus();
-      }, function (e) { P.flash(String(e && e.message || e), 4000); renderStatus(); });
+      rt.editQueued().then(putBack, function (e) { P.flash(String(e && e.message || e), 4000); renderStatus(); });
       renderStatus();
       return true;
+    }
+    // 没送成的那一句（「未发送 · 重试 · 编辑」）：从排着的里拿掉，放回输入框改
+    function editUnsentNow(li, at) {
+      var r = rt.editUnsent ? rt.editUnsent(li, at) : null;
+      if (r) putBack(r);
+      renderStatus();
+      return !!r;
     }
     // Claude Code 的会话：rt.sendQueuedNow（claude.js）——同它的 chat:sendNow；点了马上画成在发（不能再点），压缩中说一句压完自动发
     function sendQueuedNow() {
@@ -5040,7 +5054,8 @@
       if (bgb) { e.preventDefault(); e.stopPropagation(); if (rt.toBackground) rt.toBackground(); if (rt.stream) drawTurn(rt.stream.turn); return; }
       var nb = e.target.closest(".vs-needs");
       if (nb && window.TSU_TERM && TSU_TERM.agent && (nb.dataset.aid || needsAid)) { e.preventDefault(); e.stopPropagation(); TSU_TERM.agent(nb.dataset.aid || needsAid); return; }
-      var b = e.target.closest(".vs-sendnow"), rb = e.target.closest(".vs-retry"), qe = e.target.closest(".vs-qedit");
+      var b = e.target.closest(".vs-sendnow"), rb = e.target.closest(".vs-retry"), qe = e.target.closest(".vs-qedit"), ue = e.target.closest(".vs-unsent-edit");
+      if (ue) { e.preventDefault(); e.stopPropagation(); editUnsentNow(+ue.dataset.li, +ue.dataset.at); return; }
       if (qe) { e.preventDefault(); e.stopPropagation(); editQueuedNow(); return; }
       if (rb && rt.retryQueued) { e.preventDefault(); e.stopPropagation(); rt.retryQueued(); renderStatus(); return; }
       if (!b) return;

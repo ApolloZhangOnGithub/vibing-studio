@@ -255,7 +255,8 @@
     all.push({ id: dev, name: name, kind: kind, model: model, os: osName, app: appVer, hw: hw, relay: relayIds(), created_at: mine.created_at || now, last_seen: now, self: true });
     all.sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); });
     // 并进来的记录（ids 跟着走：从账户里移除这一台时，它名下以前的记录一起移除，不会又冒出一台）
-    var absorb = function (k, d) { k.ids.push.apply(k.ids, d.ids); if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); };
+    //   guess：只是猜它被取代了（不一定是同一台）——首次登录、中转编号不跟着并
+    var absorb = function (k, d, guess) { k.ids.push.apply(k.ids, d.ids); if (guess) return; if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); };
     var byHw = {}, out = [];
     all.forEach(function (d) {
       d.ids = [d.id];
@@ -281,7 +282,7 @@
       if (!cs.length) return;
       var os = function (x) { var s = [x.kind, x.name, x.os].join(" "); return /linux|ubuntu|debian|fedora/i.test(s) ? "linux" : /windows/i.test(s) ? "windows" : "mac"; };
       cs.sort(function (a, b) { return (os(b) === os(d)) - (os(a) === os(d)) || (a.self ? 1 : 0) - (b.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); }); // 同一种系统的、不是这台的、最近出现的
-      absorb(cs[0], d);
+      absorb(cs[0], d, true);
       gone[d.id] = true;
     });
     out = out.filter(function (d) { return !gone[d.id] && (d.self || now - (d.last_seen || 0) <= 30 * 86400000); });

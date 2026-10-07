@@ -101,16 +101,16 @@
     var acct = '<button type="button" class="dv-node dv-acct on" data-node="acct" title="' + esc(m.login) + '"><span class="dv-ic" data-top="' + TOP.cloud + '">' + ICON.cloud + "</span>" +
       '<span class="dv-name">' + esc(m.login || t("未登录", "Not Signed In")) + '</span><span class="dv-st">' + esc(m.signed ? t(m.count + " 台设备", m.count + (m.count === 1 ? " device" : " devices")) : "Vibing Studio") + "</span></button>";
     var tier = m.hosts.map(col).join("") + m.loose.map(col).join("");
-    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + esc(t("设备", "Devices")) + '</h1></div><div class="dv-scroll"><div class="dv-map"><svg class="dv-lines" aria-hidden="true"></svg>' +
-      '<div class="dv-tier dv-t0">' + acct + "</div>" + (tier ? '<div class="dv-tier dv-t1">' + tier + "</div>" : "") + "</div></div></div>";
+    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + esc(t("设备", "Devices")) + '</h1></div><div class="dv-scroll"><div class="dv-fit"><div class="dv-map"><svg class="dv-lines" aria-hidden="true"></svg>' +
+      '<div class="dv-tier dv-t0">' + acct + "</div>" + (tier ? '<div class="dv-tier dv-t1">' + tier + "</div>" : "") + "</div></div></div></div>";
     V.nodes = keys;
     // 和上次一样（定时看、同步拉回来没变）：不重建，卡片、悬停都不打断
-    if (html === host._dvHtml && host.querySelector(".dv-map")) { if (card && card._key && keys[card._key]) card._node = keys[card._key]; return lines(host); }
+    if (html === host._dvHtml && host.querySelector(".dv-map")) { if (card && card._key && keys[card._key]) card._node = keys[card._key]; return layout(host); }
     var openId = card && card._node && card._node.id;
     closeCard();
     host._dvHtml = html;
     host.innerHTML = html;
-    lines(host);
+    layout(host);
     if (!host._dvWired) { host._dvWired = true; wire(host, P, V); }
     if (host._dvRO) { host._dvRO.disconnect(); host._dvRO.observe(host); host._dvRO.observe(host.querySelector(".dv-map")); }
     if (openId) Object.keys(keys).forEach(function (k2) { if (keys[k2].id === openId) { var el = host.querySelector('[data-node="' + k2 + '"]'); if (el) openCard(host, P, el, keys[k2], k2, V); } });
@@ -118,6 +118,16 @@
   // 连线：上面那一台整块（图标、名字、状态）的下沿 → 一条横线 → 下面每一台图形的上沿（同 AirPort）。横线在两排中间的空当里，不穿过任何一台；
   //   坐标按版面算（offsetLeft/Top 加到 .dv-map 为止），和窗口的缩放动画无关；地图大小一变（窗口、分栏、字体载入）就重画
   function at(el, map) { var x = 0, y = 0, e = el; while (e && e !== map) { x += e.offsetLeft; y += e.offsetTop; e = e.offsetParent; } return { l: x, t: y, w: el.offsetWidth, h: el.offsetHeight }; }
+  // 放不下：整张图按比例缩小到正好放下（最小 0.7，再小字就看不清了，那时横着滚）
+  function layout(host) {
+    lines(host);
+    var sc = host.querySelector(".dv-scroll"), box = host.querySelector(".dv-fit"), map = host.querySelector(".dv-map");
+    if (!sc || !box || !map || !sc.clientWidth) return;
+    var w = map.offsetWidth, h = map.offsetHeight, s = Math.max(0.7, Math.min(1, sc.clientWidth / w));
+    map.style.transform = s < 1 ? "scale(" + s.toFixed(4) + ")" : "";
+    box.style.width = Math.ceil(w * s) + "px";
+    box.style.height = Math.ceil(h * s) + "px";
+  }
   function lines(host) {
     var map = host.querySelector(".dv-map"), svg = host.querySelector(".dv-lines");
     if (!map || !svg || !map.offsetWidth) return;
@@ -150,8 +160,8 @@
       if (card && card._key === key) return closeCard();
       if (n) openCard(host, P, nd, n, key, V);
     });
-    if (window.ResizeObserver) host._dvRO = new ResizeObserver(function () { if (V.shown()) lines(host); });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (V.shown()) lines(host); });
+    if (window.ResizeObserver) host._dvRO = new ResizeObserver(function () { if (V.shown()) layout(host); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (V.shown()) layout(host); });
     var redraw = function () { if (V.shown()) { host._dvHtml = ""; render(host, P, V.arg, V); } };
     if (SY() && SY().on) SY().on(function (type) { if (type === "devices") redraw(); });
     if (RH() && RH().watch) RH().watch(redraw);
@@ -166,9 +176,9 @@
     else if (window.confirm(o.title)) go();
   };
   function acctCard(m) {
-    var rows = m.login ? [[t("GitHub 账户", "GitHub Account"), m.login], [t("设备", "Devices"), t(m.count + " 台", String(m.count))]] : [];
+    var rows = m.login ? [[t("设备", "Devices"), t(m.count + " 台", String(m.count))]] : [];
     var acts = m.login ? [["signout", t("退出登录…", "Sign Out…")], ["passkeys", t("通行密钥…", "Passkeys…"), "primary"]] : [["signin", t("使用 GitHub 登录", "Sign In with GitHub"), "primary"]];
-    return { icon: ICON.cloud, title: m.login || t("未登录", "Not Signed In"), sub: "Vibing Studio", rows: rows, acts: acts };
+    return { icon: ICON.cloud, title: m.login || t("未登录", "Not Signed In"), sub: m.login ? t("GitHub 账户", "GitHub Account") : "Vibing Studio", rows: rows, acts: acts };
   }
   function devCard(n) {
     var rows = [[t("状态", "Status"), n.online ? t("在线", "Online") : seen(n.last_seen), n.online ? "on" : ""]];

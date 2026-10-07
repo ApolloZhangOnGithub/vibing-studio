@@ -3,9 +3,10 @@
 .dv-wrap { min-height: 100%; padding: 28px 32px 48px; box-sizing: border-box; }
 .dv-head { margin-bottom: 22px; }
 .dv-head h1 { margin: 0; font-size: 22px; font-weight: 650; color: var(--st-hi); }
-/* 放不下就横着滚（不折行：折到第二行的线只能穿过第一行） */
+/* 放不下先整张缩小（devices.js 的 layout），再小就横着滚（不折行：折到第二行的线只能穿过第一行） */
 .dv-scroll { overflow-x: auto; overflow-y: hidden; }
-.dv-map { position: relative; display: flex; flex-direction: column; align-items: center; width: max-content; min-width: 100%; margin: 0 auto; padding: 2px 0 16px; box-sizing: border-box; }
+.dv-fit { position: relative; margin: 0 auto; }
+.dv-map { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; width: max-content; padding: 2px 8px 16px; box-sizing: border-box; transform-origin: 0 0; }
 .dv-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
 .dv-lines path { fill: none; stroke: var(--st-line); stroke-width: 1.5; stroke-linejoin: round; }
 .dv-tier { display: flex; align-items: flex-start; justify-content: center; gap: 28px; }

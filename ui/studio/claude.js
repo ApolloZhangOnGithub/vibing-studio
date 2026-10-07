@@ -686,6 +686,7 @@
     var IMG_ANY = /\[Image(?: #\d+)?(?:: "[^"\n]*")?\]/g;
     var qnorm = function (t) {
       t = String(t || ""); var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2];
+      t = t.replace(/^\s*!/, ""); // 「! 命令」（bash 模式）：它记成 <bash-input>命令</bash-input>、排进它的队时也只记命令本身——按命令本身认（以前认不出：跑完了还挂着一行「❯ ! …」，30 秒后误报没收到）
       var k = t.replace(IMG_ANY, "").replace(/[\s\u200b"`]+/g, ""); // 引号、反引号也不算（开头的路径送出去时加了引号，图片路径包了反引号）
       if (k) return k;
       var n = (t.match(IMG_ANY) || []).length; // 只有图的一句（「[Image #1][Image #2]」）：去掉图就什么都不剩了——按几张图认（以前认不出：排着的一直挂着、30 秒后误报「没有收到」，再点就重复发）
@@ -705,6 +706,12 @@
       if (unc.length) { var n0 = unc.length; unc = unc.filter(function (x) { return !hit(x); }); if (unc.length !== n0) lqSave(); }
     }
     function takeOut(text) { if (!readOnce || inOlder || !text || !text.trim() || /^\s*[\/<]/.test(text)) return; taken.push({ text: text, at: Date.now() }); } // 斜杠命令、它自己塞的（<…>）不挂
+    // 记录里读到了你说的一句（当一问收下的、一轮中间读进去的、跑了的 ! 命令）：这边送进去的、排着的、拿走了在等的同一句都不再挂着；
+    //   和别的话拼在一起读进去的也算（这边那句是它的一部分）
+    function gotAsk(mt) {
+      if (inj && inj.length) { var n0 = qnorm(mt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || n0.indexOf(xn) < 0; }); }
+      unqueue(mt); untake(mt); lqDrop(mt);
+    }
     // ---- 一行记录 → Paimon 的对话 ----
     // 这一问做完：补一行「✻ …for 5s」——它还在等你回答选择题（AskUserQuestion 没结果）的不算做完（同 Claude Code：问着的时候没有这一行）
     function finishTurn() { if (cur && cur.last && !cur.stats && cur.at && !(cur.parts || []).some(function (p) { return p.kind === "tool" && p.name === "AskUserQuestion" && p.status === "running"; })) cur.stats = { secs: Math.max(1, Math.round((cur.last - cur.at) / 1000)), verb: doneVerb(cur.at), at: cur.last, auto: true }; }
@@ -848,8 +855,7 @@
         if ((!qtext.trim() && !qimgs.length) || /^\s*<(task-notification|system-reminder|local-command)/.test(qtext)) return null;
         qtext = qtext.replace(/^\u200b/, "");
         var qmt = qtext.trim() || qimgs.map(function () { return "[Image]"; }).join(" ");
-        unqueue(qmt); untake(qmt); lqDrop(qmt);
-        if (inj.length) { var qn0 = qnorm(qmt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || qn0.indexOf(xn) < 0; }); } // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
+        gotAsk(qmt); // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
         var qsp = splitShots(qtext, qimgs);
         cur = { ask: qsp.text, images: qsp.images, imgIds: Array.isArray(j.attachment.imagePasteIds) ? j.attachment.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, queued: true };
         turns.push(cur); byUuid[j.uuid] = cur;
@@ -878,7 +884,7 @@
           }
           // 你在 Claude Code 里用 ! 跑的命令：<bash-input> 一条，<bash-stdout> / <bash-stderr> 是它的输出（画成 Paimon 的 ! 命令）
           var bi = /^\s*<bash-input>([\s\S]*?)<\/bash-input>/.exec(text);
-          if (bi) { finishTurn(); cur = null; lastBash = { bash: bi[1], out: "", code: null, at: ts(j) }; turns.push(lastBash); byUuid[j.uuid] = lastBash; return lastBash; }
+          if (bi) { gotAsk("!" + bi[1]); finishTurn(); cur = null; lastBash = { bash: bi[1], out: "", code: null, at: ts(j) }; turns.push(lastBash); byUuid[j.uuid] = lastBash; return lastBash; } // 这边打的「! 命令」跑完了（它跑完才把这一条和输出一起写进记录）：不再挂成排着的
           var bo = /<bash-stdout>([\s\S]*?)<\/bash-stdout>/.exec(text), be = /<bash-stderr>([\s\S]*?)<\/bash-stderr>/.exec(text);
           if ((bo || be) && lastBash) { var er = be ? be[1].trim() : ""; lastBash.out = ((bo ? bo[1] : "") + (er ? "\n" + er : "")).replace(/\x1b\[[\d;]*m/g, "").trim(); lastBash.code = er ? 1 : 0; var lb = lastBash; lastBash = null; return lb; }
           var co = cmdOpen(text, j);
@@ -898,11 +904,9 @@
           finishTurn();
           text = text.replace(/^\u200b/, "");
           var mt = text.trim() || imgs.map(function () { return "[Image]"; }).join(" "); // 只有图、没有字的一问：用占位去认这边送的那句
-          // 这边送进去、还没出现在记录里的：这一问里有它（原样，或者被它接在放回输入框的那句后面一起发了）就不再画成另一句
-          if (inj.length) { var tn0 = qnorm(mt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || tn0.indexOf(xn) < 0; }); }
+          // 这边送进去、还没出现在记录里的：这一问里有它（原样，或者被它接在放回输入框的那句后面一起发了）就不再画成另一句；闲着时直接收下的问题也不再排着
           newRound(ts(j));
-          unqueue(mt); untake(mt); // 闲着时直接收下的问题：它也不再排着
-          lqDrop(mt);
+          gotAsk(mt);
           var tsp = splitShots(text, imgs);
           cur = { ask: tsp.text, images: tsp.images, imgIds: Array.isArray(j.imagePasteIds) ? j.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, parentUuid: j.parentUuid || "" };
           turns.push(cur);
@@ -1224,7 +1228,13 @@
     }
     function lqAdd(text) { lq.push({ text: text, at: Date.now() }); lqSave(); emit("status"); }
     // 真要送的那一刻才取（接上后台会话要一两秒，这期间又排进来的也在里面）；没送成的放回最前面
-    function lqTake() { lq = lq.filter(function (x) { return !(x.sentAt && evHas(x.text, x.sentAt - EV_WIN)); }); var t = lq.map(function (x) { return x.text; }).join("\n\n"); lq = []; lqSending = t; lqSave(); emit("status"); return t; } // 以为没收到、放回来的：记录里其实有了就不再重送（以前这样一句发了两遍）
+    //   ! 命令一条一条单独发（同 Claude Code 它队里的 bash 命令一条一条跑）：拼进别的话里就不是命令了；排在最前面的是命令时，后面的话接上去会被当成命令的一部分在 shell 里跑
+    function lqTake() {
+      lq = lq.filter(function (x) { return !(x.sentAt && evHas(x.text, x.sentAt - EV_WIN)); }); // 以为没收到、放回来的：记录里其实有了就不再重送（以前这样一句发了两遍）
+      var bang = function (x) { return /^\s*!/.test(x.text); }, n = lq.length && bang(lq[0]) ? 1 : 0;
+      if (!n) while (n < lq.length && !bang(lq[n])) n++;
+      var t = lq.slice(0, n).map(function (x) { return x.text; }).join("\n\n"); lq = lq.slice(n); lqSending = t; lqSave(); emit("status"); return t;
+    }
     function lqSent() { lqSending = ""; lqSave(); }
     // 记录里已经有了的（它排进自己的队 / 已经当一问读了）：这边排着的同一句划掉——送到了却以为没送到、放回来的，不再拼进下一句重送
     // 记录里见到的话（排进它队里的 enqueue、一轮中间读进去的 queued_command、当一问的）：几分钟内的都记着——
@@ -1291,12 +1301,24 @@
       return viaDaemon(text).then(function () { setTimeout(poll, 400); setTimeout(poll, 1500); emit("status"); });
     };
     rt.takeQueued = function () { if (!lq.length) return null; var t = lq.map(function (x) { return x.text; }).join("\n\n"); lq = []; lqSave(); emit("status"); return { text: t, images: [] }; };
+    // 「未发送 · 重试 · 编辑」的编辑：这一句从排着的里拿掉，原话（附的图跟着）交回输入框改——同在 Claude Code 里按 ↑ 把排着的拿回来改。at：画的时候它的时间（对一下是不是同一句）
+    rt.editUnsent = function (i, at) {
+      var k = lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; });
+      if (k < 0) return null;
+      var x = lq.splice(k, 1)[0];
+      if (!lq.length) { lqHold = false; qErr = ""; }
+      lqSave(); emit("status");
+      return splitShots(x.text);
+    };
     function lqBack(text) { if (lqSending === text) lqSending = ""; if (!text) return; lq.unshift({ text: text, at: Date.now() }); lqSave(); emit("status"); }
     // 排着还没被读到的：它自己记的队（queue-operation）+ 这边送进去、还没出现在记录里的（inj）+ 这边排着、还没送的（local）；太久没出队的（它没在跑）不算
     //   闲着时送进去的（inj 里 q 为 false）不是排着：它马上就当这一问开始——sending（画成平常的一问，不写「ctrl+x ctrl+s to send now」）
     rt.pending = function () {
-      inj = inj.filter(function (x) { return Date.now() - x.at < 180000 || unc.some(function (u) { return u.text === x.text; }); });
+      // ! 命令：它跑完才写进记录——它还忙着（多半就是在跑这条命令）就一直挂着（最多半小时），跑完、记录里有了就划掉
+      inj = inj.filter(function (x) { var age = Date.now() - x.at; return age < 180000 || unc.some(function (u) { return u.text === x.text; }) || (busy && age < 1800000 && /^\s*!/.test(x.text)); });
       var idleSent = function (t) { var n = qnorm(t); return inj.some(function (x) { return !x.q && qnorm(x.text) === n; }); }, now0 = interrupting || Date.now() - nowAt < 8000; // 马上发的这几秒：排着的都算在发
+      // 它队里的 ! 命令只记命令本身（模式另记，记录里没有）：这边打的是「! 命令」就照这边的写（同 Claude Code 排着的 bash 命令前面有 !）
+      var bangOf = function (t) { var n = qnorm(t); for (var i = 0; i < inj.length; i++) if (/^\s*!/.test(inj[i].text) && qnorm(inj[i].text) === n) return inj[i].text.trim(); return t; };
       // 它自己排的（不是你说的话）：任务通知、系统提示不列；/goal 自己排进去的那句（「Goal set: …」）照样列出来（同 Claude Code），
       //   但它不是你的话——不能改、不出「send now」（sys）
       var sysQ = /^\s*<(?:task-notification|system-reminder)/, goalQ = /^\s*Goal (?:set|cleared|active): /;
@@ -1305,12 +1327,12 @@
         var am = /^\s*<agent-message from="([^"]+)"[^>]*>\n?([\s\S]*?)(\n?<\/agent-message>)?\s*$/.exec(q.text);
         if (am) return { text: am[2], from: am[1], at: q.at };
         var xs = XS_RE.exec(q.text), xn = xs && (/\bfrom-name="([^"]*)"/.exec(xs[1]) || /\bfrom="([^"]*)"/.exec(xs[1])); // 别的会话发来的：同 agent 的消息，一行「› Message from @名字」
-        return xs ? { text: xs[2], from: xn ? xn[1] : "session", at: q.at } : { text: q.text, at: q.at, sending: now0 || idleSent(q.text) };
+        return xs ? { text: xs[2], from: xn ? xn[1] : "session", at: q.at } : { text: bangOf(q.text), at: q.at, sending: now0 || idleSent(q.text) };
       });
       taken = taken.filter(function (x) { return Date.now() - x.at < 20000; }); // 20 秒还没在记录里出现：不再挂
-      taken.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: x.text, at: x.at, sending: true }); });
+      taken.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: bangOf(x.text), at: x.at, sending: true }); });
       inj.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: x.text, at: x.at, ours: true, sending: now0 || !x.q }); });
-      lq.forEach(function (x) { out.push({ text: x.text, at: x.at, local: true, sending: now0 && !lqHold, err: lqHold && qErr ? qErr : "" }); });
+      lq.forEach(function (x, i) { out.push({ text: x.text, at: x.at, local: true, li: i, sending: now0 && !lqHold, err: lqHold && qErr ? qErr : "" }); }); // li：排在这边的第几句（「编辑」拿回的就是它）
       // 附的图（[Image #N: "路径"]）：字里留 [Image #N]，图另给（images，同已经发出去的那几问：下面一张一行「⎿  [Image #N]」，悬停看、点开）
       out.forEach(function (q) { if (q.from || q.text.indexOf("[Image") < 0) return; var sp = splitShots(q.text); if (sp.images.length) { q.text = sp.text; q.images = sp.images; } else { var bk = shotsBack(q); if (bk) q.images = bk; } }); // 排进它的队以后也一直有图（不只是在发的那几秒）
       return out;
@@ -1881,7 +1903,8 @@
     // 说一句：答着（或者前一句正在送进去、正在打断）就先排在这边（lq），完了跟排着的拼成一条一起发；闲着就直接送
     // 送进后台会话的：它马上就忙起来（状态文件要过一会儿才改）——先当它在忙；闲着时送的，这一轮从现在算
     // 斜杠命令（/goal、/model……）：Claude Code 收到当场就执行、不进它的队（记录里也不会出现原话）——送到了就不再画成「排着」（以前一直挂着 send now 三分钟）
-    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push({ text: st0, at: Date.now() }); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
+    //   ! 命令也不等确认：它跑完才把这一条（连同输出）写进记录，跑得久的 30 秒内本来就不会出现——不能算「没收到」；记录里出现了才划掉（gotAsk）
+    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !/^\s*!/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push({ text: st0, at: Date.now() }); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
       setTimeout(poll, 600); refreshLive(); emit("status"); if (lq.length) flushSoon(); }
     // 没送成：放回排着的最前面，不自己一遍遍重试（等你 ctrl+enter 再试、再说一句，或者在终端里接上它处理）
     // dying：自己起的、正在退出的那个 claude -p（打断没停下来被停掉的、换模型停掉的、闲着关掉的）——它还没退干净时不另起一个 --resume 同一个会话，排着等它退了再发
