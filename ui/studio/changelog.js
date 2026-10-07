@@ -11,6 +11,20 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.1.428", items: {
+      new: [
+        ["新增「服务状态」App：翻译、同步、远程 Mac 中转、登录、更新检查等服务过去 24 小时、30 天的状态和出过的问题，以及每一次调用的时间、用时、结果和出错原因（翻译的记录包括所有设备）。", "New Service Status app: the last 24 hours and 30 days of translation, sync, remote Mac relay, sign-in, update checks and other services, with incidents and the time, duration, result and error of every call (translation history covers all your devices)."],
+      ],
+      improved: [
+        ["「设备」重做：每台机器只出现一次（同一台机器上不同版本的 App、页面按硬件编号并成一台），以前版本留下的「Mac · App」「iPhone · Safari」这类旧记录不再列出；名字用设备自己的名字，型号写「关于本机」里的那个（「MacBook Air (M2, 2022)」）。", "Devices rebuilt: each machine appears once (different app versions and pages on the same machine are merged by hardware ID), old entries such as “Mac · App” or “iPhone · Safari” left by earlier versions are gone, and each device shows its own name and the model from About This Mac (“MacBook Air (M2, 2022)”)."],
+        ["点一台设备：型号、系统、Vibing Studio 版本、首次登录、上次在线、设备 ID（可拷贝）；另一台在线的 Mac 能「在这里使用」，这台 Mac 能开关「允许其他设备使用这台 Mac」、看谁在用、撤销允许过的设备，其他设备能从账户中移除。点账户：通行密钥、退出登录。", "Click a device to see its model, system, Vibing Studio version, first sign-in, last seen and device ID (copyable); use another online Mac here, turn sharing of this Mac on or off, see who is using it and revoke allowed devices, or remove other devices from your account. Click the account for passkeys and sign-out."],
+        ["翻译不再一卡就是一分钟：几个 Agent 一起跑时，翻译请求合成一批发；被限流时只等服务器说的那几秒，不再整页停一分钟。", "Translation no longer stalls for a minute: requests from several agents are batched, and when rate-limited it waits only as long as the server asks instead of pausing everything for a minute."],
+      ],
+      fixed: [
+        ["「设备」里的连线穿过图标和名字、和设备对不齐、窗口大小变了也不跟着重画：连线现在走在两排之间，窗口一变就按实际位置重画，窗口窄时整张图按比例缩小。标签页上的图标改成「设备」的图标，去掉了标题下面的说明。", "Lines in Devices crossed icons and names, didn’t line up with the devices and didn’t follow window resizes: they now run between the rows and are redrawn whenever the window changes, and the whole diagram scales down in narrow windows. The tab shows the Devices icon, and the line under the title is gone."],
+        ["设备改用自己的名字以后，以前在 App 里跑过的 Agent 会被当成在 Cloud 上：现在按设备类型判断。", "After devices switched to their own names, agents that last ran in the app could be treated as living in the cloud; this is now decided by device type."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.1.427", items: {
       improved: [
         ["版本号一律四段（x.y.z.构建号，如 0.2.1.427）：界面、App、Linux 版、GitHub 发行版都写同一个号，更新内容里以前的版本也改成四段。", "Version numbers now always have four parts (x.y.z.build, e.g. 0.2.1.427): the interface, the app, the Linux build and GitHub releases all show the same number, and earlier entries in What's New use four parts too."],
