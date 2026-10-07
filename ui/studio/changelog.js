@@ -11,32 +11,42 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-07", ver: "0.2.426", items: {
+    { date: "2026-10-07", ver: "0.2.1.427", items: {
+      improved: [
+        ["版本号一律四段（x.y.z.构建号，如 0.2.1.427）：界面、App、Linux 版、GitHub 发行版都写同一个号，更新内容里以前的版本也改成四段。", "Version numbers now always have four parts (x.y.z.build, e.g. 0.2.1.427): the interface, the app, the Linux build and GitHub releases all show the same number, and earlier entries in What's New use four parts too."],
+        ["设备名称不能再改，由设备自己认出来：电脑用系统设置里的名字（「Kezhen 的 MacBook Air」），另外写精确的型号（「MacBook Air · Apple M2 · Mac14,2」、Linux 写厂商和机型），方便分清是哪一台；iPhone、iPad 的 App 下一版起写「iPhone 15 Pro」这样的型号。", "Device names are no longer editable; each device identifies itself. Computers use the name from System Settings (“Kezhen's MacBook Air”) plus the precise model (“MacBook Air · Apple M2 · Mac14,2”, or vendor and model on Linux) so you can tell them apart. The next iPhone and iPad app will report models like “iPhone 15 Pro”."],
+        ["更新只出一项：App 有新版时 ⚙ 菜单里只写「重启以更新（v…）」（重启时界面一起换上），不再同时出「重新载入以更新」；「检查更新…」也查 App 本身，有就当场下载，下好了问要不要重启，查不到写清原因。", "Only one update item appears: when the app has an update, the ⚙ menu shows just “Restart to Update (v…)” (the interface updates with it) instead of also showing “Reload to Update”. Check for Updates now also checks the app itself, downloads it, offers to restart, and explains when a check fails."],
+      ],
+      fixed: [
+        ["问答面板（Claude Code 问你问题时）的 ↑↓：中文输入法开着时方向键被当成在选字、整个丢掉；焦点不在输入框（刚弹出来、点过别处）时按键也没反应。现在都能用，回车选定、数字直接选。", "Question panel arrow keys work again: with a Chinese input method on, arrow keys were treated as input-method keys and ignored, and nothing happened when focus wasn't in the input box (right after the panel appeared or after clicking elsewhere). Return chooses and number keys pick directly."],
+      ],
+    } },
+    { date: "2026-10-07", ver: "0.2.1.426", items: {
       new: [
         ["连接器新增 pi（第一个第三方扩展，在「设置 › 连接器」的「扩展」里）：这台电脑上 pi 的会话出现在左边会话树和 Agent Finder 里，打开能看到对话（工具调用、思考、压缩、分支只画当前那一支），能接着说、开新会话、Esc 打断。", "New connector: pi, the first third-party extension (Settings › Connectors › Extensions). pi sessions on this computer appear in the session tree and Agent Finder; open one to see the conversation (tool calls, thinking, compaction, and only the current branch), continue it, start new sessions, and press Esc to interrupt."],
         ["可选的程序坞：设置 › 布局 › App 启动器 选「程序坞」，窗口最下面出一排 App（访达、终端、浏览器、设备），平时藏着，鼠标移到窗口底边时升起来；开着的 App 下面有小点。选它时活动栏上不再放 App 按钮。", "Optional Dock: choose Dock under Settings › Layout › App Launcher to get a row of apps (Finder, Terminal, Browser, Devices) at the bottom of the window. It stays hidden until you move the pointer to the bottom edge, and running apps show a dot. The Apps button leaves the activity bar while the Dock is on."],
         ["登录支持通行密钥（Touch ID、Face ID、手机、安全密钥）：登录页多了「使用通行密钥登录」，App 在浏览器里打开的登录页也有；在「设置 › 账户 › 通行密钥」（或账户菜单）里打开浏览器添加、改名、删除。", "Sign in with a passkey (Touch ID, Face ID, your phone or a security key): the sign-in page, including the one the app opens in your browser, now has “Sign in with a passkey”. Add, rename and remove passkeys from Settings › Account › Passkeys or the account menu, which opens your browser."],
       ],
       improved: [
-        ["终端快了五六倍：一大段输出（cat 一个 50 MB 的文件）从 6 秒多降到 1 秒以内，带颜色的输出同样快了很多；打字的回显照样即时。读伪终端改成一个专门的线程一直读、攒一小会儿一起交给页面（以前每读 1 KB 左右就要排一次队）。需要 App 0.2.426。", "Terminals are five to six times faster: printing a 50 MB file now takes under a second instead of over six, colored output is much faster too, and typing still echoes instantly. A dedicated thread now reads the terminal continuously and hands output to the page in batches (previously every read of about 1 KB queued a separate task). Requires app 0.2.426."],
+        ["终端快了五六倍：一大段输出（cat 一个 50 MB 的文件）从 6 秒多降到 1 秒以内，带颜色的输出同样快了很多；打字的回显照样即时。读伪终端改成一个专门的线程一直读、攒一小会儿一起交给页面（以前每读 1 KB 左右就要排一次队）。需要 App 0.2.1.426。", "Terminals are five to six times faster: printing a 50 MB file now takes under a second instead of over six, colored output is much faster too, and typing still echoes instantly. A dedicated thread now reads the terminal continuously and hands output to the page in batches (previously every read of about 1 KB queued a separate task). Requires app 0.2.1.426."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.425", items: {
+    { date: "2026-10-07", ver: "0.2.1.425", items: {
       improved: [
         ["Linux 版登录交给系统的默认浏览器（同 macOS 版）：用浏览器里已经登录着的 GitHub，通行密钥、两步验证都在浏览器里完成，登好了自动回到 App。以前在 App 窗口里打开 GitHub 的登录页，输了密码也没反应。", "The Linux app now signs in through your default browser, like the Mac app: it uses the GitHub session already in your browser (passkeys and two-factor happen there) and returns to the app when done. Previously GitHub's sign-in page opened inside the app window and submitting the password did nothing."],
         ["Linux 版的窗口用系统自己的标题栏（GNOME、KDE 的按钮和拖动），不再自己画左上角那三个圆按钮。", "The Linux app's window uses the system title bar (GNOME or KDE buttons and dragging) instead of drawing its own three round buttons in the corner."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.424", items: {
+    { date: "2026-10-07", ver: "0.2.1.424", items: {
       improved: [
-        ["版本号统一成一套：App 和界面都写 0.2.x（这一版 App 是 0.2.424），GitHub 上的发行版也用同一个号；构建号只在内部比新旧。以前 App 写 0.2.1.291、界面写 0.2.423，看着像倒退。", "One version number for everything: the app and the interface both use 0.2.x (this app release is 0.2.424), and so do GitHub releases; the build number is only used internally. Previously the app said 0.2.1.291 while the interface said 0.2.423, which looked like a downgrade."],
+        ["版本号统一成一套：App、界面、GitHub 上的发行版用同一个号；以前 App 和界面各写各的，看着像倒退。", "One version number for everything: the app, the interface and GitHub releases share the same number. Previously the app and the interface were numbered separately, which looked like a downgrade."],
         ["有新版本时照旧在 ⚙ 菜单最下面写「重新载入以更新（v…）」/「重启以更新 App（v…）」，⚙ 上有蓝点；写的总是最新的那一版（以前停在第一次发现的那一版）。标题栏不再放按钮。", "Updates still appear at the bottom of the ⚙ menu (“Reload to Update (v…)” / “Restart to Update App (v…)”) with a blue dot on ⚙, and the version shown is always the newest one. The title-bar button is gone."],
       ],
       fixed: [
         ["只发图片、没有字的一句：发出去以后还一直挂在最下面当成排着的，30 秒后又报「Claude Code 没有收到」（其实收到了，再点重试就会重复发）。", "Messages with only images no longer stay at the bottom as queued after being delivered, and no longer report “Claude Code didn't receive it” after 30 seconds (retrying would have sent them twice)."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.423", items: {
+    { date: "2026-10-07", ver: "0.2.1.423", items: {
       new: [
         ["子 Agent 再开的子 Agent 挂在它下面一层（再往下也一样）：右侧栏里一眼看出谁开了谁，点一行打开它自己的记录；前台跑着、还没交回结果的子 Agent 也认得出来、点得进去。进到下一层的标签页里，最上面那行是「上一级 Agent」。", "Subagents started by a subagent now appear nested under it, at any depth, so the side bar shows who started whom; click a row to open its own transcript. Foreground subagents that are still running can be opened too. In a nested tab, the top row is the parent agent."],
         ["子 Agent 的弹窗在它自己的标签页里也能处理：要权限、它自己的界面那一块原样出现，键盘、鼠标照常；它问你问题，在它的标签页里直接答，经主会话送进去。", "Dialogs from a subagent can be handled in its own tab: permission prompts appear exactly as Claude Code draws them, and questions it asks can be answered right there; answers go through the main session."],
@@ -57,44 +67,44 @@
         ["前台跑的子 Agent 跑完了还一直显示「在跑」、拿不到它的记录。", "Foreground subagents no longer stay “running” after they finish, and their transcripts can be opened."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.422", items: {
+    { date: "2026-10-07", ver: "0.2.1.422", items: {
       new: [
         ["新 App「设备」（参考 AirPort 实用工具）：你的设备画成一张图——最上面是账户，下面是 Mac 和别的设备，在用某台 Mac 的 iPad、iPhone 挂在那台下面；绿点是在线。点一台出它的卡片：另一台在线的 Mac 能「在这里使用」，这台能改名，这台 Mac 能开关「允许其他设备使用」、撤销允许过的设备。", "New Devices app, modeled on AirPort Utility: your devices drawn as a map, with your account at the top and your Macs and other devices below it. An iPad or iPhone using a Mac hangs under that Mac, and a green dot means online. Click a device for its card: use another online Mac from here, rename this device, turn sharing of this Mac on or off, and revoke devices you allowed."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.421", items: {
+    { date: "2026-10-07", ver: "0.2.1.421", items: {
       new: [
         ["终端像 tmux 一样有名字：新建时先在 Agents 视图的「终端」里输名字（同新建文件夹，回车就开）；关掉标签页它照跑（里面的程序不停），在「终端」里点一下接回来；右键能重命名、结束。标签页的标题就是它的名字，不再是「~ — -zsh」。", "Terminals now have names, like tmux sessions. A new terminal first asks for a name in the Terminals section of the Agents view, the way a new folder does, and opens on Return. Closing its tab leaves it running, programs included; click it under Terminals to reattach, or right-click to rename or end it. The tab title is its name instead of “~ — -zsh”."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.420", items: {
+    { date: "2026-10-07", ver: "0.2.1.420", items: {
       new: [
         ["Claude Code 会话快到自动压缩时，底部右侧显示「N% until auto-compact」，算法同 Claude Code 2.1.281（离自动压缩的门槛不到 2 万 token 时出现）；它的自动压缩关着时显示红字「Context low」。设置 › 高级 里能关，默认开。", "Claude Code sessions now show “N% until auto-compact” at the bottom right as the context nears auto-compact, computed the way Claude Code 2.1.281 does (it appears within 20k tokens of the threshold). With auto-compact off, a red “Context low” notice appears instead. It can be turned off in Settings › Advanced and is on by default."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.419", items: {
+    { date: "2026-10-07", ver: "0.2.1.419", items: {
       improved: [
         ["访达的 Agent 那一边，最外层不再把左边一栏的「位置」（Claude Code、Codex）再列一遍：改成「最近」——各连接器的会话按上次活跃排，同访达的「最近使用」；左边一栏最上面多了「最近」。", "On the Agent side of Finder, the top level no longer repeats the sidebar’s Locations (Claude Code, Codex). It is now Recents: sessions from every connector, most recently active first, like Finder’s Recents, with a Recents item at the top of the sidebar."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.418", items: {
+    { date: "2026-10-07", ver: "0.2.1.418", items: {
       fixed: [
         ["标签页概览里，重开 App 后还没点开过的标签页（历史记录、设置等）不再是黑的一块：先画出来再缩小。", "In the tab overview, tabs not yet opened since launch (History, Settings and so on) are no longer black: they are drawn before being shown."],
         ["标签页概览打开更快：不在眼前的会话不再整段重排来做缩略图，卡片上直接是它最后两问的字。", "The tab overview opens faster: sessions that aren’t on screen are no longer laid out in full for a thumbnail; their card shows the last two exchanges as text."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.417", items: {
+    { date: "2026-10-07", ver: "0.2.1.417", items: {
       fixed: [
         ["对话里从下往上拖着选字时大片变黑：选区改成同终端的画法（第一行到行尾、中间整行、最后一行到选的地方，空行也算），离得远的那几段选着时也照常画，滚动时跟着重画。", "Dragging a selection upward no longer turns large areas black. Selections are now drawn the way a terminal draws them (first line to its end, whole lines in between including blank ones, last line up to the cursor), distant parts stay rendered while selected, and the highlight follows scrolling."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.416", items: {
+    { date: "2026-10-07", ver: "0.2.1.416", items: {
       fixed: [
         ["往上翻时最上面那一行（这一段属于哪一问）回到最底下后有时还挂着：现在同 Claude Code——只在往上翻、那一问自己已经翻上去时才有；在最底下、在最顶上都没有，回到底、发出一句都会马上收起。", "The pinned prompt line at the top sometimes stayed after returning to the bottom. It now follows Claude Code: it appears only while scrolled up and only once that prompt itself is out of view, never at the bottom or the very top, and it disappears as soon as you return to the bottom or send a message."],
         ["发出去的消息有时先消失一下再出来（Claude Code 一轮中间读进去、或者从队里拿走时）：现在一直挂着，直到对话里出现那一问。", "Sent messages no longer vanish for a moment before reappearing when Claude Code picks them up from its queue, including mid-turn while a command runs; they stay visible until they appear in the conversation."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.415", items: {
+    { date: "2026-10-07", ver: "0.2.1.415", items: {
       new: [
         ["Claude Code 会弹面板的斜杠命令（/config、/model、/theme、/help、/permissions、/mcp 等）在这里也能用：它自己的面板原样出现在输入框的位置，用键盘操作，按 Esc 关掉回到输入框。面板在别处打开、还开着的，打开这个会话时也会接上。适用于后台运行的会话。", "Claude Code slash commands that open a panel (/config, /model, /theme, /help, /permissions, /mcp and others) now work here: Claude Code’s own panel appears in place of the input box, works with the keyboard, and Esc closes it. A panel left open elsewhere is picked up when you open the session. Applies to sessions running in the background."],
       ],
@@ -103,7 +113,7 @@
         ["没登录时对话最上面不再出现「undefinedundefined」。", "“undefinedundefined” no longer appears at the top of a conversation when signed out."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.414", items: {
+    { date: "2026-10-07", ver: "0.2.1.414", items: {
       improved: [
         ["Codex 会话的右键菜单同 Claude Code 一样：打开位置（拆分视图、终端、Visual Studio Code、访达）、固定、标为未读、重命名、移到分组、归档、删除（会话记录移到废纸篓）；固定的、分组的在 Codex 下面各成一组。", "Codex sessions now have the same context menu as Claude Code: Open in (Split View, Terminal, Visual Studio Code, Finder), Pin, Mark as Unread, Rename, Move to Group, Archive and Delete (the transcript moves to the Trash). Pinned and grouped sessions get their own sections under Codex."],
         ["「App」挪到活动栏上面那一组（连接器下面），点一下打开、再点一下或点别处收起，不再指上去就弹；也能用方向键选。", "Apps moved to the top group of the activity bar, below Connectors. It now opens on click and closes on a second click or a click elsewhere, instead of on hover, and works with the arrow keys."],
@@ -113,14 +123,14 @@
         ["Claude Code 的斜杠命令（/rename、/cost、/add-dir 等）结果不显示、下面只有一个空的「⎿」：新版把结果记在 system 消息里，现在照它的样子显示；出错的是红字，没有结果的不再画那一行。", "Results of Claude Code slash commands such as /rename, /cost and /add-dir were missing, leaving an empty “⎿”. Newer versions record them as system messages; they now show the way Claude Code shows them, errors in red, and commands with no output no longer draw that line."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.413", items: {
+    { date: "2026-10-07", ver: "0.2.1.413", items: {
       improved: [
         ["「文件」视图：看得见的文件夹先把里面读好，点开就是现成的，不再先空一下。", "Files view: visible folders are read ahead, so expanding one shows its contents right away."],
         ["访达的缩略图排队生成（同时最多 4 个，先生成上面的），不再一下子全卡住；深色下白底文稿的缩略图压暗一点，不刺眼。", "Finder thumbnails are generated a few at a time, top first, instead of all at once; white document thumbnails are dimmed in dark mode."],
         ["Markdown 文件的图标换成 Markdown 的标志，图片换成一张相片（以前是一叠相册）。", "Markdown files use the Markdown mark, and images a single photo instead of a stack."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.412", items: {
+    { date: "2026-10-07", ver: "0.2.1.412", items: {
       improved: [
         ["「App」挪到活动栏最下面（⚙ 下面），指上去从旁边弹出来（同「开始」菜单，按内容的高度）；不再占一整条侧栏。", "Apps moved to the bottom of the activity bar (below ⚙) and open as a pop-up beside it, like a Start menu, sized to its contents instead of a full side bar."],
         ["Agent Finder 和 File Finder 合成一个「访达」：左下角在「文件」「Agent」两边切换，下次从上次那一边打开；图标同标签页上的。", "Agent Finder and File Finder are now one Finder: switch between Files and Agents at the bottom left, and it reopens on the side you used last; its icon matches its tab."],
@@ -128,17 +138,17 @@
         ["右侧边栏默认 340 像素宽，不再占半个屏幕；拖过的宽度照旧记住，双击边缘回到默认。", "The secondary side bar now defaults to 340 px instead of half the window; a dragged width is still remembered, and double-clicking the edge restores the default."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.411", items: {
+    { date: "2026-10-07", ver: "0.2.1.411", items: {
       new: [
         ["App 会自己检查更新（Mac 0.2.1.290 起）：有新版时在后台下好，状态栏出「App 有新版本 · 重启以更新」，点一下换上。别的 Mac 上联网时界面直接用网站上最新的。", "The app checks for updates on its own (Mac 0.2.1.290 and later): a new version downloads in the background and the status bar offers Restart to Update. On other Macs the interface follows the website when online."],
       ],
     } },
-    { date: "2026-10-07", ver: "0.2.410", items: {
+    { date: "2026-10-07", ver: "0.2.1.410", items: {
       fixed: [
         ["新装的 Mac 上检测不到 Claude Code（Codex 正常）：Claude Code 装在 ~/.local/bin，安装时只写进了 ~/.zshrc，App 跑命令时读不到。现在跑命令、起会话都会补上 ~/.local/bin 等常见位置。", "Claude Code wasn't detected on a freshly set up Mac while Codex was: Claude Code lives in ~/.local/bin, which its installer adds only in ~/.zshrc. Commands and sessions now also look in ~/.local/bin and other common locations."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.408", items: {
+    { date: "2026-10-06", ver: "0.2.1.408", items: {
       improved: [
         ["「App」里的图标换成同标签页上的那套细线图标，一行一个，只写名字。", "Apps now use the same line icons as their tabs, one per row with just the name."],
         ["编辑区的终端标签页底色同 TUI 的会话：深色是黑、浅色是白（以前是面板的灰）；终端标签页的图标改成画的。", "Terminal tabs in the editor use the same background as TUI sessions — black in dark, white in light — instead of the panel gray; the terminal tab icon is now drawn."],
@@ -147,7 +157,7 @@
         ["发给 Claude Code 的消息明明收到了却报「没有收到」，点重试或再发一句就重复发送：它在「送到了」的回话回来之前就写进了会话记录，以前没对上。现在先查记录，见到了就算送到；放回来的那句重发前也会再查一遍。", "Messages to Claude Code were reported as not received even though they arrived, and retrying or sending again duplicated them: Claude Code logged them before confirming. Delivery is now confirmed against the transcript first, and a returned message is checked again before it's resent."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.407", items: {
+    { date: "2026-10-06", ver: "0.2.1.407", items: {
       new: [
         ["活动栏第五格「App」（连接器下面）：Agent Finder、File Finder、终端、浏览器从这里打开；终端是新开一个 shell 标签页，不进任何 agent。标题栏右上角的浏览器按钮默认不再摆出来（右键可勾回）。", "A fifth activity, Apps (below Connectors), opens Agent Finder, File Finder, Terminal and Browser; Terminal opens a new shell tab without entering any agent. The browser button in the title bar is now hidden by default (re-enable it from the right-click menu)."],
         ["代码文件默认按行滚动，手感同终端里的对话；设置 › 外观 › 代码滚动可改成平滑。标签栏「···」里可显示或隐藏行号，设置会记住。只看和编辑都一样。", "Code files scroll line by line by default, like the chat in the terminal; switch to Smooth in Settings › Appearance › Code Scrolling. Show or hide line numbers from the tab bar’s ··· menu; the choice is remembered. Applies to viewing and editing."],
@@ -164,12 +174,12 @@
         ["⌘+ / ⌘- 调的字号重新打开后又变回去：每次打开时，macOS 桌面那份旧设置里记的字号把它盖掉了。现在字号只认 Studio 的设置，几个窗口之间也会马上同步。", "Text size set with ⌘+ / ⌘- reverted after reopening: an old desktop setting overwrote it on every launch. Text size now follows only Studio’s settings and syncs between windows immediately."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.406", items: {
+    { date: "2026-10-06", ver: "0.2.1.406", items: {
       improved: [
         ["网页端、iPhone、iPad 打开会话更快：会话记录经中转送过来之前先在 Mac 上压缩（文字只剩一成左右），这边再解开。要 Mac 上的 App 更新到 0.2.1.288。", "Sessions open faster on the web, iPhone and iPad: transcripts are compressed on the Mac before going through the relay. Requires the Mac app 0.2.1.288."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.405", items: {
+    { date: "2026-10-06", ver: "0.2.1.405", items: {
       new: [
         ["网页端：打开 code.paimon.beer 就是 Vibing Studio，像 iPhone、iPad 一样自动连你的 Mac；macOS 模拟器只在 /simulator。", "Web: code.paimon.beer opens Vibing Studio itself and connects to your Mac automatically like iPhone and iPad; the macOS simulator lives at /simulator."],
         ["新设备连 Mac 同 Apple 账户登录新设备：Mac 上写清是哪台设备（浏览器写出是什么浏览器、什么系统）、大致在哪、IP；点「允许」后 Mac 上显示 6 位验证码，在那台设备上输入才放行。以前只点了「允许」的设备要再验证一次。", "Connecting a new device works like signing in to an Apple Account: the Mac shows which device (browser and OS), its approximate location and IP; after you click Allow it shows a 6-digit code to enter on that device. Devices approved earlier without a code must verify once."],
@@ -179,14 +189,14 @@
         ["网页端左上角不再画红黄绿三个假按钮。", "The web client no longer draws fake window buttons in the top-left corner."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.402", items: {
+    { date: "2026-10-06", ver: "0.2.1.402", items: {
       fixed: [
         ["iPhone：标签栏右边第一个按钮（现在是齿轮）点了没反应，设置因此找不到：已修好，点开是设置、账号、侧栏、面板、浏览器、新建标签页。", "iPhone: the first tab-bar button (now a gear) did nothing, so Settings couldn’t be found; it now opens Settings, Account, side bars, the panel, the browser and New Tab."],
         ["iPhone 全屏只看对话时上下不再各空一条：网页铺到整屏，输入框的底色一直到最下面；整格泛蓝（被系统整块选中）也不会再出现。", "iPhone full screen now covers the whole screen top to bottom, and the pane no longer turns blue from accidental selection."],
         ["灵动岛：切到别的 App 时实时活动不再马上被收起（以前这时常先报一下「空闲」，一收就没了）。画中画先拿掉。", "Dynamic Island: the Live Activity no longer disappears the moment you switch apps. Picture in Picture is removed for now."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.400", items: {
+    { date: "2026-10-06", ver: "0.2.1.400", items: {
       new: [
         ["iPhone：灵动岛、锁屏的实时活动和画中画显示内容——会话最近说的话、在跑的命令（最多三行），不只是「在跑」。开着的标签页里正在答的也算在跑。", "iPhone: the Live Activity and Picture in Picture show content — the session’s latest words and running commands (up to three lines), not just “running”. Sessions answering in open tabs count as running."],
         ["iPhone：标签栏右边一个按钮就是设置、账号、侧栏、面板、浏览器、新建标签页（标题栏收起来后它们都在这里）。", "iPhone: one tab-bar button holds Settings, Account, side bars, the panel, the browser and New Tab."],
@@ -197,12 +207,12 @@
         ["Mac 上发出一句后「sending…」比 iPhone 上还慢：Mac 本机没有新内容推送，要等下一次读会话记录。现在刚发出的几秒里读得更勤。", "On the Mac, “sending…” cleared later than on iPhone; the session record is now read more often for a few seconds after sending."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.399", items: {
+    { date: "2026-10-06", ver: "0.2.1.399", items: {
       new: [
         ["iPhone：灵动岛和锁屏上显示实时活动——有会话在跑时显示橙色的 Claude 标志和用时，有会话在等你时变成蓝色、写「等你」；长按灵动岛展开看是哪个会话、在干什么、一共几个在跑几个在等你。", "iPhone: a Live Activity in the Dynamic Island and on the Lock Screen — an orange Claude mark with elapsed time while a session runs, blue “waiting” when one needs you; touch and hold to see which session, what it’s doing and how many are running or waiting."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.398", items: {
+    { date: "2026-10-06", ver: "0.2.1.398", items: {
       new: [
         ["使用手册新增「在 iPhone 上使用」一章：布局、打开会话列表、全屏只看对话、附加图片、拷贝文字、横着拿时输入，配有截图和动图。", "The User Guide has a new “Use on iPhone” chapter — layout, the session list, full screen, attaching images, copying text and typing in landscape — with screenshots and animations."],
       ],
@@ -211,7 +221,7 @@
         ["使用手册已经开着时，从别处打开另一篇会停在原来那篇：现在会跳到要看的那一篇。", "Opening a different User Guide topic while the guide is open now goes to that topic."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.397", items: {
+    { date: "2026-10-06", ver: "0.2.1.397", items: {
       new: [
         ["iPhone：布局按钮精简成一个（设置 › 布局 › 布局按钮：精简 / 经典，手机默认精简）；标题栏收起，标签页在最上面，有灵动岛的竖着拿时标签页绕开灵动岛排在两边；拆分、布局都在标签栏的「···」里。", "iPhone: layout buttons collapse into one (Settings › Layout › Layout Buttons: Concise / Classic; Concise by default on phones); the title bar is gone, tabs sit at the very top and flow around the Dynamic Island; split and layout live in the tab bar’s “···”."],
         ["iPhone：标签栏「···」旁边的全屏按钮——只留对话和输入框，右上角「缩小」回来。", "iPhone: a full-screen button next to “···” shows only the conversation and input; tap the shrink button at the top right to return."],
@@ -223,7 +233,7 @@
         ["iPhone：底部面板里的几块（Agent 活动、系统资源）上下排，不再并排挤成两条。", "iPhone: panel views stack vertically instead of being squeezed side by side."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.396", items: {
+    { date: "2026-10-06", ver: "0.2.1.396", items: {
       fixed: [
         ["往上翻着看大会话时整个 App 卡一两秒（往上接更早的、重读、改设置时）：以前把几百上千问一次全画出来，现在以眼前那一问为锚先画眼前的、其余分段补上，看着的地方不动。600 问从 1.6 秒降到 0.2 秒。", "Large sessions no longer freeze the app when re-rendered while scrolled up: the visible part is drawn first and the rest is filled in gradually, keeping your place. 600 turns: 1.6 s → 0.2 s."],
         ["会话历史往上拉不动：往前读一段时正赶上在重读，就再也不读了。现在没读成会再试，在最顶上接着往上拉也会再读。", "Older history now keeps loading when you reach the top, retrying if a load was blocked."],
@@ -231,7 +241,7 @@
         ["iPhone、iPad 上对话一碰就整屏选中：对话里不再让系统自己选字，要复制时长按，菜单里有「复制这一段」。", "On iPhone and iPad the conversation no longer gets fully selected by accident; long-press and choose “Copy This Block” to copy."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.395", items: {
+    { date: "2026-10-06", ver: "0.2.1.395", items: {
       new: [
         ["iPhone、iPad：输入框的「···」和长按输入框的菜单里有「添加图片…」——从相册选、拍照。", "iPhone and iPad: “Add Images…” in the input box’s “···” menu and long-press menu — pick from Photos or take a photo."],
         ["新设备借 Mac 用时，第一次打开照那台 Mac 的设置整份抄一份（风格、布局、对话显示……），之后各管各的；全名、称呼、头像一直跟着 Mac。", "A new device using your Mac copies that Mac’s settings once on first launch, then keeps its own; your name and avatar always follow the Mac."],
@@ -243,20 +253,20 @@
         ["Mac 上的 App 在「登录的设备」里用这台 Mac 自己的名字。", "The Mac app now appears under its own computer name in Signed-in Devices."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.394", items: {
+    { date: "2026-10-06", ver: "0.2.1.394", items: {
       fixed: [
         ["iPhone 借 Mac 用时会话列表是空的：新设备上要等 5 分钟后的自动检测才知道 Mac 上有 Claude Code。现在一打开就检测，检测完之前 Claude Code 默认开着。", "On iPhone (using your Mac), the session list was empty until a check that ran five minutes later; it now checks on launch and shows Claude Code sessions right away."],
         ["iPhone 在 Mac 的授权列表里被写成 iPad：现在写 iPhone（下次连上时自动改过来）；设置项改名为「iPhone、iPad 使用这台 Mac」。", "An iPhone was listed as “iPad” among the Mac’s authorized devices; it now shows as iPhone, and the setting is renamed “Let iPhone and iPad Use This Mac”."],
         ["菜单里 Claude 风格的标志是灰的：现在和别的图标一样是黑的。", "The Claude style icon in menus was gray; it now matches the other icons."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.393", items: {
+    { date: "2026-10-06", ver: "0.2.1.393", items: {
       fixed: [
         ["连着发几句时对话自己往上跑、冒出「Jump to bottom」：排着的话收走、新的一问接上时浏览器挪了滚动位置，被当成了往上翻。现在跟着到底时只有你自己滚才停止跟随。", "Sending several messages in a row no longer scrolls the conversation up: browser scroll adjustments while content is replaced are no longer treated as scrolling up."],
         ["右侧栏收起 / 展开一块时，点的那一行不再上下跳；箭头只转动，标题文字不再左右挪。", "Collapsing or expanding a section in the side bar no longer makes the clicked header jump; the chevron only rotates and the title stays put."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.392", items: {
+    { date: "2026-10-06", ver: "0.2.1.392", items: {
       improved: [
         ["输入框上下两条线左右对称：排不满一格的余量左右各留一半（以前左边贴边、右边空一截）；右上角「···」摆在线的末端。", "The input box rules are now symmetric: leftover space is split between both sides instead of all on the right; the “···” button sits at the end of the rule."],
         ["右侧栏任务那一块的「TUI / 图形」切换先拿掉（TUI 的样子不能折叠，长清单一长串）。", "Removed the TUI / graphical switch in the side bar tasks section for now (the TUI layout could not be collapsed)."],
@@ -265,33 +275,33 @@
         ["往上翻时顶上那一行（所在的那一问）：点了跳到那一问后，这一行收起、露出原来的那一行，不再用淡色盖在上面；那一问就在顶上一两行时点了看起来没反应的问题也一并解决。", "Sticky prompt: after jumping to the prompt, the header hides and the original line shows instead of being covered by a dimmed copy; clicking it when the prompt was only a line or two above no longer appears to do nothing."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.391", items: {
+    { date: "2026-10-06", ver: "0.2.1.391", items: {
       improved: [
         ["设置页左边一列按下就切换（同系统设置的侧栏），不必等松开。", "The Settings sidebar switches on press, like System Settings, instead of waiting for release."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.390", items: {
+    { date: "2026-10-06", ver: "0.2.1.390", items: {
       new: [
         ["「Background command … completed」这一行可以点开，查看这条后台命令的输出；再点收起。", "The “Background command … completed” line can be clicked to show that command’s output; click again to collapse."],
         ["右侧栏的任务那一块右上角可以换成 TUI 的样子（同 Claude Code 终端里的写法），再点换回图形。", "The tasks section in the secondary side bar has a TUI / graphical switch in its top-right corner, matching how Claude Code shows them in the terminal."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.388", items: {
+    { date: "2026-10-06", ver: "0.2.1.388", items: {
       fixed: [
         ["更新或重启 App 后，打开着的会话标签页没有接回来，只剩历史记录：会话列表读得慢时标签页被存成了空的。现在先按会话 id 接上，读到后自动显示；刚关掉几分钟内重新打开、却一个会话都没接回来时，自动打开上次的会话标签页。", "After updating or restarting the app, open session tabs didn’t come back and only History remained, because tabs were saved empty when the session list loaded slowly. Tabs now reconnect by session id and show once loaded; if the app reopens within a few minutes and no session came back, the previous session tabs open automatically."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.387", items: {
+    { date: "2026-10-06", ver: "0.2.1.387", items: {
       fixed: [
         ["在输入框下部点按时，光标常落到上一行或别的位置：底部有一个看不见的输入框盖着，点按由它按自己的排版放光标。现在点按都按画出来的文字定位。", "Clicking near the bottom of the input often put the caret on the line above or elsewhere, because an invisible text field covered that area and placed the caret by its own layout. Clicks now follow the text you see."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.386", items: {
+    { date: "2026-10-06", ver: "0.2.1.386", items: {
       improved: [
         ["把标签页拖出窗口、在另一个 Vibing Studio 窗口上松开，会放进那个窗口的标签条（按松开的位置插入）；在空处松开才开新窗口。独立窗口里的标签页也能这样拖回主窗口。需要 App 0.2.1.286 或更新版本。", "Drag a tab out of a window and release it over another Vibing Studio window to put it in that window’s tab bar at the spot you released; releasing over empty space still opens a new window. Tabs in separate windows can be dragged back the same way. Requires app 0.2.1.286 or later."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.385", items: {
+    { date: "2026-10-06", ver: "0.2.1.385", items: {
       improved: [
         ["会话提问时选择「稍后」：已经选了的、写了一半的回答都会保留，再打开同一个问题时接着答。", "Choosing Later on a session’s question keeps what you’ve already picked or partly written, so you can pick up where you left off."],
       ],
@@ -299,14 +309,14 @@
         ["回答问题时用键盘移动光标，画出来的光标不跟着动。", "When answering a question, the drawn caret didn’t follow keyboard movement."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.384", items: {
+    { date: "2026-10-06", ver: "0.2.1.384", items: {
       fixed: [
         ["排队消息点「edit」后再发送，同一句话会发两遍：取回时 Claude Code 输入框里的文字没有清掉。", "Sending again after “edit” on queued messages sent the same text twice, because the text taken back was left in Claude Code’s input."],
         ["已经被读进去的排队消息（尤其是和别的话连在一起读进去的）仍显示为排队。", "Queued messages that had already been read (especially when read together with other text) still showed as queued."],
         ["向上翻阅时，提问那一行被顶部一行盖住后，顶部仍显示上一个提问；现在显示当前这一问。", "While scrolling back, when a prompt slid under the top row, the top row still showed the previous prompt; it now shows the current one."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.383", items: {
+    { date: "2026-10-06", ver: "0.2.1.383", items: {
       new: [
         ["Codex 会话按 ← 打开 Codex 自己样式的会话列表：顶部搜索，表格列出更新时间、状态、目录和对话，↑↓ 选择、回车打开，搜不到时回车用这句开新会话；底部 ··· 中可换成 Claude Code 的样式。", "Pressing ← in a Codex session opens a Codex-style session list: search at the top, a table of updated time, status, directory and conversation; ↑↓ to choose, Return to open, and Return with no match starts a new session with your text. Switch to the Claude Code style from the ··· menu at the bottom."],
       ],
@@ -314,12 +324,12 @@
         ["会话列表中当前会话的 Claude / OpenAI 标志显示为空白方块。", "The Claude / OpenAI logo for the current session in the session list showed as an empty box."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.382", items: {
+    { date: "2026-10-06", ver: "0.2.1.382", items: {
       new: [
         ["提问卡片：会话问你问题而你正在看别的时，在窗口中间弹出问题卡片——上面是它提问前说的话，下面是问题和选项，点按或按数字直接回答，也可以自己写；「打开会话」查看全文，Esc 稍后再答。App 在后台时把窗口切到前面（设置 › 通用 可分别关闭；切到前面需要 App 0.2.1.285 或更新版本）。", "Question cards: when a session asks you something while you’re looking elsewhere, a card appears in the middle of the window — what it said before asking, then the question and options; click or press a number to answer, or type your own; Open Session shows the full context and Esc answers later. When the app is in the background its window comes to the front (each can be turned off in Settings › General; coming to the front requires app 0.2.1.285 or later)."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.381", items: {
+    { date: "2026-10-06", ver: "0.2.1.381", items: {
       new: [
         ["Vibing Studio 使用手册：帮助 › Vibing Studio 使用手册，按章节的目录、搜索、配图，每篇有「另请参阅」和上一篇 / 下一篇。", "Vibing Studio User Guide: Help › Vibing Studio User Guide, with a chapter outline, search and illustrations; every topic has See also and previous / next links."],
         ["「历史记录」菜单同 Safari：返回、前进、最近关闭、重新打开上次关闭的标签页（⇧⌘T）、今天访问的记录和更早日期的子菜单。", "The History menu works like Safari’s: Back, Forward, Recently Closed, Reopen Last Closed Tab (⇧⌘T), today’s entries and submenus for earlier days."],
@@ -337,7 +347,7 @@
         ["对话中偶尔出现从 Claude Code 屏幕上误抄的几行（数字、分栏的输出）。", "Stray lines copied from the Claude Code screen (numbers, columned output) occasionally appeared in conversations."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.379", items: {
+    { date: "2026-10-06", ver: "0.2.1.379", items: {
       new: [
         ["Agent 活动改为活动监视器的结构：上方页签（概览、CPU、GPU、内存、磁盘、网络、能耗），中间是会话，底部是固定高度的资源条；系统资源不再单独占一个视图。", "Agent Activity now follows Activity Monitor: tabs on top (Overview, CPU, GPU, Memory, Disk, Network, Energy), sessions in the middle and a fixed-height resource strip at the bottom; system resources no longer need a separate view."],
         ["单击会话就地展开它的进程（命令行、用时、CPU、内存、PID），再次单击收起；右键打开会话。", "Click a session to expand its processes in place (command line, elapsed time, CPU, memory, PID); click again to collapse. Right-click opens the session."],
@@ -357,7 +367,7 @@
         ["会话名称、「Agent」表头和「合计」对齐。", "Session names, the Agent header and Total now line up."],
       ],
     } },
-    { date: "2026-10-06", ver: "0.2.372", items: {
+    { date: "2026-10-06", ver: "0.2.1.372", items: {
       new: [
         ["排队的消息可以取回修改：点「edit」或在空输入框按 ↑（同 Claude Code），排在 Claude Code 队列里的也能取回；「send now」点一次即生效，发送中不能重复点。", "Queued messages can be taken back for editing: click “edit” or press ↑ in an empty input (as in Claude Code), including ones already in Claude Code’s queue; “send now” acts once and can’t be clicked again while sending."],
         ["「run in background」可以直接点，等同按 ctrl+b；点了立即显示进度，失败会写明原因。", "“run in background” is clickable, the same as ctrl+b; it shows progress immediately and explains any failure."],
@@ -387,7 +397,7 @@
         ["修复 App 退出或重新载入时，正在发送的消息丢失。", "Fixed a message being lost if the app quit or reloaded while it was being sent."],
       ],
     } },
-    { date: "2026-10-05", ver: "0.2.360", items: {
+    { date: "2026-10-05", ver: "0.2.1.360", items: {
       new: [
         ["AskUserQuestion 的回答显示为「User answered Claude's questions」。", "Answers to AskUserQuestion appear as “User answered Claude's questions”."],
         ["压缩分隔线写出压缩前后的大小。", "Compaction dividers show the size before and after."],
@@ -408,7 +418,7 @@
         ["修复旋转、改变窗口大小后标签页概览缩略图错位。", "Fixed misplaced tab overview thumbnails after rotating or resizing."],
       ],
     } },
-    { date: "2026-09-29", ver: "0.2.327", items: {
+    { date: "2026-09-29", ver: "0.2.1.327", items: {
       new: [
         ["Agent 活动换成活动监视器式的表格：每个会话在做什么、用时、CPU、内存、上下文；右上角的按钮把它挪到右侧栏或底部面板。", "Agent Activity is now an Activity Monitor–style table — what each session is doing, time, CPU, memory and context — and can move to the secondary side bar or the panel."],
         ["回复实时显示：Claude Code 后台会话正在写的话，写的时候就显示，写完换成正式的（设置 › 对话）。", "Live replies: text a Claude Code background session is writing shows up as it is written, then turns into the final reply (Settings › Conversation)."],
@@ -433,7 +443,7 @@
         ["Codex：刚发的话不再显示成排队；转圈照样转。", "Codex: just-sent messages no longer show as queued, and the spinner animates."],
       ],
     } },
-    { date: "2026-09-28", ver: "0.2.1", items: {
+    { date: "2026-09-28", ver: "0.2.1.1", items: {
       new: [
         ["四种系统风格：VS Code、Claude App、macOS、Pure Terminal，菜单栏「显示」里或 `⌃⌘1`–`⌃⌘4` 随时切换；Agent 显示风格（TUI / GUI）单独选，Claude App 固定 GUI、Pure Terminal 固定 TUI。", "Four OS styles — VS Code, Claude App, macOS and Pure Terminal — switchable any time from the View menu or with `⌃⌘1`–`⌃⌘4`. The agent viewer style (TUI / GUI) is chosen separately; Claude App always uses GUI and Pure Terminal always uses TUI."],
         ["macOS 风格：桌面、墙纸、菜单栏、程序坞和桌面小组件；每个标签页是桌面上的一个窗口，可以拖动、缩放、贴边平铺和最小化。", "macOS style: a desktop with wallpaper, menu bar, Dock and widgets. Every tab is a window you can move, resize, tile and minimize."],
@@ -523,7 +533,7 @@
         ["修复 Claude App 侧栏里没有 Claude Code 会话的问题。", "Fixed Claude Code sessions missing from the Claude App sidebar."],
       ],
     } },
-    { date: "2026-09-27", ver: "0.2.0", items: {
+    { date: "2026-09-27", ver: "0.2.1.0", items: {
       new: [
         ["改名 Vibing Studio，换了新图标；版本号改成 `x.y.z.构建号`。", "Renamed to Vibing Studio with a new icon; versions are now `x.y.z.build`."],
         ["VS Code 式的工作台：活动栏、侧栏、面板、状态栏，编辑组分屏，每组一条标签栏；标签页可以拖动排序、拖进分屏。", "A VS Code-style workbench: activity bar, side bar, panel and status bar, split editor groups with their own tab bars, and draggable tabs."],

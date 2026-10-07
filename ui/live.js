@@ -767,9 +767,9 @@
     };
     // 输入法选字：从哪儿开始、现在是哪几个字（程序给这几个字画下划线；textarea 挪到光标上，见 drawCaret）；选完重画一次（去掉下划线、textarea 放回去）
     P.ime = null;
-    ta.addEventListener("compositionstart", function () { P.ime = { start: ta.selectionStart, text: "" }; });
+    ta.addEventListener("compositionstart", function () { P.ime = { start: ta.selectionStart, text: "" }; P.imeEnd = 0; });
     ta.addEventListener("compositionupdate", function (e) { if (P.ime) P.ime.text = e.data || ""; });
-    ta.addEventListener("compositionend", function () { P.ime = null; if (P.program && P.program.inputChanged) P.program.inputChanged("select"); });
+    ta.addEventListener("compositionend", function () { P.ime = null; P.imeEnd = performance.now(); if (P.program && P.program.inputChanged) P.program.inputChanged("select"); });
     ["input", "focus", "blur", "select", "click"].forEach(function (t) { ta.addEventListener(t, function () { if (P.program) P.program.inputChanged(t); }); });
     // 光标动了才重画（重画会改 DOM；只看 selectionchange 本身可能自己触发自己）
     var lastCaret = "";
@@ -795,7 +795,10 @@
       P.program.inputChanged("select");
     });
     ta.addEventListener("keydown", function (e) {
-      if (e.isComposing || e.keyCode === 229) return; // 输入法选字中
+      // 输入法：正在选字（composition）的键不管；中文输入法开着时 WebKit 给方向键、Esc、Tab 的 keyCode 也是 229——这些照常处理（以前一律丢掉：问答面板里 ↑↓ 没反应）；
+      //   字（交给输入法）、回车（Safari 选完字那一下的回车也是 229）照旧不管
+      if (e.isComposing || P.ime) return;
+      if (e.keyCode === 229 && !(/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Escape|Tab|PageUp|PageDown|Home|End)$/.test(e.key) && performance.now() - (P.imeEnd || 0) > 80)) return;
       if (e.key === "Delete" && !e.metaKey && !e.altKey && ta.selectionStart === ta.selectionEnd) { // 往后删：紧挨着的是一整块就整块删
         var c0 = ta.selectionStart, hitR = tagSpans(ta.value).filter(function (r) { return r[0] === c0; })[0];
         if (hitR) { e.preventDefault(); ta.setRangeText("", hitR[0], hitR[1], "start"); ta.dispatchEvent(new Event("input")); return; }
@@ -2107,6 +2110,17 @@
     setTimeout(function () { if (!P.closed) ccWatch(); }, 1200); // 打开时它已经在等（面板开着）：也看一眼
     var onNeeds = function () { if (!P.closed) renderInput(); };
     document.addEventListener("vs-needs", onNeeds);
+    var frontNow = function () { try { var tw0 = TSU_TERM.front(); return !P.off && !!P.el.offsetParent && !!tw0 && tw0.ws && tw0.ws.active === P; } catch (e) { return false; } };
+    var onDocKey = function (e) {
+      if (!panel || P.closed || P.program !== V || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+      var t = e.target;
+      if (t === P.ta || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return; // 输入框自己的 keydown 管；别的输入框（搜索、设置）里不抢
+      if (!/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Enter|Escape|Tab| |[1-9])$/.test(e.key) || !frontNow()) return;
+      e.preventDefault(); e.stopPropagation();
+      P.focus();
+      V.key(e);
+    };
+    document.addEventListener("keydown", onDocKey, true);
     var off2 = A.on(function (type) {
       if (P.closed) return;
       if (type === "me" || type === "cfg") P.renderLater();
@@ -2206,7 +2220,7 @@
     }
     stk.addEventListener("mousedown", function (e) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); stickyGo(); });
     stk.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
-    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); P.foot.removeEventListener("wheel", onCcWheel); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
+    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); P.foot.removeEventListener("wheel", onCcWheel); document.removeEventListener("keydown", onDocKey, true); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
     // 跳到某一问（搜索结果）：滚过去，闪一下
     // 跳到一问（搜索里点的那一处）：给了找到的字就在这一问里找到第 nth 处、滚到它在屏幕上三分之一的地方、亮一下（不是只跳到这一问开头——一问很长时差好几屏）；
     //   折行、行首的缩进不算（照字连起来找），不分大小写；这一问里没画出来（收着的工具输出里）就退回到这一问开头
@@ -3889,7 +3903,11 @@
     V.inputChanged = function (t) { if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
 
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
-    function openPanel(p) { panel = p; P.jump.classList.remove("on"); renderInput(); P.fit(); P.stick(); }
+    function openPanel(p) {
+      panel = p; P.jump.classList.remove("on"); renderInput(); P.fit(); P.stick();
+      var ae = document.activeElement;
+      if ((!ae || ae === document.body || P.el.contains(ae)) && typeof frontNow === "function" && frontNow()) P.focus();
+    }
     function closePanel() { panel = null; lastFootRows = -1; renderInput(); P.fit(); P.stick(); P.onScroll(); }
     // ---- Claude Code 自己的面板（/config、/model、/theme、/help… 和它的对话框）：这边不一个个仿——后台会话接上它的界面（rt.tui，同 claude attach），
     //   它画的那一块原样搬到输入框的位置（字、颜色照它的），键原样送进去；它把面板关了（屏幕上回到输入框）就断开、收起。
@@ -5031,7 +5049,7 @@
     var cxAt = 0; // ctrl+x ctrl+s：马上发（同 Claude Code 的「ctrl+x ctrl+s to send now」；ctrl+enter 一样）
     V.key = function (e) {
       var ta = P.ta, k = e.key;
-      if (panel && panel.kind === "ask" && !panel.review && !askTyping() && !e.metaKey && !e.ctrlKey && !e.altKey && (e.isComposing || e.keyCode === 229 || (k.length === 1 && !((/^[1-9]$/.test(k) || k === " ") && !ta.value)))) { askStartTyping(); renderInput(); return; } // 问答面板开着时直接打字：就是在写「Type something」的回答（同 Claude Code），不用先回车
+      if (panel && panel.kind === "ask" && !panel.review && !askTyping() && !e.metaKey && !e.ctrlKey && !e.altKey && (k.length === 1 && !((/^[1-9]$/.test(k) || k === " ") && !ta.value))) { askStartTyping(); renderInput(); return; } // 问答面板开着时直接打字：就是在写「Type something」的回答（同 Claude Code），不用先回车
       if (panel && askTyping() && !(e.key === "Enter" || e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Tab" || e.key === "Escape") || (panel && askTyping() && e.isComposing)) return; // 「Type something」：字直接打进下面的输入框（同 Claude Code 在那一行里写），不弹框
       if (panel) { if (!(e.metaKey && !e.ctrlKey)) { e.preventDefault(); panelKey(e); } return; }
       if (e.metaKey && !e.ctrlKey) return;

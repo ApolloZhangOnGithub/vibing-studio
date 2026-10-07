@@ -13,12 +13,16 @@ mkdir -p "$APP/ui"
 # 源码、界面：只加、只覆盖（不删缓存里多出来的旧文件）
 rsync -a --exclude node_modules --exclude dist --exclude build.sh "$HERE/" "$APP/"
 rsync -a --exclude downloads "$ROOT/ui/" "$APP/ui/" # downloads/：发出去的 macOS App，不带进 Linux 版
-# 版本号跟界面走（ui/version.json 的 0.2.x）
-UIV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/ui/version.json" 2>/dev/null || echo 0.2.0)
+# 版本号跟着界面走（ui/version.json，四段：x.y.z.构建号）；electron-builder 只认 semver：package.json 的 version 写成 x.y.z-构建号（deb 的修订号），
+#   四段的原样记在 vsVersion（App 里显示、产物文件名用它：VS_VERSION）
+UIV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/ui/version.json" 2>/dev/null || echo 0.2.1.0)
+export VS_VERSION="$UIV"
 python3 - "$APP/package.json" "$UIV" <<'PY'
-import json, sys
+import json, sys, re
 p, v = sys.argv[1], sys.argv[2]
-j = json.load(open(p)); j["version"] = v
+j = json.load(open(p)); m = re.match(r"^(\d+\.\d+\.\d+)\.(\d+)$", v)
+j["version"] = m.group(1) + "-" + m.group(2) if m else v
+j["vsVersion"] = v
 open(p, "w").write(json.dumps(j, indent=2, ensure_ascii=False) + "\n")
 PY
 cmd="${1:-dev}"; shift || true

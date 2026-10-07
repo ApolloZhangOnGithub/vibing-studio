@@ -13,8 +13,13 @@ const str = (s, n) => (s == null ? null : String(s).slice(0, n));
 const bump = (db, uid) => db.prepare("INSERT INTO store_head (github_id, rev) VALUES (?1, 1) ON CONFLICT (github_id) DO UPDATE SET rev = rev + 1").bind(uid);
 const raw = (body) => new Response(body, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
+// 设备的型号（model：「MacBook Pro (14-inch, Nov 2023)」「Dell Precision 5820」「iPhone 15 Pro」）：后加的一列，第一次用到时补上（加过了会报错，不管它）
+let modelCol = null;
+const ensureModel = (env) => (modelCol = modelCol || env.DB.prepare("ALTER TABLE devices ADD COLUMN model TEXT").run().catch(() => null));
+
 export async function account(req, env, url, user, json) {
   const uid = user.github_id, p = url.pathname;
+  await ensureModel(env);
   if (p === "/api/sync" && req.method === "GET") return pull(env, uid, url);
   if (p === "/api/store" && req.method === "POST") return push(req, env, uid, json);
   if (p === "/api/lease" && req.method === "POST") return lease(req, env, uid, json);
@@ -50,7 +55,7 @@ async function pull(env, uid, url) {
         'state', state, 'action', action, 'by_dev', by_dev, 'acted_at', acted_at, 'until', until, 'rev', rev)), '[]') AS j
         FROM notices WHERE github_id = ?1 AND rev > ?2 AND (?2 > 0 OR created_at > ?3)`).bind(uid, paged ? Number.MAX_SAFE_INTEGER : since, now - WEEK),
     env.DB.prepare("SELECT COALESCE(json_group_array(json_object('name', name, 'dev', dev, 'until', until)), '[]') AS j FROM leases WHERE github_id = ?1 AND until > ?2").bind(uid, now),
-    env.DB.prepare("SELECT COALESCE(json_group_array(json_object('id', id, 'name', name, 'kind', kind, 'last_seen', last_seen)), '[]') AS j FROM devices WHERE github_id = ?1").bind(uid),
+    env.DB.prepare("SELECT COALESCE(json_group_array(json_object('id', id, 'name', name, 'kind', kind, 'model', model, 'last_seen', last_seen)), '[]') AS j FROM devices WHERE github_id = ?1").bind(uid),
     env.DB.prepare("SELECT rev FROM store_head WHERE github_id = ?1").bind(uid),
   ]);
   const page = r[0].results[0], h = r[4].results[0];
@@ -104,18 +109,18 @@ async function lease(req, env, uid, json) {
   return json({ ok: cur.dev === dev, dev: cur.dev || null, until: cur.until || 0, device: cur.name || null });
 }
 
-// ---- 设备：POST { id, name, kind } 报到（打开时、之后每隔一阵）；GET 列出 ----
+// ---- 设备：POST { id, name, kind, model } 报到（打开时、之后每隔一阵）；GET 列出。名字、型号都是设备自己认出来的（不让人改）----
 async function devices(req, env, uid, json) {
   if (req.method === "POST") {
     const b = await req.json().catch(() => ({}));
     if (!devOk(b.id)) return json({ error: "Bad request" }, 400);
     const now = Date.now();
-    await env.DB.prepare(`INSERT INTO devices (github_id, id, name, kind, created_at, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
-        ON CONFLICT (github_id, id) DO UPDATE SET name = COALESCE(excluded.name, devices.name), kind = COALESCE(excluded.kind, devices.kind), last_seen = excluded.last_seen`)
-      .bind(uid, b.id, str(b.name, 60), str(b.kind, 12), now).run();
+    await env.DB.prepare(`INSERT INTO devices (github_id, id, name, kind, model, created_at, last_seen) VALUES (?1, ?2, ?3, ?4, ?6, ?5, ?5)
+        ON CONFLICT (github_id, id) DO UPDATE SET name = COALESCE(excluded.name, devices.name), kind = COALESCE(excluded.kind, devices.kind), model = COALESCE(excluded.model, devices.model), last_seen = excluded.last_seen`)
+      .bind(uid, b.id, str(b.name, 60), str(b.kind, 12), now, str(b.model, 80)).run();
     return json({ ok: true });
   }
-  const r = await env.DB.prepare("SELECT id, name, kind, created_at, last_seen FROM devices WHERE github_id = ?1 ORDER BY last_seen DESC").bind(uid).all();
+  const r = await env.DB.prepare("SELECT id, name, kind, model, created_at, last_seen FROM devices WHERE github_id = ?1 ORDER BY last_seen DESC").bind(uid).all();
   return json({ devices: r.results });
 }
 

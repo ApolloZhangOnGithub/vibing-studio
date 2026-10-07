@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS devices (
   id         TEXT    NOT NULL,
   name       TEXT,
   kind       TEXT,                        -- mac | ios
+  model      TEXT,                        -- 设备自己认出来的型号（「MacBook Pro (14-inch, Nov 2023)」）；线上的库由 account.js 第一次用到时补这一列
   created_at INTEGER NOT NULL,
   last_seen  INTEGER NOT NULL,
   PRIMARY KEY (github_id, id)

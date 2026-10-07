@@ -26,7 +26,7 @@
     "appId": "beer.paimon.terminal",
     "productName": "Vibing Studio",
     "executableName": "vibing-studio",
-    "artifactName": "Vibing-Studio-${version}-${arch}.${ext}",
+    "artifactName": "Vibing-Studio-${env.VS_VERSION}-${arch}.${ext}",
     "files": [
       "main.js",
       "preload.js",

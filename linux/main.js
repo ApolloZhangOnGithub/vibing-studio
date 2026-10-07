@@ -12,6 +12,7 @@ const crypto = require("crypto");
 const { Bridge } = require("./native/bridge");
 
 const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
+const VS_VER = PKG.vsVersion || PKG.version; // 四段的版本号（x.y.z.构建号，同 macOS 版、界面）
 const SERVICE = String(process.env.VS_SERVICE || "https://code.paimon.beer").replace(/\/+$/, "");
 const SERVICE_HOST = new URL(SERVICE).host;
 const DEV_ORIGIN = "http://localhost:8787";
@@ -158,7 +159,7 @@ function browserLogin(win, url) {
 function attach(win) {
   const st = loadState();
   const bridge = new Bridge(win, {
-    version: PKG.version, build: process.env.VS_BUILD || "", binDir: app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked", "bin") : path.join(__dirname, "bin"),
+    version: VS_VER, build: process.env.VS_BUILD || "", binDir: app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked", "bin") : path.join(__dirname, "bin"),
     openPending: () => { const l = pendingOpen; pendingOpen = []; return l; },
     newWindow: (o) => createWindow(o).webContents.id,
     saveBoot: (b0) => saveState({ boot: Object.assign({}, loadState().boot || {}, b0) }),
@@ -203,7 +204,7 @@ const bridgeOf = (wc) => { const w = wins.get(wc.id); return w ? w.bridge : null
 // ======== 桥 ========
 ipcMain.on("nados:boot", (e) => {
   const b = bridgeOf(e.sender);
-  e.returnValue = { allowed: ALLOWED, info: { platform: "linux", app: "Vibing Studio", version: PKG.version, protocol: 1, local: !!b } };
+  e.returnValue = { allowed: ALLOWED, info: { platform: "linux", app: "Vibing Studio", version: VS_VER, protocol: 1, local: !!b } };
 });
 ipcMain.handle("nados:call", async (e, cmd, args) => {
   const f = e.senderFrame;

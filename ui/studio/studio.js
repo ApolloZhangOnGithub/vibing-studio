@@ -1013,7 +1013,7 @@
       });
       // agent 的上下文、模型不放这里：在 agent 底部、输入框下面（状态栏只放工作区的东西）
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
-      if (updateReady) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
+      if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
       if (appUpd) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
       if (S.statusHtml !== sh) { S.statusHtml = sh; S.status.innerHTML = sh; }
@@ -1161,10 +1161,10 @@
   //   新版放到原位、重新打开。App 自己终端标签页里还有程序在跑的，退出前它照常问一声 ========
   var appUpd = null, appBuild = 0;
   var UPD_DIR = function () { var I = LOC() && LOC().info ? LOC().info() : null; return I && I.home ? I.home + "/Library/Application Support/Vibing Studio/update" : ""; };
-  function checkAppUpdate() {
+  function checkAppUpdate(force) {
     var N = window.nadosNative, dir = UPD_DIR();
-    if (!SLOC() || !N || !N.call || !dir || document.hidden) return;
-    (appBuild ? Promise.resolve(appBuild) : N.call("info").then(function (i) { appBuild = +(i && i.build) || 0; return appBuild; })).then(function (cur) {
+    if (!SLOC() || !N || !N.call || !dir || (document.hidden && !force)) return Promise.resolve();
+    return (appBuild ? Promise.resolve(appBuild) : N.call("info").then(function (i) { appBuild = +(i && i.build) || 0; return appBuild; })).then(function (cur) {
       if (!cur) return;
       return LOC().read(dir + "/Vibing Studio.app/Contents/Info.plist").then(function (b) {
         var x = new TextDecoder().decode(new Uint8Array(b)), bv = /<key>CFBundleVersion<\/key>\s*<string>(\d+)<\/string>/.exec(x), sv = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(x);
@@ -1178,30 +1178,39 @@
   // ---- 别的 Mac：网站上发了新版（tools/release-mac.sh 放在 downloads/，macos.json 写着最新的是哪一版）——比现在跑的新、「待更新」里也还没有：
   //   自己下载（按这台 Mac 的芯片挑那一份）、解开放进「待更新」，状态栏照常出「App 有新版本 · 重启以更新」（同 tools/stage-app.sh 放的）。半小时内只看一次 ----
   var remoteBusy = false, remoteAt = 0;
-  function checkRemoteApp() {
+  var remoteLast = null; // 最近一次查的结果：{ state: "latest"|"staged"|"error"|"skip", ver, error }
+  function checkRemoteApp(force) {
     var N = window.nadosNative, dir = UPD_DIR();
-    if (!SLOC() || !N || !N.call || !dir || remoteBusy || Date.now() - remoteAt < 30 * 60000 || location.protocol !== "https:") return;
+    if (!SLOC() || !N || !N.call || !dir || location.protocol !== "https:") return Promise.resolve({ state: "skip" });
+    if (remoteBusy) return remoteBusy;
+    if (!force && Date.now() - remoteAt < 30 * 60000) return Promise.resolve(remoteLast || { state: "skip" });
     // 用本地界面的也查（以前跳过）：发出去的 App 记着编它那台 Mac 上仓库的路径，别的 Mac 上同一个用户名、「文稿」走 iCloud 时那个路径也在，
     //   它们用的就是本地界面——以前因此从不查新版。只在比现在跑的、「待更新」里放好的都新时才下（上面比的构建号），开发这台自己放进去的更新的不会被盖掉
-    remoteAt = Date.now(); remoteBusy = true;
-    var fin = function () { remoteBusy = false; };
+    remoteAt = Date.now();
+    var res = null, fin = function (r) { res = r || res || { state: "latest" }; remoteLast = res; return res; };
     var q = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
-    Promise.all([N.call("info"), fetch("/downloads/macos.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })]).then(function (rs) {
+    remoteBusy = Promise.all([N.call("info"), fetch("/downloads/macos.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { if (!r.ok) throw new Error("读不到版本信息（HTTP " + r.status + "）"); return r.json(); })]).then(function (rs) {
       var i = rs[0] || {}, m = rs[1], cur = +i.build || 0;
-      if (i.platform !== "macos" || !m || !(+m.build > cur) || (appUpd && appUpd.build >= +m.build)) return fin(); // 不是 Mac、没有更新的、已经放好了
+      if (i.platform !== "macos") return fin({ state: "skip" });
+      if (!m || !(+m.build > cur)) return fin({ state: "latest", ver: i.version || "" }); // 没有更新的
+      if (appUpd && appUpd.build >= +m.build) return fin({ state: "staged", ver: appUpd.ver }); // 已经下好了
       var url = m[i.arch === "x86_64" ? "x86_64" : "arm64"];
-      if (!url) return fin();
+      if (!url) return fin({ state: "error", error: "没有这种芯片的安装包" });
+      remoteDl = m.version || String(m.build); allWins().forEach(function (w) { renderSoon(w); });
       return fetch("/" + String(url).replace(/^\/+/, ""), { credentials: "same-origin" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.arrayBuffer(); }).then(function (buf) {
         var zip = dir + "/download-" + m.build + ".zip", prev = dir.replace(/\/update$/, "/previous");
         return LOC().write(zip, new Uint8Array(buf)).then(function () {
           // 「待更新」里旧的那份先挪到 previous/（不删），再把新的解开放进去
-          return LOC().exec({ cmd: "U=" + q(dir) + "; P=" + q(prev) + '; if [ -d "$U/Vibing Studio.app" ]; then mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/staged-$(date +%Y%m%d-%H%M%S).app"; fi; /usr/bin/ditto -x -k ' + q(zip) + ' "$U"' });
+          return LOC().exec({ cmd: "U=" + q(dir) + "; P=" + q(prev) + '; mkdir -p "$U"; if [ -d "$U/Vibing Studio.app" ]; then mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/staged-$(date +%Y%m%d-%H%M%S).app"; fi; /usr/bin/ditto -x -k ' + q(zip) + ' "$U" && echo OK' }).then(function (r) { if (!/OK/.test(String((r && (r.out || r.stdout)) || ""))) throw new Error("解开安装包没有成功"); });
         });
-      }).then(function () { fin(); checkAppUpdate(); });
-    }).catch(fin);
+      }).then(function () { return checkAppUpdate(true); }).then(function () { return fin({ state: "staged", ver: m.version || String(m.build) }); });
+    }).catch(function (e) { console.warn("App update check:", e); return fin({ state: "error", error: String((e && e.message) || e) }); })
+      .then(function (r) { remoteBusy = null; remoteDl = ""; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); return r; });
+    return remoteBusy;
   }
-  setTimeout(checkRemoteApp, 20000);
-  setInterval(checkRemoteApp, 60 * 60000);
+  var remoteDl = ""; // 正在下载的那一版（⚙ 菜单里写「正在下载更新…」）
+  setTimeout(function () { checkRemoteApp(); }, 5000);
+  setInterval(function () { checkRemoteApp(); }, 60 * 60000);
   // 点了更新：独立的小脚本等 App 退出再换（同一时间只有一个在等——两个一起换会把刚换上的新版也挪走）；
   //   请 App 退出：新版 App 有 app.quit（同 ⌘Q：有程序在跑会先问）；老版本没有就用 AppleScript。2.5 秒后还开着：状态栏改成「按 ⌘Q 退出后自动换上」，脚本等 30 分钟
   var updT = 0, updWait = false;
@@ -3950,8 +3959,9 @@
       ];
       if (SY) {
         var ds = SY.devices ? SY.devices() : {}, ids0 = Object.keys(ds).filter(function (id) { return id !== SY.dev; }).sort(function (a, b) { return (ds[b].last_seen || 0) - (ds[a].last_seen || 0); });
-        out.push({ head: "登录的设备" }, { key: "devName", label: "设备名称", desc: "在其他设备上显示的名称", kind: "text", placeholder: SY.name(), value: SY.name(), def: undefined });
-        ids0.slice(0, 8).forEach(function (id) { out.push({ key: "dev:" + id, label: ds[id].name || "另一台设备", kind: "info", value: "上次在线 " + ago(ds[id].last_seen) }); });
+        // 名字、型号都由设备自己认出来（不让改）：这台电脑自己的名字 +「MacBook Air · Apple M2 · Mac14,2」这样的型号，方便分清是哪一台
+        out.push({ head: "登录的设备" }, { key: "devThis", label: SY.name(), desc: (SY.model && SY.model()) || "", kind: "info", value: "这台设备" });
+        ids0.slice(0, 8).forEach(function (id) { out.push({ key: "dev:" + id, label: ds[id].name || "另一台设备", desc: ds[id].model || "", kind: "info", value: "上次在线 " + ago(ds[id].last_seen) }); });
       } else out.push({ head: "登录的设备" });
       out.push({ key: "logout", label: "在这台设备上退出登录", desc: "Agent 和会话将保留在账户中，重新登录后即可恢复", kind: "button", text: "退出登录", act: "logout" });
       return out;
@@ -3960,7 +3970,6 @@
       if (k === "callMe") { delete AV_LIVE.callMe; setv("callMe", String(v || "").trim().slice(0, 40)); }
       else if (k === "fullName") { delete AV_LIVE.fullName; setv("fullName", String(v || "").trim().slice(0, 60)); }
       else if (k === "avatar") setv("avatar", /^(github|initials:\d)$/.test(String(v)) ? String(v) : "github");
-      else if (k === "devName" && window.TSU_SYNC) return TSU_SYNC.rename(v);
     },
     action: function (what, tw) {
       if (what === "logout") location.href = "/auth/logout";
@@ -4808,7 +4817,7 @@
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
       mi("检查更新…", "", function () { checkNow(); }, { icon: MI.update, sym: "arrow.down.circle" }),
-    ].filter(Boolean).concat(appUpd ? [{ sep: true }, mi("重启以更新 App（v" + String(appUpd.ver).replace(/^v/, "") + "）", "", function () { appUpdateNow(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []).concat(updateReady ? [{ sep: true }, mi("重新载入以更新" + (uiVer.next ? "（v" + uiVer.next + "）" : ""), "", function () { location.reload(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })] : []), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
+    ].filter(Boolean).concat(updItem(mi)), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
   }
   // 选连哪台 Mac（网页版 / iPad）：这个账号现在在线的 Mac；连着的时候多一项「断开」
   function pickMac(tw) {
@@ -4821,16 +4830,31 @@
       quickPick(tw, { placeholder: "选择要连接的 Mac", items: items, pick: function (it) { R.use(it.id); } });
     });
   }
+  // ⚙ 菜单最后那一项（只有一项）：App 有新版、下好了（重启时界面也一起换上）→「重启以更新（v…）」；正在下载 →「正在下载更新…」；只有界面的新版 →「重新载入以更新（v…）」
+  function updItem(mi) {
+    var v = function (x) { return x ? "（v" + String(x).replace(/^v/, "") + "）" : ""; };
+    if (appUpd) return [{ sep: true }, mi("重启以更新" + v(appUpd.ver), "", function () { appUpdateNow(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })];
+    if (remoteDl) return [{ sep: true }, mi("正在下载更新" + v(remoteDl) + "…", "", null, { icon: MI.update, sym: "arrow.down.circle", disabled: true })];
+    if (updateReady) return [{ sep: true }, mi("重新载入以更新" + v(uiVer.next), "", function () { location.reload(); }, { icon: MI.update, sym: "arrow.down.circle.fill" })];
+    return [];
+  }
   // 检查更新（同 VS Code 的「检查更新…」）：马上看一次本地的界面文件 / 网站；有就问要不要重新载入，没有就说现在是最新的（带版本号）
   function checkNow() {
+    // App 本身、界面一起查（以前只查界面：App 有新版时也说「没有可用的更新」）；App 有新版就当场下载，下好了问要不要重启
+    var A0 = window.TSU_DESK && TSU_DESK.alert ? TSU_DESK.alert : null, v = function (x) { return x ? "（v" + String(x).replace(/^v/, "") + "）" : ""; };
+    if (!A0) { checkVersion(true); checkRemoteApp(true); return; }
     checkVersion(true);
-    setTimeout(function () {
-      var cur = uiVer.cur ? "v" + uiVer.cur : "";
-      if (!window.TSU_DESK || !TSU_DESK.alert) return;
-      // 同 VS Code：一句话 + 一个按钮，不放图标、不写版本号那一串（以前 icon: "note" 不是认得的图标，会把「note」这几个字画出来）
-      if (updateReady) readVer().then(function (v) { uiVer.next = v || uiVer.next; TSU_DESK.alert({ title: "有可用的更新" + (uiVer.next ? "（v" + uiVer.next + "）" : "") + "。", message: "重新载入以更新：终端、会话都会接回去。", icon: "none", buttons: [{ label: "稍后", role: "cancel" }, { label: "重新载入", role: "default", run: function () { location.reload(); } }] }); });
-      else TSU_DESK.alert({ title: "当前没有可用的更新。", icon: "none", buttons: [{ label: "好", role: "default" }] });
-    }, 900);
+    var slow = setTimeout(function () { A0({ title: "正在检查和下载更新…", message: "下载好后 ⚙ 菜单最下面会出现「重启以更新」。", icon: "none", buttons: [{ label: "好", role: "default" }] }); }, 1500);
+    checkRemoteApp(true).then(function (r) {
+      clearTimeout(slow);
+      return readVer().then(function (nv) {
+        if (updateReady) uiVer.next = nv || uiVer.next;
+        if (appUpd) return A0({ title: "有新版本" + v(appUpd.ver) + "，已经下载好。", message: "重启以更新：标签页、会话都会接回去；旧版本留在「Application Support / Vibing Studio / previous」。", icon: "none", buttons: [{ label: "稍后", role: "cancel" }, { label: "重启以更新", role: "default", run: function () { appUpdateNow(); } }] });
+        if (r && r.state === "error") return A0({ title: "检查更新没有成功。", message: r.error + "。稍后再试，或者到 GitHub 的发行版页面下载。", icon: "none", buttons: [{ label: "好", role: "default" }] });
+        if (updateReady) return A0({ title: "有可用的更新" + v(uiVer.next) + "。", message: "重新载入以更新：终端、会话都会接回去。", icon: "none", buttons: [{ label: "稍后", role: "cancel" }, { label: "重新载入", role: "default", run: function () { location.reload(); } }] });
+        A0({ title: "当前已是最新版本" + v(uiVer.cur) + "。", icon: "none", buttons: [{ label: "好", role: "default" }] });
+      });
+    });
   }
   // 显示语言（同 VS Code 的「配置显示语言」）
   function pickLang(tw) {

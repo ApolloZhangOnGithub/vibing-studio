@@ -21,11 +21,36 @@
     if (window.nadosNative) return kind + " · App";
     return kind + " · " + (/Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "浏览器");
   }
-  var name = ls("tsu-device-name") || guessName(), kind = /iPhone|iPad|Android/.test(name) ? "ios" : "mac";
-  // Mac 上的 App：用这台 Mac 自己的名字（系统设置里起的，「Kezhen 的 MacBook Pro」），不用「Mac · App」——自己没改过名字时
-  if (!ls("tsu-device-name") && window.nadosNative && !nadosNative.remote && nadosNative.call) {
-    nadosNative.call("local.info").then(function (i) { var h = i && String(i.host || "").trim(); if (h && h !== name) { name = h; hello(); } }, function () {});
+  // 名字、型号都由设备自己认出来（不让人改，以前在设置里改过的也不再用）：
+  //   App（Mac、Linux）：这台电脑自己的名字（系统设置里起的「Kezhen 的 MacBook Pro」；Linux 是 hostnamectl 的名字）+ 精确的型号（「MacBook Pro (14-inch, Nov 2023)」「Dell Precision 5820 Tower」）；
+  //   iPhone、iPad 的 App：App 给的设备名、型号（window.vsApp）；浏览器：设备 + 浏览器（「iPhone · Safari」）
+  var VS = window.vsApp || {}, iosName = String(VS.name || "").trim(), iosModel = String(VS.model || "").trim();
+  var name = iosName || guessName(), kind = /iPhone|iPad|Android/.test(name + " " + iosModel + " " + navigator.userAgent) && !/Macintosh/.test(navigator.userAgent) ? "ios" : /iPad/.test(name) ? "ios" : "mac";
+  var model = iosModel || ls("tsu-device-model") || "";
+  if (iosModel && (!iosName || /^(iPhone|iPad|iPod)$/.test(iosName))) name = iosModel; // 系统只给了「iPhone」这样的通用名：用精确的型号当名字（「iPhone 15 Pro」）
+  var sh = function (cmd) { return window.TSU_LOCAL && TSU_LOCAL.exec ? TSU_LOCAL.exec({ cmd: cmd }).then(function (r) { return String((r && (r.out || r.stdout)) || "").trim(); }, function () { return ""; }) : Promise.resolve(""); };
+  function identify(tries) {
+    var N = window.nadosNative;
+    if (!N || N.remote || !N.call) return;
+    (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () { return N.call("local.info"); }).then(function (i) {
+      var host = i && String(i.host || "").trim(), linux = /linux/i.test(String((i && (i.platform || i.os)) || ""));
+      var nm = linux ? sh("hostnamectl --pretty 2>/dev/null || true") : Promise.resolve("");
+      // 型号：Mac 先用「关于本机」那一个（系统记在 com.apple.SystemProfiler 里，带尺寸、年份），没有就用 system_profiler（机型 + 芯片 + 型号代码）；
+      //   Linux：DMI 里的厂商、型号
+      var md = linux ? sh("cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name 2>/dev/null | tr '\\n' ' '")
+        : sh("defaults read com.apple.SystemProfiler 'CPU Names' 2>/dev/null | sed -n 's/^ *\"[^\"]*\" = \"\\(.*\\)\";$/\\1/p' | head -1").then(function (m) {
+            return m || sh("/usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null").then(function (j) {
+              try { var h = (JSON.parse(j).SPHardwareDataType || [])[0] || {}; return [h.machine_name, h.chip_type || h.cpu_type, h.machine_model].filter(Boolean).join(" · "); } catch (e) { return ""; }
+            });
+          });
+      return Promise.all([nm, md]).then(function (r) {
+        var n2 = String(r[0] || "").trim() || host || name, m2 = String(r[1] || "").replace(/\s+/g, " ").replace(/^Apple Inc\.? /, "").replace(/ Inc\.( |$)/, "$1").trim().slice(0, 80);
+        if (m2) ls("tsu-device-model", m2);
+        if (n2 !== name || m2 !== model) { name = n2; model = m2 || model; hello(); }
+      });
+    }, function () { if ((tries || 0) < 5) setTimeout(function () { identify((tries || 0) + 1); }, 2000); }); // 原生那边还没好：过一会儿再试
   }
+  identify(0);
 
   var fns = [];
   function emit(type, data) { fns.slice().forEach(function (f) { try { f(type, data); } catch (e) { console.error(e); } }); }
@@ -36,8 +61,10 @@
 
   // ---- 设备报到：打开时一次，之后每 10 分钟（「上次在线」）----
   var devices = {}; // id → { name, kind, last_seen }
-  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind }).catch(function () {}); }
-  hello();
+  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined }).catch(function () {}); }
+  // App 里（自己认得出名字、型号）：等认出来再报到（认出来时会报一次），别先报一个「Mac · App」让别的设备上闪一下；认不出（3 秒）就照旧先报
+  var N0 = window.nadosNative;
+  if (N0 && !N0.remote && N0.call) setTimeout(function () { if (name === guessName()) hello(); }, 3000); else hello();
   setInterval(hello, 600000);
 
   // ---- 拉：since 之后的所有记录（一页放不下自动翻页），同一条的几段拼好；还没推全的那条这次先不给（推全以后会整条再来）----
@@ -176,7 +203,7 @@
   window.TSU_SYNC = {
     uid: UID, dev: dev,
     name: function () { return name; },
-    rename: function (n) { name = String(n || "").trim().slice(0, 60) || guessName(); ls("tsu-device-name", name); return hello(); },
+    model: function () { return model; },
     devices: function () { return devices; },
     deviceName: function (id) { return id === dev ? name : (devices[id] || {}).name || "另一台设备"; },
     pull: pull, push: push,

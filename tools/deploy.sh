@@ -12,10 +12,12 @@ SMOKE="$HOME/Library/Caches/VibingStudio/smoke"; mkdir -p "$SMOKE"
 python3 "$HERE/tools/smoke_headless.py" "$HERE/ui" > "$SMOKE/smoke.out" 2>&1 || { cat "$SMOKE/smoke.out"; exit 1; }
 grep "^smoke:" "$SMOKE/smoke.out"
 B=$(( $(cat "$HERE/tools/ui-build.txt" 2>/dev/null || echo 328) + 1 )); echo $B > "$HERE/tools/ui-build.txt"
-V=$(printf '{"version":"0.2.%s","built":"%s"}' "$B" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
-print -r -- "$V" > "$HERE/ui/version.json"; echo "ui version: 0.2.$B"
+# 版本号一律四段：x.y.z.构建号（x.y.z 在 tools/version-base.txt，手动改；构建号每部署一次 +1）——界面、App、Linux 版、GitHub 发行版都用这一个
+BASE=$(cat "$HERE/tools/version-base.txt" 2>/dev/null || echo 0.2.1)
+V=$(printf '{"version":"%s.%s","build":%s,"built":"%s"}' "$BASE" "$B" "$B" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+print -r -- "$V" > "$HERE/ui/version.json"; echo "ui version: $BASE.$B"
 # 每一版什么时候发的（更新内容按它分日期：changelog.js 里只写版本号的条目，日期从这里取）
-python3 - "$HERE/ui/builds.json" "0.2.$B" <<'PY'
+python3 - "$HERE/ui/builds.json" "$BASE.$B" <<'PY'
 import json, sys, time, os
 p, v = sys.argv[1], sys.argv[2]
 d = {}

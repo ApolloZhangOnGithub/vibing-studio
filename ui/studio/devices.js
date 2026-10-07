@@ -48,8 +48,8 @@
     var macApp = !!(window.nadosNative && !nadosNative.remote && nadosNative.local);
     if (sy) {
       var ds = sy.devices() || {};
-      Object.keys(ds).forEach(function (id) { var x = ds[id]; add({ id: id, name: x.name || t("另一台设备", "Another device"), kind: x.kind, last: x.last_seen || 0, mac: /Mac/.test(x.name || "") && !/iPad|iPhone/.test(x.name || "") && x.kind !== "ios" }); });
-      add({ id: me, name: sy.name(), kind: macApp ? "mac" : "", last: Date.now(), self: true, mac: macApp || /Mac · App/.test(sy.name()) });
+      Object.keys(ds).forEach(function (id) { var x = ds[id]; add({ id: id, name: x.name || t("另一台设备", "Another device"), model: x.model || "", kind: x.kind, last: x.last_seen || 0, mac: /Mac/.test(x.name || "") && !/iPad|iPhone/.test(x.name || "") && x.kind !== "ios" }); });
+      add({ id: me, name: sy.name(), model: (sy.model && sy.model()) || "", kind: macApp ? "mac" : "", last: Date.now(), self: true, mac: macApp || /Mac · App/.test(sy.name()) });
     } else add({ id: me, name: macApp ? "Mac" : t("这台设备", "This device"), last: Date.now(), self: true, mac: macApp });
     hostsCache.list.forEach(function (h) { var n = add({ id: "relay:" + h.device, name: h.name || "Mac", mac: true, last: Date.now() }); n.relay = h.device; n.online = true; n.since = h.since; (h.clients || []).forEach(function (c) { var cn = add({ id: "rc:" + c.cid, name: c.cname || "iPad", last: Date.now() }); cn.via = n; cn.online = true; }); });
     // 这台设备正在用哪台 Mac（网页、iPad）
@@ -118,9 +118,8 @@
   }
   function openCard(host, P, el, n) {
     closeCard();
-    var rows = [[t("类型", "Kind"), kindName(n)], [t("状态", "Status"), n.online ? t("在线", "Online") : t("离线", "Offline")]].concat(n.last && !n.online ? [[t("上次在线", "Last seen"), ago(n.last)]] : []).concat(n.via ? [[t("正在使用", "Using"), n.via.name]] : []);
+    var rows = [[t("类型", "Kind"), kindName(n)]].concat(n.model ? [[t("型号", "Model"), n.model]] : []).concat([[t("状态", "Status"), n.online ? t("在线", "Online") : t("离线", "Offline")]]).concat(n.last && !n.online ? [[t("上次在线", "Last seen"), ago(n.last)]] : []).concat(n.via ? [[t("正在使用", "Using"), n.via.name]] : []);
     var acts = [];
-    if (n.self) acts.push(["rename", t("重命名…", "Rename…")]);
     if (n.mac && !n.self && n.online && n.relay) acts.push(["open", t("在这里使用这台 Mac", "Use This Mac Here")]);
     if (n.self && n.mac && RH()) acts.push(["share", RH().on() ? t("不再允许其他设备使用", "Stop Sharing This Mac") : t("允许其他设备使用这台 Mac", "Share This Mac")]);
     var appr = n.self && n.mac && RH() ? RH().approved() || [] : [];

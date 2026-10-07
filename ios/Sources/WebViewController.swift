@@ -66,7 +66,8 @@ final class WebHost: NSObject, WKNavigationDelegate, WKUIDelegate, UIScrollViewD
   private func installScript() {
     ucc.removeAllUserScripts()
     let clean = { (s: String) in s.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "\\", with: "") }
-    let src = "window.vsApp = { platform: 'ipad', version: '\(clean(Config.version))', lang: '\(clean(Locale.preferredLanguages.first ?? "en"))', shell: '\(clean(shell))' };"
+    // name：这台设备的名字（系统给的；iOS 16 起没有专门的权限时只给「iPhone」「iPad」）；model：精确的型号（「iPhone 15 Pro」，认不出的写型号代码 iPhone16,1）——设备列表里分清是哪一台
+    let src = "window.vsApp = { platform: 'ipad', version: '\(clean(Config.version))', lang: '\(clean(Locale.preferredLanguages.first ?? "en"))', shell: '\(clean(shell))', name: '\(clean(UIDevice.current.name))', model: '\(clean(DeviceModel.name))' };"
     ucc.addUserScript(WKUserScript(source: src, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     // 页面出错（脚本异常、没接住的 Promise、console.error）：交给 App——写在载入那一层上（不再是一块黑），也打到 App 的输出里（Xcode / devicectl --console 看得到）
     let errs = "(function(){var post=function(m){try{webkit.messageHandlers.vsApp.postMessage(m)}catch(e){}};" +
@@ -355,4 +356,28 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
   weak var target: WKScriptMessageHandler?
   init(_ t: WKScriptMessageHandler) { target = t }
   func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(c, didReceive: m) }
+}
+
+
+// 精确的型号：sysctl 的 hw.machine（「iPhone16,1」）→ 市售名称（「iPhone 15 Pro」）；表里没有的原样写代码（照样能分清）
+enum DeviceModel {
+  static let id: String = {
+    var u = utsname(); uname(&u)
+    return withUnsafePointer(to: &u.machine) { $0.withMemoryRebound(to: CChar.self, capacity: 256) { String(cString: $0) } }
+  }()
+  static let table: [String: String] = [
+    "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13", "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max", "iPhone14,6": "iPhone SE (3rd generation)",
+    "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus", "iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max",
+    "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus", "iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+    "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus", "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max", "iPhone17,5": "iPhone 16e",
+    "iPhone18,3": "iPhone 17", "iPhone18,1": "iPhone 17 Pro", "iPhone18,2": "iPhone 17 Pro Max", "iPhone18,4": "iPhone Air",
+    "iPad13,18": "iPad (10th generation)", "iPad13,19": "iPad (10th generation)", "iPad15,7": "iPad (A16)", "iPad15,8": "iPad (A16)",
+    "iPad14,1": "iPad mini (6th generation)", "iPad14,2": "iPad mini (6th generation)", "iPad16,1": "iPad mini (A17 Pro)", "iPad16,2": "iPad mini (A17 Pro)",
+    "iPad13,16": "iPad Air (5th generation)", "iPad13,17": "iPad Air (5th generation)", "iPad14,8": "iPad Air 11-inch (M2)", "iPad14,9": "iPad Air 11-inch (M2)", "iPad14,10": "iPad Air 13-inch (M2)", "iPad14,11": "iPad Air 13-inch (M2)",
+    "iPad15,3": "iPad Air 11-inch (M3)", "iPad15,4": "iPad Air 11-inch (M3)", "iPad15,5": "iPad Air 13-inch (M3)", "iPad15,6": "iPad Air 13-inch (M3)",
+    "iPad14,3": "iPad Pro 11-inch (4th generation)", "iPad14,4": "iPad Pro 11-inch (4th generation)", "iPad14,5": "iPad Pro 12.9-inch (6th generation)", "iPad14,6": "iPad Pro 12.9-inch (6th generation)",
+    "iPad16,3": "iPad Pro 11-inch (M4)", "iPad16,4": "iPad Pro 11-inch (M4)", "iPad16,5": "iPad Pro 13-inch (M4)", "iPad16,6": "iPad Pro 13-inch (M4)",
+    "iPad17,1": "iPad Pro 11-inch (M5)", "iPad17,2": "iPad Pro 11-inch (M5)", "iPad17,3": "iPad Pro 13-inch (M5)", "iPad17,4": "iPad Pro 13-inch (M5)",
+  ]
+  static var name: String { table[id] ?? id }
 }
