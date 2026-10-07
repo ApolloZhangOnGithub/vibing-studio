@@ -1339,7 +1339,7 @@
       var contTerm = function (it) {
         var sd = P.win && P.win.side, x1 = it.x || {};
         if (it.conn === "cc") { if (sd && sd.openCC) sd.openCC(x1.id, null, x1); return; }
-        if (x1.cwd && S.newTerm) S.newTerm(P.win, null, x1.cwd, it.conn === "pi" ? "pi --session " + x1.id : "codex resume " + x1.id);
+        if (x1.cwd && S.newTerm) S.newTerm(P.win, null, x1.cwd, it.conn === "pi" ? "pi --session " + shq(x1.path || x1.id) : "codex resume " + x1.id); // pi：按记录文件接着（另设了会话目录的也找得到）
       };
       var launch = function (path, reveal) { if (LOC() && LOC().exec) LOC().exec({ cmd: "/usr/bin/open " + (reveal ? "-R " : "") + shq(path), access: "user" }).catch(function () {}); };
       var copy = function (s) { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).catch(function () { if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); }); else if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); };

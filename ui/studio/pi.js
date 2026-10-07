@@ -3,6 +3,8 @@
 //     记录是一棵树（每条 id / parentId，/tree 回到前面接着说就分出一支）：只顺着现在这一支画——从最后写进来的那一条往回走到根
 //   说：pi -p --mode json --session <记录文件> -- "<话>"（在会话的目录里跑；它照常把对话写回记录，这边跟着读出来）；Esc 打断（停掉那个进程）；
 //     新会话：pi -p --mode json --session-id <新 uuid> -- "<第一句>"（id 事先定好，标签页、列表直接认这个 id）
+//   会话放在哪：同 pi 自己的规矩——默认 <agent 目录>/sessions/--<目录>--/；另设了（环境变量 PI_CODING_AGENT_SESSION_DIR > settings.json 的 sessionDir）的那个目录也扫
+//   改名：同 pi 的 /name——在记录最后接一条 session_info（pi 正写着这个文件时不写）；模型：pi --offline --list-models 列出的（几分钟问一次），选了的下一句带 --model
 //   id：pi:<会话 id>（agents.js 的外部运行时，前缀 pi）。列表：TSU_PI.list()（侧栏、Agent Finder 用），变了发 tsu-pi 事件
 (function () {
   "use strict";
@@ -10,7 +12,63 @@
   if (!LOC || !A || !A.registerExternal) { window.TSU_PI = null; return; }
   var TAIL = 4 << 20;
   var home = function () { return (LOC.info() || {}).home || ""; };
-  var root = function () { return home() + "/.pi/agent/sessions"; };
+  var shq = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
+  // 可能卡住的命令（问登录 shell、pi --list-models）：到时间就停掉
+  var execT = function (cmd, ms) {
+    var ac = window.AbortController ? new AbortController() : null, t = setTimeout(function () { if (ac) ac.abort(); }, ms || 8000);
+    return LOC.exec({ cmd: cmd }, ac ? ac.signal : undefined).then(function (r) { clearTimeout(t); return r; }, function (e) { clearTimeout(t); throw e; });
+  };
+  // ---- 会话放在哪（同 pi 自己的规矩，见它的 config.js、main.js）：
+  //   默认：<agent 目录>/sessions/--<目录>--/*.jsonl（agent 目录：环境变量 PI_CODING_AGENT_DIR，默认 ~/.pi/agent）
+  //   另设的：环境变量 PI_CODING_AGENT_SESSION_DIR > agent 目录里 settings.json 的 sessionDir——这一个目录里直接放 .jsonl，不再按目录分；
+  //     相对路径从启动 pi 的那个目录算（这边在知道的几个项目目录里各找一遍）。另设以前的会话还在默认的地方：两处都扫
+  //   环境变量常写在 shell 的配置里（App 起的命令拿不到）：问一次你的登录 shell；settings.json 只读 sessionDir 这一项 ----
+  var DIRS = { agent: "", custom: "", rel: false, at: 0, env: null };
+  try { var envK = JSON.parse(localStorage.getItem("tsu-pi-env") || "null"); if (envK && typeof envK === "object") DIRS.env0 = envK; } catch (e) { /* 坏了就重新问 */ }
+  var expand = function (x) { x = String(x || "").trim(); return x === "~" ? home() : x.indexOf("~/") === 0 ? home() + x.slice(1) : x; };
+  var agentDir = function () { return DIRS.agent || home() + "/.pi/agent"; };
+  var root = function () { return agentDir() + "/sessions"; };
+  var ENV_CMD = "\"${SHELL:-/bin/zsh}\" -lic 'printf \"\\036%s\\036%s\\036\" \"$PI_CODING_AGENT_SESSION_DIR\" \"$PI_CODING_AGENT_DIR\"' </dev/null 2>/dev/null";
+  var envP = null;
+  function shellEnv() {
+    if (DIRS.env) return Promise.resolve(DIRS.env);
+    if (envP) return envP;
+    envP = execT(ENV_CMD, 8000).then(function (r) {
+      var m = /\x1e([^\x1e]*)\x1e([^\x1e]*)\x1e[^\x1e]*$/.exec(String(r && r.out || ""));
+      return m ? { sess: m[1].trim(), agent: m[2].trim() } : (DIRS.env0 || { sess: "", agent: "" });
+    }, function () { return DIRS.env0 || { sess: "", agent: "" }; }).then(function (env) {
+      DIRS.env = env; envP = null;
+      try { localStorage.setItem("tsu-pi-env", JSON.stringify(env)); } catch (e) { /* 满了 */ }
+      return env;
+    });
+    return envP;
+  }
+  function dirs() {
+    if (DIRS.at && Date.now() - DIRS.at < 60000) return Promise.resolve(DIRS);
+    return shellEnv().then(function (env) {
+      DIRS.agent = env.agent ? expand(env.agent) : "";
+      if (env.sess) return env.sess;
+      return LOC.read(agentDir() + "/settings.json").then(function (b) { var j = null; try { j = JSON.parse(dec(b)); } catch (e) { j = null; } return j && typeof j.sessionDir === "string" ? j.sessionDir : ""; }, function () { return ""; });
+    }).then(function (sd) {
+      var c = expand(sd).replace(/\/+$/, "");
+      DIRS.custom = c; DIRS.rel = !!c && c.charAt(0) !== "/"; DIRS.at = Date.now();
+      return DIRS;
+    });
+  }
+  // 相对的 sessionDir：在这些项目目录里找（pi 的会话、Claude Code、Codex 的会话用过的目录，这边起过 pi 的目录，主目录）
+  var CWDS = (function () { try { var o = JSON.parse(localStorage.getItem("tsu-pi-cwds") || "{}"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; } })();
+  function cwdKeep(d) { if (!d || CWDS[d]) return; CWDS[d] = Date.now(); var k = Object.keys(CWDS); if (k.length > 80) k.sort(function (a, b) { return CWDS[a] - CWDS[b]; }).slice(0, k.length - 80).forEach(function (x) { delete CWDS[x]; }); try { localStorage.setItem("tsu-pi-cwds", JSON.stringify(CWDS)); } catch (e) { /* 满了 */ } }
+  function customDirs(D) {
+    if (!D.custom) return [];
+    if (!D.rel) return [D.custom];
+    var seen = {}, out = [], add = function (d) { d = String(d || "").replace(/\/+$/, ""); if (!d || d.charAt(0) !== "/" || seen[d]) return; seen[d] = 1; out.push(d + "/" + D.custom.replace(/^\.\//, "")); };
+    LIST.forEach(function (x) { add(x.cwd); });
+    Object.keys(CWDS).forEach(add);
+    try { var cc = window.STUDIO && STUDIO.cc ? STUDIO.cc() : null; ((cc && cc.list) || []).forEach(function (x) { add(x.cwd); }); } catch (e) { /* 还没有 */ }
+    if (window.TSU_CODEX && TSU_CODEX.list) TSU_CODEX.list().forEach(function (x) { add(x.cwd); });
+    add(home());
+    return out.slice(0, 60);
+  }
   var on = function () { return !!(CON && CON.on("pi")); };
   var ts = function (s) { var t = typeof s === "number" ? s : Date.parse(s || ""); return isNaN(t) ? Date.now() : t; };
   var dec = function (buf) { return new TextDecoder().decode(new Uint8Array(buf)); };
@@ -104,11 +162,11 @@
     if (!on()) { LIST = []; return Promise.resolve(LIST); }
     if (scanning) return scanning;
     if (!force && Date.now() - lastScan < 8000) return Promise.resolve(LIST);
-    var r0 = root(), files = [];
-    scanning = (LOC.ready || Promise.resolve()).then(function () { return list(r0); }).then(function (ds) {
-      return Promise.all(ds.filter(function (d) { return d.dir; }).map(function (d) {
-        return list(r0 + "/" + d.name).then(function (fs) { fs.forEach(function (f) { if (!f.dir && /\.jsonl$/.test(f.name)) files.push({ path: r0 + "/" + d.name + "/" + f.name, name: f.name, size: f.size, mtime: f.mtime }); }); });
-      }));
+    var files = [], seenP = {};
+    var addDir = function (d) { return list(d).then(function (fs) { fs.forEach(function (f) { var fp = d + "/" + f.name; if (!f.dir && /\.jsonl$/.test(f.name) && !seenP[fp]) { seenP[fp] = 1; files.push({ path: fp, name: f.name, size: f.size, mtime: f.mtime }); } }); }); };
+    scanning = (LOC.ready || Promise.resolve()).then(dirs).then(function (D) {
+      var r0 = root();
+      return Promise.all([list(r0).then(function (ds) { return Promise.all(ds.filter(function (d) { return d.dir; }).map(function (d) { return addDir(r0 + "/" + d.name); })); })].concat(customDirs(D).map(addDir)));
     }).then(function () {
       files.sort(function (a, b) { return b.mtime - a.mtime; });
       files = files.slice(0, 300);
@@ -234,7 +292,7 @@
       var at = ts(e.timestamp);
       if (e.type === "session") { if (e.cwd) info.cwd = e.cwd; return null; }
       if (e.type === "session_info") { if (e.name) { sess.title = agent.name = String(e.name); emit("config"); } return null; }
-      if (e.type === "model_change") { if (e.modelId) agent.model = e.modelId; return null; }
+      if (e.type === "model_change") { if (e.modelId) agent.model = e.modelId; if (e.provider) agent.provider = e.provider; return null; }
       if (e.type === "thinking_level_change") { agent.effort = e.thinkingLevel || ""; return null; }
       if (e.type === "compaction") { finishTurn(); cur = null; var c = { compact: { summary: String(e.summary || "").trim(), pre: e.tokensBefore || 0, post: 0, msgs: 0, trigger: "" }, at: at }; turns.push(c); return c; }
       if (e.type === "branch_summary") { finishTurn(); cur = null; var bs = { compact: { summary: String(e.summary || "").trim(), pre: 0, post: 0, msgs: 0, trigger: "branch" }, at: at }; turns.push(bs); return bs; }
@@ -249,6 +307,7 @@
       if (m.role === "bashExecution") { finishTurn(); cur = null; var b = { bash: String(m.command || ""), out: String(m.output || "").trim(), code: m.cancelled ? 130 : m.exitCode == null ? null : m.exitCode, at: mat }; turns.push(b); return b; }
       if (m.role === "assistant") {
         if (m.model) agent.model = m.model;
+        if (m.provider) agent.provider = m.provider;
         var u = m.usage || {};
         if (u.input || u.cacheRead || u.output) sess.ctx = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0) + (u.output || 0);
         if (u.cost && u.cost.total) sess.cost = (sess.cost || 0) + u.cost.total;
@@ -384,11 +443,20 @@
     rt.canSendNow = rt.canInterrupt;
     // 模型：真在用的是记录里最近一条回答的；这边选的（--model，下一句起）记在这台设备上
     var modelSel = piModels()[sid] || "";
-    rt.model = function () { var real = agent.model || "", pending = !!modelSel && !!real && modelSel.split("/").pop() !== real, id = pending ? modelSel : real || modelSel; return { id: id, name: pending ? tr((id || "pi") + " · 下一句起") : (id || "pi"), window: sess.window || 200000, pending: pending }; };
+    var bare = function (x) { return String(x || "").split("/").pop(); };
+    rt.model = function () {
+      var real = agent.model ? (agent.provider ? agent.provider + "/" : "") + agent.model : "", pending = !!modelSel && !!real && bare(modelSel) !== bare(real), id = pending ? modelSel : real || modelSel;
+      var c = catOf(id), w = c && c.window || sess.window || 200000;
+      return { id: id, name: pending ? tr(bare(id) + " · 下一句起") : bare(id) || "pi", window: w, pending: pending };
+    };
+    // 可选的：pi 自己列出来的（pi --offline --list-models：配好了登录的提供方的模型；五分钟问一次）；列表里没有的（这段会话在用的、选过的）放在后面
     rt.models = function () {
-      var ids = [], add = function (x) { if (x && ids.indexOf(x) < 0) ids.push(x); };
-      add(agent.model); add(modelSel); LIST.forEach(function (x) { add(x.model); });
-      return ids.map(function (id) { return { id: id, name: id, desc: "" }; });
+      piCatalog();
+      var out = (PICAT.list || []).map(function (m) { return { id: m.id, name: m.model, desc: m.provider + (m.ctx ? " · " + m.ctx : ""), ctx: m.window || 0 }; }), have = {};
+      out.forEach(function (m) { have[m.id] = 1; });
+      var cur = rt.model().id;
+      [cur, modelSel].forEach(function (x) { if (x && !have[x] && !out.some(function (m) { return bare(m.id) === bare(x) && x.indexOf("/") < 0; })) { have[x] = 1; out.push({ id: x, name: bare(x), desc: x.indexOf("/") > 0 ? x.split("/")[0] : "", more: true }); } });
+      return out;
     };
     rt.setModel = function (id) { id = String(id || "").trim(); if (!id) return false; modelSel = id; piModelKeep(sid, id); emit("config"); emit("status"); return true; };
     // 附的图（[Image: "…"]，见 rt.send）→ @路径，话里去掉
@@ -396,7 +464,8 @@
     function runPi(text) {
       outBuf = "";
       var sh = takeShots(text), fresh = !info.path;
-      var argv = ["pi", "-p", "--mode", "json"].concat(fresh ? ["--session-id", sid] : ["--session", info.path], modelSel ? ["--model", modelSel] : [], ["--"], sh.args, [sh.text]);
+      var argv = ["pi", "-p", "--mode", "json"].concat(fresh ? ["--session-id", sid].concat(DIRS.custom ? ["--session-dir", DIRS.custom] : []) : ["--session", info.path], modelSel ? ["--model", modelSel] : [], ["--"], sh.args, [sh.text]);
+      cwdKeep(info.cwd || home());
       var mine = proc = LOC.proc({ argv: argv, cwd: info.cwd || home() }, function (s, isErr) {
         if (isErr) { if (/\berror\b/i.test(s) && !/^\s*(WARN|INFO|\[)/.test(s)) rt.record("pi", s.trim().slice(0, 600)); return; }
         outBuf += s;
@@ -412,7 +481,7 @@
         });
       }, function (code) {
         if (proc !== mine && proc) return;
-        proc = null; setBusy(false);
+        proc = null; sentAt = 0; setBusy(false); // 这边起的那一问完了：不再按「刚发过」当成在跑
         if (fresh && !info.path) findNew(); else poll();
         if (code && code !== 143 && code !== 130 && code !== 15) rt.record("pi", tr("pi 已退出（" + code + "）"));
         if (rt.queued) { var q = rt.queued; rt.queued = null; emit("status"); setTimeout(function () { rt.send(q.text); }, 300); } // 排着的（几句拼成的一条）一次发出去
@@ -463,11 +532,18 @@
       var c = m[1].toLowerCase(), say = function (res) { rt.record(line, res); };
       switch (c) {
         case "new": case "clear": newSession(info.cwd || home()); return true;
+        case "name":
+          var nm = m[2].trim();
+          if (!nm) { var x0 = byId[sid]; say(x0 && x0.named ? "Session name: " + x0.title : "No session name set · /name <name> to set one"); return true; }
+          if (!info.path) { say(tr("先说一句建出这段会话，再用 /name")); return true; }
+          if (busy) { say(tr("pi 正在用这段会话：等它停下再改名")); return true; }
+          rename(sid, nm).then(function (v) { sess.title = agent.name = v; emit("config"); say("Session name set: " + v); }, function (e) { say(String(e && e.message || e)); });
+          return true;
         case "model":
           if (!m[2].trim()) { say("Model: " + (rt.model().id || "default") + " · /model <provider/model> to change (from the next message)"); return true; }
           rt.setModel(m[2].trim()); say("Set model to " + m[2].trim() + " (from the next message)"); return true;
         case "session":
-          say(["Session: " + (info.path ? sid : "not started yet"), "File: " + String(info.path || "—").replace(home(), "~"), "Directory: " + String(info.cwd || home()).replace(home(), "~"), "Model: " + (agent.model || "default"), sess.ctx ? "Context: " + Math.round(sess.ctx / 1000) + "k tokens" : "", sess.cost ? "Cost: $" + sess.cost.toFixed(4) : ""].filter(Boolean).join("\n"));
+          say(["Session: " + (info.path ? sid : "not started yet"), byId[sid] && byId[sid].named ? "Name: " + byId[sid].title : "", "File: " + String(info.path || "—").replace(home(), "~"), "Directory: " + String(info.cwd || home()).replace(home(), "~"), "Model: " + (rt.model().id || "default"), sess.ctx ? "Context: " + Math.round(sess.ctx / 1000) + "k tokens" : "", sess.cost ? "Cost: $" + sess.cost.toFixed(4) : ""].filter(Boolean).join("\n"));
           return true;
         case "exit": case "quit": return false;
       }
@@ -484,6 +560,66 @@
       });
       return Promise.resolve({ groups: [{ title: "Needs input", items: needs }, { title: "Working", items: working }, { title: "Completed", items: done }].filter(function (g) { return g.items.length; }), running: working.length - (busy ? 1 : 0) });
     };
+  }
+  // ---- 模型目录：pi --offline --list-models（不连网、不花钱：只列配好了登录的提供方的模型），五分钟问一次；记在这台设备上（下次一打开就有）。
+  //   输出是一张表：表头「provider  model  context  max-out  thinking  images」，列之间至少两个空格 ----
+  var PICAT = { at: 0, busy: false, list: null };
+  try { var pc0 = JSON.parse(localStorage.getItem("tsu-pi-models") || "null"); if (Array.isArray(pc0)) PICAT.list = pc0; } catch (e) { PICAT.list = null; }
+  var tok = function (x) { var m = /^([\d.]+)\s*([kKmM]?)$/.exec(String(x || "").trim()); return m ? Math.round(+m[1] * (/k/i.test(m[2]) ? 1e3 : /m/i.test(m[2]) ? 1e6 : 1)) : 0; };
+  function parseModels(out) {
+    var ls = String(out || "").replace(/\x1b\[[\d;]*m/g, "").split("\n"), hi = -1;
+    for (var i = 0; i < ls.length; i++) if (/^provider\s{2,}model\s{2,}/.test(ls[i].trim())) { hi = i; break; }
+    if (hi < 0) return /no models/i.test(out) ? [] : null;
+    var rows = [];
+    ls.slice(hi + 1).forEach(function (l) { var c = l.trim().split(/\s{2,}/); if (c.length < 2 || !c[0] || !c[1]) return; rows.push({ id: c[0] + "/" + c[1], provider: c[0], model: c[1], ctx: c[2] || "", window: tok(c[2]), thinking: c[4] === "yes", images: c[5] === "yes" }); });
+    return rows;
+  }
+  function piCatalog(force) {
+    if (!on() || PICAT.busy || (!force && Date.now() - PICAT.at < 300000)) return;
+    PICAT.busy = true; PICAT.at = Date.now();
+    execT("pi --offline --list-models 2>/dev/null", 30000).then(function (r) {
+      var rows = parseModels(r && r.out);
+      if (rows) { PICAT.list = rows; try { localStorage.setItem("tsu-pi-models", JSON.stringify(rows)); } catch (e) { /* 满了 */ } }
+    }, function () {}).then(function () { PICAT.busy = false; });
+  }
+  var catOf = function (id) { var b = String(id || "").split("/").pop(); return (PICAT.list || []).filter(function (m) { return m.id === id || m.model === b; })[0] || null; };
+  // ---- 改名：同 pi 的 /name——在记录最后（现在这一支的末尾：最后写进来的那一条）接一条 session_info（session-format.md）。
+  //   pi 正写着这个文件时不写：这边起的 pi 在跑、文件 15 秒内写过、最后一行还没写完，都先不改（说一声等它停下）；
+  //   写之前再看一眼大小没变（读完到写之间它写了：这一次不改）。只追加一行，不动前面的任何内容 ----
+  var hex8 = function () { var a = new Uint8Array(4); crypto.getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ("0" + b.toString(16)).slice(-2); }).join(""); };
+  var busyErr = function () { return Object.assign(new Error(tr("pi 正在用这段会话：等它停下再改名")), { busy: true }); };
+  function rename(id, name) {
+    name = String(name == null ? "" : name).replace(/\s+/g, " ").trim().slice(0, 120);
+    var x = byId[id];
+    if (!x || !x.path || !LOC.exec) return Promise.reject(new Error(tr("找不到 pi 会话：" + id)));
+    var rt = rts["pi:" + id];
+    if (rt && rt.busyNow && rt.busyNow()) return Promise.reject(busyErr());
+    return LOC.stat(x.path).then(function (st) {
+      if (!st) throw new Error(tr("会话记录不存在"));
+      if (Date.now() - (st.mtime || 0) < 15000) throw busyErr();
+      var n = Math.min(st.size, 1 << 20);
+      return LOC.read(x.path, { offset: st.size - n, max: n }).then(function (buf) {
+        var u8 = new Uint8Array(buf);
+        if (u8.length && u8[u8.length - 1] !== 10) throw busyErr(); // 最后一行还没写完
+        var leaf = null, ids = {};
+        entriesIn(dec(buf), st.size > n, false).forEach(function (e) { if (e && e.id && e.type !== "session") { ids[e.id] = 1; leaf = e.id; } });
+        var nid = hex8(); while (ids[nid]) nid = hex8();
+        var e = { type: "session_info", id: nid, parentId: leaf, timestamp: new Date().toISOString() };
+        if (name) e.name = name; // 不给名字：清掉（同 pi：没有 name 的 session_info）
+        var cmd = "f=" + shq(x.path) + "; s=$(wc -c < \"$f\" | tr -d ' '); [ \"$s\" = " + st.size + " ] || { echo CHANGED; exit 0; }; printf '%s\\n' " + shq(JSON.stringify(e)) + " >> \"$f\" && echo APPEND-OK";
+        return LOC.exec({ cmd: cmd }).then(function (r) {
+          var o = String(r && r.out || "");
+          if (/CHANGED/.test(o)) throw busyErr();
+          if (!/APPEND-OK/.test(o)) throw new Error(tr("没能改名") + (r && r.err ? "：" + String(r.err).trim().slice(0, 200) : ""));
+          delete heads[x.path];
+          if (name) { x.title = name; x.named = true; x.dimTitle = false; } else x.named = false;
+          keepList();
+          document.dispatchEvent(new Event("tsu-pi"));
+          setTimeout(function () { scan(true); }, 300);
+          return name;
+        });
+      });
+    });
   }
   // 每段会话选的模型（--model）
   var piModels = function () { try { return JSON.parse(localStorage.getItem("tsu-pi-model") || "{}") || {}; } catch (e) { return {}; } };
@@ -516,10 +652,13 @@
   }
   // 刷新后（布局里记着 pi:<会话>）、搜索、侧栏：第一次用到时现建（还没扫到的：先扫一遍再找它的文件）
   A.setExternalResolver(function (aid) { return on() ? ensure(aid.slice(3)) : null; }, "pi");
-  var API = { list: function () { return LIST; }, refresh: scan, ensure: ensure, id: function (sid) { return "pi:" + sid; }, get: function (sid) { return byId[sid] || null; }, newSession: newSession, real: function (sid) { return sid; } };
+  var API = { list: function () { return LIST; }, refresh: scan, ensure: ensure, id: function (sid) { return "pi:" + sid; }, get: function (sid) { return byId[sid] || null; }, newSession: newSession, real: function (sid) { return sid; },
+    rename: rename, // (会话 id, 名字) → Promise：pi 正在用时 reject（e.busy）
+    busy: function (sid) { var r = rts["pi:" + sid], x = byId[sid]; return !!(r && r.busyNow && r.busyNow()) || !!(x && x.live); },
+    models: function (force) { piCatalog(force); return PICAT.list || []; }, dirs: function () { return DIRS; } };
   if (CON && CON.provide) CON.provide("pi", { newSession: newSession });
   window.TSU_PI = on() ? API : null;
   if (CON) CON.watch(function (id, v) { if (id !== "pi") return; window.TSU_PI = v ? API : null; if (v) scan(true); else { LIST = []; document.dispatchEvent(new Event("tsu-pi")); } });
-  if (on()) setTimeout(function () { scan(true); }, 1500);
+  if (on()) setTimeout(function () { scan(true); piCatalog(); }, 1500);
   setInterval(function () { if (on() && !document.hidden) scan(); }, 10000);
 })();

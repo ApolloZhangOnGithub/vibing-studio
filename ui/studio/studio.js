@@ -3207,7 +3207,7 @@
   }
   // 发布的默认值 = 作者自己用着的那一套（2026-09-29 照 ~/.paimon/studio.json 抄的）：做完通知、界面用系统字、活动栏精致、布局紧凑、标题栏不放地址放总览、
   //   不要状态栏 / 缩略图 / 路径导航。名字、头像、语言这些个人的不抄
-  var SET_DEF = { linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: false, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
+  var SET_DEF = { linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: false, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
   var SET_ABOUT = {
     colorScheme: "配色方案：auto（跟随系统）或方案 ID（paimon-dark、paimon-light、dark-gray、solarized-dark、solarized-light），也可以自定义：{ \"type\": \"dark\", \"colors\": {…}, \"terminal\": {…} }",
     highlightScheme: "（旧的，只认自定义颜色 { \"k\": \"#…\" }）代码高亮现在分浅色、深色两套：见 highlightLight、highlightDark",
@@ -3260,6 +3260,7 @@
     SET[k] = v;
     keep("st-settings", SET);
     applySettings();
+    if (k === "appLauncher") { allWins().forEach(function (w) { syncAct(w); }); if (STUDIO.apps && STUDIO.apps.dock) STUDIO.apps.dock(); }
     if (k === "claudeTheme" || k === "colorScheme" || k === "os") document.dispatchEvent(new Event("st-theme-mode")); // 深浅色跟不跟系统变了：窗口那边（native.js）跟上
     if (SLOC()) writeKey(k);
   }
@@ -3823,6 +3824,7 @@
         { key: "activityBar", label: "活动栏", desc: "显示活动栏", kind: "toggle", value: !!getv("activityBar"), def: true },
         { key: "activityPos", label: "活动栏位置", kind: "seg", options: [["side", "默认"], ["top", "顶部"], ["bottom", "底部"]], value: getv("activityPos"), def: SET_DEF.activityPos },
         { key: "activitySize", label: "活动栏大小", kind: "seg", options: [["normal", "宽裕"], ["compact", "精致"]], value: getv("activitySize"), def: SET_DEF.activitySize },
+        { key: "appLauncher", label: "App 启动器", desc: "开始菜单：点活动栏上的 App 按钮弹出一块；程序坞：窗口最下面一排 App，鼠标移到窗口底边时出现", kind: "seg", options: [["menu", "开始菜单"], ["dock", "程序坞"]], value: getv("appLauncher"), def: SET_DEF.appLauncher },
         { key: "sideBarPos", label: "主侧栏位置", kind: "seg", options: [["left", "左侧"], ["right", "右侧"]], value: getv("sideBarPos"), def: SET_DEF.sideBarPos },
         { key: "layButtons", label: "布局按钮", desc: "标题栏右边切换侧栏、面板、浏览器的那几个按钮：精简为一个按钮，点开再选（手机上默认）；经典为全部摆出来", kind: "seg", options: [["concise", "精简"], ["classic", "经典"]], value: layConcise() ? "concise" : "classic", def: layDefault() },
         { head: "编辑区" },
@@ -3944,6 +3946,7 @@
         { key: "callMe", label: "Agent 对你的称呼", desc: "将写入每个 Agent 的系统提示词", kind: "text", placeholder: login, value: getv("callMe") || "", def: "" },
         { key: "login", label: "GitHub 账号", kind: "info", value: login + (me.admin ? " · 管理员" : "") },
         { key: "usageLink", label: "余额与用量", desc: "在「用量」中查看", must: true, kind: "button", text: "查看用量", act: "usage" },
+        { key: "passkeys", label: "通行密钥", desc: "用 Touch ID、Face ID 或手机登录，不用每次都经过 GitHub；在浏览器里添加和管理", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" },
       ];
       if (SY) {
         var ds = SY.devices ? SY.devices() : {}, ids0 = Object.keys(ds).filter(function (id) { return id !== SY.dev; }).sort(function (a, b) { return (ds[b].last_seen || 0) - (ds[a].last_seen || 0); });
@@ -3963,6 +3966,7 @@
       if (what === "logout") location.href = "/auth/logout";
       else if (what === "login") location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search);
       else if (what === "usage") settings(tw, "usage");
+      else if (what === "passkeys") openPasskeys();
     },
   });
 
@@ -4299,7 +4303,8 @@
   }
   function setActPos(v) { if (v === "hidden") return setv("activityBar", false); setv("activityPos", v); setv("activityBar", true); }
   var ACTP = null; // 预览：右键菜单里指着的那一项临时显示 / 不显示
-  var actOn = function (k, real) { if (k === "manage") return true; if (!real && ACTP && k in ACTP) return ACTP[k]; var o = getv("activityItems") || {}; return k in o ? !!o[k] : true; };
+  // 用程序坞（设置 › 布局 › App 启动器）时活动栏上不放 App 按钮
+  var actOn = function (k, real) { if (k === "manage") return true; if (k === "apps" && getv("appLauncher") === "dock") return false; if (!real && ACTP && k in ACTP) return ACTP[k]; var o = getv("activityItems") || {}; return k in o ? !!o[k] : true; };
   var MIc2 = function (svg) { return String(svg || "").replace(/<svg /, '<svg width="16" height="16" '); }; // 活动栏的 24 格图标缩到菜单里
   // 当前视图的标题栏（活动栏在顶部时放进这里）
   var viewHeader = function (side, v) { return VIEWS[v] ? side.querySelector('.st-cview[data-view="' + v + '"] > .st-shdr') : v === "search" ? side.querySelector(".st-sview > .st-shdr") : v === "extensions" ? side.querySelector(".st-xview > .st-shdr") : side.querySelector(".st-vhead"); };
@@ -4334,6 +4339,12 @@
     else if (bar && bar.lastElementChild !== g) bar.appendChild(g); // 标题栏最右边（布局控件后面）
     g.classList.toggle("st-globbar", pos !== "side");
   }
+  // 通行密钥：在浏览器里加、管（App 的网页视图里用不了系统的通行密钥——要在 Safari / Chrome 里，那里有 Touch ID、iCloud 钥匙串）
+  function openPasskeys() {
+    var u = location.origin + "/account/passkeys", N = window.nadosNative;
+    if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); });
+    else window.open(u, "_blank", "noopener");
+  }
   // 账户（同 VS Code 左下角的账户）：GitHub 登录的是谁、退出登录
   function accountMenu(tw, anchor, side) {
     var me = window.TSU_AGENTS && TSU_AGENTS.me ? TSU_AGENTS.me() : null, login = me && me.loggedIn !== false && me.login;
@@ -4349,6 +4360,7 @@
     menu(login ? [
       { label: login + " (GitHub)", icon: MI.agent, sym: "person.crop.circle", items: [
         { label: "账号设置…", icon: MI.gear || MI.agent, sym: "person.text.rectangle", run: function () { settings(tw, "account"); } }, // 设置里的「账号」：头像、额度与用量、设备
+        { label: "通行密钥…", icon: MI.lock || MI.gear || MI.agent, sym: "key", run: openPasskeys },
         syncOn ? { label: "设备" + (devN ? "（" + devN + "）" : "") + "…", icon: MI.window || MI.gear, sym: "laptopcomputer.and.iphone", run: function () { settings(tw, "account"); } } : null,
         { sep: true },
         { label: "退出登录…", icon: MI.open, sym: "rectangle.portrait.and.arrow.right", run: signOut },

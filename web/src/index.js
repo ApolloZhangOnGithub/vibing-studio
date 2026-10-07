@@ -2,6 +2,7 @@
 import { fetchPage } from "./fetch.js";
 import { account } from "./account.js";
 import { translate, translateUsage } from "./translate.js";
+import { passkey, PASSKEY_JS, passkeyIcon } from "./passkey.js";
 export { Relay } from "./relay.js"; // iPad 端借 Mac 干活的中转（Durable Object，见 relay.js）
 // 浏览器只拿到一个签名的会话 Cookie（HttpOnly，JS 读不到）；GitHub token 用完即弃，Anthropic Key 只在 Worker Secret 里。
 // 路由：/auth/login → GitHub → /auth/callback；/auth/logout；/api/me；/api/chat（SSE 原样转给浏览器，另一路读完记账）；
@@ -25,6 +26,8 @@ export default {
       if (url.pathname === "/auth/callback") return callback(req, env, url);
       if (url.pathname === "/auth/logout") return logout(url);
       if (url.pathname === "/auth/app") return appLogin(req, env, url);
+      // 通行密钥（passkey.js）：登录（/auth/passkey/*）、管理（/account/passkeys、/api/passkeys、/api/passkey/*）
+      if (url.pathname.startsWith("/auth/passkey/") || url.pathname === "/account/passkeys" || url.pathname === "/api/passkeys" || url.pathname.startsWith("/api/passkey/")) return passkey(req, env, url, passkeyHelpers);
       if (url.pathname === "/api/me") return me(req, env);
       if (url.pathname === "/api/chat" && req.method === "POST") return chat(req, env, ctx);
       if (url.pathname === "/api/usage") return usage(req, env);
@@ -135,9 +138,12 @@ a svg{width:16px;height:16px;fill:#fff}
 }
 // 登录页：Vibing Studio 自己的样子——图标、名字、「使用 GitHub 登录」，跟着系统深浅；不引用网页的任何文件（图标是不用登录也给的那一个）。
 //   去桌面模拟器（/simulator）的还是锁屏那一页
-function loginPage(next) {
-  if (/^\/simulator\b/.test(next || "")) return lockPage(next);
-  const href = "/auth/login" + (next && next !== "/" ? "?next=" + encodeURIComponent(safeNext(next)) : "");
+function loginPage(next, appCtx) {
+  if (/^\/simulator\b/.test(next || "") && !appCtx) return lockPage(next);
+  const nx = next && next !== "/" ? safeNext(next) : "/";
+  // App 在系统浏览器里打开的（appCtx：App 的 challenge、本机端口）：GitHub 那个按钮走原来的路（go=github），通行密钥登好了交回 App
+  const href = appCtx ? "/auth/login?app=" + appCtx.app + (appCtx.port ? "&port=" + appCtx.port : "") + (nx !== "/" ? "&next=" + encodeURIComponent(nx) : "") + "&go=github" : "/auth/login" + (nx !== "/" ? "?next=" + encodeURIComponent(nx) : "");
+  const pkCtx = JSON.stringify(Object.assign({ next: nx }, appCtx ? { app: appCtx.app, port: appCtx.port || "" } : {})).replace(/</g, "\\u003c");
   return new Response(`<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>Vibing Studio</title>
 <style>
@@ -151,11 +157,21 @@ a{margin-top:10px;display:inline-flex;align-items:center;gap:8px;padding:9px 20p
 a:hover{background:#000}
 a svg{width:17px;height:17px;fill:currentColor}
 @media (prefers-color-scheme:dark){body{color:#f5f5f7;background:#111113}p{color:#a1a1a6}a{background:#f5f5f7;color:#111113}a:hover{background:#fff}img{box-shadow:0 6px 22px rgba(0,0,0,.5)}}
+.pk{margin-top:2px;display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;border:1px solid rgba(0,0,0,.18);background:transparent;color:inherit;font:inherit;font-size:14.5px;cursor:pointer}
+.pk:hover{background:rgba(0,0,0,.05)}
+.pk svg{width:16px;height:16px}
+.pkmsg{min-height:18px;font-size:13px;color:#d70015}
+@media (prefers-color-scheme:dark){.pk{border-color:rgba(255,255,255,.25)}.pk:hover{background:rgba(255,255,255,.08)}.pkmsg{color:#ff6961}}
 </style></head><body><main>
 <img src="/img/app-icon-192.png" alt="">
 <h1>Vibing Studio</h1>
-<p>登录后连接你的 Mac，使用上面的会话、终端和文件</p>
+<p>${appCtx ? "登录后回到 Vibing Studio" : "登录后连接你的 Mac，使用上面的会话、终端和文件"}</p>
 <a href="${href}"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>使用 GitHub 登录</a>
+<button type="button" class="pk" id="pk">${passkeyIcon}使用通行密钥登录</button>
+<div class="pkmsg" id="pkmsg"></div>
+<script>${PASSKEY_JS}
+document.getElementById("pk").addEventListener("click",function(){passkeyLogin(${pkCtx},function(t){document.getElementById("pkmsg").textContent=t;});});
+</script>
 </main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
@@ -246,6 +262,8 @@ async function login(req, env, url) {
     return app ? toApp(env, url, user, app, appPort(url.searchParams.get("port"))) : finishLogin(env, url, user, safeNext(next));
   }
   if (!env.GITHUB_CLIENT_ID) return json({ error: "GITHUB_CLIENT_ID is not configured" }, 500);
+  // App 在系统浏览器里打开的登录：先给一页选「使用 GitHub 登录」还是「使用通行密钥登录」（go=github 才直接去 GitHub）
+  if (app && url.searchParams.get("go") !== "github") return loginPage(safeNext(url.searchParams.get("next") || "/"), { app, port: appPort(url.searchParams.get("port")) });
   const state = b64url(crypto.getRandomValues(new Uint8Array(24)));
   const to = new URL("https://github.com/login/oauth/authorize");
   to.searchParams.set("client_id", env.GITHUB_CLIENT_ID);
@@ -285,10 +303,19 @@ async function callback(req, env, url) {
   return app ? toApp(env, url, user, app, appPort(cookies(req)[APP_PORT_COOKIE])) : finishLogin(env, url, user, next);
 }
 // 原生 App：浏览器这边不设会话，给 App 一个一次性的 code（2 分钟、用一次），跳回 App（paimon://auth）
-async function toApp(env, url, user, challenge, port) {
+async function appRedirect(env, user, challenge, port) {
   const code = b64url(crypto.getRandomValues(new Uint8Array(32)));
   await env.DB.prepare("INSERT INTO app_codes (code, github_id, challenge, expires) VALUES (?, ?, ?, ?)").bind(code, user.github_id, challenge, now() + 120e3).run();
-  const headers = new Headers({ location: port ? "http://127.0.0.1:" + port + "/auth?code=" + code : "paimon://auth?code=" + code });
+  return port ? "http://127.0.0.1:" + port + "/auth?code=" + code : "paimon://auth?code=" + code;
+}
+// 通行密钥那边要用的（passkey.js）
+const passkeyHelpers = {
+  currentUser: (req, env) => currentUser(req, env), json: (d, s, h) => json(d, s, h), safeNext: (n) => safeNext(n), privateOk: (env, id) => privateOk(env, id),
+  appChallenge: (s) => appChallenge(s), appPort: (s) => appPort(s), appRedirect: (env, user, ch, port) => appRedirect(env, user, ch, port),
+  sessionHeaders: async (env, url, user) => ({ "set-cookie": setCookie(url, COOKIE, await makeSession(env, user), SESSION_DAYS * 86400) }),
+};
+async function toApp(env, url, user, challenge, port) {
+  const headers = new Headers({ location: await appRedirect(env, user, challenge, port) });
   headers.append("set-cookie", setCookie(url, STATE_COOKIE, "", 0));
   headers.append("set-cookie", setCookie(url, APP_COOKIE, "", 0));
   headers.append("set-cookie", setCookie(url, APP_PORT_COOKIE, "", 0));

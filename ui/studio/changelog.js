@@ -11,6 +11,16 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-07", ver: "0.2.426", items: {
+      new: [
+        ["连接器新增 pi（第一个第三方扩展，在「设置 › 连接器」的「扩展」里）：这台电脑上 pi 的会话出现在左边会话树和 Agent Finder 里，打开能看到对话（工具调用、思考、压缩、分支只画当前那一支），能接着说、开新会话、Esc 打断。", "New connector: pi, the first third-party extension (Settings › Connectors › Extensions). pi sessions on this computer appear in the session tree and Agent Finder; open one to see the conversation (tool calls, thinking, compaction, and only the current branch), continue it, start new sessions, and press Esc to interrupt."],
+        ["可选的程序坞：设置 › 布局 › App 启动器 选「程序坞」，窗口最下面出一排 App（访达、终端、浏览器、设备），平时藏着，鼠标移到窗口底边时升起来；开着的 App 下面有小点。选它时活动栏上不再放 App 按钮。", "Optional Dock: choose Dock under Settings › Layout › App Launcher to get a row of apps (Finder, Terminal, Browser, Devices) at the bottom of the window. It stays hidden until you move the pointer to the bottom edge, and running apps show a dot. The Apps button leaves the activity bar while the Dock is on."],
+        ["登录支持通行密钥（Touch ID、Face ID、手机、安全密钥）：登录页多了「使用通行密钥登录」，App 在浏览器里打开的登录页也有；在「设置 › 账户 › 通行密钥」（或账户菜单）里打开浏览器添加、改名、删除。", "Sign in with a passkey (Touch ID, Face ID, your phone or a security key): the sign-in page, including the one the app opens in your browser, now has “Sign in with a passkey”. Add, rename and remove passkeys from Settings › Account › Passkeys or the account menu, which opens your browser."],
+      ],
+      improved: [
+        ["终端快了五六倍：一大段输出（cat 一个 50 MB 的文件）从 6 秒多降到 1 秒以内，带颜色的输出同样快了很多；打字的回显照样即时。读伪终端改成一个专门的线程一直读、攒一小会儿一起交给页面（以前每读 1 KB 左右就要排一次队）。需要 App 0.2.426。", "Terminals are five to six times faster: printing a 50 MB file now takes under a second instead of over six, colored output is much faster too, and typing still echoes instantly. A dedicated thread now reads the terminal continuously and hands output to the page in batches (previously every read of about 1 KB queued a separate task). Requires app 0.2.426."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.425", items: {
       improved: [
         ["Linux 版登录交给系统的默认浏览器（同 macOS 版）：用浏览器里已经登录着的 GitHub，通行密钥、两步验证都在浏览器里完成，登好了自动回到 App。以前在 App 窗口里打开 GitHub 的登录页，输了密码也没反应。", "The Linux app now signs in through your default browser, like the Mac app: it uses the GitHub session already in your browser (passkeys and two-factor happen there) and returns to the app when done. Previously GitHub's sign-in page opened inside the app window and submitting the password did nothing."],

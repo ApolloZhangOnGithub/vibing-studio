@@ -33,7 +33,7 @@
 
   // ---- 登记表 ----
   var APPS = [];
-  function paintAll() { if (pop && popFor) openPop(popTw, popFor); } // 登记表变了：开着的那块重画
+  function paintAll() { if (pop && popFor) openPop(popTw, popFor); if (typeof dockPaint === "function") dockPaint(); } // 登记表变了：开着的那块、程序坞重画
   // 这个窗口里开着的、test(program) 为真的那一页（几组编辑器都找）
   function findTab(tw, test) {
     var hit = null;
@@ -158,5 +158,55 @@
   function popup(tw, anchor, kbd) { if (pop && popFor === anchor) return closePop(); openPop(tw || front(), anchor, kbd); }
   if (I18N && I18N.onChange) I18N.onChange(function () { if (pop && popFor) openPop(popTw, popFor); });
 
-  S.apps = { add: add, popup: popup, close: closePop, icon: ICON24, list: function () { return APPS.slice(); }, open: function (id, tw, fresh) { var a = APPS.filter(function (x) { return x.id === id; })[0]; return a ? openApp(a, tw, fresh) : null; } };
+  // ======== 程序坞（设置 › 布局 › App 启动器 选「程序坞」）：窗口最下面一排 App 的图标，同 macOS 的程序坞——平时藏着，鼠标移到窗口底边时升起来，
+  //   移开一会儿再落下（不挡对话、输入框）；开着的 App 下面一个小点；点一下打开（⌘ 点新开一页），右键同开始菜单那几项
+  var dockEl = null, dockHot = null, dockT = 0;
+  var dockOn = function () { return S.get && S.get("appLauncher") === "dock"; };
+  function dockPaint() {
+    if (!dockEl) return;
+    var tw = front();
+    dockEl.innerHTML = '<div class="apv-dk">' + APPS.map(function (a) {
+      var ok = okOf(a), open = ok && tw && a.find && a.find(tw);
+      return '<button type="button" class="apv-di' + (ok ? "" : " off") + '" data-app="' + esc(a.id) + '" title="' + esc(ok ? nameOf(a) : t("连接 Mac 后可用", "Available after connecting a Mac")) + '"' + (ok ? "" : ' aria-disabled="true"') + ">" +
+        '<span class="apv-tic">' + (typeof a.logo === "function" ? a.logo() : a.logo || "") + "</span>" + (open ? '<i class="apv-dot"></i>' : "") + "</button>";
+    }).join("") + "</div>";
+  }
+  function dockShow(on) {
+    clearTimeout(dockT);
+    if (!dockEl) return;
+    if (on) { dockPaint(); dockEl.classList.add("on"); }
+    else dockT = setTimeout(function () { if (dockEl && !dockEl.matches(":hover")) dockEl.classList.remove("on"); }, 450);
+  }
+  function dock() {
+    if (!dockOn()) { if (dockEl) { dockEl.remove(); dockEl = null; } if (dockHot) { dockHot.remove(); dockHot = null; } return; }
+    if (dockEl) return dockPaint();
+    dockHot = document.createElement("div"); dockHot.className = "apv-dockhot"; // 窗口底边一条看不见的感应区
+    dockEl = document.createElement("div"); dockEl.className = "apv-dock"; dockEl.setAttribute("role", "toolbar"); dockEl.setAttribute("aria-label", t("程序坞", "Dock"));
+    document.body.appendChild(dockHot); document.body.appendChild(dockEl);
+    dockPaint();
+    dockHot.addEventListener("mouseenter", function () { dockShow(true); });
+    dockEl.addEventListener("mouseenter", function () { dockShow(true); });
+    dockEl.addEventListener("mouseleave", function () { dockShow(false); });
+    dockEl.addEventListener("click", function (e) {
+      var b = e.target.closest(".apv-di"), a = b && byId(b.dataset.app);
+      if (!a || !okOf(a)) return;
+      openApp(a, front(), e.metaKey || e.ctrlKey);
+      dockPaint();
+    });
+    dockEl.addEventListener("contextmenu", function (e) {
+      var b = e.target.closest(".apv-di"), a = b && byId(b.dataset.app);
+      if (!a) return;
+      e.preventDefault();
+      S.menu([
+        { label: t("打开", "Open"), disabled: !okOf(a), run: function () { openApp(a, front()); } },
+        { label: t("在新标签页中打开", "Open in New Tab"), disabled: !okOf(a), run: function () { openApp(a, front(), true); } },
+        { sep: true },
+        { label: t("改用开始菜单", "Use Start Menu Instead"), run: function () { if (S.setv) S.setv("appLauncher", "menu"); } },
+      ], { x: e.clientX, y: e.clientY });
+    });
+  }
+  setTimeout(dock, 0);
+  if (I18N && I18N.onChange) I18N.onChange(function () { if (dockEl) { dockEl.setAttribute("aria-label", t("程序坞", "Dock")); dockPaint(); } });
+
+  S.apps = { add: add, popup: popup, close: closePop, dock: dock, icon: ICON24, list: function () { return APPS.slice(); }, open: function (id, tw, fresh) { var a = APPS.filter(function (x) { return x.id === id; })[0]; return a ? openApp(a, tw, fresh) : null; } };
 })();

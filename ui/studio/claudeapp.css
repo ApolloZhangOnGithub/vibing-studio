@@ -569,8 +569,8 @@ html.termapp.st-os-claude.light { --ca-k-cc: #c96442; --ca-k-cx: #3b3b38; --ca-k
 .ca-ico { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-style: normal; line-height: 0; }
 .ca-ico svg { display: block; width: 14px; height: 14px; }
 .ca-k-cc { color: var(--ca-k-cc, #d97757); }
-.ca-k-cx { color: var(--ca-k-cx, #d6d6d3); }
-.ca-k-cx svg { width: 13.5px; height: 13.5px; }
+.ca-k-cx, .ca-k-pi { color: var(--ca-k-cx, #d6d6d3); }
+.ca-k-cx svg, .ca-k-pi svg { width: 13.5px; height: 13.5px; }
 .ca-k-pm { color: var(--ca-k-pm, #a78bfa); }
 .ca-k-pm svg { width: 13px; height: 13px; }
 .ca-ico > img.pm-av { width: 15px; height: 15px; vertical-align: 0; } /* Paimon：派蒙的头像 */
@@ -716,7 +716,7 @@ html.termapp.st-os-claude .ca-it.unread .ca-name { color: var(--ca-fg); font-wei
 html.termapp.st-os-claude :is(.ca-sh, .ca-lhead) { color: var(--ca-sh-c); }
 html.termapp.st-os-claude .ca-shx:hover { color: var(--ca-dim); }
 html.termapp.st-os-claude .ca-smore { padding-left: 33px; color: var(--ca-sh-c); }
-html.termapp.st-os-claude .ca-k-cx { color: var(--ca-name); } /* Codex 的结：同会话名的灰（单色的，不抢眼） */
+html.termapp.st-os-claude .ca-k-cx, html.termapp.st-os-claude .ca-k-pi { color: var(--ca-name); } /* Codex 的结：同会话名的灰（单色的，不抢眼） */
 html.termapp.st-os-claude .ca-bdg { width: 6px; height: 6px; right: -1.5px; bottom: -1.5px; }
 html.termapp.st-os-claude .ca-ico.s-waiting .ca-bdg { background: var(--ca-rowbg, var(--ca-side-bg)); border: 1.2px solid var(--ca-amber); }
 html.termapp.st-os-claude .ca-ico.s-live .ca-bdg { background: var(--ca-rowbg, var(--ca-side-bg)); border: 1.2px solid color-mix(in srgb, var(--ca-name) 70%, transparent); }
