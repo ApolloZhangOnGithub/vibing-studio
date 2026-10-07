@@ -1,7 +1,7 @@
 // index.js —— code.paimon.beer 的 Worker：GitHub 登录（邀请制）、会话 Cookie、额度账本（人民币）、模型流式代理（Anthropic 格式，默认接 DeepSeek）。
 import { fetchPage } from "./fetch.js";
 import { account } from "./account.js";
-import { translate, translateUsage } from "./translate.js";
+import { translate, translateUsage, svcLog } from "./translate.js";
 import { passkey, PASSKEY_JS, passkeyIcon } from "./passkey.js";
 export { Relay } from "./relay.js"; // iPad 端借 Mac 干活的中转（Durable Object，见 relay.js）
 // 浏览器只拿到一个签名的会话 Cookie（HttpOnly，JS 读不到）；GitHub token 用完即弃，Anthropic Key 只在 Worker Secret 里。
@@ -33,7 +33,8 @@ export default {
       if (url.pathname === "/api/usage") return usage(req, env);
       if (url.pathname === "/api/stats") return stats(req, env, url);
       if (url.pathname === "/api/version") return json({ id: env.CF_VERSION_METADATA ? String(env.CF_VERSION_METADATA.id || "").slice(0, 8) : "", at: env.CF_VERSION_METADATA ? env.CF_VERSION_METADATA.timestamp || "" : "" }); // 线上这一版（部署的版本号、时间）：「有新版本」卡片上写
-      if (url.pathname === "/api/translate" && req.method === "POST") return translate(req, env, { currentUser, json, models, priceOf, isPeak, charge, upstreamKey }); // 任务翻译（translate.js）
+      if (url.pathname === "/api/translate" && req.method === "POST") return translate(req, env, { currentUser, json, models, priceOf, isPeak, charge, upstreamKey, waitUntil: (p) => ctx.waitUntil(p) }); // 任务翻译（translate.js）
+      if (url.pathname === "/api/svclog") return svcLog(req, env, { currentUser, json }); // 服务状态页：这个账号所有设备的翻译请求记录（translate.js）
       if (url.pathname.startsWith("/api/tools/") && req.method === "POST") return tool(req, env, url.pathname.slice(11));
       if (url.pathname.startsWith("/api/sbx/")) return sandbox(req, env, url);
       if (url.pathname.startsWith("/api/admin/") && req.method === "POST") return admin(req, env, url);

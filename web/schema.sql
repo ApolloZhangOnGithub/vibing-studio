@@ -118,3 +118,23 @@ CREATE TABLE IF NOT EXISTS translations (
   hits       INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (github_id, key)
 );
+
+-- 服务记录（src/translate.js 写，服务状态页读 GET /api/svclog）：每次翻译请求一行，留 30 天。线上没有这张表时第一次写会自己建上
+CREATE TABLE IF NOT EXISTS svc_log (
+  github_id  INTEGER NOT NULL,
+  at         INTEGER NOT NULL,          -- 请求进来的时间（毫秒）
+  svc        TEXT    NOT NULL,          -- 'translate'
+  op         TEXT,                      -- 'tasks'（任务标题）| 'reply'（回复）
+  status     INTEGER,                   -- 回给前端的 HTTP 状态
+  ms         INTEGER,                   -- 整个请求用了多久
+  up_ms      INTEGER,                   -- 其中等模型的时间（没叫模型是 NULL）
+  up_status  INTEGER,                   -- 模型那边的 HTTP 状态
+  items      INTEGER,                   -- 这一批几条
+  cached     INTEGER,                   -- 服务器缓存命中几条
+  translated INTEGER,                   -- 这次叫模型翻好几条
+  model      TEXT,
+  dev        TEXT,                      -- 哪台设备（devices.id）
+  error      TEXT,
+  note       TEXT
+);
+CREATE INDEX IF NOT EXISTS svc_log_user_at ON svc_log (github_id, at);
