@@ -1,7 +1,9 @@
 // translate.js —— 任务翻译（设置 › 对话 › 任务翻译）：Agent 的任务标题（任务清单、后台任务、子 Agent、运行状态行那一句）翻成用户要的语言。
 // POST /api/translate { to, items: [原文…]（一批最多 40 条、每条最多 400 字）, context?: "这些任务是谁的（agent / 会话名）" }
 //   → { out: [译文…]（和 items 一一对应；翻不了的原样）, cached: 服务器缓存命中几条, hits: [命中的是第几条], translated: 这次叫模型翻了几条, cost: 这次扣了多少（微元）}
-//   余额不足（402）、限流（429）、上游出错（502）时也照样给 out + hits：缓存里有的前端照样收下（不扣钱），只有没翻过的才算没翻成
+//   余额不足（402）、限流（429）、上游出错（502）、上游超时（504）时也照样给 out + hits：缓存里有的前端照样收下（不扣钱），只有没翻过的才算没翻成
+//   限流：每个账号每分钟最多 TRANSLATE_PER_MIN 次（默认 60）叫模型；429 带 retryAfter（毫秒）：再过多久窗口里就空出一次，前端照这个等，不是一律停一分钟
+//   每一次请求记一行 svc_log（服务状态页：GET /api/svclog）：什么时候、任务还是回复、几条、整个多久、其中模型多久、状态码、错误
 // 用系统默认的额度：同 Paimon 的 agent（余额、按实际 token 扣费、账本里一行），模型用最便宜的那个（名字带 flash / haiku 的）。
 // 账本：kind = 'translate'，note 以条数开头（「12 strings → zh」：SQLite 的 CAST(note AS INTEGER) 取到 12），用量页据此汇总「翻译用了多少」。
 //
@@ -13,7 +15,9 @@
 // 版本（VERSION）改了：key 全变，旧的自然不再命中。
 export const TR_VERSION = 1;
 const LANGS = { zh: "Simplified Chinese (简体中文)", en: "English", ja: "Japanese (日本語)", ko: "Korean (한국어)", fr: "French", de: "German", es: "Spanish" };
-const MAX_ITEMS = 40, MAX_LEN = 400, RATE = 20; // 一批几条、一条多长；每分钟最多叫几次模型（翻译）
+// 一批几条、一条多长；每分钟最多叫几次模型（翻译；以前是 20：任务标题多是一条一个请求，几个 agent 一起跑就满，满了整页的翻译停一分钟）；
+// 模型多久不回就不等了（DeepSeek 忙的时候请求排着队，连接一直开着、不报错：不设上限就一直挂着）
+const MAX_ITEMS = 40, MAX_LEN = 400, RATE = 60, UP_WAIT = { tasks: 45000, reply: 120000 };
 // kind: "reply"（回复翻译：Agent 说的话，一条是一段 markdown——段落、列表的一项、标题、引用）：一批最多 24 段、每段最多 4000 字；换行留着；
 //   key 里多一个 "reply"（同一句当任务标题翻和当一段话翻不混）；提示词是翻一段话、markdown 原样。不给 kind 就是原来的任务翻译，什么都不变
 const R_ITEMS = 24, R_LEN = 4000;

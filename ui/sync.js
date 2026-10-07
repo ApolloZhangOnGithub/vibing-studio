@@ -22,36 +22,61 @@
     return kind + " · " + (/Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "浏览器");
   }
   // 名字、型号都由设备自己认出来（不让人改，以前在设置里改过的也不再用）：
-  //   App（Mac、Linux）：这台电脑自己的名字（系统设置里起的「Kezhen 的 MacBook Pro」；Linux 是 hostnamectl 的名字）+ 精确的型号（「MacBook Pro (14-inch, Nov 2023)」「Dell Precision 5820 Tower」）；
+  //   App（Mac、Linux）：这台电脑自己的名字（系统设置里起的「Kezhen 的 MacBook Pro」；Linux 是 hostnamectl 的名字）+ 精确的型号（「MacBook Air (M2, 2022)」「Dell Precision 5820 Tower」）；
   //   iPhone、iPad 的 App：App 给的设备名、型号（window.vsApp）；浏览器：设备 + 浏览器（「iPhone · Safari」）
+  //   kind：mac（Mac 的 App）、linux（Linux 的 App）、ios（iPhone、iPad 的 App）、web（浏览器）
   var VS = window.vsApp || {}, iosName = String(VS.name || "").trim(), iosModel = String(VS.model || "").trim();
-  var name = iosName || guessName(), kind = /iPhone|iPad|Android/.test(name + " " + iosModel + " " + navigator.userAgent) && !/Macintosh/.test(navigator.userAgent) ? "ios" : /iPad/.test(name) ? "ios" : "mac";
-  var model = iosModel || ls("tsu-device-model") || "";
+  var name = iosName || guessName(), ua0 = navigator.userAgent;
+  var kind = !window.nadosNative ? "web" : /iPhone|iPad|Android/.test(name + " " + iosModel + " " + ua0) && !/Macintosh/.test(ua0) || /iPad/.test(name) ? "ios" : /Linux/.test(ua0) ? "linux" : "mac";
+  var model = iosModel || ls("tsu-device-model") || "", hw = "";
   // 系统、App 版本（设备卡片里写）：浏览器从 UA 读系统；App 的版本下面问原生那边
   var osName = (function () { var ua = navigator.userAgent, m; if ((m = /(iPhone|CPU) OS (\d+)[_.](\d+)/.exec(ua))) return "iOS " + m[2] + "." + m[3]; if ((m = /Android (\d+(\.\d+)?)/.exec(ua))) return "Android " + m[1]; if (/Mac OS X/.test(ua)) return "macOS"; if (/Windows/.test(ua)) return "Windows"; if (/Linux/.test(ua)) return "Linux"; return ""; })();
   var appVer = "";
   fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.version && !appVer) { appVer = (window.nadosNative ? "" : "网页 ") + j.version; } }, function () {});
   if (iosModel && (!iosName || /^(iPhone|iPad|iPod)$/.test(iosName))) name = iosModel; // 系统只给了「iPhone」这样的通用名：用精确的型号当名字（「iPhone 15 Pro」）
   var sh = function (cmd) { return window.TSU_LOCAL && TSU_LOCAL.exec ? TSU_LOCAL.exec({ cmd: cmd }).then(function (r) { return String((r && (r.out || r.stdout)) || "").trim(); }, function () { return ""; }) : Promise.resolve(""); };
+  // 硬件编号只发哈希（混上账号，不同账号之间对不上）：同一台机器上不同的 App、页面（各有各的本地存储、设备 id）按它并成一台
+  var fnv = function (s) {
+    var a = 0x811c9dc5, b = 0x050c5d1f;
+    for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = Math.imul(b ^ c, 0x5bd1e995) ^ (b >>> 15); }
+    return ("0000000" + (a >>> 0).toString(16)).slice(-8) + ("0000000" + (b >>> 0).toString(16)).slice(-8);
+  };
+  var hwOf = function (raw) { raw = String(raw || "").trim(); return raw ? fnv("vs:" + UID + ":" + raw.toLowerCase()) : ""; };
+  hw = hwOf(VS.hw);
+  // 名字、型号、硬件编号、系统都由这台机器自己给：一段 shell，Mac、Linux 各走各的
+  //   Mac：系统设置里起的名字（ComputerName）；型号是「关于本机」那个（「MacBook Air (M2, 2022)」，Apple 芯片的 Mac 记在 ioreg 的 product-name），
+  //        Intel 的 Mac 没有就用 system_profiler 的机型 · 处理器 · 型号代码；硬件编号 IOPlatformUUID；系统 sw_vers
+  //   Linux：hostnamectl 起的名字（没起就是主机名）、DMI 的厂商 + 型号、machine-id、os-release
+  var ID_SH = [
+    "if [ \"$(uname -s)\" = Darwin ]; then",
+    "  echo \"name=$(scutil --get ComputerName 2>/dev/null)\"",
+    "  m=$(ioreg -rc IOPlatformDevice -k product-name 2>/dev/null | sed -n 's/.*\"product-name\" = <\"\\([^\"]*\\)\".*/\\1/p' | head -1)",
+    "  [ -n \"$m\" ] || m=$(/usr/sbin/system_profiler SPHardwareDataType 2>/dev/null | sed -nE 's/^ *(Model Name|Chip|Processor Name|Model Identifier): (.*)$/\\2/p' | awk 'NR>1{printf \" · \"}{printf \"%s\",$0}')",
+    "  echo \"model=$m\"",
+    "  echo \"hw=$(ioreg -rd1 -c IOPlatformExpertDevice 2>/dev/null | sed -n 's/.*\"IOPlatformUUID\" = \"\\([^\"]*\\)\".*/\\1/p')\"",
+    "  echo \"os=macOS $(sw_vers -productVersion 2>/dev/null)\"",
+    "else",
+    "  n=$(hostnamectl --pretty 2>/dev/null); [ -n \"$n\" ] || n=$(hostname 2>/dev/null)",
+    "  echo \"name=$n\"",
+    "  echo \"model=$(cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name 2>/dev/null | tr '\\n' ' ')\"",
+    "  echo \"hw=$(cat /etc/machine-id 2>/dev/null || cat /var/lib/dbus/machine-id 2>/dev/null)\"",
+    "  echo \"os=$(. /etc/os-release 2>/dev/null && echo \"$PRETTY_NAME\")\"",
+    "  echo \"linux=1\"",
+    "fi",
+  ].join("\n");
   function identify(tries) {
     var N = window.nadosNative;
     if (!N || N.remote || !N.call) return;
     (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () { N.call("info").then(function (x) { if (x && x.version) appVer = String(x.version); }, function () {}); return N.call("local.info"); }).then(function (i) {
-      if (i && i.os) osName = String(i.os);
-      var host = i && String(i.host || "").trim(), linux = /linux/i.test(String((i && (i.platform || i.os)) || ""));
-      var nm = linux ? sh("hostnamectl --pretty 2>/dev/null || true") : Promise.resolve("");
-      // 型号：Mac 先用「关于本机」那一个（系统记在 com.apple.SystemProfiler 里，带尺寸、年份），没有就用 system_profiler（机型 + 芯片 + 型号代码）；
-      //   Linux：DMI 里的厂商、型号
-      var md = linux ? sh("cat /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name 2>/dev/null | tr '\\n' ' '")
-        : sh("defaults read com.apple.SystemProfiler 'CPU Names' 2>/dev/null | sed -n 's/^ *\"[^\"]*\" = \"\\(.*\\)\";$/\\1/p' | head -1").then(function (m) {
-            return m || sh("/usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null").then(function (j) {
-              try { var h = (JSON.parse(j).SPHardwareDataType || [])[0] || {}; return [h.machine_name, h.chip_type || h.cpu_type, h.machine_model].filter(Boolean).join(" · "); } catch (e) { return ""; }
-            });
-          });
-      return Promise.all([nm, md]).then(function (r) {
-        var n2 = String(r[0] || "").trim() || host || name, m2 = String(r[1] || "").replace(/\s+/g, " ").replace(/^Apple Inc\.? /, "").replace(/ Inc\.( |$)/, "$1").trim().slice(0, 80);
+      var host = i && String(i.host || "").replace(/\.local$/, "").trim();
+      return sh(ID_SH).then(function (out) {
+        var kv = {};
+        String(out || "").split("\n").forEach(function (l) { var k = l.indexOf("="); if (k > 0) kv[l.slice(0, k)] = l.slice(k + 1).trim(); });
+        var n2 = kv.name || host || name, m2 = String(kv.model || "").replace(/\s+/g, " ").replace(/^Apple Inc\.? /, "").replace(/ Inc\.( |$)/, "$1").trim().slice(0, 80);
+        var h2 = hwOf(kv.hw), o2 = kv.os && !/^macOS\s*$/.test(kv.os) ? kv.os : (i && i.os) || osName;
+        if (kv.linux) kind = "linux";
         if (m2) ls("tsu-device-model", m2);
-        if (n2 !== name || m2 !== model) { name = n2; model = m2 || model; hello(); }
+        if (n2 !== name || m2 !== model || h2 !== hw || o2 !== osName) { name = n2; model = m2 || model; hw = h2 || hw; osName = o2; hello(); }
       });
     }, function () { if ((tries || 0) < 5) setTimeout(function () { identify((tries || 0) + 1); }, 2000); }); // 原生那边还没好：过一会儿再试
   }
@@ -66,7 +91,9 @@
 
   // ---- 设备报到：打开时一次，之后每 10 分钟（「上次在线」）----
   var devices = {}; // id → { name, kind, last_seen }
-  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined }).catch(function () {}); }
+  // 中转里的编号：这台 Mac 当主机时的（remote-host.js）、这台设备连别的 Mac 时的（remote.js）——「设备」App 按它把在线的 Mac、连着它的设备和这里对上
+  function relayIds() { var a = []; try { var h = window.TSU_REMOTE_HOST; if (h && h.device) a.push(h.device()); a.push(localStorage.getItem("vs-remote-client")); } catch (e) { /* 没有 */ } return a.filter(Boolean).join(" ").slice(0, 120); }
+  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined }).catch(function () {}); }
   // App 里（自己认得出名字、型号）：等认出来再报到（认出来时会报一次），别先报一个「Mac · App」让别的设备上闪一下；认不出（3 秒）就照旧先报
   var N0 = window.nadosNative;
   if (N0 && !N0.remote && N0.call) setTimeout(function () { if (name === guessName()) hello(); }, 3000); else hello();
@@ -147,12 +174,12 @@
   var leases = {}; // name → { dev, until, device }
   var serverNow = function () { return Date.now() + skew; };
   function note(j) {
-    if (j.devices) j.devices.forEach(function (d) { devices[d.id] = d; });
+    if (j.devices) { var nd = {}; j.devices.forEach(function (d) { nd[d.id] = d; }); var ch = JSON.stringify(nd) !== JSON.stringify(devices); devices = nd; if (ch) emit("devices"); } // 每次拉都是整份（移除了的也就没了）
     if (j.leases) {
       var mine = {};
       Object.keys(leases).forEach(function (k) { if (leases[k].dev === dev && leases[k].until > serverNow()) mine[k] = leases[k]; }); // 自己刚拿到的先留着（拉的那一刻它可能还没写进去）
       leases = mine;
-      j.leases.forEach(function (l) { if (!leases[l.name] || l.dev !== dev) leases[l.name] = { dev: l.dev, until: l.until, device: (devices[l.dev] || {}).name || null }; });
+      j.leases.forEach(function (l) { if (!leases[l.name] || l.dev !== dev) leases[l.name] = { dev: l.dev, until: l.until, device: devices[l.dev] ? plainName(devices[l.dev]) : null }; });
       emit("leases");
     }
     if (j.notices && j.notices.length) noticesIn(j.notices);
@@ -205,14 +232,64 @@
   document.addEventListener("visibilitychange", function () { if (!document.hidden) schedule(0); });
   window.addEventListener("focus", function () { schedule(0); });
 
+  // ---- 给人看的设备列表（「设备」App、设置 › 账号）----
+  //   · 同一台机器（hw 一样：同一台 Mac 上不同版本的 App、页面各有各的设备 id）并成一台，用最近报到的那条；ids 是它名下所有的设备 id
+  //   · 以前的版本留下的旧记录不列：那时认不出名字，记成了「Mac · App」「iPhone · Safari」这样的通用名。同一类设备里有比它晚出现的
+  //     （名字认出来了的、同名的，或者网页的被同一类的 App 取代）就是被取代了——同一台机器换了设备 id、同一台 iPhone 先用网页后来装了 App；
+  //     还在用的设备打开新版时会自己报上真名
+  //   · 30 天没出现的不列
+  var GENERIC = /^(Mac|iPad|iPhone|Android|Windows|Linux|设备) · (App|Safari|Chrome|Edge|Firefox|浏览器)$/;
+  var famOf = function (d) {
+    var s = [d.name, d.model, d.os].join(" ");
+    if (/iPad/i.test(s)) return "ipad";
+    if (/iPhone|iPod/i.test(s)) return "iphone";
+    if (/Android/i.test(s)) return "android";
+    if (d.kind === "ios") return "iphone";
+    return "computer"; // Mac、Linux、Windows（以前 Linux 的 App 也记成 mac）
+  };
+  var isWeb = function (d) { return d.kind === "web" || / · (Safari|Chrome|Edge|Firefox|浏览器)$/.test(String(d.name || "")); };
+  var plainName = function (d) { var m = GENERIC.exec(String(d.name || "")); return m ? d.model || m[1] : String(d.name || "") || "另一台设备"; };
+  function deviceList() {
+    var now = serverNow(), mine = devices[dev] || {};
+    var all = Object.keys(devices).filter(function (id) { return id !== dev; }).map(function (id) { return Object.assign({}, devices[id]); });
+    all.push({ id: dev, name: name, kind: kind, model: model, os: osName, app: appVer, hw: hw, relay: relayIds(), created_at: mine.created_at || now, last_seen: now, self: true });
+    all.sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); });
+    var byHw = {}, out = [];
+    all.forEach(function (d) {
+      var k = d.hw && byHw[d.hw];
+      if (k) { k.ids.push(d.id); if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); return; }
+      d.ids = [d.id];
+      if (d.hw) byHw[d.hw] = d;
+      out.push(d);
+    });
+    var gen = function (d) { return !d.hw && GENERIC.test(String(d.name || "")); };
+    out = out.filter(function (d) {
+      if (d.self) return true;
+      if (now - (d.last_seen || 0) > 30 * 86400000) return false;
+      if (!gen(d)) return true;
+      var f = famOf(d), web = isWeb(d);
+      return !out.some(function (o) { return o !== d && famOf(o) === f && (o.last_seen || 0) > (d.last_seen || 0) && (!gen(o) || o.name === d.name || (web && !isWeb(o))); });
+    });
+    return out.map(function (d) { var m = GENERIC.exec(String(d.name || "")); d.label = plainName(d); d.web = isWeb(d); d.browser = d.web && m ? m[2] : ""; d.family = famOf(d); return d; });
+  }
+  // 从账户里移除（ids：并成一台的那几个设备 id 一起）；还登录着的设备下次报到时会重新出现
+  function removeDevices(ids) {
+    ids = (ids || []).filter(function (id) { return id && id !== dev; });
+    if (!ids.length) return Promise.resolve({ ok: true, removed: 0 });
+    return post("/api/devices", { op: "remove", ids: ids }).then(function (j) { ids.forEach(function (id) { delete devices[id]; }); emit("devices"); return j; });
+  }
+
   window.TSU_SYNC = {
     uid: UID, dev: dev,
     name: function () { return name; },
     model: function () { return model; },
     os: function () { return osName; },
     app: function () { return appVer; },
+    hw: function () { return hw; },
+    kind: function () { return kind; },
     devices: function () { return devices; },
-    deviceName: function (id) { return id === dev ? name : (devices[id] || {}).name || "另一台设备"; },
+    deviceList: deviceList, removeDevices: removeDevices,
+    deviceName: function (id) { return id === dev ? name : devices[id] ? plainName(devices[id]) : "另一台设备"; },
     pull: pull, push: push,
     attach: function (c) { consumer = c; schedule(interval()); }, // c: { since() → 拉到了哪个 rev, apply({ recs, head, notices, leases }) → Promise }
     poke: function (ms) { schedule(ms == null ? 300 : ms); },
