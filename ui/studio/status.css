@@ -68,7 +68,7 @@ html.light .svs-tip { box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 .svs-incL { border-top: 1px solid var(--st-line); }
 .svs-incL .svs-call:first-child > .svs-row { border-top: 0; }
 /* 调用记录 */
-.svs-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.svs-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; scroll-margin-top: 16px; }
 .svs-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--st-line); border-radius: 999px; background: none; color: var(--st-fg); font: inherit; font-size: 12px; cursor: pointer; }
 .svs-chip:hover { background: var(--st-hover); }
 .svs-chip.on { border-color: var(--st-hi); background: var(--st-hi); color: var(--st-bg); }

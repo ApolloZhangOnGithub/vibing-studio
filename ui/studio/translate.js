@@ -138,7 +138,7 @@
     if (!src || !needs(src, to)) return s;
     var k = keyOf(to, src);
     if (MEM.has(k)) return MEM.get(k) || s;
-    if (FLY.has(k) || PEND.has(k) || (LMISS.has(k) && !netOK(k))) return s; // 本机没有、网络又在暂停：先照原文
+    if (FLY.has(k) || PEND.has(k) || (LMISS.has(k) && !netOK(k))) return s; // 在队里 / 路上，或者试满了还没到点：先照原文
     PEND.set(k, { k: k, src: src, to: to, ctx: ctx ? String(ctx) : "" });
     if (!timer) timer = setTimeout(flush, WAIT);
     return s;
@@ -173,11 +173,11 @@
   var stats = { warm: 0, local: 0, server: 0, model: 0, requests: 0, failed: 0, limited: 0, last: "" }; // 看缓存有没有用（测试、调试用）：warm = 起来时从本机读进内存的条数；limited = 被限流几次；last = 上一次出错
   // ---- 发请求：两条队（任务标题、回复），同一种语言的不管哪个 agent 的都进同一批；同时在路上的最多：回复 2 个、任务 1 个——
   //   有在路上的时候新来的在队里攒着，回来了一起发（以前一个 agent 一批、来一条发一条：任务标题多是一条一个请求，几个 agent 一起跑，
-  //   服务器每分钟 20 次一会儿就满，满了这一页的翻译整个停一分钟、到点又一起发、又满）。任务标题两批之间至少隔 1.5 秒。
+  //   服务器每分钟 20 次一会儿就满，满了这一页的翻译整个停一分钟、到点又一起发、又满）。任务标题两批之间至少隔 2 秒。
   //   回复先发；同一条队里新的先发（刚说完的那几段先翻，旧的历史排在后面）。
   //   限流（429）：照服务器给的 retryAfter 等，东西都还在队里，到点接着发；余额不足、没登录：停 10 分钟，也还在队里。
   //   出错（5xx、超时、断网）：这一批 4 秒、12 秒、36 秒后再试，满 4 次放下（5 分钟后用到时再要）
-  var QUEUE = { task: new Map(), reply: new Map() }, INFL = { task: 0, reply: 0 }, MAXF = { task: 1, reply: 2 }, LAST = { task: 0, reply: 0 }, TASK_GAP = 1500, seqN = 0, pumpT = 0, pumpAt = 0;
+  var QUEUE = { task: new Map(), reply: new Map() }, INFL = { task: 0, reply: 0 }, MAXF = { task: 1, reply: 2 }, LAST = { task: 0, reply: 0 }, TASK_GAP = 2000, seqN = 0, pumpT = 0, pumpAt = 0;
   function enqueue(list, kind) {
     var q = QUEUE[kind];
     list.forEach(function (x) { if (!q.has(x.k)) { x.seq = ++seqN; x.tries = 0; x.after = 0; q.set(x.k, x); } });
@@ -221,7 +221,7 @@
       body: JSON.stringify({ to: list[0].to, items: list.map(function (x) { return x.src; }), context: names.join(", ").slice(0, 200), kind: kind === "reply" ? "reply" : undefined }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { st: r.status, j: j || {} }; }); })
       .then(function (res) { clearTimeout(tmo); settle(list, kind, res.st, res.j, t0, ""); },
-        function (e) { clearTimeout(tmo); settle(list, kind, 0, {}, t0, e && e.name === "AbortError" ? "timeout" : String((e && e.message) || e || "network error")); });
+        function (e) { clearTimeout(tmo); settle(list, kind, 0, {}, t0, e && e.name === "AbortError" ? "Client timeout (" + (kind === "reply" ? 150 : 60) + "s)" : String((e && e.message) || e || "network error")); });
   }
   function settle(list, kind, st, j, t0, err) {
     INFL[kind]--;
@@ -345,7 +345,7 @@
       var k = keyOf("r" + to, src);
       if (MEM.has(k)) { var v = MEM.get(k); out.push(v ? b.pre + v : b.raw); return; }
       miss = true;
-      if (FLY.has(k) || RPEND.has(k) || (LMISS.has(k) && !netOK(k))) return; // 本机没有、网络又在暂停：等到点再来
+      if (FLY.has(k) || RPEND.has(k) || (LMISS.has(k) && !netOK(k))) return; // 在队里 / 路上，或者试满了还没到点：等译文到了、到点再来
       RPEND.set(k, { k: k, src: src, to: to, ctx: ctx ? String(ctx) : "" });
       if (!rtimer) rtimer = setTimeout(rflush, WAIT);
     });

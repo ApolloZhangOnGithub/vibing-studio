@@ -260,7 +260,7 @@
     var ss = V.ss;
     return list.map(function (r, i) {
       var k = pre + ":" + r.svc + ":" + r.at + ":" + r.op, open = !!ss.open[k];
-      return '<div class="svs-call' + (open ? " open" : "") + '"><button type="button" class="svs-row svs-' + sevOfCls(r.cls) + '" data-open="' + esc(k) + '"><span>' + esc(when(r.at)) + "</span><span>" + esc(svcName(r.svc)) + "</span><span>" + esc(opName(r)) + (r.n ? '<span class="svs-dim"> · ' + esc(t(r.n + " 条", r.n + " items")) + "</span>" : "") + "</span><span>" + esc(dur(r.ms)) + '</span><span class="svs-res">' + esc(result(r)) + "</span></button>" +
+      return '<div class="svs-call' + (open ? " open" : "") + '"><button type="button" class="svs-row svs-' + sevOfCls(r.cls) + '" data-open="' + esc(k) + '"><span>' + esc(when(r.at)) + "</span><span>" + esc(svcName(r.svc)) + "</span><span>" + esc(opName(r)) + (r.n ? '<span class="svs-dim"> · ' + esc(t(r.n + " 条", r.n + (r.n === 1 ? " item" : " items"))) + "</span>" : "") + "</span><span>" + esc(dur(r.ms)) + '</span><span class="svs-res">' + esc(result(r)) + "</span></button>" +
         (open ? detail(r) : "") + "</div>";
     }).join("");
   }
