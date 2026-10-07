@@ -298,8 +298,8 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .term .grp.live .hot.hitem:hover { filter: brightness(1.6); }
 .tpane.tl .term .grp.live .hot.hitem:hover { filter: brightness(0.55); }
 /* 「ctrl+x ctrl+s to send now」：send now 能点（iPad 上没有这组键）——同链接，虚线下划线、指上去亮一点 */
-.tpane .vs-sendnow, .tpane .vs-retry, .tpane .vs-qedit, .tpane .vs-bgnow { cursor: pointer; text-decoration: underline dashed; text-underline-offset: 0.2em; color: inherit; }
-.tpane .vs-sendnow:hover, .tpane .vs-retry:hover, .tpane .vs-qedit:hover, .tpane .vs-bgnow:hover { filter: brightness(1.5); }
+.tpane .vs-sendnow, .tpane .vs-retry, .tpane .vs-unsent-edit, .tpane .vs-qedit, .tpane .vs-bgnow { cursor: pointer; text-decoration: underline dashed; text-underline-offset: 0.2em; color: inherit; }
+.tpane .vs-sendnow:hover, .tpane .vs-retry:hover, .tpane .vs-unsent-edit:hover, .tpane .vs-qedit:hover, .tpane .vs-bgnow:hover { filter: brightness(1.5); }
 .tpane .vs-sendnow-row > span, .tpane .vs-unsent > span { display: inline; }
 /* 搜索里点的那一处：浅黄的底亮一下，3 秒后淡掉 */
 .tpane .screen .st-found { background: rgba(255, 210, 60, 0.38); border-radius: 2px; transition: opacity 0.6s; }

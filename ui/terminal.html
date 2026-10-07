@@ -133,6 +133,7 @@
 </div>
 </div>
 <noscript><p class="noscript">需要 JavaScript。</p></noscript>
+<script src="studio/svclog.js"></script><!-- 服务记录：包上 fetch、WebSocket（要在所有叫服务的脚本之前，连 remote.js 的中转连接也记上） -->
 <script src="remote.js"></script><!-- iPad 端：浏览器里选了「用我的 Mac」就把 nadosNative 换成经中转连到 Mac 的一份（要在别的脚本之前） -->
 <script src="studio/perf.js"></script><!-- 最先：量谁占着主线程（perf.json） -->
 <script src="ttu-core.js"></script>
@@ -171,6 +172,7 @@
 <script src="studio/extview.js"></script>
 <script src="studio/apps.js"></script>
 <script src="studio/devices.js"></script>
+<script src="studio/status.js"></script>
 <script src="desk.js"></script>
 <script src="studio/globalagent.js"></script>
 <script src="studio/macos.js"></script>
