@@ -38,7 +38,7 @@
     return /MacBook/i.test(s) ? "laptop" : "desktop";
   };
   var kindLabel = function (d) {
-    if (d.web) return t("网页", "Web") + (d.browser ? " · " + d.browser : "");
+    if (d.web) return t("网页", "Web"); // 浏览器写在名字里了（「iPhone 上的 Safari」）
     var k = iconOf(d);
     if (k === "iphone" || k === "ipad") return k === "ipad" ? "iPad" : "iPhone";
     return d.kind === "linux" || /Linux|Ubuntu|Debian|Fedora|Arch/i.test((d.os || "") + " " + (d.label || "")) ? "Linux" : /Windows/i.test(d.os || "") ? "Windows" : "Mac";

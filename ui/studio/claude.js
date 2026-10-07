@@ -706,10 +706,10 @@
       if (unc.length) { var n0 = unc.length; unc = unc.filter(function (x) { return !hit(x); }); if (unc.length !== n0) lqSave(); }
     }
     function takeOut(text) { if (!readOnce || inOlder || !text || !text.trim() || /^\s*[\/<]/.test(text)) return; taken.push({ text: text, at: Date.now() }); } // 斜杠命令、它自己塞的（<…>）不挂
-    // 记录里读到了你说的一句（当一问收下的、一轮中间读进去的、跑了的 ! 命令）：这边送进去的、排着的、拿走了在等的同一句都不再挂着；
-    //   和别的话拼在一起读进去的也算（这边那句是它的一部分）
-    function gotAsk(mt) {
-      if (inj && inj.length) { var n0 = qnorm(mt); inj = inj.filter(function (x) { var xn = qnorm(x.text); return !xn || n0.indexOf(xn) < 0; }); }
+    // 记录里读到了你说的一句（当一问收下的、一轮中间读进去的、跑了的 ! 命令——bash）：这边送进去的、排着的、拿走了在等的同一句都不再挂着；
+    //   话和别的话拼在一起读进去的也算（这边那句是它的一部分）；! 命令只认一模一样的（命令很短，别的话里常常带着同样几个字）
+    function gotAsk(mt, bash) {
+      if (inj && inj.length) { var n0 = qnorm(mt); inj = inj.filter(function (x) { var xn = qnorm(x.text); if (!xn) return true; return /^\s*!/.test(x.text) ? xn !== n0 : bash || n0.indexOf(xn) < 0; }); }
       unqueue(mt); untake(mt); lqDrop(mt);
     }
     // ---- 一行记录 → Paimon 的对话 ----
@@ -884,7 +884,7 @@
           }
           // 你在 Claude Code 里用 ! 跑的命令：<bash-input> 一条，<bash-stdout> / <bash-stderr> 是它的输出（画成 Paimon 的 ! 命令）
           var bi = /^\s*<bash-input>([\s\S]*?)<\/bash-input>/.exec(text);
-          if (bi) { gotAsk("!" + bi[1]); finishTurn(); cur = null; lastBash = { bash: bi[1], out: "", code: null, at: ts(j) }; turns.push(lastBash); byUuid[j.uuid] = lastBash; return lastBash; } // 这边打的「! 命令」跑完了（它跑完才把这一条和输出一起写进记录）：不再挂成排着的
+          if (bi) { gotAsk("!" + bi[1], true); finishTurn(); cur = null; lastBash = { bash: bi[1], out: "", code: null, at: ts(j) }; turns.push(lastBash); byUuid[j.uuid] = lastBash; return lastBash; } // 这边打的「! 命令」跑完了（它跑完才把这一条和输出一起写进记录）：不再挂成排着的
           var bo = /<bash-stdout>([\s\S]*?)<\/bash-stdout>/.exec(text), be = /<bash-stderr>([\s\S]*?)<\/bash-stderr>/.exec(text);
           if ((bo || be) && lastBash) { var er = be ? be[1].trim() : ""; lastBash.out = ((bo ? bo[1] : "") + (er ? "\n" + er : "")).replace(/\x1b\[[\d;]*m/g, "").trim(); lastBash.code = er ? 1 : 0; var lb = lastBash; lastBash = null; return lb; }
           var co = cmdOpen(text, j);

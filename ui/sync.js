@@ -248,7 +248,14 @@
     return "computer"; // Mac、Linux、Windows（以前 Linux 的 App 也记成 mac）
   };
   var isWeb = function (d) { return d.kind === "web" || / · (Safari|Chrome|Edge|Firefox|浏览器)$/.test(String(d.name || "")); };
-  var plainName = function (d) { var m = GENERIC.exec(String(d.name || "")); return m ? d.model || m[1] : String(d.name || "") || "另一台设备"; };
+  // 给人看的名字：通用名的 App 记录用型号（没有就是「iPad」），浏览器的写「iPhone 上的 Safari」
+  var EN = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
+  var plainName = function (d) {
+    var m = GENERIC.exec(String(d.name || ""));
+    if (!m) return String(d.name || "") || (EN() ? "Another Device" : "另一台设备");
+    if (m[2] !== "App") { var br = m[2] === "浏览器" ? (EN() ? "Browser" : "浏览器") : m[2], dv = d.model || m[1]; return EN() ? br + " on " + dv : dv + " 上的 " + br; }
+    return d.model || m[1];
+  };
   function deviceList() {
     var now = serverNow(), mine = devices[dev] || {};
     var all = Object.keys(devices).filter(function (id) { return id !== dev; }).map(function (id) { return Object.assign({}, devices[id]); });
