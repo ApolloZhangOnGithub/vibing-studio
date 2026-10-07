@@ -254,22 +254,37 @@
     var all = Object.keys(devices).filter(function (id) { return id !== dev; }).map(function (id) { return Object.assign({}, devices[id]); });
     all.push({ id: dev, name: name, kind: kind, model: model, os: osName, app: appVer, hw: hw, relay: relayIds(), created_at: mine.created_at || now, last_seen: now, self: true });
     all.sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); });
+    // 并进来的记录（ids 跟着走：从账户里移除这一台时，它名下以前的记录一起移除，不会又冒出一台）
+    var absorb = function (k, d) { k.ids.push.apply(k.ids, d.ids); if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); };
     var byHw = {}, out = [];
     all.forEach(function (d) {
-      var k = d.hw && byHw[d.hw];
-      if (k) { k.ids.push(d.id); if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); return; }
       d.ids = [d.id];
+      if (d.hw && byHw[d.hw]) return absorb(byHw[d.hw], d);
       if (d.hw) byHw[d.hw] = d;
       out.push(d);
     });
-    var gen = function (d) { return !d.hw && GENERIC.test(String(d.name || "")); };
+    // 还没报过硬件编号的老记录、名字和某台报过的一样（同一台机器上以前的 App、页面）：也并进那一台
+    var lc = function (s) { return String(s || "").trim().toLowerCase(); };
     out = out.filter(function (d) {
-      if (d.self) return true;
-      if (now - (d.last_seen || 0) > 30 * 86400000) return false;
-      if (!gen(d)) return true;
-      var f = famOf(d), web = isWeb(d);
-      return !out.some(function (o) { return o !== d && famOf(o) === f && (o.last_seen || 0) > (d.last_seen || 0) && (!gen(o) || o.name === d.name || (web && !isWeb(o))); });
+      if (d.hw || d.self || !lc(d.name)) return true;
+      var k = out.filter(function (o) { return o !== d && o.hw && lc(o.name) === lc(d.name) && famOf(o) === famOf(d); })[0];
+      if (!k) return true;
+      absorb(k, d);
+      return false;
     });
+    // 被取代的旧记录：并进取代它的那一台（有别的就不并进这台设备自己——这台不能从这里移除）；从旧到新一条条看，一串取代时 ids 一路带过去
+    var gen = function (d) { return !d.hw && GENERIC.test(String(d.name || "")); }, gone = {};
+    out.slice().sort(function (a, b) { return (a.last_seen || 0) - (b.last_seen || 0); }).forEach(function (d) {
+      if (d.self || !gen(d)) return;
+      var f = famOf(d), web = isWeb(d);
+      var cs = out.filter(function (o) { return o !== d && !gone[o.id] && famOf(o) === f && (o.last_seen || 0) > (d.last_seen || 0) && (!gen(o) || o.name === d.name || (web && !isWeb(o))); });
+      if (!cs.length) return;
+      var os = function (x) { var s = [x.kind, x.name, x.os].join(" "); return /linux|ubuntu|debian|fedora/i.test(s) ? "linux" : /windows/i.test(s) ? "windows" : "mac"; };
+      cs.sort(function (a, b) { return (os(b) === os(d)) - (os(a) === os(d)) || (a.self ? 1 : 0) - (b.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); }); // 同一种系统的、不是这台的、最近出现的
+      absorb(cs[0], d);
+      gone[d.id] = true;
+    });
+    out = out.filter(function (d) { return !gone[d.id] && (d.self || now - (d.last_seen || 0) <= 30 * 86400000); });
     return out.map(function (d) { var m = GENERIC.exec(String(d.name || "")); d.label = plainName(d); d.web = isWeb(d); d.browser = d.web && m ? m[2] : ""; d.family = famOf(d); return d; });
   }
   // 从账户里移除（ids：并成一台的那几个设备 id 一起）；还登录着的设备下次报到时会重新出现

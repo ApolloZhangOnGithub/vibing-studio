@@ -307,5 +307,6 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 /* 往上翻时最上面那一行（live.js stickyNow）：同「你说的话」那一行的底色和字色，一行、超出的省略；点了跳过去 */
 .tpane .vs-stickyw { position: sticky; top: 0; height: 0; z-index: 4; }
 .tpane .vs-sticky { position: absolute; left: 0; right: 0; top: 0; margin: 0; overflow: hidden; cursor: pointer; }
+.tpane .vs-sticky[hidden] { display: none; } /* 它也是 .terminal-style-ui（display: block 盖过了 hidden）：以前「收起」了照样露着，翻回最上面时上一句挂在那儿，同下面那一问一模一样两行 */
 .tpane .vs-sticky .ask { display: block; }
 .tpane .vs-sticky:hover .ask { filter: brightness(1.15); }

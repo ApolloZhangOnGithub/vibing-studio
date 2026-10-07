@@ -67,7 +67,7 @@ final class WebHost: NSObject, WKNavigationDelegate, WKUIDelegate, UIScrollViewD
     ucc.removeAllUserScripts()
     let clean = { (s: String) in s.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "\\", with: "") }
     // name：这台设备的名字（系统给的；iOS 16 起没有专门的权限时只给「iPhone」「iPad」）；model：精确的型号（「iPhone 15 Pro」，认不出的写型号代码 iPhone16,1）——设备列表里分清是哪一台
-    let src = "window.vsApp = { platform: 'ipad', version: '\(clean(Config.version))', lang: '\(clean(Locale.preferredLanguages.first ?? "en"))', shell: '\(clean(shell))', name: '\(clean(UIDevice.current.name))', model: '\(clean(DeviceModel.name))' };"
+    let src = "window.vsApp = { platform: 'ipad', version: '\(clean(Config.version))', lang: '\(clean(Locale.preferredLanguages.first ?? "en"))', shell: '\(clean(shell))', name: '\(clean(UIDevice.current.name))', model: '\(clean(DeviceModel.name))', hw: '\(clean(UIDevice.current.identifierForVendor?.uuidString ?? ""))' };"
     ucc.addUserScript(WKUserScript(source: src, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     // 页面出错（脚本异常、没接住的 Promise、console.error）：交给 App——写在载入那一层上（不再是一块黑），也打到 App 的输出里（Xcode / devicectl --console 看得到）
     let errs = "(function(){var post=function(m){try{webkit.messageHandlers.vsApp.postMessage(m)}catch(e){}};" +

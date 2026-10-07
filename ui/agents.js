@@ -566,7 +566,7 @@
     if (v === "cloud") return "Cloud";
     var d = String(v || "").slice(6);
     if (d === devHere()) { var i = LOCAL && LOCAL.info && LOCAL.info(); return (i && i.host) || (en0() ? "This Mac" : "本机"); }
-    var n = SY && SY.devices ? (SY.devices()[d] || {}).name : "";
+    var n = SY && SY.devices && SY.devices()[d] ? SY.deviceName(d) : "";
     return n || "Mac";
   }
   // 各卷的布局：这台 Mac 是 L()（原生 App 里）；Cloud 是服务器沙盒的（网页里 L() 就是它）
@@ -1008,8 +1008,9 @@
     Object.keys(sessions).forEach(function (k) { var s0 = sessions[k]; if (s0.agentId !== a.id) return; s0.turns.forEach(function (t) { if (t.dev && (!last || (t.at || 0) >= (last.at || 0))) last = t; }); });
     var d = last && last.dev;
     if (LOCAL && (!d || d === devHere())) return localVol();
-    var dn = d && SY && SY.devices ? ((SY.devices()[d] || {}).name || "") : "";
-    if (d && /App\s*$/.test(dn)) return "local:" + d;
+    // 那台是不是电脑上的 App：现在按 kind（mac、linux；网页是 web）；以前的记录名字是「Mac · App」，浏览器的 kind 也记成过 mac
+    var dd = d && SY && SY.devices ? SY.devices()[d] || {} : {}, dn = String(dd.name || "");
+    if (d && (/App\s*$/.test(dn) || ((dd.kind === "mac" || dd.kind === "linux") && !/ · (Safari|Chrome|Edge|Firefox|浏览器)$/.test(dn)))) return "local:" + d;
     return "cloud";
   }
   // ======== 文件夹（索引的一部分，同步）：卷里任意多层，agent 的 path 是它在哪个文件夹（"" = 卷的最外层）。

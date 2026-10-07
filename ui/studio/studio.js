@@ -3958,10 +3958,11 @@
         { key: "passkeys", label: "通行密钥", desc: "用 Touch ID、Face ID 或手机登录，不用每次都经过 GitHub；在浏览器里添加和管理", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" },
       ];
       if (SY) {
-        var ds = SY.devices ? SY.devices() : {}, ids0 = Object.keys(ds).filter(function (id) { return id !== SY.dev; }).sort(function (a, b) { return (ds[b].last_seen || 0) - (ds[a].last_seen || 0); });
-        // 名字、型号都由设备自己认出来（不让改）：这台电脑自己的名字 +「MacBook Air · Apple M2 · Mac14,2」这样的型号，方便分清是哪一台
-        out.push({ head: "登录的设备" }, { key: "devThis", label: SY.name(), desc: (SY.model && SY.model()) || "", kind: "info", value: "这台设备" });
-        ids0.slice(0, 8).forEach(function (id) { out.push({ key: "dev:" + id, label: ds[id].name || "另一台设备", desc: ds[id].model || "", kind: "info", value: "上次在线 " + ago(ds[id].last_seen) }); });
+        // 名字、型号都由设备自己认出来（不让改）：这台电脑自己的名字 +「MacBook Air (M2, 2022)」这样的型号，方便分清是哪一台；
+        //   同一台机器并成一台、以前版本留下的旧记录不列（TSU_SYNC.deviceList，同「设备」App）
+        var dl = SY.deviceList ? SY.deviceList() : [];
+        out.push({ head: "登录的设备" });
+        dl.slice(0, 9).forEach(function (d) { out.push({ key: d.self ? "devThis" : "dev:" + d.id, label: d.label, desc: d.model && d.model !== d.label ? d.model : "", kind: "info", value: d.self ? "这台设备" : Date.now() - (d.last_seen || 0) < 15 * 60000 ? "在线" : ago(d.last_seen) + "在线" }); });
       } else out.push({ head: "登录的设备" });
       out.push({ key: "logout", label: "在这台设备上退出登录", desc: "Agent 和会话将保留在账户中，重新登录后即可恢复", kind: "button", text: "退出登录", act: "logout" });
       return out;
@@ -4359,7 +4360,7 @@
     var me = window.TSU_AGENTS && TSU_AGENTS.me ? TSU_AGENTS.me() : null, login = me && me.loggedIn !== false && me.login;
     // 同 VS Code 的账号菜单：账号是一项（指着出二级菜单：账号设置、设备、退出登录）——「退出登录」不放在最外面当一个光秃秃的出口；
     //   下面是跟账号相关、常用的几样（连接器、设置）。没登录：一项「登录」
-    var syncOn = !!window.TSU_SYNC, devN = syncOn && TSU_SYNC.devices ? Object.keys(TSU_SYNC.devices() || {}).length : 0;
+    var syncOn = !!window.TSU_SYNC, devN = syncOn && TSU_SYNC.deviceList ? TSU_SYNC.deviceList().length : 0;
     var signOut = function () {
       var go = function () { location.href = "/auth/logout"; };
       if (!window.TSU_DESK || !TSU_DESK.alert) return go();
@@ -4370,7 +4371,7 @@
       { label: login + " (GitHub)", icon: MI.agent, sym: "person.crop.circle", items: [
         { label: "账号设置…", icon: MI.gear || MI.agent, sym: "person.text.rectangle", run: function () { settings(tw, "account"); } }, // 设置里的「账号」：头像、额度与用量、设备
         { label: "通行密钥…", icon: MI.lock || MI.gear || MI.agent, sym: "key", run: openPasskeys },
-        syncOn ? { label: "设备" + (devN ? "（" + devN + "）" : "") + "…", icon: MI.window || MI.gear, sym: "laptopcomputer.and.iphone", run: function () { settings(tw, "account"); } } : null,
+        syncOn ? { label: "设备" + (devN ? "（" + devN + "）" : "") + "…", icon: MI.window || MI.gear, sym: "laptopcomputer.and.iphone", run: function () { if (S.pages.devices) S.openPage(tw, "devices", ""); else settings(tw, "account"); } } : null, // 「设备」App
         { sep: true },
         { label: "退出登录…", icon: MI.open, sym: "rectangle.portrait.and.arrow.right", run: signOut },
       ].filter(Boolean) },
