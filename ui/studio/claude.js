@@ -1386,15 +1386,18 @@
     // 粘贴里有「图片路径」的段：Claude Code 按换行、按「空格 + /」把粘贴切成几段，哪一段（去掉首尾引号、反斜杠转义）以 .png/.jpg/.jpeg/.gif/.webp 结尾
     //   就当是拖进来的图、先去读（异步）；读完——不管读没读到——把这期间按下的回车清掉（它的 usePasteHandler：W() 清掉等着的回车，只有普通粘贴走 Z() 补回车）。
     //   reply 是「粘贴 + 10ms 后回车」：截图路径单独一行（拖了两张截图）必定卡在它的输入框里不发。做法：这样的段用反引号包起来（`/…/截屏.png`），
-    //   它不再当图读，路径照样在（模型照样 Read）
+    //   它不再当图读，路径照样在（模型照样 Read）。! 开头的（shell 命令）：反引号在 shell 里是命令替换，改成单引号包起来、后面接一个空的 ''
+    //   （shell 里还是原来的路径；结尾不是 .png，也不当图读）
     var CC_IMG = /\.(png|jpe?g|gif|webp)$/i;
     function ccPasteSafe(t) {
+      var bang = /^\s*!/.test(String(t));
       return String(t).split("\n").map(function (line) {
         return line.split(/ (?=\/|[A-Za-z]:\\)/).map(function (seg) {
           var core = seg.trim();
           if (core.length > 1 && ((core[0] === '"' && core[core.length - 1] === '"') || (core[0] === "'" && core[core.length - 1] === "'"))) core = core.slice(1, -1);
           core = core.replace(/\\(.)/g, "$1");
           if (!CC_IMG.test(core)) return seg;
+          if (bang) return /^\s*/.exec(seg)[0] + "'" + core.replace(/'/g, "'\\''") + "'''" + /\s*$/.exec(seg)[0];
           return /^\s*/.exec(seg)[0] + "`" + core + "`" + /\s*$/.exec(seg)[0];
         }).join(" ");
       }).join("\n");

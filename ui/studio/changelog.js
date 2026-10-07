@@ -21,6 +21,10 @@
         ["翻译不再一卡就是一分钟：几个 Agent 一起跑时，翻译请求合成一批发；被限流时只等服务器说的那几秒，不再整页停一分钟。", "Translation no longer stalls for a minute: requests from several agents are batched, and when rate-limited it waits only as long as the server asks instead of pausing everything for a minute."],
       ],
       fixed: [
+        ["Claude Code 里用 `!` 跑的命令，跑完以后下面又多出一行同样的命令、过 30 秒还被标成「未发送」：现在跑完只剩命令和输出；排着队的几条里有 `!` 命令时一条一条发，不再和别的话拼成一条。", "Commands run with `!` in Claude Code no longer leave a duplicate line under their output that turns into “Not sent” after 30 seconds; queued `!` commands are sent one at a time instead of being merged with other messages."],
+        ["「未发送」那一行除了「重试」还有「编辑」：把那条消息（连同图片）放回输入框接着改。", "The “Not sent” line now offers Edit as well as Retry, putting the message (with its images) back in the input box."],
+        ["对话最上面，吸顶的那一行和紧挨着的第一条消息重复：吸顶行该藏的时候没藏住，现在只在那条消息滚出视野以后才出现。", "At the top of a conversation the sticky line duplicated the first message right below it because hiding it had no effect; it now appears only after that message scrolls out of view."],
+        ["`!` 命令里粘贴的图片路径不再被包上反引号（shell 会把它当成命令执行）。", "Image paths pasted into `!` commands are no longer wrapped in backticks, which the shell would run as a command."],
         ["「设备」里的连线穿过图标和名字、和设备对不齐、窗口大小变了也不跟着重画：连线现在走在两排之间，窗口一变就按实际位置重画，窗口窄时整张图按比例缩小。标签页上的图标改成「设备」的图标，去掉了标题下面的说明。", "Lines in Devices crossed icons and names, didn’t line up with the devices and didn’t follow window resizes: they now run between the rows and are redrawn whenever the window changes, and the whole diagram scales down in narrow windows. The tab shows the Devices icon, and the line under the title is gone."],
         ["设备改用自己的名字以后，以前在 App 里跑过的 Agent 会被当成在 Cloud 上：现在按设备类型判断。", "After devices switched to their own names, agents that last ran in the app could be treated as living in the cloud; this is now decided by device type."],
       ],
