@@ -27,12 +27,17 @@
   var VS = window.vsApp || {}, iosName = String(VS.name || "").trim(), iosModel = String(VS.model || "").trim();
   var name = iosName || guessName(), kind = /iPhone|iPad|Android/.test(name + " " + iosModel + " " + navigator.userAgent) && !/Macintosh/.test(navigator.userAgent) ? "ios" : /iPad/.test(name) ? "ios" : "mac";
   var model = iosModel || ls("tsu-device-model") || "";
+  // 系统、App 版本（设备卡片里写）：浏览器从 UA 读系统；App 的版本下面问原生那边
+  var osName = (function () { var ua = navigator.userAgent, m; if ((m = /(iPhone|CPU) OS (\d+)[_.](\d+)/.exec(ua))) return "iOS " + m[2] + "." + m[3]; if ((m = /Android (\d+(\.\d+)?)/.exec(ua))) return "Android " + m[1]; if (/Mac OS X/.test(ua)) return "macOS"; if (/Windows/.test(ua)) return "Windows"; if (/Linux/.test(ua)) return "Linux"; return ""; })();
+  var appVer = "";
+  fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.version && !appVer) { appVer = (window.nadosNative ? "" : "网页 ") + j.version; } }, function () {});
   if (iosModel && (!iosName || /^(iPhone|iPad|iPod)$/.test(iosName))) name = iosModel; // 系统只给了「iPhone」这样的通用名：用精确的型号当名字（「iPhone 15 Pro」）
   var sh = function (cmd) { return window.TSU_LOCAL && TSU_LOCAL.exec ? TSU_LOCAL.exec({ cmd: cmd }).then(function (r) { return String((r && (r.out || r.stdout)) || "").trim(); }, function () { return ""; }) : Promise.resolve(""); };
   function identify(tries) {
     var N = window.nadosNative;
     if (!N || N.remote || !N.call) return;
-    (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () { return N.call("local.info"); }).then(function (i) {
+    (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () { N.call("info").then(function (x) { if (x && x.version) appVer = String(x.version); }, function () {}); return N.call("local.info"); }).then(function (i) {
+      if (i && i.os) osName = String(i.os);
       var host = i && String(i.host || "").trim(), linux = /linux/i.test(String((i && (i.platform || i.os)) || ""));
       var nm = linux ? sh("hostnamectl --pretty 2>/dev/null || true") : Promise.resolve("");
       // 型号：Mac 先用「关于本机」那一个（系统记在 com.apple.SystemProfiler 里，带尺寸、年份），没有就用 system_profiler（机型 + 芯片 + 型号代码）；
@@ -61,7 +66,7 @@
 
   // ---- 设备报到：打开时一次，之后每 10 分钟（「上次在线」）----
   var devices = {}; // id → { name, kind, last_seen }
-  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined }).catch(function () {}); }
+  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined }).catch(function () {}); }
   // App 里（自己认得出名字、型号）：等认出来再报到（认出来时会报一次），别先报一个「Mac · App」让别的设备上闪一下；认不出（3 秒）就照旧先报
   var N0 = window.nadosNative;
   if (N0 && !N0.remote && N0.call) setTimeout(function () { if (name === guessName()) hello(); }, 3000); else hello();
@@ -204,6 +209,8 @@
     uid: UID, dev: dev,
     name: function () { return name; },
     model: function () { return model; },
+    os: function () { return osName; },
+    app: function () { return appVer; },
     devices: function () { return devices; },
     deviceName: function (id) { return id === dev ? name : (devices[id] || {}).name || "另一台设备"; },
     pull: pull, push: push,

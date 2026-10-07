@@ -55,8 +55,12 @@ CREATE TABLE IF NOT EXISTS devices (
   github_id  INTEGER NOT NULL,
   id         TEXT    NOT NULL,
   name       TEXT,
-  kind       TEXT,                        -- mac | ios
-  model      TEXT,                        -- 设备自己认出来的型号（「MacBook Pro (14-inch, Nov 2023)」）；线上的库由 account.js 第一次用到时补这一列
+  kind       TEXT,                        -- mac | linux | ios
+  model      TEXT,                        -- 设备自己认出来的型号（「MacBook Air (M2, 2022)」）；model 到 relay 这几列线上的库由 account.js 第一次用到时补上
+  os         TEXT,                        -- 系统（「macOS 27.0」「Ubuntu 26.04 LTS」）
+  app        TEXT,                        -- Vibing Studio 的版本
+  hw         TEXT,                        -- 硬件编号的哈希：同一台机器上不同的 App、页面报到的都一样，列设备时按它并成一台
+  relay      TEXT,                        -- 中转里的编号（当主机时、连别的 Mac 时），空格隔开
   created_at INTEGER NOT NULL,
   last_seen  INTEGER NOT NULL,
   PRIMARY KEY (github_id, id)
