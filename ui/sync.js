@@ -26,7 +26,9 @@
   //   iPhone、iPad 的 App：App 给的设备名、型号（window.vsApp）；浏览器：设备 + 浏览器（「iPhone · Safari」）
   //   kind：mac（Mac 的 App）、linux（Linux 的 App）、ios（iPhone、iPad 的 App）、web（浏览器）
   var VS = window.vsApp || {}, iosName = String(VS.name || "").trim(), iosModel = String(VS.model || "").trim();
-  var name = iosName || guessName(), ua0 = navigator.userAgent;
+  // App 里认出来的名字、硬件编号记在这台设备上（tsu-device-auto、tsu-device-hw）：打开时先用它（不先报一个「Mac · App」），
+  //   同一个 App 里借别的 Mac 用的那一页（nadosNative.remote，不自己认）也照它报
+  var name = iosName || (window.nadosNative && ls("tsu-device-auto")) || guessName(), ua0 = navigator.userAgent;
   var kind = !window.nadosNative ? "web" : /iPhone|iPad|Android/.test(name + " " + iosModel + " " + ua0) && !/Macintosh/.test(ua0) || /iPad/.test(name) ? "ios" : /Linux/.test(ua0) ? "linux" : "mac";
   var model = iosModel || ls("tsu-device-model") || "", hw = "";
   // 系统、App 版本（设备卡片里写）：浏览器从 UA 读系统；App 的版本下面问原生那边
@@ -42,7 +44,7 @@
     return ("0000000" + (a >>> 0).toString(16)).slice(-8) + ("0000000" + (b >>> 0).toString(16)).slice(-8);
   };
   var hwOf = function (raw) { raw = String(raw || "").trim(); return raw ? fnv("vs:" + UID + ":" + raw.toLowerCase()) : ""; };
-  hw = hwOf(VS.hw);
+  hw = hwOf(VS.hw) || (window.nadosNative && ls("tsu-device-hw")) || "";
   // 名字、型号、硬件编号、系统都由这台机器自己给：一段 shell，Mac、Linux 各走各的
   //   Mac：系统设置里起的名字（ComputerName）；型号是「关于本机」那个（「MacBook Air (M2, 2022)」，Apple 芯片的 Mac 记在 ioreg 的 product-name），
   //        Intel 的 Mac 没有就用 system_profiler 的机型 · 处理器 · 型号代码；硬件编号 IOPlatformUUID；系统 sw_vers
@@ -64,10 +66,13 @@
     "  echo \"linux=1\"",
     "fi",
   ].join("\n");
+  var identified = false;
   function identify(tries) {
     var N = window.nadosNative;
     if (!N || N.remote || !N.call) return;
-    (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () { N.call("info").then(function (x) { if (x && x.version) appVer = String(x.version); }, function () {}); return N.call("local.info"); }).then(function (i) {
+    (window.TSU_LOCAL && TSU_LOCAL.ready ? TSU_LOCAL.ready : Promise.resolve()).then(function () {
+      return N.call("info").then(function (x) { if (x && x.version) appVer = String(x.version); }, function () {});
+    }).then(function () { return N.call("local.info"); }).then(function (i) {
       var host = i && String(i.host || "").replace(/\.local$/, "").trim();
       return sh(ID_SH).then(function (out) {
         var kv = {};
@@ -76,7 +81,11 @@
         var h2 = hwOf(kv.hw), o2 = kv.os && !/^macOS\s*$/.test(kv.os) ? kv.os : (i && i.os) || osName;
         if (kv.linux) kind = "linux";
         if (m2) ls("tsu-device-model", m2);
-        if (n2 !== name || m2 !== model || h2 !== hw || o2 !== osName) { name = n2; model = m2 || model; hw = h2 || hw; osName = o2; hello(); }
+        if (n2) ls("tsu-device-auto", n2);
+        if (h2) ls("tsu-device-hw", h2);
+        name = n2; model = m2 || model; hw = h2 || hw; osName = o2;
+        identified = true;
+        hello();
       });
     }, function () { if ((tries || 0) < 5) setTimeout(function () { identify((tries || 0) + 1); }, 2000); }); // 原生那边还没好：过一会儿再试
   }
@@ -94,9 +103,9 @@
   // 中转里的编号：这台 Mac 当主机时的（remote-host.js）、这台设备连别的 Mac 时的（remote.js）——「设备」App 按它把在线的 Mac、连着它的设备和这里对上
   function relayIds() { var a = []; try { var h = window.TSU_REMOTE_HOST; if (h && h.device) a.push(h.device()); a.push(localStorage.getItem("vs-remote-client")); } catch (e) { /* 没有 */ } return a.filter(Boolean).join(" ").slice(0, 120); }
   function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined }).catch(function () {}); }
-  // App 里（自己认得出名字、型号）：等认出来再报到（认出来时会报一次），别先报一个「Mac · App」让别的设备上闪一下；认不出（3 秒）就照旧先报
+  // App 里（自己认得出名字、型号）：认出来时报到；3 秒还没认出来就先用记着的报一次
   var N0 = window.nadosNative;
-  if (N0 && !N0.remote && N0.call) setTimeout(function () { if (name === guessName()) hello(); }, 3000); else hello();
+  if (N0 && !N0.remote && N0.call) setTimeout(function () { if (!identified) hello(); }, 3000); else hello();
   setInterval(hello, 600000);
 
   // ---- 拉：since 之后的所有记录（一页放不下自动翻页），同一条的几段拼好；还没推全的那条这次先不给（推全以后会整条再来）----

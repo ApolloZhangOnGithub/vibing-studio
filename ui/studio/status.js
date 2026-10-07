@@ -242,7 +242,7 @@
         '<span class="svs-dim">' + esc(when(x.start) + " – " + hm(x.end, true) + " · " + dur(x.end - x.start) + " · " + t(x.list.length + " 次", x.list.length + (x.list.length === 1 ? " call" : " calls"))) + "</span>" +
         (x.err ? '<span class="svs-err">' + esc(x.err) + "</span>" : "") + "</span></button>" +
         (open ? '<div class="svs-incL">' + rowsHtml(x.list.slice().reverse().slice(0, 100), V, "i" + i) + "</div>" : "") + "</div>";
-    }).join("") + "</div>" : '<div class="svs-none">' + esc(ss.range === "24h" ? t("过去 24 小时没有事件", "No incidents in the past 24 hours") : t("过去 30 天没有事件", "No incidents in the past 30 days")) + "</div>";
+    }).join("") + "</div>" : '<div class="svs-empty">' + esc(ss.range === "24h" ? t("过去 24 小时没有事件", "No incidents in the past 24 hours") : t("过去 30 天没有事件", "No incidents in the past 30 days")) + "</div>";
     // 调用记录
     var list = d.calls.filter(function (r) { return r.at >= from && (!ss.svc || r.svc === ss.svc) && (!ss.bad || r.cls !== "ok") && (!ss.win || (r.svc === ss.win.svc && r.at >= ss.win.from && r.at < ss.win.to)); });
     h += '<h2 class="svs-h2">' + esc(t("调用记录", "Calls")) + '</h2><div class="svs-filter">' +
@@ -251,7 +251,7 @@
       (ss.win ? '<button type="button" class="svs-chip on svs-winchip" data-clearwin>' + esc(svcName(ss.win.svc) + " · " + (ss.range === "24h" ? hm(ss.win.from) + "–" + hm(ss.win.to) : md(ss.win.from))) + IC.close + "</button>" : "") + "</div>";
     h += list.length ? '<div class="svs-calls"><div class="svs-row svs-th"><span>' + esc(t("时间", "Time")) + "</span><span>" + esc(t("服务", "Service")) + "</span><span>" + esc(t("操作", "Operation")) + "</span><span>" + esc(t("用时", "Duration")) + "</span><span>" + esc(t("结果", "Result")) + "</span></div>" +
       rowsHtml(list.slice(0, ss.more), V, "c") + "</div>" + (list.length > ss.more ? '<button type="button" class="svs-more" data-more>' + esc(t("再显示 200 条（共 " + list.length + " 条）", "Show 200 more (" + list.length + " total)")) + "</button>" : "")
-      : '<div class="svs-none">' + esc(t("没有记录", "No records")) + "</div>";
+      : '<div class="svs-empty">' + esc(t("没有记录", "No records")) + "</div>";
     var sc = host.scrollTop;
     root.innerHTML = h;
     host.scrollTop = sc;

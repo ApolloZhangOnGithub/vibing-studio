@@ -113,7 +113,7 @@
     layout(host);
     if (!host._dvWired) { host._dvWired = true; wire(host, P, V); }
     if (host._dvRO) { host._dvRO.disconnect(); host._dvRO.observe(host); host._dvRO.observe(host.querySelector(".dv-map")); }
-    if (openId) Object.keys(keys).forEach(function (k2) { if (keys[k2].id === openId) { var el = host.querySelector('[data-node="' + k2 + '"]'); if (el) openCard(host, P, el, keys[k2], k2, V); } });
+    if (openId) Object.keys(keys).forEach(function (k2) { if (keys[k2].id === openId) { var el = host.querySelector('[data-node="' + k2 + '"]'); if (el) openCard(host, P, el, keys[k2], k2, V, true); } }); // 数据变了重画：卡片接着开着（不再播一遍弹出的动画）
   }
   // 连线：上面那一台整块（图标、名字、状态）的下沿 → 一条横线 → 下面每一台图形的上沿（同 AirPort）。横线在两排中间的空当里，不穿过任何一台；
   //   坐标按版面算（offsetLeft/Top 加到 .dv-map 为止），和窗口的缩放动画无关；地图大小一变（窗口、分栏、字体载入）就重画
@@ -193,7 +193,7 @@
     if (!n.self && n.ids && n.ids.length && SY()) acts.unshift(["remove", t("从账户中移除…", "Remove from Account…")]);
     return { icon: ICON[iconOf(n)], title: n.label, sub: n.self ? kindLabel(n) + " · " + t("这台设备", "This Device") : kindLabel(n), rows: rows, acts: acts };
   }
-  function openCard(host, P, el, n, key, V) {
+  function openCard(host, P, el, n, key, V, keep) {
     closeCard();
     var m = key === "acct" ? model() : null, c = key === "acct" ? acctCard(m) : devCard(n);
     var rh = RH(), hosting = n.self && !n.web && rh;
@@ -209,7 +209,7 @@
     } else if (n.kids && n.kids.length) html += '<div class="dv-sec">' + esc(t("正在使用这台 Mac", "Using This Mac")) + '</div><ul class="dv-list">' + n.kids.map(function (u) { return "<li><span>" + esc(u.label) + "</span></li>"; }).join("") + "</ul>";
     if (c.acts.length) html += '<div class="dv-acts">' + c.acts.map(function (a) { return '<button type="button" data-act="' + a[0] + '"' + (a[2] ? ' class="dv-' + a[2] + '"' : "") + ">" + esc(a[1]) + "</button>"; }).join("") + "</div>";
     card = document.createElement("div");
-    card.className = "dv-card";
+    card.className = "dv-card" + (keep ? " dv-keep" : "");
     card.setAttribute("role", "dialog");
     card.innerHTML = html;
     card._key = key; card._node = n;
