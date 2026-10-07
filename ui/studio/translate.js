@@ -15,7 +15,9 @@
 //      最多 20000 条：写满了删最久没用的（命中时刷新 t，同一条一天最多刷一次）。打不开 IndexedDB 就用 localStorage（最多 800 条）。
 //   3) 服务器：按账号存（src/translate.js 的 translations 表）；别的窗口、别的设备翻过的直接拿，只有哪儿都没有的才叫模型、才扣费。
 //   4) 不用翻的（已经是目标语言、整条看着像代码、没有字母）直接原样，连请求都不发。
-//   出错：这几条 1 分钟后再试；余额不足（402）、没登录（401 / 403）整个停 10 分钟；限流（429）停 1 分钟。
+//   发请求：任务标题、回复各一条队，同一种语言的不分 agent 攒成一批；同时在路上的最多回复 2 个、任务 1 个（见下面 pump）。
+//   出错：这一批 4 秒、12 秒、36 秒后再试，满 4 次放下；限流（429）照服务器给的 retryAfter 等；余额不足（402）、没登录（401 / 403）整个停 10 分钟。
+//   每一次请求记进服务记录（svclog.js，服务状态页）：多久、几条、结果、错误。
 (function () {
   "use strict";
   if (window.TSU_TRANSLATE) return;
@@ -117,11 +119,11 @@
       tx.oncomplete = tx.onerror = tx.onabort = function () { stats.warm = n; if (n) changed(); ok(); };
     });
   }, function () {});
-  // 网络暂停（余额不足、没登录、限流）/ 这几条过会儿再试：到点了重画一次，让还没译文的再要一遍（不然没人再来要）
+  // 这几条试满了次数、放下了：到点了重画一次，让还没译文的再要一遍（不然没人再来要）
   var wakeT = 0, wakeAt = 0;
   function wakeAtTime(t) { if (!(t > Date.now())) return; if (wakeT && wakeAt <= t) return; clearTimeout(wakeT); wakeAt = t; wakeT = setTimeout(function () { wakeT = 0; wakeAt = 0; changed(); }, t - Date.now() + 200); }
-  // 这一条现在能不能发请求（不能的：等 wakeAtTime 到点重画再来）
-  function netOK(k) { var r = RETRY.get(k) || 0, now = Date.now(); if (now < pauseTill) { wakeAtTime(pauseTill); return false; } if (r > now) { wakeAtTime(r); return false; } return true; }
+  // 这一条现在能不能再要（放下了、还没到点的不能：等 wakeAtTime 到点重画再来）。网络暂停（限流、余额不足）不在这里管：要的照样进队，到点接着发
+  function netOK(k) { var r = RETRY.get(k) || 0; if (r > Date.now()) { wakeAtTime(r); return false; } return true; }
   var ctxName = function (ctx) {
     if (!ctx) return "";
     var A = window.TSU_AGENTS, a = null;
@@ -142,7 +144,7 @@
     return s;
   }
   // 先等起来时的预读，再查本机（内存里还没有、本机也没查过的）；查到的进内存、重画；
-  // 剩下的（哪儿都没有）：网络能发的交回去发，暂停着的先放下（FLY 去掉，到点重画时再来）
+  // 剩下的（哪儿都没有）：交回去进队发；放下了还没到点的先不要（FLY 去掉，到点重画时再来）
   function lookLocal(all) {
     return warmed.then(function () {
       var ask = all.filter(function (x) { return !MEM.has(x.k) && !LMISS.has(x.k); });
@@ -166,43 +168,88 @@
     PEND.clear();
     if (!all.length) return;
     all.forEach(function (x) { FLY.add(x.k); });
-    lookLocal(all).then(function (miss) {
-      // 同一种语言、同一个 agent 的一批（最多 40 条）
-      var groups = {};
-      miss.forEach(function (x) { var g = x.to + "\u0001" + x.ctx; (groups[g] = groups[g] || []).push(x); });
-      Object.keys(groups).forEach(function (g) { var l = groups[g]; for (var i = 0; i < l.length; i += BATCH) post(l.slice(i, i + BATCH)); });
+    lookLocal(all).then(function (miss) { enqueue(miss, "task"); });
+  }
+  var stats = { warm: 0, local: 0, server: 0, model: 0, requests: 0, failed: 0, limited: 0, last: "" }; // 看缓存有没有用（测试、调试用）：warm = 起来时从本机读进内存的条数；limited = 被限流几次；last = 上一次出错
+  // ---- 发请求：两条队（任务标题、回复），同一种语言的不管哪个 agent 的都进同一批；同时在路上的最多：回复 2 个、任务 1 个——
+  //   有在路上的时候新来的在队里攒着，回来了一起发（以前一个 agent 一批、来一条发一条：任务标题多是一条一个请求，几个 agent 一起跑，
+  //   服务器每分钟 20 次一会儿就满，满了这一页的翻译整个停一分钟、到点又一起发、又满）。任务标题两批之间至少隔 1.5 秒。
+  //   回复先发；同一条队里新的先发（刚说完的那几段先翻，旧的历史排在后面）。
+  //   限流（429）：照服务器给的 retryAfter 等，东西都还在队里，到点接着发；余额不足、没登录：停 10 分钟，也还在队里。
+  //   出错（5xx、超时、断网）：这一批 4 秒、12 秒、36 秒后再试，满 4 次放下（5 分钟后用到时再要）
+  var QUEUE = { task: new Map(), reply: new Map() }, INFL = { task: 0, reply: 0 }, MAXF = { task: 1, reply: 2 }, LAST = { task: 0, reply: 0 }, TASK_GAP = 1500, seqN = 0, pumpT = 0, pumpAt = 0;
+  function enqueue(list, kind) {
+    var q = QUEUE[kind];
+    list.forEach(function (x) { if (!q.has(x.k)) { x.seq = ++seqN; x.tries = 0; x.after = 0; q.set(x.k, x); } });
+    if (list.length) pump();
+  }
+  function pumpLater(t) { if (pumpT && pumpAt <= t) return; clearTimeout(pumpT); pumpAt = t; pumpT = setTimeout(function () { pumpT = 0; pumpAt = 0; pump(); }, Math.max(0, t - Date.now())); }
+  function pauseFor(ms) { pauseTill = Math.max(pauseTill, Date.now() + ms); pumpLater(pauseTill); }
+  function pump() {
+    var now = Date.now();
+    if (now < pauseTill) return pumpLater(pauseTill);
+    ["reply", "task"].forEach(function (kind) {
+      var q = QUEUE[kind];
+      while (INFL[kind] < MAXF[kind] && q.size) {
+        if (kind === "task" && now - LAST.task < TASK_GAP) { pumpLater(LAST.task + TASK_GAP); return; }
+        var ready = [], next = Infinity;
+        q.forEach(function (x) { if (x.after <= now) ready.push(x); else next = Math.min(next, x.after); });
+        if (!ready.length) { pumpLater(next); return; }
+        ready.sort(function (a, b) { return b.seq - a.seq; });
+        var to = ready[0].to, batch = [], chars = 0;
+        for (var i = 0; i < ready.length; i++) {
+          var x = ready[i];
+          if (x.to !== to) continue;
+          if (kind === "reply" ? batch.length >= R_BATCH || (batch.length && chars + x.src.length > R_CHARS) : batch.length >= BATCH) break;
+          batch.push(x); chars += x.src.length;
+        }
+        batch.forEach(function (x) { q.delete(x.k); });
+        LAST[kind] = now;
+        post(batch, kind);
+      }
     });
   }
-  var stats = { warm: 0, local: 0, server: 0, model: 0, requests: 0, failed: 0 }; // 看缓存有没有用（测试、调试用）：warm = 起来时从本机读进内存的条数
   function post(list, kind) {
     stats.requests++;
-    var done = function () { list.forEach(function (x) { FLY.delete(x.k); }); };
-    fetch("/api/translate", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: list[0].to, items: list.map(function (x) { return x.src; }), context: ctxName(list[0].ctx), kind: kind || undefined }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { st: r.status, j: j }; }); })
-      .then(function (res) {
-        var j = res.j || {}, out = Array.isArray(j.out) && j.out.length === list.length ? j.out : null;
-        if (res.st === 401 || res.st === 402 || res.st === 403) pauseTill = Date.now() + 600e3;
-        else if (res.st === 429) pauseTill = Date.now() + 60e3;
-        if (res.st !== 200 || !out || j.mock) {
-          // 服务器缓存里有的（hits：第几条）照样收下；只有真没翻的过会儿再试
-          var hitI = Array.isArray(j.hits) && Array.isArray(j.out) && j.out.length === list.length ? j.hits : [], keep0 = [];
-          hitI.forEach(function (i) { var x = list[i]; if (!x || typeof j.out[i] !== "string") return; var o0 = kind === "reply" ? String(j.out[i]).replace(/\r/g, "").trim() : norm(j.out[i]), v0 = o0 && o0 !== x.src ? o0 : ""; MEM.set(x.k, v0); keep0.push({ k: x.k, o: v0 }); });
-          stats.server += keep0.length;
-          stats.failed += list.length - keep0.length;
-          list.forEach(function (x) { if (!MEM.has(x.k)) RETRY.set(x.k, Date.now() + 60e3); });
-          localPut(keep0);
-          done();
-          if (keep0.length) changed();
-          wakeAtTime(Math.max(pauseTill, Date.now() + 60e3));
-          return;
-        }
-        stats.server += j.cached || 0; stats.model += j.translated || 0;
-        var keep = [];
-        list.forEach(function (x, i) { var o = typeof out[i] === "string" ? (kind === "reply" ? String(out[i]).replace(/\r/g, "").trim() : norm(out[i])) : ""; var v = o && o !== x.src ? o : ""; MEM.set(x.k, v); keep.push({ k: x.k, o: v }); });
-        localPut(keep);
-        done();
-        changed();
-      }, function () { stats.failed += list.length; list.forEach(function (x) { RETRY.set(x.k, Date.now() + 60e3); }); done(); });
+    INFL[kind]++;
+    var t0 = Date.now(), ctl = window.AbortController ? new AbortController() : null;
+    var tmo = ctl ? setTimeout(function () { ctl.abort(); }, kind === "reply" ? 150e3 : 60e3) : 0; // 服务器那边等模型 45 秒 / 120 秒就不等了，这里再宽一点
+    var names = [], seen = {}, SY = window.TSU_SYNC, hd = { "content-type": "application/json" };
+    list.forEach(function (x) { var n = ctxName(x.ctx); if (n && !seen[n]) { seen[n] = 1; names.push(n); } });
+    if (SY && SY.dev) hd["x-tsu-device"] = SY.dev; // 服务记录里写哪台设备
+    fetch("/api/translate", { method: "POST", credentials: "same-origin", headers: hd, signal: ctl ? ctl.signal : undefined, svclog: false, // 这里自己记（带上条数、缓存命中）
+      body: JSON.stringify({ to: list[0].to, items: list.map(function (x) { return x.src; }), context: names.join(", ").slice(0, 200), kind: kind === "reply" ? "reply" : undefined }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { st: r.status, j: j || {} }; }); })
+      .then(function (res) { clearTimeout(tmo); settle(list, kind, res.st, res.j, t0, ""); },
+        function (e) { clearTimeout(tmo); settle(list, kind, 0, {}, t0, e && e.name === "AbortError" ? "timeout" : String((e && e.message) || e || "network error")); });
+  }
+  function settle(list, kind, st, j, t0, err) {
+    INFL[kind]--;
+    var now = Date.now(), whole = st === 200 && !j.mock && Array.isArray(j.out) && j.out.length === list.length, keep = [], dropped = 0;
+    var nrm = function (s) { return kind === "reply" ? String(s).replace(/\r/g, "").trim() : norm(s); };
+    var take = function (x, o) { var v = o && o !== x.src ? o : ""; MEM.set(x.k, v); keep.push({ k: x.k, o: v }); FLY.delete(x.k); RETRY.delete(x.k); };
+    if (whole) list.forEach(function (x, i) { take(x, typeof j.out[i] === "string" ? nrm(j.out[i]) : ""); });
+    else if (Array.isArray(j.hits) && Array.isArray(j.out) && j.out.length === list.length) j.hits.forEach(function (i) { var x = list[i]; if (x && typeof j.out[i] === "string") take(x, nrm(j.out[i])); }); // 服务器缓存里有的照样收下
+    if (whole) { stats.server += j.cached || 0; stats.model += j.translated || 0; } else stats.server += keep.length;
+    var why = whole ? "" : err || j.error || (j.mock ? "no model configured" : st === 200 ? "bad response" : "HTTP " + st);
+    if (why) stats.last = why;
+    var SL = window.TSU_SVCLOG;
+    if (SL && SL.rec) SL.rec({ svc: "translate", op: kind === "reply" ? "reply" : "tasks", at: t0, ms: now - t0, st: st, err: why, n: list.length, info: { lang: list[0].to, cached: j.cached || 0, translated: j.translated || 0, wait: j.retryAfter || 0 } });
+    if (!whole) {
+      var hold = st === 429 || st === 401 || st === 402 || st === 403;
+      if (st === 429) { stats.limited++; pauseFor(Math.min(60e3, Math.max(1000, +j.retryAfter || 15e3))); }
+      else if (hold) pauseFor(600e3);
+      list.forEach(function (x) {
+        if (MEM.has(x.k)) return;
+        if (hold) { QUEUE[kind].set(x.k, x); return; } // 还在队里：到点接着发（不算次数）
+        if (j.mock || ++x.tries >= 4) { FLY.delete(x.k); RETRY.set(x.k, now + (j.mock ? 60e3 : 300e3)); stats.failed++; dropped++; return; } // 放下：过会儿用到时再要
+        x.after = now + 4e3 * Math.pow(3, x.tries - 1); QUEUE[kind].set(x.k, x); // 4 秒、12 秒、36 秒后再试
+      });
+      if (dropped) wakeAtTime(now + (j.mock ? 60e3 : 300e3));
+    }
+    localPut(keep);
+    if (keep.length) changed();
+    pump();
   }
   // 有新译文：用到的地方重画（攒一下，一次）。不用 requestAnimationFrame：窗口被挡住时它不走，译文到了也不重画
   var subs = [], raf = 0, langFlip = false;
@@ -221,7 +268,14 @@
   // 换了语言 / 开关：用到的地方重画（译文按新的语言现取）
   var lastTo = null;
   var lastRTo = null;
-  setInterval(function () { var t = target(), rt0 = rTarget(); if (t !== lastTo || rt0 !== lastRTo) { var first = lastTo === null; lastTo = t; lastRTo = rt0; if (!first) { langFlip = true; changed(); } } }, 1000); // 换了语言 / 开关：整段重画
+  setInterval(function () {
+    var t = target(), rt0 = rTarget();
+    if (t === lastTo && rt0 === lastRTo) return;
+    var first = lastTo === null;
+    lastTo = t; lastRTo = rt0;
+    [["task", t], ["reply", rt0]].forEach(function (w) { QUEUE[w[0]].forEach(function (x, k) { if (x.to !== w[1]) { QUEUE[w[0]].delete(k); FLY.delete(k); } }); }); // 队里还没发的、旧语言的不要了
+    if (!first) { langFlip = true; changed(); }
+  }, 1000); // 换了语言 / 开关：整段重画
 
   // ======== 回复翻译（agent 设置里的 translateReplies：off | display | zh | en …）========
   //   翻的是 Agent 说的话（● 那几段、过程说明、最终回复）；不翻工具的调用 / 输出、你说的话。按 markdown 的块翻：段落、列表的一项、标题、引用各一块；
@@ -309,22 +363,14 @@
     RPEND.clear();
     if (!all.length) return;
     all.forEach(function (x) { FLY.add(x.k); });
-    lookLocal(all).then(function (miss) {
-      var groups = {};
-      miss.forEach(function (x) { var g = x.to + "\u0001" + x.ctx; (groups[g] = groups[g] || []).push(x); });
-      Object.keys(groups).forEach(function (g) { // 一批最多 20 段、6000 字
-        var l = groups[g], cur = [], chars = 0;
-        l.forEach(function (x) { if (cur.length && (cur.length >= R_BATCH || chars + x.src.length > R_CHARS)) { post(cur, "reply"); cur = []; chars = 0; } cur.push(x); chars += x.src.length; });
-        if (cur.length) post(cur, "reply");
-      });
-    });
+    lookLocal(all).then(function (miss) { enqueue(miss, "reply"); }); // 一批最多 20 段、6000 字（pump 里分）
   }
 
   window.TSU_TRANSLATE = {
     text: text, target: target, onChange: function (fn) { subs.push(fn); },
     // 译文和原文都要的地方（HTML 里 title 放原文）：{ t: 显示的字, o: 原文或 "" }
     pair: function (s, ctx) { var t = text(s, ctx); return { t: t, o: t !== s ? String(s) : "" }; },
-    stats: function () { return Object.assign({ mem: MEM.size }, stats); },
+    stats: function () { return Object.assign({ mem: MEM.size, queued: QUEUE.task.size + QUEUE.reply.size, inflight: INFL.task + INFL.reply, paused: Math.max(0, pauseTill - Date.now()) }, stats); },
     preview: function (m) { PREV = m == null ? null : String(m); changed(); },
     reply: reply, replyPending: replyPending, replyTarget: rTarget, blocks: mdBlocks,
     previewReplies: function (m) { RPREV = m == null ? null : String(m); changed(); },

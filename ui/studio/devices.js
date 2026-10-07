@@ -1,7 +1,8 @@
-// devices.js —— 「设备」App（参考 AirPort 实用工具）：你的设备之间的关系画成一张图——最上面是账户（同它的「互联网」），下面一排是 Mac，
-//   iPhone、iPad、网页这些在用哪台 Mac 就连到那台下面，没在用的连在账户下面。点一台出它的卡片（同 AirPort 的弹出窗口）：
-//   名字、状态、上次在线；另一台在线的 Mac 能「在这里打开」，这台能改名，这台 Mac 能开关「其他设备使用这台 Mac」、撤销允许过的设备。
-//   数据：账户里报到过的设备（sync.js 的 TSU_SYNC.devices()）、现在在线的 Mac 和连着它们的设备（/api/relay/hosts）、这台 Mac 当主机时的（TSU_REMOTE_HOST）
+// devices.js —— 「设备」App（参考 AirPort 实用工具）：最上面是账户，下面一排是电脑（Mac、Linux）和没在用哪台电脑的 iPhone、iPad、网页；
+//   在用某台 Mac 的设备挂在那台下面。点一台出它的卡片（同 AirPort 的弹出窗口）：型号、系统、App 版本、首次登录、上次在线、设备 ID；
+//   另一台在线的 Mac 能「在这里使用」，这台 Mac 能开关「允许其他设备使用」、撤销允许过的设备，别的设备能从账户中移除。点账户：通行密钥、退出登录。
+//   数据：TSU_SYNC.deviceList()（账户里报到过的设备：同一台机器并成一台，以前版本留下的旧记录不列）、/api/relay/hosts（在线的 Mac 和连着它的设备，
+//   按中转里的编号对上）、TSU_REMOTE_HOST（这台 Mac 当主机时）
 (function () {
   "use strict";
   var S = window.STUDIO;
@@ -11,9 +12,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var SY = function () { return window.TSU_SYNC; }, RH = function () { return window.TSU_REMOTE_HOST; }, RC = function () { return window.TSU_REMOTE; };
   var ago = function (ms) { if (!ms) return ""; var s0 = (Date.now() - ms) / 1000; return s0 < 90 ? t("刚刚", "just now") : s0 < 3600 ? t(Math.floor(s0 / 60) + " 分钟前", Math.floor(s0 / 60) + " min ago") : s0 < 86400 ? t(Math.floor(s0 / 3600) + " 小时前", Math.floor(s0 / 3600) + " h ago") : t(Math.floor(s0 / 86400) + " 天前", Math.floor(s0 / 86400) + " d ago"); };
+  var seen = function (ms) { return ms ? t(ago(ms) + "在线", "Seen " + ago(ms)) : t("离线", "Offline"); };
+  var day = function (ms) { if (!ms) return ""; var d = new Date(ms); return t(d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日", d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })); };
   var ONLINE_MS = 15 * 60000;
 
-  // ---- 图标（48 格细线，同活动栏的线条图标）----
+  // ---- 图标（48 格细线，同活动栏的线条图标）；TOP：图形本身的上沿在 48 格里的位置（连线接到图形上，不悬在图标的空白里）----
   var SV = function (b) { return '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var ICON = {
     cloud: SV('<path d="M15 35h19.5a8.5 8.5 0 0 0 1.2-16.9A11.5 11.5 0 0 0 13.6 21 7 7 0 0 0 15 35z"/>'),
@@ -23,131 +26,215 @@
     iphone: SV('<rect x="15" y="5.5" width="18" height="37" rx="4"/><path d="M21 9.4h6"/>'),
     web: SV('<rect x="6" y="9" width="36" height="30" rx="3"/><path d="M6 16h36"/><path d="M10.5 12.5h.01M14 12.5h.01M17.5 12.5h.01"/>'),
   };
+  var TOP = { cloud: 11.2, laptop: 11, desktop: 8.5, ipad: 6.5, iphone: 5.5, web: 9 };
+  var COPY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.2A1.3 1.3 0 0 0 9.2 2H3.3A1.3 1.3 0 0 0 2 3.3v5.9a1.3 1.3 0 0 0 1.3 1.3h.2"/></svg>';
+  var DONE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3 3 6.6-6.6"/></svg>';
+  var LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="12.5" height="9" rx="1.2"/><path d="M1 16.5h17"/><rect x="16.5" y="8.5" width="6" height="11" rx="1.3"/><path d="M19 17.6h1"/></svg>';
   var iconOf = function (d) {
-    var n = String(d.name || "");
-    if (/iPhone/i.test(n)) return "iphone";
-    if (/iPad/i.test(n)) return "ipad";
-    if (/MacBook/i.test(n)) return "laptop";
-    if (/iMac|Mac ?mini|Mac Studio|Mac Pro|Linux|Windows/i.test(n)) return "desktop";
-    if (/Chrome|Safari|Edge|Firefox|浏览器|Browser/i.test(n)) return "web";
-    if (d.mac) return "laptop";
-    return d.kind === "ios" ? "iphone" : "web";
+    var s = (d.label || d.name || "") + " " + (d.model || "");
+    if (d.family === "ipad" || /iPad/i.test(s)) return "ipad";
+    if (d.family === "iphone" || /iPhone/i.test(s)) return "iphone";
+    if (d.web) return "web";
+    return /MacBook/i.test(s) ? "laptop" : "desktop";
   };
-  var kindName = function (d) { var k = iconOf(d); return k === "iphone" ? "iPhone" : k === "ipad" ? "iPad" : k === "web" ? t("网页", "Web") : d.mac ? "Mac" : t("电脑", "Computer"); };
+  var kindLabel = function (d) {
+    if (d.web) return t("网页", "Web") + (d.browser ? " · " + d.browser : "");
+    var k = iconOf(d);
+    if (k === "iphone" || k === "ipad") return k === "ipad" ? "iPad" : "iPhone";
+    return d.kind === "linux" || /Linux|Ubuntu|Debian|Fedora|Arch/i.test((d.os || "") + " " + (d.label || "")) ? "Linux" : /Windows/i.test(d.os || "") ? "Windows" : "Mac";
+  };
 
-  // ---- 数据：账户里的设备 + 在线的 Mac（及连着它的）——同一台按名字并起来（中转那边的编号和账户里的不是一套）----
+  // ---- 数据 ----
   var hostsCache = { at: 0, list: [] };
   function loadHosts(done) {
-    if (Date.now() - hostsCache.at < 5000) return;
+    if (Date.now() - hostsCache.at < 5000 || !SY()) return;
     hostsCache.at = Date.now();
     fetch("/api/relay/hosts", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : []; }).then(function (l) { hostsCache.list = Array.isArray(l) ? l : []; done(); }, function () { done(); });
   }
+  var order = function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); };
   function model() {
-    var sy = SY(), me = sy ? sy.dev : "self", nodes = [], byName = {};
-    var add = function (d) { var k = String(d.name || "").toLowerCase(); if (k && byName[k]) { Object.assign(byName[k], d, { id: byName[k].id }); return byName[k]; } nodes.push(d); if (k) byName[k] = d; return d; };
-    var macApp = !!(window.nadosNative && !nadosNative.remote && nadosNative.local);
-    if (sy) {
-      var ds = sy.devices() || {};
-      Object.keys(ds).forEach(function (id) { var x = ds[id]; add({ id: id, name: x.name || t("另一台设备", "Another device"), model: x.model || "", kind: x.kind, last: x.last_seen || 0, mac: /Mac/.test(x.name || "") && !/iPad|iPhone/.test(x.name || "") && x.kind !== "ios" }); });
-      add({ id: me, name: sy.name(), model: (sy.model && sy.model()) || "", kind: macApp ? "mac" : "", last: Date.now(), self: true, mac: macApp || /Mac · App/.test(sy.name()) });
-    } else add({ id: me, name: macApp ? "Mac" : t("这台设备", "This device"), last: Date.now(), self: true, mac: macApp });
-    hostsCache.list.forEach(function (h) { var n = add({ id: "relay:" + h.device, name: h.name || "Mac", mac: true, last: Date.now() }); n.relay = h.device; n.online = true; n.since = h.since; (h.clients || []).forEach(function (c) { var cn = add({ id: "rc:" + c.cid, name: c.cname || "iPad", last: Date.now() }); cn.via = n; cn.online = true; }); });
-    // 这台设备正在用哪台 Mac（网页、iPad）
+    var sy = SY(), list = sy && sy.deviceList ? sy.deviceList() : null;
+    if (!list) { var app = !!(window.nadosNative && !nadosNative.remote && nadosNative.local); list = [{ id: "self", label: app ? "Mac" : t("这台设备", "This device"), kind: app ? "mac" : "web", web: !app, family: "computer", self: true, last_seen: Date.now(), ids: [] }]; }
+    var nodes = list.map(function (d) { return Object.assign({}, d, { rids: String(d.relay || "").split(/\s+/).filter(Boolean), kids: [] }); });
+    var byRid = function (rid) { return nodes.filter(function (n) { return n.rids.indexOf(rid) >= 0; })[0]; };
+    var lc = function (s) { return String(s || "").trim().toLowerCase(); };
+    var guest = function (rid, nm) { // 连着某台 Mac、账户里却对不上的（老版本的 iPad 页面）：照中转给的名字画一台
+      var n = { id: "rc:" + rid, label: nm || "iPad", rids: [rid], kids: [], ids: [], last_seen: Date.now(), guest: true };
+      n.family = /iPhone/i.test(n.label) ? "iphone" : /iPad/i.test(n.label) ? "ipad" : "computer"; n.web = n.family === "computer";
+      nodes.push(n);
+      return n;
+    };
+    hostsCache.list.forEach(function (h) {
+      var n = byRid(h.device) || nodes.filter(function (x) { return !x.web && x.family === "computer" && !x.host && (lc(x.label) === lc(h.name) || lc(x.name) === lc(h.name)); })[0];
+      if (!n) { n = { id: "relay:" + h.device, label: h.name || "Mac", kind: "mac", family: "computer", rids: [h.device], kids: [], ids: [], last_seen: Date.now(), guest: true }; nodes.push(n); }
+      n.host = h.device; n.online = true;
+      (h.clients || []).forEach(function (c) { var cn = byRid(c.cid) || guest(c.cid, c.cname); cn.via = n; cn.online = true; });
+    });
+    var self = nodes.filter(function (n) { return n.self; })[0], rh = RH();
+    if (rh && self && !self.web) {
+      self.allow = rh.on();
+      self.host = self.host || (rh.device && rh.device());
+      (rh.clients() || []).forEach(function (c) { var cn = byRid(c.id) || guest(c.id, c.name); cn.via = self; cn.online = true; });
+    }
     var rc = RC(), useMac = rc && rc.mac && rc.mac();
-    if (useMac) { var hm = nodes.filter(function (n) { return n.relay === useMac; })[0], self0 = nodes.filter(function (n) { return n.self; })[0]; if (hm && self0) self0.via = hm; }
-    // 这台 Mac 当主机：现在连着的
-    var rh = RH(), self1 = nodes.filter(function (n) { return n.self; })[0];
-    if (rh && self1 && self1.mac) { self1.allow = rh.on(); (rh.clients() || []).forEach(function (c) { var cn = add({ id: "rc:" + c.id, name: c.name || "iPad", last: Date.now() }); cn.via = self1; cn.online = true; }); }
-    nodes.forEach(function (n) { if (n.online == null) n.online = Date.now() - (n.last || 0) < ONLINE_MS; });
-    var macs = nodes.filter(function (n) { return n.mac; }).sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.last || 0) - (a.last || 0); });
-    var others = nodes.filter(function (n) { return !n.mac; }).sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.online ? 1 : 0) - (a.online ? 1 : 0) || (b.last || 0) - (a.last || 0); });
-    return { macs: macs, others: others, me: (window.TSU_AGENTS && TSU_AGENTS.me && TSU_AGENTS.me()) || null, signed: !!sy };
+    if (useMac && self) { var hm = nodes.filter(function (n) { return n.host === useMac; })[0]; if (hm && hm !== self) self.via = hm; }
+    nodes.forEach(function (n) { if (n.online == null) n.online = !!n.self || Date.now() - (n.last_seen || 0) < ONLINE_MS; });
+    var isHost = function (n) { return n.family === "computer" && !n.web; };
+    var hosts = nodes.filter(isHost).sort(order), others = nodes.filter(function (n) { return !isHost(n); }).sort(order);
+    hosts.forEach(function (h) { h.kids = others.filter(function (o) { return o.via === h; }); });
+    var me = (window.TSU_AGENTS && TSU_AGENTS.me && TSU_AGENTS.me()) || null;
+    return { hosts: hosts, loose: others.filter(function (o) { return hosts.indexOf(o.via) < 0; }), count: nodes.filter(function (n) { return !n.guest; }).length, login: sy && me && me.loggedIn !== false ? me.login || "" : "", signed: !!sy };
   }
 
-  // ---- 画：账户在上，一排 Mac，再下一排在用某台 Mac 的设备（挂在那台下面）、没在用的（挂在账户下面），线同 AirPort 的连线 ----
+  // ---- 画：账户在上；下面一排电脑和没在用电脑的设备；在用某台电脑的挂在那台下面 ----
   function nodeHtml(n, key) {
-    var st = n.online ? (n.mac && n.self && n.allow ? t("在线 · 允许其他设备使用", "Online · Shared") : t("在线", "Online")) : n.last ? t("上次在线 ", "Last seen ") + ago(n.last) : t("离线", "Offline");
-    return '<button type="button" class="dv-node' + (n.self ? " self" : "") + (n.online ? " on" : "") + '" data-node="' + esc(key) + '">' +
-      '<span class="dv-ic">' + ICON[iconOf(n)] + '<i class="dv-dot"></i></span><span class="dv-name">' + esc(n.name) + "</span>" +
-      '<span class="dv-st">' + (n.self ? '<b class="dv-me">' + t("这台", "This device") + "</b> · " : "") + esc(st) + "</span></button>";
+    var ic = iconOf(n), st = n.self ? t("这台设备", "This device") : n.online ? t("在线", "Online") : seen(n.last_seen);
+    return '<button type="button" class="dv-node' + (n.self ? " self" : "") + (n.online ? " on" : "") + '" data-node="' + esc(key) + '" title="' + esc(n.label) + '">' +
+      '<span class="dv-ic" data-top="' + TOP[ic] + '">' + ICON[ic] + '<i class="dv-dot"></i></span><span class="dv-name">' + esc(n.label) + '</span><span class="dv-st">' + esc(st) + "</span></button>";
   }
   function render(host, P, arg, V) {
     loadHosts(function () { if (V.shown()) render(host, P, arg, V); });
+    clearTimeout(host._dvT);
+    host._dvT = setTimeout(function () { if (V.shown()) render(host, P, arg, V); }, 10000); // 开着时每 10 秒看一次在线的 Mac、谁连着
     var m = model(), keys = {}, k = 0, put = function (n) { var id = "n" + k++; keys[id] = n; return id; };
+    var col = function (n) { var id = put(n); return '<div class="dv-col">' + nodeHtml(n, id) + (n.kids.length ? '<div class="dv-kids">' + n.kids.map(function (o) { return nodeHtml(o, put(o)); }).join("") + "</div>" : "") + "</div>"; };
+    var acct = '<button type="button" class="dv-node dv-acct on" data-node="acct" title="' + esc(m.login) + '"><span class="dv-ic" data-top="' + TOP.cloud + '">' + ICON.cloud + "</span>" +
+      '<span class="dv-name">' + esc(m.login || t("未登录", "Not Signed In")) + '</span><span class="dv-st">' + esc(m.signed ? t(m.count + " 台设备", m.count + (m.count === 1 ? " device" : " devices")) : "Vibing Studio") + "</span></button>";
+    var tier = m.hosts.map(col).join("") + m.loose.map(col).join("");
+    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + esc(t("设备", "Devices")) + '</h1></div><div class="dv-scroll"><div class="dv-map"><svg class="dv-lines" aria-hidden="true"></svg>' +
+      '<div class="dv-tier dv-t0">' + acct + "</div>" + (tier ? '<div class="dv-tier dv-t1">' + tier + "</div>" : "") + "</div></div></div>";
     V.nodes = keys;
-    var acct = m.me && m.me.login ? m.me.login : t("未登录", "Not signed in");
-    var under = function (mac) { return m.others.filter(function (o) { return o.via === mac; }); };
-    var loose = m.others.filter(function (o) { return !o.via || m.macs.indexOf(o.via) < 0; });
-    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + t("设备", "Devices") + '</h1><span class="dv-sub">' + esc(t("你的设备之间的连接关系；点一台看详情", "How your devices connect; click one for details")) + "</span></div>" +
-      '<div class="dv-map"><svg class="dv-lines"></svg>' +
-      '<div class="dv-row dv-top"><div class="dv-node dv-acct" data-node="acct"><span class="dv-ic">' + ICON.cloud + '</span><span class="dv-name">Vibing Studio</span><span class="dv-st">' + esc(acct) + "</span></div></div>" +
-      '<div class="dv-row dv-macs">' + m.macs.map(function (mac) { var id = put(mac); return '<div class="dv-col" data-col="' + id + '">' + nodeHtml(mac, id) + '<div class="dv-kids">' + under(mac).map(function (o) { return nodeHtml(o, put(o)); }).join("") + "</div></div>"; }).join("") +
-      (loose.length ? '<div class="dv-col dv-loose">' + loose.map(function (o) { return nodeHtml(o, put(o)); }).join("") + "</div>" : "") + "</div>" +
-      (m.signed ? "" : '<p class="dv-hint">' + esc(t("登录后，这里会显示你在其他设备上的 Vibing Studio。", "Sign in to see Vibing Studio on your other devices.")) + "</p>") +
-      "</div></div>";
+    // 和上次一样（定时看、同步拉回来没变）：不重建，卡片、悬停都不打断
+    if (html === host._dvHtml && host.querySelector(".dv-map")) { if (card && card._key && keys[card._key]) card._node = keys[card._key]; return lines(host); }
+    var openId = card && card._node && card._node.id;
+    closeCard();
+    host._dvHtml = html;
     host.innerHTML = html;
-    requestAnimationFrame(function () { lines(host); });
+    lines(host);
     if (!host._dvWired) { host._dvWired = true; wire(host, P, V); }
+    if (host._dvRO) { host._dvRO.disconnect(); host._dvRO.observe(host); host._dvRO.observe(host.querySelector(".dv-map")); }
+    if (openId) Object.keys(keys).forEach(function (k2) { if (keys[k2].id === openId) { var el = host.querySelector('[data-node="' + k2 + '"]'); if (el) openCard(host, P, el, keys[k2], k2, V); } });
   }
-  // 连线：账户 → 每台 Mac、账户 → 没在用 Mac 的设备、Mac → 挂在它下面的设备（直角折线，同 AirPort）
+  // 连线：上面那一台整块（图标、名字、状态）的下沿 → 一条横线 → 下面每一台图形的上沿（同 AirPort）。横线在两排中间的空当里，不穿过任何一台；
+  //   坐标按版面算（offsetLeft/Top 加到 .dv-map 为止），和窗口的缩放动画无关；地图大小一变（窗口、分栏、字体载入）就重画
+  function at(el, map) { var x = 0, y = 0, e = el; while (e && e !== map) { x += e.offsetLeft; y += e.offsetTop; e = e.offsetParent; } return { l: x, t: y, w: el.offsetWidth, h: el.offsetHeight }; }
   function lines(host) {
     var map = host.querySelector(".dv-map"), svg = host.querySelector(".dv-lines");
-    if (!map || !svg) return;
-    var mr = map.getBoundingClientRect(), pts = [], at = function (el, edge) { var r = el.getBoundingClientRect(); return { x: r.left + r.width / 2 - mr.left, y: (edge === "top" ? r.top : r.bottom) - mr.top }; };
-    // 从上面那一台的整块（图标 + 名字 + 状态）下沿出发，到下面那一台图标的上沿：线不穿过字
-    var acct = map.querySelector(".dv-acct");
-    var link = function (a, b) { var p = at(a, "bottom"), q = at(b, "top"), my = Math.round(q.y - 18); pts.push("M" + p.x + " " + (p.y + 2) + "V" + my + "H" + q.x + "V" + (q.y - 2)); };
-    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose) > .dv-node").forEach(function (nd) { if (acct) link(acct, nd.querySelector(".dv-ic")); });
-    map.querySelectorAll(".dv-loose > .dv-node").forEach(function (nd) { if (acct) link(acct, nd.querySelector(".dv-ic")); });
-    map.querySelectorAll(".dv-macs > .dv-col:not(.dv-loose)").forEach(function (col) { var mac = col.querySelector(":scope > .dv-node"); col.querySelectorAll(".dv-kids > .dv-node").forEach(function (nd) { link(mac, nd.querySelector(".dv-ic")); }); });
-    svg.setAttribute("width", mr.width); svg.setAttribute("height", mr.height);
-    svg.innerHTML = pts.map(function (d) { return '<path d="' + d + '"/>'; }).join("");
+    if (!map || !svg || !map.offsetWidth) return;
+    var d = [], R = Math.round;
+    var fan = function (top, kids) {
+      if (!top || !kids.length) return;
+      var a = at(top, map), ax = R(a.l + a.w / 2), ab = R(a.t + a.h);
+      var ks = kids.map(function (nd) { var ic = nd.querySelector(".dv-ic"), b = at(ic, map); return { x: R(b.l + b.w / 2), y: R(b.t + (parseFloat(ic.getAttribute("data-top")) || 0) * b.h / 48) }; });
+      var y = R((ab + Math.min.apply(null, ks.map(function (q) { return q.y; }))) / 2), xs = ks.map(function (q) { return q.x; }).concat([ax]);
+      d.push("M" + ax + " " + (ab + 1) + "V" + y, "M" + Math.min.apply(null, xs) + " " + y + "H" + Math.max.apply(null, xs));
+      ks.forEach(function (q) { d.push("M" + q.x + " " + y + "V" + (q.y - 3)); });
+    };
+    var kidsOf = function (sel) { return Array.prototype.slice.call(map.querySelectorAll(sel)); };
+    fan(map.querySelector(".dv-acct"), kidsOf(".dv-t1 > .dv-col > .dv-node"));
+    map.querySelectorAll(".dv-t1 > .dv-col").forEach(function (c) { fan(c.querySelector(":scope > .dv-node"), Array.prototype.slice.call(c.querySelectorAll(":scope > .dv-kids > .dv-node"))); });
+    var w = map.offsetWidth, h = map.offsetHeight;
+    svg.setAttribute("width", w); svg.setAttribute("height", h); svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+    svg.innerHTML = '<path d="' + d.join("") + '"/>';
   }
+
   // ---- 卡片（同 AirPort 点一台弹出来的那块）----
   var card = null;
   function closeCard() { if (card) { card.remove(); card = null; } }
   function wire(host, P, V) {
     host.addEventListener("click", function (e) {
+      if (e.target.closest(".dv-card")) return;
       var nd = e.target.closest("[data-node]");
-      if (!nd || nd.dataset.node === "acct") { if (!e.target.closest(".dv-card")) closeCard(); return; }
-      var n = V.nodes && V.nodes[nd.dataset.node];
-      if (n) openCard(host, P, nd, n);
+      if (!nd) return closeCard();
+      var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
+      if (card && card._key === key) return closeCard();
+      if (n) openCard(host, P, nd, n, key, V);
     });
-    window.addEventListener("resize", function () { if (V.shown()) lines(host); });
-    document.addEventListener("keydown", function (e) { if (card && e.key === "Escape") closeCard(); }, true);
+    if (window.ResizeObserver) host._dvRO = new ResizeObserver(function () { if (V.shown()) lines(host); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (V.shown()) lines(host); });
+    var redraw = function () { if (V.shown()) { host._dvHtml = ""; render(host, P, V.arg, V); } };
+    if (SY() && SY().on) SY().on(function (type) { if (type === "devices") redraw(); });
+    if (RH() && RH().watch) RH().watch(redraw);
+    document.addEventListener("keydown", function (e) { if (card && e.key === "Escape") { e.stopPropagation(); closeCard(); } }, true);
   }
-  function openCard(host, P, el, n) {
-    closeCard();
-    var rows = [[t("类型", "Kind"), kindName(n)]].concat(n.model ? [[t("型号", "Model"), n.model]] : []).concat([[t("状态", "Status"), n.online ? t("在线", "Online") : t("离线", "Offline")]]).concat(n.last && !n.online ? [[t("上次在线", "Last seen"), ago(n.last)]] : []).concat(n.via ? [[t("正在使用", "Using"), n.via.name]] : []);
+  var copyText = function (s) {
+    var viaN = function () { if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).catch(viaN); else viaN();
+  };
+  var confirmDo = function (o, go) {
+    if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: o.title, message: o.message, icon: "caution", buttons: [{ label: t("取消", "Cancel"), role: "cancel" }, { label: o.ok, role: "default", run: go }] });
+    else if (window.confirm(o.title)) go();
+  };
+  function acctCard(m) {
+    var rows = m.login ? [[t("GitHub 账户", "GitHub Account"), m.login], [t("设备", "Devices"), t(m.count + " 台", String(m.count))]] : [];
+    var acts = m.login ? [["signout", t("退出登录…", "Sign Out…")], ["passkeys", t("通行密钥…", "Passkeys…"), "primary"]] : [["signin", t("使用 GitHub 登录", "Sign In with GitHub"), "primary"]];
+    return { icon: ICON.cloud, title: m.login || t("未登录", "Not Signed In"), sub: "Vibing Studio", rows: rows, acts: acts };
+  }
+  function devCard(n) {
+    var rows = [[t("状态", "Status"), n.online ? t("在线", "Online") : seen(n.last_seen), n.online ? "on" : ""]];
+    if (n.model && n.model !== n.label) rows.push([t("型号", "Model"), n.model]);
+    if (n.os) rows.push([t("系统", "System"), n.os]);
+    if (n.app) rows.push(["Vibing Studio", String(n.app).replace(/^网页 /, "")]);
+    if (n.created_at) rows.push([t("首次登录", "First Signed In"), day(n.created_at)]);
+    if (n.via) rows.push([t("正在使用", "Using"), n.via.label]);
+    if (n.ids && n.ids.length) rows.push([t("设备 ID", "Device ID"), n.ids[0], "id"]);
     var acts = [];
-    if (n.mac && !n.self && n.online && n.relay) acts.push(["open", t("在这里使用这台 Mac", "Use This Mac Here")]);
-    if (n.self && n.mac && RH()) acts.push(["share", RH().on() ? t("不再允许其他设备使用", "Stop Sharing This Mac") : t("允许其他设备使用这台 Mac", "Share This Mac")]);
-    var appr = n.self && n.mac && RH() ? RH().approved() || [] : [];
+    if (!n.self && n.host && n.online && !n.web) acts.push(["open", t("在这里使用", "Use Here"), "primary"]);
+    if (!n.self && n.ids && n.ids.length && SY()) acts.unshift(["remove", t("从账户中移除…", "Remove from Account…")]);
+    return { icon: ICON[iconOf(n)], title: n.label, sub: n.self ? kindLabel(n) + " · " + t("这台设备", "This Device") : kindLabel(n), rows: rows, acts: acts };
+  }
+  function openCard(host, P, el, n, key, V) {
+    closeCard();
+    var m = key === "acct" ? model() : null, c = key === "acct" ? acctCard(m) : devCard(n);
+    var rh = RH(), hosting = n.self && !n.web && rh;
+    var html = '<div class="dv-ch"><span class="dv-cic">' + c.icon + '</span><div class="dv-ct"><b>' + esc(c.title) + "</b><span>" + esc(c.sub) + "</span></div></div>" +
+      (c.rows.length ? '<dl class="dv-rows">' + c.rows.map(function (r) {
+        return "<dt>" + esc(r[0]) + "</dt><dd" + (r[2] === "id" ? ' class="dv-id"' : "") + ">" + (r[2] === "on" ? '<i class="dv-sdot"></i>' : "") + (r[2] === "id" ? "<code>" + esc(r[1]) + '</code><button type="button" class="dv-copy" data-copy="' + esc(r[1]) + '" title="' + esc(t("拷贝", "Copy")) + '">' + COPY + "</button>" : esc(r[1])) + "</dd>";
+      }).join("") + "</dl>" : "");
+    if (hosting) {
+      var on = !!rh.on(), users = n.kids || [], appr = rh.approved() || [];
+      html += '<div class="dv-sw"><span>' + esc(t("允许其他设备使用这台 Mac", "Allow Other Devices to Use This Mac")) + '</span><button type="button" class="dv-switch' + (on ? " on" : "") + '" role="switch" aria-checked="' + on + '" data-act="share"></button></div>';
+      if (users.length) html += '<div class="dv-sec">' + esc(t("正在使用这台 Mac", "Using This Mac")) + '</div><ul class="dv-list">' + users.map(function (u) { return "<li><span>" + esc(u.label) + "</span></li>"; }).join("") + "</ul>";
+      if (appr.length) html += '<div class="dv-sec">' + esc(t("允许过的设备", "Allowed Devices")) + '</div><ul class="dv-list">' + appr.map(function (a) { return "<li><span>" + esc(a.name || a.id) + '</span><button type="button" data-revoke="' + esc(a.id) + '">' + esc(t("撤销", "Revoke")) + "</button></li>"; }).join("") + "</ul>";
+    } else if (n.kids && n.kids.length) html += '<div class="dv-sec">' + esc(t("正在使用这台 Mac", "Using This Mac")) + '</div><ul class="dv-list">' + n.kids.map(function (u) { return "<li><span>" + esc(u.label) + "</span></li>"; }).join("") + "</ul>";
+    if (c.acts.length) html += '<div class="dv-acts">' + c.acts.map(function (a) { return '<button type="button" data-act="' + a[0] + '"' + (a[2] ? ' class="dv-' + a[2] + '"' : "") + ">" + esc(a[1]) + "</button>"; }).join("") + "</div>";
     card = document.createElement("div");
     card.className = "dv-card";
-    card.innerHTML = '<div class="dv-ch"><span class="dv-cic">' + ICON[iconOf(n)] + '</span><div><b>' + esc(n.name) + "</b><span>" + esc(kindName(n)) + "</span></div></div>" +
-      '<dl class="dv-rows">' + rows.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" +
-      (appr.length ? '<div class="dv-sec">' + esc(t("允许过的设备", "Allowed Devices")) + '</div><ul class="dv-appr">' + appr.map(function (a) { return '<li><span>' + esc(a.name || a.id) + '</span><button type="button" data-revoke="' + esc(a.id) + '">' + esc(t("撤销", "Revoke")) + "</button></li>"; }).join("") + "</ul>" : "") +
-      (acts.length ? '<div class="dv-acts">' + acts.map(function (a) { return '<button type="button" data-act="' + a[0] + '">' + esc(a[1]) + "</button>"; }).join("") + "</div>" : "");
+    card.setAttribute("role", "dialog");
+    card.innerHTML = html;
+    card._key = key; card._node = n;
     host.appendChild(card);
-    var r = el.getBoundingClientRect(), hr = host.getBoundingClientRect();
-    var left = Math.max(12, Math.min(hr.width - card.offsetWidth - 12, r.left - hr.left + r.width / 2 - card.offsetWidth / 2)), top = r.bottom - hr.top + host.scrollTop + 8;
-    card.style.left = left + "px"; card.style.top = top + "px";
+    var r = el.getBoundingClientRect(), hr = host.getBoundingClientRect(), cw = card.offsetWidth, ch = card.offsetHeight;
+    var left = Math.max(12, Math.min(host.clientWidth - cw - 12, r.left - hr.left + r.width / 2 - cw / 2));
+    var below = r.bottom - hr.top + host.scrollTop + 6, above = r.top - hr.top + host.scrollTop - ch - 6;
+    card.style.left = Math.round(left) + "px";
+    card.style.top = Math.round(below + ch > host.scrollTop + host.clientHeight - 8 && above >= host.scrollTop + 8 ? above : below) + "px";
     card.addEventListener("click", function (e) {
-      e.stopPropagation();
       var b = e.target.closest("button");
       if (!b) return;
-      if (b.dataset.revoke && RH()) { RH().revoke(b.dataset.revoke); closeCard(); setTimeout(function () { P.program && P.program.redraw && P.program.redraw(); }, 300); return; }
-      var a = b.dataset.act;
-      if (a === "rename" && S.ask && SY()) S.ask({ title: t("重命名这台设备", "Rename This Device"), value: SY().name() }).then(function (v) { if (v == null || v === true) return; v = String(v).trim(); if (v) { SY().rename(v); closeCard(); setTimeout(function () { P.program && P.program.redraw && P.program.redraw(); }, 300); } });
-      else if (a === "share" && RH()) { RH().set(!RH().on()); closeCard(); setTimeout(function () { P.program && P.program.redraw && P.program.redraw(); }, 500); }
-      else if (a === "open" && n.relay) {
+      var nn = card ? card._node : n, a = b.dataset.act, again = function () { host._dvHtml = ""; if (V.shown()) render(host, P, V.arg, V); };
+      if (b.dataset.copy) { copyText(b.dataset.copy); b.innerHTML = DONE; setTimeout(function () { b.innerHTML = COPY; }, 1200); return; }
+      if (b.dataset.revoke && RH()) { Promise.resolve(RH().revoke(b.dataset.revoke)).then(again); return; }
+      if (a === "share" && RH()) { Promise.resolve(RH().set(!RH().on())).then(again); return; }
+      if (a === "remove" && SY()) {
+        return confirmDo({ title: t("从账户中移除「" + nn.label + "」？", "Remove “" + nn.label + "” from your account?"), message: t("如果这台设备还登录着，下次打开 Vibing Studio 时会重新出现。", "If this device is still signed in, it will appear again the next time it opens Vibing Studio."), ok: t("移除", "Remove") },
+          function () { SY().removeDevices(nn.ids).then(function () { closeCard(); again(); }, function (err) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: t("没能移除", "Couldn’t Remove the Device"), message: String((err && err.message) || err), icon: "caution" }); }); });
+      }
+      if (a === "signout") return confirmDo({ title: t("退出登录 " + (model().login || "") + "？", "Sign out of " + (model().login || "") + "?"), message: t("跟着账户的数据会停止同步；这台设备上的 Claude Code、Codex 会话不受影响。", "Account data stops syncing; Claude Code and Codex sessions on this device are not affected."), ok: t("退出登录", "Sign Out") }, function () { location.href = "/auth/logout"; });
+      if (a === "signin") { location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
+      if (a === "passkeys") {
+        closeCard();
+        var u = location.origin + "/account/passkeys", N = window.nadosNative;
+        if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); }); else window.open(u, "_blank", "noopener");
+        return;
+      }
+      if (a === "open" && nn.host) {
         closeCard();
         var rc = RC();
-        if (rc && rc.use) return rc.use(n.relay, n.name); // 网页、iPad：这一页换成用那台 Mac
+        if (rc && rc.use) return rc.use(nn.host, nn.label); // 网页、iPad：这一页换成用那台 Mac
         // Mac / Linux 的 App：在内置浏览器里开一页网页版，连那台 Mac（同在 iPad 上用它）
-        var u = location.origin + "/terminal.html?mac=" + encodeURIComponent(n.relay);
-        if (window.TSU_WEB && TSU_WEB.open) TSU_WEB.open(P.win, u);
+        var url = location.origin + "/terminal.html?mac=" + encodeURIComponent(nn.host);
+        if (window.TSU_WEB && TSU_WEB.open) TSU_WEB.open(P.win, url);
       }
     });
   }
@@ -155,13 +242,14 @@
   S.pages.devices = {
     title: function () { return t("设备", "Devices"); },
     address: function () { return "devices.local.paimon"; },
+    icon: function () { return LOGO; }, // 标签页上：同 App 里的那个图标
     render: render,
-    detach: function () { closeCard(); },
+    detach: function (host) { closeCard(); clearTimeout(host._dvT); },
   };
   // 「App」里一格
   if (S.apps && S.apps.add) S.apps.add({
     id: "devices", builtin: true, name: function () { return t("设备", "Devices"); },
-    logo: function () { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="12.5" height="9" rx="1.2"/><path d="M1 16.5h17"/><rect x="16.5" y="8.5" width="6" height="11" rx="1.3"/><path d="M19 17.6h1"/></svg>'; },
+    logo: function () { return LOGO; },
     find: function (tw) { var hit = null; (tw && tw.ws && tw.ws.all ? tw.ws.all() : []).forEach(function (p) { if (!hit && p.program && p.program.page === "devices") hit = p; }); return hit; },
     open: function (tw) { return S.openPage(tw, "devices", ""); },
   });
