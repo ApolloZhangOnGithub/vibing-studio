@@ -5216,6 +5216,14 @@
   // ======== 窗口：标签页 × 分屏（同 iTerm / Terminal.app）========
   // 分屏树：{ pane } 或 { dir: "row"（左右）| "col"（上下）, a, b, ratio }。每个窗口一棵；布局存在本地
   var wins = [];
+  // Claude Code 的会话列表读到了（同名的会话可能变了）：开着的标签页、窗口标题上的短 id 跟着改——真的变了才重画标签条
+  var dupSig = "";
+  document.addEventListener("tsu-cc", function () {
+    var sig = wins.map(function (w) { return w.open && w.ws && w.ws.all ? w.ws.all().map(function (p) { return p.program && p.program.titleTag ? p.program.titleTag() : ""; }).join(",") : ""; }).join("|");
+    if (sig === dupSig) return;
+    dupSig = sig;
+    wins.forEach(function (w) { if (w.open && w.ws && w.ws.syncTitles) w.ws.syncTitles(); });
+  });
   function allPanes() { var o = []; wins.forEach(function (w) { if (w.open) { w.ws.all().forEach(function (p) { o.push(p); if (p.vs && p.vs.panes) o.push.apply(o, p.vs.panes()); }); if (w.sidePane) o.push(w.sidePane); } }); return o; } // 右侧栏里的那个对话、标签页里拆出来的几格也算（换配色、改设置时一起重画）
   // 这个 agent（Paimon、cc:…、cx:…）已经开在某个标签页里：跳过去（前面那个窗口先找），返回那个面板；没开着返回 null——开的路（树、Agent Finder、命令面板、通知……）都先问它，同一个只开一个
   function focusAgent(id) {
@@ -7037,7 +7045,7 @@
         var b = document.createElement("div");
         b.className = "tab" + (i === ws.ti ? " on" : "");
         b.innerHTML = '<i class="tx" title="关闭标签页">×</i><span></span><em class="pt-k">' + (i < 9 ? "⌘" + (i + 1) : "") + "</em>";
-        b.querySelector("span").textContent = p.title() + (ps.length > 1 ? " (" + ps.length + ")" : "");
+        titleInto(b.querySelector("span"), p, "", ps.length > 1 ? " (" + ps.length + ")" : "");
         if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
         b.addEventListener("mousedown", function (e) { e.preventDefault(); if (e.target.closest(".tx")) askClose(ps, "标签页", function () { ps.forEach(function (x) { ws.closePane(x); }); }); });
         b.addEventListener("click", function (e) { if (!e.target.closest(".tx")) ws.useTab(i); });
@@ -7146,7 +7154,7 @@
         b._p = p;
         b.className = "tab" + (p === g.active ? " on" : "") + (p === ws.active ? " focus" : "");
         b.innerHTML = '<i class="tx" title="关闭">×</i><span></span>';
-        b.querySelector("span").textContent = (p.bell ? "🔔 " : "") + p.title();
+        titleInto(b.querySelector("span"), p, p.bell ? "🔔 " : ""); // 同名的会话：名字后面淡淡地带短 id
         if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
         // 按下不切换（同 VS Code 拖标签页去分屏：拖着的时候当前看着的那个不变，放下才对）；松开没拖动才切过去；中键关闭
         b.addEventListener("mousedown", function (e) {
@@ -7281,7 +7289,7 @@
         if (g2.el && g2.el.classList.contains("on") !== (g2 === ws.group)) g2.el.classList.toggle("on", g2 === ws.group);
         if (g2.tabsEl) Array.prototype.forEach.call(g2.tabsEl.children, function (b) { if (!b._p) return; var on = b._p === g2.active, fo = b._p === ws.active; if (b.classList.contains("on") !== on) b.classList.toggle("on", on); if (b.classList.contains("focus") !== fo) b.classList.toggle("focus", fo); });
       });
-      if (tw.titleEl) tw.titleEl.textContent = ws.active ? ws.active.title() : "Vibing Studio";
+      titleInto(tw.titleEl, ws.active, "", "", "Vibing Studio");
       if (afterG.indexOf(g) < 0) afterG.push(g);
       var run = function () {
         clearTimeout(afterT); cancelAnimationFrame(afterR); afterT = afterR = 0;
@@ -7289,7 +7297,7 @@
         if (ws.itabs || gs.some(function (g1) { return !g1.el || !g1.el.isConnected || ws.groups().indexOf(g1) < 0; })) { ws.syncTitles(); persistAll(); return; } // 这期间布局变了：整个同步一遍
         if (window.TSU_DESK && TSU_DESK.front() && TSU_DESK.front().el === tw.el) TSU_DESK.refreshMenus();
         gs.forEach(function (g1) {
-          if (g1.tabsEl) Array.prototype.forEach.call(g1.tabsEl.children, function (b) { var sp = b._p === g1.active && b.querySelector("span"), t = sp && (b._p.bell ? "🔔 " : "") + b._p.title(); if (sp && sp.textContent !== t) sp.textContent = t; }); // 🔔 去掉
+          if (g1.tabsEl) Array.prototype.forEach.call(g1.tabsEl.children, function (b) { var sp = b._p === g1.active && b.querySelector("span"); if (sp) titleInto(sp, b._p, b._p.bell ? "🔔 " : ""); }); // 🔔 去掉；同名的会话带短 id
           drawActs(g1);
           if (window.STUDIO && STUDIO.crumbsInto) STUDIO.crumbsInto(g1.crumbsEl, g1.active);
         });
@@ -7303,7 +7311,7 @@
     }
     ws.syncTitles = function () {
       if (DRAG && DRAG.on) { if (DRAG.pend.indexOf(ws) < 0) DRAG.pend.push(ws); return; } // 拖着的时候不整条重画标签条（放下后补一遍）
-      if (tw.titleEl) tw.titleEl.textContent = ws.active ? ws.active.title() : "Vibing Studio";
+      titleInto(tw.titleEl, ws.active, "", "", "Vibing Studio");
       if (window.TSU_DESK && TSU_DESK.front() && TSU_DESK.front().el === tw.el) TSU_DESK.refreshMenus();
       if (ws.itabs) drawITabs(); else { tw.tabsEl.hidden = true; tw.tabsEl.classList.remove("pt-tabs"); } // VS Code：窗口那一条不用，每组自己的标签条；Pure Terminal：窗口那一条是 iTerm 的标签页
       tw.panesEl.classList.toggle("pt-split", !!ws.itabs && ws.groups().length > 1);
@@ -7782,7 +7790,7 @@
     content.innerHTML = '<div class="tabs" hidden></div><div class="panes"></div>';
     var id = m ? wantId : "term-" + (++winSeq);
     if (m) winSeq = Math.max(winSeq, +m[1]);
-    var dw = TSU_DESK.createWindow({ id: id, app: "win", name: "终端", content: content, className: "termwin", width: 900, height: 600, menus: termMenus, appMenu: appMenu, title: function () { var t = wins.find(function (w) { return w.id === id; }); return t && t.ws.active ? t.ws.active.title() : "终端"; } });
+    var dw = TSU_DESK.createWindow({ id: id, app: "win", name: "终端", content: content, className: "termwin", width: 900, height: 600, menus: termMenus, appMenu: appMenu, title: function () { var t = wins.find(function (w) { return w.id === id; }), a = t && t.ws.active, tg = a && a.program && a.program.titleTag ? a.program.titleTag() : ""; return a ? a.title() + (tg ? "  " + tg : "") : "终端"; } }); // 窗口菜单、程序坞里：同名的会话后面带短 id
     // 结构同 #win：.body 里直接是 .tabs 与 .panes
     var body = dw.el.querySelector(".body");
     body.appendChild(content.querySelector(".tabs"));

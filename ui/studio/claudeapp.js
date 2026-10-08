@@ -286,6 +286,8 @@
   var stOf = function (x, un) { return x.state === "working" ? "working" : x.state === "waiting" ? "waiting" : un ? "unread" : x.env === "other" ? "remote" : x.live ? "live" : ""; };
   var ST_TIP = { working: ["正在运行", "Running"], waiting: ["等着你", "Waiting for you"], unread: ["未读", "Unread"], live: ["在别的终端里开着", "Open in another terminal"] };
   var tildeOf = function (p) { var h = homeDir(); p = String(p || ""); return h && (p === h || p.indexOf(h + "/") === 0) ? "~" + p.slice(h.length) : p; };
+  // 同名的 Claude Code 会话：名字后面淡淡地带短 id（TSU_CLAUDE.dupTag）
+  var dupOf = function (x) { return x && x.kind === "cc" && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(x.id, x.name) : ""; };
   function row(x, cur) {
     var dots = getK("claudeDots", true) !== false, when = getK("claudeTime", false) === true, un = !!UNREAD[keyOf(x.kind, x.id)], s = dots ? stOf(x, un) : "";
     // 提示：名字；哪个连接器（Claude Code、Codex 还有目录）；状态
@@ -294,7 +296,7 @@
     // 前面是连接器的小图标（状态是它右下角的小点）；右边：多久以前（开着「显示时间」）；指着这一行时换成 ⋮（会话菜单）
     return '<div class="ca-it' + (cur ? " on" : "") + (x.arch ? " arch" : "") + (x.dim ? " dimt" : "") /* 没有像样标题的：目录名 + 时间，淡的 */ + (un ? " unread" : "") + '" data-id="' + esc(x.id) + '" data-kind="' + x.kind + '" title="' + esc(tip) + '">' +
       '<i class="ca-ico ca-k-' + x.kind + (s ? " s-" + s : "") + '">' + (CONN[x.kind] ? CONN[x.kind].glyph : "") + (s ? '<b class="ca-bdg"></b>' : "") + "</i>" +
-      '<span class="ca-name">' + esc(x.name) + "</span>" + (when ? '<span class="ca-when">' + esc(ago(x.t)) + "</span>" : "") + '<button class="ca-rowmore" data-rm="1" title="' + esc(tr("更多", "More")) + '">' + IC.more + "</button></div>";
+      '<span class="ca-name">' + esc(x.name) + (dupOf(x) ? ' <small class="ttag">' + esc(dupOf(x)) + "</small>" : "") + "</span>" + (when ? '<span class="ca-when">' + esc(ago(x.t)) + "</span>" : "") + '<button class="ca-rowmore" data-rm="1" title="' + esc(tr("更多", "More")) + '">' + IC.more + "</button></div>";
   }
   // 状态分组的几段（顺序）；排序
   var ST_GROUPS = [["working", "运行中", "Running"], ["waiting", "等待中", "Waiting"], ["idle", "空闲", "Idle"], ["arch", "已归档", "Archived"]];
@@ -435,8 +437,8 @@
     else if (aid && A && A.get(aid)) { ck = "pm"; var a0 = A.get(aid); cdir = a0 && a0.path ? String(a0.path).split("/").join(" / ") : ""; }
     else if (p && p.program && p.program.page === "ca-new") { ck = draftConn(); cdir = ck && ck !== "pm" ? baseName(draftDirOf(ck)) : ""; }
     if (ck && CONN[ck]) chip = '<span class="ca-chip ca-cchip" title="' + esc(CONN[ck].name + (cdir ? " · " + cdir : "")) + '">' + ico(ck) + '<span class="ca-cn">' + esc(CONN[ck].name) + "</span>" + (cdir ? '<span class="ca-csep">·</span><span class="ca-cdir">' + esc(cdir) + "</span>" : "") + "</span>";
-    var title = p ? p.title() : tr("新会话", "New session");
-    var t = '<span class="ca-lap">' + IC.laptop + '</span><button class="ca-tbtn" data-b="title"><span class="ca-tt">' + esc(title) + '</span><span class="ca-tc">' + IC.down + "</span></button>" + chip;
+    var title = p ? p.title() : tr("新会话", "New session"), ttag = p && p.program && p.program.titleTag ? p.program.titleTag() : ""; // 同名的会话：名字后面淡淡地带短 id
+    var t = '<span class="ca-lap">' + IC.laptop + '</span><button class="ca-tbtn" data-b="title"><span class="ca-tt">' + esc(title) + (ttag ? ' <small class="ttag">' + esc(ttag) + "</small>" : "") + '</span><span class="ca-tc">' + IC.down + "</span></button>" + chip;
     if (w.ca.ttl.dataset.h !== t) { w.ca.ttl.dataset.h = t; w.ca.ttl.innerHTML = t; }
     var a = [["term", IC.term, tr("终端", "Terminal")], ["tasks", IC.tasks, tr("后台任务", "Background Tasks")], ["web", IC.globe, tr("浏览器", "Browser")], ["files", IC.folder, tr("文件", "Files")], ["global", IC.assist, tr("全局助手", "Studio Assistant")]].filter(function (x) { return (x[0] !== "files" || filesOK()) && (x[0] !== "global" || globalOK()); }).map(function (x) {
       return '<button class="ca-ib ca-tog' + (cardOn(x[0]) ? " on" : "") + '" data-c="' + x[0] + '" title="' + esc(x[2]) + '">' + x[1] + "</button>";
@@ -1383,10 +1385,10 @@
         g.el.insertBefore(h, g.body || null);
         h.querySelector("[data-sx]").addEventListener("click", function (e) { e.stopPropagation(); unsplit(w, g); });
       }
-      var t = "";
-      try { t = g.active && g.active.title ? g.active.title() : ""; } catch (e) { t = ""; }
+      var t = "", tg = "";
+      try { t = g.active && g.active.title ? g.active.title() : ""; tg = g.active && g.active.program && g.active.program.titleTag ? g.active.program.titleTag() : ""; } catch (e) { t = ""; }
       var te = h.querySelector(".ca-splitt"), xb = h.querySelector("[data-sx]");
-      if (te.textContent !== t) te.textContent = t;
+      if (te.textContent !== t + (tg ? " " + tg : "")) { te.textContent = t; if (tg) { var sm = document.createElement("small"); sm.className = "ttag"; sm.textContent = tg; te.appendChild(document.createTextNode(" ")); te.appendChild(sm); } } // 同名的会话带短 id
       if (xb.title !== tr("收起这一边", "Close this side")) xb.title = tr("收起这一边", "Close this side");
       h.classList.toggle("on", g === ws.group);
     });

@@ -214,9 +214,11 @@
     if (!l) return null;
     return l.map(function (x) { var ek = CONN[k].ext + x.id; return { x: x, name: ex.name[ek] || x.title || x.id.slice(0, 8), arch: !!(x.archived || ex.arch[ek]) }; });
   }
+  // 同名的 Claude Code 会话：名字后面淡淡地带短 id（tag，TSU_CLAUDE.dupTag）
+  var nmH = function (it) { return esc(it.label || it.name) + (it.tag ? ' <small class="ttag">' + esc(it.tag) + "</small>" : ""); };
   function sessItem(k, s0) {
     var x = s0.x, busy = !!(x.live && x.live.status === "busy"), here = openHere(CONN[k].ext + x.id), run = busy || here || !!x.live;
-    return { kind: "csess", conn: k, id: x.id, x: x, name: s0.name, label: s0.name, time: x.mtime || 0, sub: k === "cc" ? ccModel(x.model) : x.model || "", dot: s0.arch,
+    return { kind: "csess", conn: k, id: x.id, x: x, name: s0.name, label: s0.name, tag: k === "cc" && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(x.id, s0.name) : "", time: x.mtime || 0, sub: k === "cc" ? ccModel(x.model) : x.model || "", dot: s0.arch,
       status: s0.arch ? tr("已归档", "Archived") : run ? tr("运行中", "Running") : tr("空闲", "Idle"), srank: s0.arch ? 2 : run ? 0 : 1, st: busy ? "work" : here ? "open" : x.live ? "bg" : "" };
   }
   // 按真实的文件夹一层层分（同访达、同 Agents 树）：最上面是 ~（家目录）和 Macintosh HD（别的地方）；每一层是
@@ -586,7 +588,7 @@
     var x = it.x || {}, k = it.conn;
     var rows = [[tr("状态", "Status"), it.status], [tr("模型", "Model"), it.sub], [tr("项目文件夹", "Project Folder"), x.cwd ? { html: '<span class="xp-link" data-go="' + esc(connArg(k, x.cwd)) + '">' + esc(tilde(x.cwd)) + "</span>" } : ""], [tr("上次活跃", "Last Active"), longDate(it.time)]];
     var more = [[tr("会话记录", "Transcript"), x.path ? tilde(x.path) : ""], [tr("大小", "Size"), x.size ? kb(x.size) : ""], ["ID", x.id]];
-    return '<div class="xp-pv"><div class="xp-pvtop">' + iconOf(it, "huge") + '</div><div class="xp-pvname">' + esc(it.name) + '</div><div class="xp-pvkind">' + esc(kindName(it) + (x.cwd ? " · " + dirName(x.cwd) : "")) + "</div>" +
+    return '<div class="xp-pv"><div class="xp-pvtop">' + iconOf(it, "huge") + '</div><div class="xp-pvname">' + nmH(it) + '</div><div class="xp-pvkind">' + esc(kindName(it) + (x.cwd ? " · " + dirName(x.cwd) : "")) + "</div>" +
       infoBlock(rows, more) + (x.last ? '<div class="xp-cslast">' + esc(clip(x.last, 600)) + "</div>" : "") + "</div>";
   }
   // 连接器的位置、项目文件夹：大图标、名字、在哪、几个会话、最近什么时候
@@ -1133,7 +1135,7 @@
         var was = last && V.sel < 0 && V.trail && V.trail.at === (V.arg || "") && V.trail.name === it.name; // ← 退出来之前在这一栏选着的：淡的底色（再 → 回到它）
         if (on) hit = it;
         return '<div' + dragAttr(it) + (last ? ' data-i="' + i + '"' : "") + ' class="xp-crow' + (on ? (last || ci === lastI - 1 && V.sel < 0 ? " on" : " trail") : was ? " trail" : "") + (it.dot ? " dot" : "") + '"' + (it.path ? ' data-cpath="' + esc(it.path) + '"' : "") +
-          ' data-cin="' + esc(arg) + '" data-cname="' + esc(it.name) + '"' + (dir ? ' data-cgo="' + esc(it.dflt || g) + '"' : "") + ">" + iconOf(it) + '<span class="xp-cn">' + esc(it.label || it.name) + "</span>" + (dir ? '<span class="xp-carr">›</span>' : "") + "</div>";
+          ' data-cin="' + esc(arg) + '" data-cname="' + esc(it.name) + '"' + (dir ? ' data-cgo="' + esc(it.dflt || g) + '"' : "") + ">" + iconOf(it) + '<span class="xp-cn">' + nmH(it) + "</span>" + (dir ? '<span class="xp-carr">›</span>' : "") + "</div>";
       }).join("");
       var kinds = {}, top = "";
       (items0 || []).forEach(function (it) { var k = colKind(it); kinds[k] = (kinds[k] || 0) + 1; if (!top || kinds[k] > kinds[top]) top = k; });
@@ -1236,13 +1238,13 @@
       else if (err) body = '<div class="xp-pempty">' + esc(tr("无法读取这个文件夹", "Can't read this folder")) + "</div>";
       else if (!list.length) body = '<div class="xp-pempty">' + (q ? "未找到结果" : w.conn ? "暂无会话" : w.root ? tr("最近没有会话", "No recent sessions") : w.agents && !w.path ? "暂无 Agent" : "空文件夹") + "</div>";
       else if (view === "gallery") body = galleryHtml(list, V);
-      else if (view === "grid") body = '<div class="xp-grid">' + list.map(function (it, i) { return '<div class="xp-it' + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + ">" + thumbIcon(it, "grid") + '<span class="xp-name">' + esc(it.label || it.name) + "</span></div>"; }).join("") + "</div>";
+      else if (view === "grid") body = '<div class="xp-grid">' + list.map(function (it, i) { return '<div class="xp-it' + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + ">" + thumbIcon(it, "grid") + '<span class="xp-name">' + nmH(it) + "</span></div>"; }).join("") + "</div>";
       else body = '<div class="xp-table" style="' + colStyle() + '"><div class="xp-th">' + (w.agents ? [["name", tr("名称", "Name")], ["time", tr("上次活跃", "Last Active")], ["status", tr("状态", "Status")], ["kind", w.root ? tr("种类", "Kind") : w.conn && !w.cdir ? tr("位置", "Where") : tr("模型", "Model")]] : [["name", tr("名称", "Name")], ["time", tr("修改日期", "Date Modified")], ["size", tr("大小", "Size")], ["kind", tr("种类", "Kind")]]).map(function (h, ci) {
           var st = w.root && !deep ? { k: "time", d: -1 } : XV.sort || { k: "name", d: 1 }, on = st.k === h[0]; // 「最近」：照上次活跃（新的在前）
           return '<span class="xp-thc' + (on ? " on" : "") + '" data-sort="' + h[0] + '">' + esc(h[1]) + (on && h[1] ? '<i class="xp-sarr">' + (st.d > 0 ? "▲" : "▼") + "</i>" : "") + (ci < 3 ? '<i class="xp-colgrip" data-col="' + ci + '"></i>' : "") + "</span>";
         }).join("") + "</div>" + list.map(function (it, i) {
         var gh = it._grp && (i === 0 || list[i - 1]._grp !== it._grp) ? '<div class="xp-grp">' + esc(it._grp) + "</div>" : "";
-        return gh + '<div class="xp-tr' + (i % 2 ? " alt" : "") + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + '><span class="xp-tn">' + iconOf(it) + esc(it.label || it.name) + "</span><span>" + esc(when(it.time)) + '</span><span class="xp-tsz">' + esc(it.kind === "agent" || it.kind === "csess" ? it.status : it.kind === "file" ? kb(it.size) : it.note || "--") + "</span><span>" + esc(it.kind === "agent" || it.kind === "csess" || it.cf ? it.sub : kindName(it)) + "</span></div>";
+        return gh + '<div class="xp-tr' + (i % 2 ? " alt" : "") + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + '><span class="xp-tn">' + iconOf(it) + nmH(it) + "</span><span>" + esc(when(it.time)) + '</span><span class="xp-tsz">' + esc(it.kind === "agent" || it.kind === "csess" ? it.status : it.kind === "file" ? kb(it.size) : it.note || "--") + "</span><span>" + esc(it.kind === "agent" || it.kind === "csess" || it.cf ? it.sub : kindName(it)) + "</span></div>";
       }).join("") + '<div class="xp-fill">' + Array.apply(null, Array(24)).map(function (_, k) { return '<div class="xp-tr xp-blank' + ((list.length + k) % 2 ? " alt" : "") + '"></div>'; }).join("") + "</div></div>";
       var msg = V.msg && Date.now() - V.msgAt < 6000 ? V.msg : ""; // 刚才出的错（改名重了、移不到废纸篓……）：在这里说几秒
       var status = '<div class="xp-status"><div class="xp-pathbar">' + pathBar(w) + '</div><span class="xp-count' + (msg ? " err" : "") + '">' + (msg ? esc(msg) : list ? esc(items(list.length)) + (V.sel >= 0 && sel ? " · " + esc(tr("已选择 1 项", "1 selected")) : "") : "") + "</span></div>";

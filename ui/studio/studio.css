@@ -1513,3 +1513,5 @@ html.st-focus .tpane, html.st-focus .tpane:focus, html.st-focus .tpane.active { 
 html:not(.native-app) #win .bar > i[data-act] { display: none !important; }
 /* 代码文件不显示行号（设置 › 外观 › 行号；标签栏 ··· 菜单）：行号那一栏不要，字往右挪一点不贴边 */
 html.st-noln { --st-cm-gut: none; --st-cm-pl: 14px; } /* 编辑器在影子 DOM 里（studio.js CM_SHADOW_CSS）：经继承的变量告诉它 */
+/* 同名的 Claude Code 会话：名字后面淡淡的短 id（会话 id 前 8 位；标签页、窗口标题、Claude App 的边栏、Agent Finder） */
+.ttag { font-size: .88em; font-weight: 400; opacity: .55; letter-spacing: 0; font-variant-numeric: tabular-nums; }

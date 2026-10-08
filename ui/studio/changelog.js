@@ -11,6 +11,15 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-08", ver: "0.2.1.429", items: {
+      improved: [
+        ["「未发送」的每一句都有自己的「重试 · 编辑 · 取消」（只对这一句），下面写着这一句失败了几次、手动重试了几次、什么时候发出、最近一次是什么时候。", "Each unsent message has its own Retry, Edit and Cancel (for that message only), with how many times it failed, how many times you retried it, when it was first sent and when it was last tried."],
+      ],
+      fixed: [
+        ["关掉 iTerm 以后消息送不到：会话原来开在 iTerm 里、进程跟着没了，或者 Claude Code 的后台服务跟着退了，现在会在后台把这个会话重新跑起来再送，不再依赖 iTerm；会话正在起来时等它好了再送。", "Messages no longer fail after iTerm is closed: if the session’s process or Claude Code’s background service went away with it, the session is resumed in the background and the message is delivered; while a session is starting, sending waits for it."],
+        ["「未发送」的一句点「重试」以后第一行是空的：送出去和画出来都去掉前后的空行。", "After Retry, an unsent message showed an empty first line; leading and trailing blank lines are now dropped when sending and displaying."],
+      ],
+    } },
     { date: "2026-10-07", ver: "0.2.1.428", items: {
       new: [
         ["新增「服务状态」App：翻译、同步、远程 Mac 中转、登录、更新检查等服务过去 24 小时、30 天的状态和出过的问题，以及每一次调用的时间、用时、结果和出错原因（翻译的记录包括所有设备）。", "New Service Status app: the last 24 hours and 30 days of translation, sync, remote Mac relay, sign-in, update checks and other services, with incidents and the time, duration, result and error of every call (translation history covers all your devices)."],
