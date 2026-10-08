@@ -108,7 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     let appItem = NSMenuItem()
     main.addItem(appItem)
     let app = NSMenu()
-    app.addItem(withTitle: "关于 " + Config.appName, action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+    app.addItem(withTitle: "关于 " + Config.appName, action: #selector(showAbout(_:)), keyEquivalent: "").target = self
     app.addItem(.separator())
     let services = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
     services.submenu = NSMenu()
@@ -248,6 +248,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   @objc func statusShowWindow(_ sender: NSMenuItem) { if sender.tag < extra.count { extra[sender.tag].window.makeKeyAndOrderFront(nil) }; NSApp.activate() }
   @objc func statusSettings(_ sender: Any?) { statusShow(nil); web?.emit("status.settings", [:]) }
   @objc func newWindowAction(_ sender: Any?) { newWindow(open: nil, topLeft: nil) }
+
+  // 关于：设置 › 关于（版本号、界面从哪儿读、更新）；页面还没好、或是老的界面没有这一页：系统的「关于」面板
+  @objc func showAbout(_ sender: Any?) {
+    guard let c = allControllers().first(where: { $0.window.isKeyWindow }) ?? web else { NSApp.orderFrontStandardAboutPanel(nil); return }
+    if !c.window.isVisible { c.window.makeKeyAndOrderFront(nil) }
+    NSApp.activate()
+    c.webView.evaluateJavaScript("window.STUDIO && STUDIO.about ? (STUDIO.about() ? 1 : 0) : 0") { r, _ in
+      if (r as? Int ?? 0) != 1 { NSApp.orderFrontStandardAboutPanel(nil) }
+    }
+  }
 
   @objc func reloadPage(_ sender: Any?) {
     if !web.window.isVisible { web.window.makeKeyAndOrderFront(nil) }

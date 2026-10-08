@@ -755,6 +755,11 @@
   PATTERNS.push([/^(\d+) 类显示，(\d+) 类隐藏$/, "$1 shown, $2 hidden"], [/^(\d+) 项显示，(\d+) 项隐藏$/, "$1 shown, $2 hidden"]);
   PATTERNS.push([/^(.+) › (.+)$/, function (m) { return sub(m[1]) + " › " + sub(m[2]); }]); // 搜索结果里一组是哪一页：「通用 › 高级」「连接器 › Codex」
   words({"更新内容": "What's New", "墙纸": "Wallpaper", "太浩湖黄昏": "Tahoe Dusk", "翡翠湾": "Emerald Bay", "石墨": "Graphite", "黑色": "Black", "活动栏大小": "Activity Bar Size", "正常": "Normal", "关于本机": "About This Mac", "重新启动…": "Restart…", "桌面": "Desktop"});
+  words({ "关于": "About", "版本与更新": "Version and updates", "版本": "Version", "界面来源": "Interface Source", "更新": "Updates", "查看": "View", "服务状态": "Service Status", "关于 Vibing Studio": "About Vibing Studio",
+    "改用网站上的界面": "Use the Website Version", "网站上有更新的界面。": "The website has a newer interface.", "当前已是最新版本。": "You're up to date.", "没有切换成功。": "Couldn't switch." });
+  PATTERNS.push([/^网站上有更新的界面（v(.+)）。$/, "The website has a newer interface (v$1)."],
+    [/^这台 Mac 用的是本机文件夹里的一份（v(.+)）：(.+)。改用网站上的界面后，以后都跟着网站更新。$/, "This Mac uses a local copy (v$1): $2. Switch to the website version to stay up to date."],
+    [/^这台 Mac 用的是本机文件夹里的一份（v(.+)）：(.+)。这一版 App 不能切换；更新 App 后会自动改用网站上的界面。$/, "This Mac uses a local copy (v$1): $2. This App version can't switch; updating the App switches to the website version automatically."]);
   words({"移到新窗口": "Move into New Window", "复制到新窗口": "Copy into New Window", "新建窗口": "New Window", "状态": "Status", "上次活跃": "Last Active", "空闲": "Idle", "使用群组": "Use Groups", "分组方式": "Group By", "排序方式": "Sort By", "升序": "Ascending", "降序": "Descending", "新建文件夹": "New Folder", "粘贴项目": "Paste Item", "显示简介": "Get Info", "分栏": "Columns", "画廊": "Gallery", "显示预览": "Show Preview", "图像": "Images", "文稿": "Documents", "开发者": "Developer"});
   var SKIP_SEL = [".term .out", ".tpane .foot", ".tpane .jump", ".xterm", ".st-term", ".gv-md", ".gv-bubble", ".gv-out", ".gv-cmd", ".gv-code", ".gv-thought",
     ".gv-todoi", ".gv-res", ".gv-diff", "pre:not(.ts-list)", "code", "textarea", "[contenteditable]", ".st-ed", ".st-doc", ".st-psample", ".xp-pre", ".xp-qlb",

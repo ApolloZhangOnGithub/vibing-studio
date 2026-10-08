@@ -15,7 +15,7 @@ struct BridgeError: Error {
 final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
   static let protocolVersion = 1
   static let commands = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "screenshot", "badge", "attention", "window.dragRegions", "window.fullscreen",
-                         "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "open.pending",
+                         "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "ui.source", "open.pending",
                          "window.tabDrop", "app.activate", "app.quit", "statusItem.set"]
   weak var controller: WebController? { didSet { local?.controller = controller; web?.controller = controller } }
   let local: Local? = Config.terminal ? Local() : nil // Paimon Terminal：这台 Mac 本身（真终端、命令、文件）
@@ -159,6 +159,9 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       return "data:image/jpeg;base64," + jpg.base64EncodedString()
     case "ui.stamp": // 本地界面（LocalUI.swift）：界面文件最近一次改动的时间；页面拿它提示「重新载入以更新」
       return ["stamp": LocalUI.stamp(), "dir": LocalUI.dir?.path ?? "", "local": controller?.localOn ?? false] as [String: Any]
+    case "ui.source": // 设置 › 关于：界面从哪儿读——auto（本机那份不比网站上的旧才用它）/ site / local；页面随后重新载入
+      if let s = a["source"] as? String, ["auto", "site", "local"].contains(s) { UserDefaults.standard.set(s, forKey: "uiSource") }
+      return ["source": LocalUI.source, "dir": LocalUI.dir?.path ?? "", "local": controller?.localOn ?? false, "localBuild": LocalUI.localBuild()] as [String: Any]
     case "open.pending": // 在访达里用这个 App 打开的文件、文件夹（AppDelegate 记着的）：给页面，给完就清
       guard let d = NSApp.delegate as? AppDelegate else { return [String]() }
       let l = d.pendingOpen

@@ -1140,7 +1140,7 @@
   };
   var readVerJ = function () { return window.TSU_UI_LOCAL ? localVerJ() : siteVerJ(); }; // 重新载入后会用的那一份
   var readVer = function () { return readVerJ().then(function (j) { return j ? String(j.version) : ""; }); };
-  (LOC() && LOC().ready ? LOC().ready : Promise.resolve()).then(readVerJ, readVerJ).then(function (j) { if (j) { uiVer.cur = String(j.version); uiVer.built = j.built || ""; } });
+  (LOC() && LOC().ready ? LOC().ready : Promise.resolve()).then(readVerJ, readVerJ).then(function (j) { if (j) { uiVer.cur = String(j.version); uiVer.built = j.built || ""; uiVer.curBuild = +j.build || 0; } });
   document.addEventListener("st-update-ready", function () { readVer().then(function (v) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); }); });
   var localVer = ""; // 本地界面：页面载入后第一次读到的 version.json
   function checkVersion(force) {
@@ -1834,7 +1834,7 @@
     view: { group: "app", order: 12 }, terminal: { group: "app", order: 13 },
     // Paimon 不是连接器（不接外面的 CLI），是 Studio 内置的助手：左边单独一项，在「连接器」下面（用户定的）
     connectors: { group: "agents", order: 20 }, paimon: { group: "agents", order: 21, title: "Paimon", desc: "内置助手：监看其他 Agent 的运行" }, claude: { under: "connectors/claude-code" },
-    keys: { group: "app", order: 14 }, advanced: { group: "adv", order: 80 }, developer: { group: "dev", order: 90 },
+    keys: { group: "app", order: 14 }, advanced: { group: "adv", order: 80 }, about: { group: "adv", order: 85 }, developer: { group: "dev", order: 90 },
   };
   var GROUPS = { settings: "Studio", app: "应用", agents: "Agent", adv: "", dev: "开发者" }; // adv：不写组名，只空一点——「高级」单独在最下面 // 第一组不再叫「设置」：窗口标题、搜索框已经写了两遍「设置」
   function addSettings(id, sec) { if (id === "view") sec = viewPaged(sec); if (id === "paimon") sec = paimonPage(sec); SECTIONS[id] = Object.assign(sec, SEC_META[id] || {}); }
@@ -1968,6 +1968,7 @@
     view: SV24('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'), // 对话：一个气泡
     claude: window.TSU_LOGOS && TSU_LOGOS.claudePath ? '<svg viewBox="-13 -13 126 127"><path fill="currentColor" d="' + TSU_LOGOS.claudePath + '"/></svg>' : SV24('<circle cx="12" cy="12" r="9"/>'), // Claude Code：Claude 自己的标志（不是画的星号）
     extensions: SV24('<rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/>'),
+    about: SV24('<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>'), // 关于：圆里一个 i
     connectors: SV24('<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>'), // 插头：会话在哪里跑（Claude Code、Codex、派蒙）
   };
 
@@ -4757,6 +4758,7 @@
     done: MIc('<path d="M3.2 8.4l3 3 6.6-6.6"/>'),
     bell: MIc('<path d="M4.2 11V7.4a3.8 3.8 0 0 1 7.6 0V11l1 1.2H3.2zM6.6 13.4a1.5 1.5 0 0 0 2.8 0"/>'),
     update: MIc('<circle cx="8" cy="8" r="5.8"/><path d="M8 4.9v5.4M5.6 8l2.4 2.4L10.4 8"/>'), // 升级（有新版本、检查更新）：圆里一个向下的箭头
+    about: MIc('<circle cx="8" cy="8" r="5.8"/><path d="M8 7.3v3.6M8 5.1v.01"/>'), // 关于：圆里一个 i
     // 后台任务的通知（跑完的命令、子 Agent 回来的结果送进对话）：收件盘——「有东西送到了」，不像铃铛那样吵
     tray: MIc('<path d="M2.2 9.2l1.7-5.4c.1-.4.5-.6.9-.6h6.4c.4 0 .8.2.9.6l1.7 5.4v3a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1z"/><path d="M2.4 9.2h3.2l.8 1.6h3.2l.8-1.6h3.2"/>'),
     // 过程说明（一问里夹在工具调用之间的话）：说着话的气泡里三个点——还在做；最终回复是 ✦（answer）
@@ -4833,6 +4835,7 @@
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
       mi("检查更新…", "", function () { checkNow(); }, { icon: MI.update, sym: "arrow.down.circle" }),
+      mi("关于 Vibing Studio", "", function () { settings(tw, "about"); }, { icon: MI.about, sym: "info.circle" }),
     ].filter(Boolean).concat(updItem(mi)), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
   }
   // 选连哪台 Mac（网页版 / iPad）：这个账号现在在线的 Mac；连着的时候多一项「断开」
@@ -4861,17 +4864,73 @@
     if (!A0) { checkVersion(true); checkRemoteApp(true); return; }
     checkVersion(true);
     var slow = setTimeout(function () { A0({ title: "正在检查和下载更新…", message: "下载好后 ⚙ 菜单最下面会出现「重启以更新」。", icon: "none", buttons: [{ label: "好", role: "default" }] }); }, 1500);
-    checkRemoteApp(true).then(function (r) {
+    Promise.all([checkRemoteApp(true), checkSite()]).then(function (rs) {
+      var r = rs[0];
       clearTimeout(slow);
+      redrawSettings();
       return readVer().then(function (nv) {
         if (updateReady) uiVer.next = nv || uiVer.next;
         if (appUpd) return A0({ title: "有新版本" + v(appUpd.ver) + "，已经下载好。", message: "重启以更新：标签页、会话都会接回去；旧版本留在「Application Support / Vibing Studio / previous」。", icon: "none", buttons: [{ label: "稍后", role: "cancel" }, { label: "重启以更新", role: "default", run: function () { appUpdateNow(); } }] });
         if (r && r.state === "error") return A0({ title: "检查更新没有成功。", message: r.error + "。稍后再试，或者到 GitHub 的发行版页面下载。", icon: "none", buttons: [{ label: "好", role: "default" }] });
         if (updateReady) return A0({ title: "有可用的更新" + v(uiVer.next) + "。", message: "重新载入以更新：终端、会话都会接回去。", icon: "none", buttons: [{ label: "稍后", role: "cancel" }, { label: "重新载入", role: "default", run: function () { location.reload(); } }] });
+        // 这台 Mac 从本机文件夹读界面，那一份比网站上的旧（iCloud 没同步过来、以前装的一份）：说清楚，能换就给一个按钮
+        if (siteNewer()) return A0({ title: "网站上有更新的界面" + v(uiVer.site) + "。", message: "这台 Mac 用的是本机文件夹里的一份" + v(uiVer.cur) + "：" + tilde(window.TSU_UI_LOCAL.dir) + "。" + (canSource() ? "改用网站上的界面后，以后都跟着网站更新。" : "这一版 App 不能切换；更新 App 后会自动改用网站上的界面。"), icon: "none",
+          buttons: canSource() ? [{ label: "稍后", role: "cancel" }, { label: "改用网站上的界面", role: "default", run: function () { useSite(); } }] : [{ label: "好", role: "default" }] });
         A0({ title: "当前已是最新版本" + v(uiVer.cur) + "。", icon: "none", buttons: [{ label: "好", role: "default" }] });
       });
     });
   }
+  // 网站上最新的界面版本（本机读界面时拿来比：本机那份旧了就说）
+  function checkSite() { return siteVerJ().then(function (j) { if (j) { uiVer.site = String(j.version); uiVer.siteBuild = +j.build || 0; } uiVer.siteAt = Date.now(); return j; }); }
+  var buildOf = function (v, b) { return +b || +String(v || "").split(".").pop() || 0; }; // 版本号最后一段就是构建号（0.2.1.432、早先的 0.2.426）
+  function siteNewer() { return !!(window.TSU_UI_LOCAL && uiVer.site && uiVer.cur && buildOf(uiVer.site, uiVer.siteBuild) > buildOf(uiVer.cur, uiVer.curBuild)); }
+  // App 能不能换界面来源（新版原生才有 ui.source）
+  var appInfo = null;
+  function nativeInfo() { var N = window.nadosNative; if (!N || !N.call) return Promise.resolve(null); if (appInfo) return Promise.resolve(appInfo); return N.call("info").then(function (i) { appInfo = i || {}; return appInfo; }, function () { appInfo = {}; return appInfo; }); }
+  function canSource() { return !!(appInfo && (appInfo.commands || []).indexOf("ui.source") >= 0); }
+  function useSite() { var N = window.nadosNative; if (!N || !N.call || !canSource()) return; if (window.TSU_FLUSH) TSU_FLUSH(); N.call("ui.source", { source: "site" }).then(function () { location.reload(); }, function (e) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "没有切换成功。", message: String((e && e.message) || e), icon: "none", buttons: [{ label: "好", role: "default" }] }); }); }
+
+  // ======== 关于（设置 › 关于；⚙ 菜单、App 菜单里的「关于 Vibing Studio」）：版本号（界面、App）、界面从哪儿读的、更新的情况和按钮、更新内容、服务状态 ========
+  //   更新那一行写清楚现在是什么情况：已是最新（上次检查的时间）/ 界面有新版本 / App 新版本正在下载、已下载 / 本机那份界面比网站上的旧 / 上次检查失败（原因）
+  var aboutAt = 0;
+  function aboutLoad() {
+    if (!appInfo && window.nadosNative) nativeInfo().then(function () { redrawSettings(); });
+    if (Date.now() - aboutAt > 10 * 60000) { aboutAt = Date.now(); checkSite().then(function () { redrawSettings(); }); }
+  }
+  function updState(L2) {
+    var vv = function (x) { return x ? " " + String(x).replace(/^v/, "") : ""; }, when = function (t) { return new Date(t).toLocaleTimeString(L2("zh-CN", "en-US"), { hour: "numeric", minute: "2-digit" }); };
+    if (appUpd) return { text: L2("App 新版本" + vv(appUpd.ver) + " 已下载好，重启后换上（标签页、会话都会接回去）", "App" + vv(appUpd.ver) + " is downloaded; restart to update (tabs and sessions come back)"), btn: "重启以更新", act: "appUpdate" };
+    if (remoteDl) return { text: L2("正在下载 App" + vv(remoteDl) + "…", "Downloading App" + vv(remoteDl) + "…"), btn: "检查更新", act: "check" };
+    if (updateReady) return { text: L2("界面有新版本" + vv(uiVer.next), "A new interface version is available:" + vv(uiVer.next)), btn: "重新载入", act: "reload" };
+    if (siteNewer()) return { text: L2("网站上有更新的界面" + vv(uiVer.site) + "；这台 Mac 用的是本机文件夹里的" + vv(uiVer.cur), "The website has a newer interface:" + vv(uiVer.site) + "; this Mac uses a local copy:" + vv(uiVer.cur)) + (canSource() ? "" : L2("。更新 App 后会自动改用网站上的界面", ". Updating the App switches to the website version automatically")), btn: canSource() ? "改用网站上的界面" : "检查更新", act: canSource() ? "useSite" : "check" };
+    if (remoteLast && remoteLast.state === "error") return { text: L2("上次检查 App 更新没有成功：", "The last App update check failed: ") + remoteLast.error, btn: "重试", act: "check" };
+    return { text: L2("已是最新版本", "Up to date") + (remoteAt ? L2(" · 上次检查 ", " · Last checked ") + when(remoteAt) : uiVer.siteAt ? L2(" · 上次检查 ", " · Last checked ") + when(uiVer.siteAt) : ""), btn: "检查更新", act: "check" };
+  }
+  addSettings("about", {
+    title: "关于", icon: "i", desc: "版本与更新",
+    fields: function () {
+      aboutLoad();
+      var en0 = !!(window.TSU_I18N && TSU_I18N.lang() === "en"), L2 = function (zh, e) { return en0 ? e : zh; }, A = appInfo, LU = window.TSU_UI_LOCAL, N = window.nadosNative, st = updState(L2);
+      var day = function (s) { var d = new Date(s); return isNaN(d.getTime()) ? "" : d.toLocaleString(L2("zh-CN", "en-US"), { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
+      return [
+        { key: "abVer", label: "版本", must: true, kind: "info", value: uiVer.cur || "—", desc: uiVer.built ? L2("发布于 ", "Released ") + day(uiVer.built) : "" },
+        A && A.version ? { key: "abApp", label: "App", must: true, kind: "info", value: A.version + (A.build ? L2("（构建 " + A.build + "）", " (build " + A.build + ")") : ""), desc: [A.arch === "x86_64" ? "Intel" : L2("Apple 芯片", "Apple silicon"), A.os ? "macOS " + String(A.os).replace(/\.0$/, "") : ""].filter(Boolean).join(" · ") } : null,
+        { key: "abSrc", label: "界面来源", must: true, kind: "info", value: LU ? L2("本机文件夹", "Local folder") : N ? L2("网站", "Website") : L2("网页版", "Web"), desc: LU ? tilde(LU.dir) : location.host },
+        { key: "abUpd", label: "更新", must: true, kind: "button", text: st.btn, act: st.act, desc: st.text },
+        { key: "abLog", label: "更新内容", must: true, kind: "button", text: "查看", act: "changelog" },
+        { key: "abStatus", label: "服务状态", must: true, kind: "button", text: "查看", act: "status" },
+      ].filter(Boolean);
+    },
+    action: function (what, tw) {
+      if (what === "check") return checkNow();
+      if (what === "reload") return location.reload();
+      if (what === "appUpdate") return appUpdateNow();
+      if (what === "useSite") return useSite();
+      if (what === "changelog" && window.TSU_CHANGELOG) return TSU_CHANGELOG.open(tw);
+      if (what === "status") return openPage(tw, "status", "");
+    },
+  });
+  if (window.nadosNative && nadosNative.on) nadosNative.on("app.about", function () { var tw = allWins()[0]; if (tw) settings(tw, "about"); }); // App 菜单「关于 Vibing Studio」
   // 显示语言（同 VS Code 的「配置显示语言」）
   function LANG_AUTO() { return window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en" ? "Follow System (跟随系统)" : "跟随系统 (Follow System)"; }
   function pickLang(tw) {
@@ -5626,6 +5685,7 @@
     command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; },
+    about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）
     needsList: needsList, // 有新版本了（页面的脚本在服务器上变了）：重新载入就用上
     crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview,
   };

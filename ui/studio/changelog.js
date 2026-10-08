@@ -11,8 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-08", ver: "0.2.1.432", items: {
+    { date: "2026-10-08", ver: "0.2.1.433", items: {
       new: [
+        ["设置里有了「关于」（⚙ 菜单、App 菜单里的「关于 Vibing Studio」也打开它）：版本号、发布时间；App 的版本、构建号、芯片和系统；界面从哪里读取；更新情况（已是最新、有新版本、正在下载、已下载待重启、上次检查失败的原因）和对应的按钮；更新内容、服务状态。", "Settings now has About (also opened by About Vibing Studio in the ⚙ menu and the App menu): the version and release time; the App’s version, build, chip and macOS; where the interface is loaded from; update status (up to date, update available, downloading, ready to restart, or why the last check failed) with the matching button; plus What’s New and Service Status."],
         ["会话详情：会话列表、标签页上右键「详情」，或在辅助侧栏 ··· 里勾上「详情」——名字、ID、目录、分支、创建、最近活动、状态、权限模式、Claude Code 版本；工作时长、提问、回复、压缩次数；Token（输入、输出、思考、缓存读取、缓存写入，按模型分）；子 Agent 的数量和 Token；工具调用次数；记录文件。", "Session details: right-click a session or its tab and choose Details, or turn on Details in the secondary side bar’s ··· menu, to see the name, ID, folder, branch, creation and last activity, status, permission mode and Claude Code version; working time, prompts, responses and compactions; tokens (input, output, thinking, cache read and write, by model); subagents and their tokens; tool calls; and the transcript file."],
         ["标签页时间（beta）：详情里写这个标签页什么时候打开、开了多久，其中在前台、可见但未聚焦、后台工作、休眠各多久，Agent 工作了多久；同一个会话在 Vibing Studio 里的累计（这台设备和所有设备，跟着账户同步）。", "Tab time (beta): Details shows when the tab was opened and how long it has been open, split into in front, visible but not focused, working in the background and idle, plus how long the agent worked; and the session’s totals in Vibing Studio on this device and across devices, synced with your account."],
       ],
@@ -25,6 +26,7 @@
         ["显示语言里的「跟随系统」两种语言都写（跟随系统 (Follow System)），语言认错时也找得到。", "Follow System in the display language setting is shown in both languages, so you can find it even if the wrong language is showing."],
       ],
       fixed: [
+        ["别的 Mac 上一直停在几天前的界面，也没有更新提示：App 从本机文件夹读界面时，那一份比网站上的旧就改用网站上的（新版 App 自动换；设置 › 关于 里也能手动换）；「检查更新」不再拿网站上的版本号说本机这份已是最新。", "Other Macs could stay on an interface several days old with no update prompt: when the App loads the interface from a local folder that is older than the website’s, it now uses the website’s (automatically in the new App, or from Settings › About); Check for Updates no longer reports a stale local copy as up to date using the website’s version number."],
         ["后台 Agent 跑完、它接着回答完以后，输入框下面那一行还是更早那一问的「✻ … for …」：现在是最后这一轮的。", "After a background agent finished and Claude answered, the line under the input still showed an earlier turn’s “✻ … for …”; it now shows the latest turn."],
         ["粘贴几 MB 的文字以后发不出去（「spawn: Argument list too long」），界面还会卡住：大的消息改为写进文件再送，排着的那一行只画前几行。", "Sending a message with several megabytes of pasted text failed with “spawn: Argument list too long” and could freeze the app; large messages are now passed through a file, and pending rows draw only the first lines."],
       ],

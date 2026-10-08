@@ -3,6 +3,9 @@
 import AppKit
 import WebKit
 
+// 本地界面和网站上的版本号一起等（loadLocal）：两个请求谁先回来都行，只在主线程里读写
+final class VerJoin: @unchecked Sendable { var site: Int? = nil; var go: (() -> Void)? = nil }
+
 @MainActor
 final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
   let window: DesktopWindow
@@ -155,8 +158,29 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
         }
         var req = URLRequest(url: page, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 8)
         req.httpShouldHandleCookies = false
-        if !jar.isEmpty { req.setValue(jar.map { $0.name + "=" + $0.value }.joined(separator: "; "), forHTTPHeaderField: "Cookie") }
+        let cookie = jar.map { $0.name + "=" + $0.value }.joined(separator: "; ")
+        if !jar.isEmpty { req.setValue(cookie, forHTTPHeaderField: "Cookie") }
         req.setValue("text/html", forHTTPHeaderField: "Accept")
+        // 界面来源是 auto（默认）、用的不是 App 带的那份：同时问一下网站上的界面是第几版——本机那份比它旧（iCloud 没同步过来、以前装的一份）就用网站上的，
+        //   不再一直停在旧的那一版（别的 Mac 上以前就是这样：一直是几天前的界面，也不提示更新）
+        let join = VerJoin()
+        var verReq: URLRequest? = nil
+        if LocalUI.source == "auto" && !LocalUI.bundledOnly, var vc = URLComponents(url: page, resolvingAgainstBaseURL: false) {
+          vc.path = "/version.json"; vc.query = nil; vc.fragment = nil
+          if let vu = vc.url {
+            var vr = URLRequest(url: vu, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 5)
+            vr.httpShouldHandleCookies = false
+            if !jar.isEmpty { vr.setValue(cookie, forHTTPHeaderField: "Cookie") }
+            verReq = vr
+          }
+        }
+        let wantVer = verReq != nil // 真的问了才等它
+        if let vr = verReq {
+          URLSession.shared.dataTask(with: vr) { d, resp, _ in
+            let b = (resp as? HTTPURLResponse)?.statusCode == 200 ? LocalUI.build(of: d) : 0
+            DispatchQueue.main.async { MainActor.assumeIsolated { join.site = b; join.go?(); join.go = nil } }
+          }.resume()
+        }
         URLSession.shared.dataTask(with: req) { data, _, err in
           let inj = LocalUI.injection(in: data.flatMap { String(data: $0, encoding: .utf8) } ?? "")
           let failed = err != nil
@@ -165,7 +189,14 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
               if let inj {
                 UserDefaults.standard.set(inj, forKey: key)
                 if LocalUI.bundledOnly { self.trace("online, bundled UI only: load the site (latest UI)"); self.bypassOnce = true; self.webView.load(URLRequest(url: page)); return } // 别的 Mac：界面跟网站走，不停在打包时的那一版
-                self.showLocal(page, inj); return
+                if LocalUI.source == "site" { self.trace("ui source: site"); self.bypassOnce = true; self.webView.load(URLRequest(url: page)); return }
+                let go = {
+                  let lb = LocalUI.localBuild(), sb = join.site ?? 0
+                  if wantVer && sb > lb { self.trace("local UI build \(lb) is older than the site's \(sb): load the site"); self.bypassOnce = true; self.webView.load(URLRequest(url: page)); return }
+                  self.showLocal(page, inj)
+                }
+                if wantVer && join.site == nil { join.go = go } else { go() } // 网站的版本号还没回来：等它（最多 5 秒）
+                return
               }
               if failed, let old = UserDefaults.standard.string(forKey: key) { self.trace("offline: local UI with the last account"); self.showLocal(page, old); return }
               self.trace("not signed in (or site error): load the site page")

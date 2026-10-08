@@ -26,6 +26,16 @@ enum LocalUI {
     return nil
   }
 
+  // 界面来源（设置 › 关于 里能换；defaults 的 uiSource）：auto（默认：本机那份不比网站上的旧才用它）/ site（一直用网站上的）/ local（一直用本机的：开发时）
+  static var source: String { let s = UserDefaults.standard.string(forKey: "uiSource") ?? ""; return ["site", "local"].contains(s) ? s : "auto" }
+  // 一份界面的构建号：version.json 里的 build（老的只有 version：最后一段就是构建号）；读不到是 0
+  static func build(of data: Data?) -> Int {
+    guard let data, let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return 0 }
+    if let b = j["build"] as? Int { return b }
+    return Int((j["version"] as? String ?? "").split(separator: ".").last ?? "") ?? 0
+  }
+  static func localBuild() -> Int { build(of: dir.flatMap { try? Data(contentsOf: $0.appendingPathComponent("version.json")) }) }
+
   // 只有 App 里带的那一份（别的 Mac 上：没有仓库、没有部署过的本地界面）：联网时用网站上的（总是最新的），断网才用带的这份
   static var bundledOnly: Bool {
     guard let d = dir, let r = Bundle.main.resourceURL?.appendingPathComponent("web") else { return false }

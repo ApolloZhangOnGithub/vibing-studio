@@ -717,7 +717,7 @@
     N.call("menu.set", { menus: spec, native: NATIVE_TITLES }).catch(function () {});
   }
   var lastMenus = "";
-  var NATIVE_TITLES = { "#edit": "编辑", "#window": "窗口", "#services": "服务", "orderFrontStandardAboutPanel:": "关于 Vibing Studio", "hide:": "隐藏 Vibing Studio", "hideOtherApplications:": "隐藏其他", "unhideAllApplications:": "全部显示", "terminate:": "退出 Vibing Studio",
+  var NATIVE_TITLES = { "#edit": "编辑", "#window": "窗口", "#services": "服务", "orderFrontStandardAboutPanel:": "关于 Vibing Studio", "showAbout:": "关于 Vibing Studio", "hide:": "隐藏 Vibing Studio", "hideOtherApplications:": "隐藏其他", "unhideAllApplications:": "全部显示", "terminate:": "退出 Vibing Studio",
     "undo:": "撤销", "redo:": "重做", "cut:": "剪切", "copy:": "拷贝", "paste:": "粘贴", "selectAll:": "全选",
     "newWindowAction:": "新建窗口", "performMiniaturize:": "最小化", "performZoom:": "缩放", "toggleFullScreen:": "进入全屏幕", "reloadPage:": "重新载入页面", "arrangeInFront:": "前置全部窗口" };
   if (window.TSU_I18N && TSU_I18N.add) TSU_I18N.add({ "编辑": "Edit", "服务": "Services", "关于 Vibing Studio": "About Vibing Studio", "隐藏 Vibing Studio": "Hide Vibing Studio", "隐藏其他": "Hide Others", "全部显示": "Show All", "退出 Vibing Studio": "Quit Vibing Studio",
