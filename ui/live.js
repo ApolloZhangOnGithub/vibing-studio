@@ -2316,7 +2316,7 @@
       var run = !live && (t.parts || []).some(function (x) { return x.status === "running"; });
       var ts0 = rt.session().turns, ix = idxOf && idxOf.has(t) ? idxOf.get(t) : ts0.indexOf(t), nx = ts0[ix + 1];
       // 这一问在第几个（点开 / 收起按它找到是哪一问；前面接上更早的记录时都往后挪）、后面紧跟的是不是回顾（做完那一行挪不挪）也算
-      var k = rcSig + "|" + (t.__rv || 0) + "|" + trN(t) + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : ""), c = rowCache.get(t);
+      var k = rcSig + "|" + (t.__rv || 0) + "|" + trN(t) + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
       var rows = turnRows(t, live), h = P.join(rows);
       htmlN = rows.length;
@@ -2504,14 +2504,35 @@
       var st = turn.stats, bits = [], ft = (cfg.footer || []).slice(), D = P.DIM;
       if (foot && ft.indexOf("duration") < 0) ft.unshift("duration");
       if (foot && ft.indexOf("time") < 0) ft.push("time");
-      ft.forEach(function (f) {
+      // 同 Claude Code 2.1.281（turn_duration 那一行）：这一问结束时还有后台 Agent / 动态工作流没跑完、现在也还在跑——
+      //   「✻ Waiting for 2 background agents to finish」，不写用了多久、done 几点；跑完了就回到「✻ Baked for 3m · done …」
+      var live = foot || turn === lastDone(), bg = live || st.pendAgents || st.pendWf ? liveBg() : null;
+      var wA = st.pendAgents && bg && bg.agents > 0 ? st.pendAgents : 0, wW = st.pendWf && bg && bg.wf > 0 ? st.pendWf : 0;
+      if (wA || wW) bits.push("Waiting for" + (wA ? " " + wA + " background " + (wA === 1 ? "agent" : "agents") : "") + (wA && wW ? " and" : "") + (wW ? " " + wW + " " + (wW === 1 ? "dynamic workflow" : "dynamic workflows") : "") + " to finish");
+      else ft.forEach(function (f) {
         if (f === "duration") bits.push((st.verb || "Worked") + " for " + F.dur(st.secs * 1000));
         if (f === "tokens" && (st.in || st.out)) bits.push("↑ " + F.k(st.in) + " ↓ " + F.k(st.out) + " tokens");
         if (f === "cost" && st.cost) bits.push("≈" + F.money(st.cost));
       });
-      // 「done 3:04 PM」就是「完成时间」这一项：关了就整段不显示（不单留一个 done）；不写「还有 n 个后台任务在跑」（右侧栏就看得到）
-      if (ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + timeOf(st.at));
+      // 「done 3:04 PM」就是「完成时间」这一项：关了就整段不显示（不单留一个 done）
+      if (!wA && !wW && ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + timeOf(st.at));
+      // token 预算（/budget）：「12k / 50k (24%)」，用够了「50k used (50k min ✓)」；催过几次；/focus 藏起来的几条
+      if (st.budget) bits.push((st.budget.used >= st.budget.limit ? F.k(st.budget.used) + " used (" + F.k(st.budget.limit) + " min ✓)" : F.k(st.budget.used) + " / " + F.k(st.budget.limit) + " (" + Math.round(st.budget.used * 100 / Math.max(1, st.budget.limit)) + "%)") + (st.budget.nudges ? " · " + st.budget.nudges + " " + (st.budget.nudges === 1 ? "nudge" : "nudges") : ""));
+      if (st.hidden) bits.push(st.hidden + " " + (st.hidden === 1 ? "message" : "messages") + " hidden (/focus to show)");
+      // 现在还在跑的后台活（最后一问那行、闲着时输入框下面那行；在写「Waiting for …」时不写）：「· 1 shell still running」
+      if (!wA && !wW && live && bg && bg.summary) bits.push(bg.summary + " still running");
       return bits.length ? D + "✻ " + bits.join(" · ") + RESET : "";
+    }
+    // 现在还在跑的后台活（同 Claude Code：后台 Agent 算「Waiting for」那边；别的写「1 shell」「2 local agents」，几种混着写「3 background tasks」）
+    function liveBg() {
+      var run = (rt.tasks || []).filter(function (x) { return x.status === "running"; });
+      var agents = run.filter(function (x) { return x.kind === "agent" && x.background; }).length, rest = run.filter(function (x) { return !(x.kind === "agent" && x.background); });
+      var kinds = {}; rest.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
+      var ks = Object.keys(kinds), n = rest.length, summary = "";
+      if (n && ks.length === 1 && ks[0] === "shell") summary = n === 1 ? "1 shell" : n + " shells";
+      else if (n && ks.length === 1 && ks[0] === "agent") summary = n === 1 ? "1 local agent" : n + " local agents";
+      else if (n) summary = n + " background " + (n === 1 ? "task" : "tasks");
+      return { agents: agents, wf: 0, summary: summary, sig: agents + ":" + n + ":" + summary };
     }
     // 最后一问（做完了的）：闲着时它那行「✻ … for …」画在输入框下面（footDone），对话最后就不再画一遍
     //   最后一问：跳过不是「一问」的（回顾、压缩、别的会话 / 后台发来的通知、/ 命令、! 命令）——它们后面没有自己的「✻ … for …」

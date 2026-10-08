@@ -129,6 +129,8 @@
   // 一问做完那一行的过去式（同 Claude Code 的 TURN_COMPLETION_VERBS）：「✻ Baked for 3m 15s」
   var DONE_VERBS = ["Baked", "Brewed", "Churned", "Cogitated", "Cooked", "Crunched", "Sautéed", "Worked"];
   var doneVerb = function (t) { var h = Math.floor(+t || 0) % 2147483647; h = (h * 16807) % 2147483647; return DONE_VERBS[h % DONE_VERBS.length]; };
+  // 同 Claude Code 2.1.281（ig）：结尾那行的词按那条 turn_duration 记录的 uuid 算（字符串哈希 h = h * 31 + c），同一问在它那里、这里是同一个词
+  var doneVerbU = function (u) { var e = 0; u = String(u || ""); for (var n = 0; n < u.length; n++) e = (e << 5) - e + u.charCodeAt(n) | 0; return DONE_VERBS[(e >>> 0) % DONE_VERBS.length]; };
   var verbFor = function (t) { var h = Math.floor(+t || 0) % 2147483647; h = (h * 48271) % 2147483647; return SPIN_VERBS[h % SPIN_VERBS.length] || "Working"; };
   function narration(sig) {
     if (!sig) return false;
@@ -283,6 +285,7 @@
         else if (bashIn[b.tool_use_id]) delete bashIn[b.tool_use_id];
         if (t && t.kind === "agent") {
           bindId(t, r.agentId || (/agentId: (\w+)/.exec(txt) || [])[1]);
+          if (r.isAsync || /Async agent launched/.test(txt)) t.background = true; // 在后台跑的（ctrl+b 放到后台的也是这样回）：算后台 Agent（结尾那行「Waiting for … to finish」）
           if (!(r.isAsync || /Async agent launched/.test(txt))) { t.status = b.is_error ? "error" : "done"; t.end = at; t.ms = r.totalDurationMs || at - t.t0; t.result = txt.slice(0, 20000); if (r.totalTokens) t.tokens = t.tokensOut = r.totalTokens; if (r.totalToolUseCount) t.tools = r.totalToolUseCount; if (b.is_error) t.error = txt.slice(0, 300); }
           changed = true;
         } else if (t && t.kind === "shell") {
@@ -757,6 +760,7 @@
       if (j.usageReport) lastCmd.usageReport = j.usageReport;
       return lastCmd;
     }
+    function lastAskTurn() { for (var i = turns.length - 1; i >= 0; i--) if (turns[i].ask !== undefined) return turns[i]; return null; }
     function feedLine(line) {
       if (!line || line.length < 10) return null;
       var j;
@@ -792,11 +796,31 @@
         turns.push(rc); byUuid[j.uuid] = rc;
         return rc;
       }
+      // Claude Code 的提示（system / informational）：warning、notice、suggestion 级的画成「● 内容」（warning 黄、notice 灰，同它）；info 级的它自己也不画
+      if (j.type === "system" && j.subtype === "informational" && typeof j.content === "string") {
+        if (j.level === "info" || !j.content.trim()) return null;
+        var it0 = cur || lastAskTurn();
+        if (!it0) return null;
+        it0.parts.push({ kind: "info", text: j.content.trim(), level: j.level || "", at: ts(j) });
+        return it0;
+      }
+      // stop hook（system / stop_hook_summary）：同它——平常跑完什么都不画；出错、带回话、拦下了不让停、有名字的才画「● Ran 2 stop hooks」和下面几行
+      if (j.type === "system" && j.subtype === "stop_hook_summary") {
+        var hErr = Array.isArray(j.hookErrors) ? j.hookErrors : [], hCtx = Array.isArray(j.hookAdditionalContext) ? j.hookAdditionalContext : [];
+        if (!hErr.length && !hCtx.length && !j.preventedContinuation && !j.hookLabel) return null;
+        var ht0 = cur || lastAskTurn();
+        if (!ht0) return null;
+        ht0.parts.push({ kind: "hooks", n: j.hookCount || (j.hookInfos || []).length, label: j.hookLabel || "", errors: hErr.map(String), ctx: hCtx.map(String), stop: j.preventedContinuation ? String(j.stopReason || "") : "", at: ts(j) });
+        return ht0;
+      }
       // 一问做完：它自己记的用时（turn_duration）——「✻ Baked for 3m 15s · done 5:06 AM」用这个（比按消息时间估的准）
       if (j.type === "system" && j.subtype === "turn_duration" && j.durationMs) {
         var tt = cur; if (!tt) for (var ti0 = turns.length - 1; ti0 >= 0 && !tt; ti0--) if (turns[ti0].ask !== undefined) tt = turns[ti0];
         if (!tt) return null;
-        tt.stats = { secs: Math.max(1, Math.round(j.durationMs / 1000)), verb: doneVerb(tt.at), at: ts(j) };
+        // 同 Claude Code 2.1.281：一问结束时还在跑的后台 Agent、动态工作流（有就画成「Waiting for N background agents to finish」）、
+        //   token 预算（「12k / 50k (24%)」）、/focus 藏起来的消息数
+        tt.stats = { secs: Math.max(1, Math.round(j.durationMs / 1000)), verb: j.uuid ? doneVerbU(j.uuid) : doneVerb(tt.at), at: ts(j), pendAgents: j.pendingBackgroundAgentCount || 0, pendWf: j.pendingWorkflowCount || 0,
+          budget: j.budgetLimit !== undefined ? { used: j.budgetTokens || 0, limit: j.budgetLimit, nudges: j.budgetNudges || 0 } : null, hidden: j.briefHiddenCount || 0 };
         return tt;
       }
       // 斜杠命令和它的结果记成 system / local_command 的（新版 Claude Code：结果都在这里；/rename 这种连命令那一条也是）
