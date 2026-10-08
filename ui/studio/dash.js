@@ -654,7 +654,6 @@
     });
     return out;
   }
-  var durS = function (secs) { secs = Math.round(secs || 0); return secs < 60 ? secs + "s" : Math.floor(secs / 60) + "m " + (secs % 60) + "s"; };
   var sessOf = function (a, sid) { return sid ? A.allSessions().filter(function (x) { return x.id === sid; })[0] : A.runtime(a.id).session(); };
   var agentGui = function () { return !!(S.get && S.get("ui") === "gui" && window.TSU_GUI); }; // Agent 显示风格（同 live.js 的 uiMode）
   var termLight = function () { var t = T(); return t && t.termLight ? !!t.termLight() : root.classList.contains("light"); };
@@ -748,7 +747,9 @@
     if (em !== "hidden" && t.error) sysL(t.error === "Interrupted by user" ? "Interrupted" : t.error, /^(Interrupted|Stopped)\b/.test(t.error) ? D : o.RED);
     if (em !== "hidden" && t.note && t.ask !== undefined) sysL(t.note, D);
     var st = t.stats, ft = (A.cfg && A.cfg.footer) || ["duration"];
-    if (st && st.secs && ft.indexOf("duration") >= 0 && !o.live(t)) { L(""); L(D + "✻ " + (st.verb || "Worked") + " for " + durS(st.secs) + RST); }
+    // 同对话里那一行（Claude Code 2.1.281）：这一问结束时还有后台 Agent 没跑完、现在也还在跑——「✻ Waiting for 2 background agents to finish」
+    var wA = st && st.pendAgents && o.bgAgents && o.bgAgents() > 0 ? st.pendAgents : 0;
+    if (st && st.secs && ft.indexOf("duration") >= 0 && !o.live(t)) { L(""); L(D + "✻ " + (wA ? "Waiting for " + wA + " background " + (wA === 1 ? "agent" : "agents") + " to finish" : (st.verb || "Worked") + " for " + A.fmt.ccDur(st.ms != null ? st.ms : st.secs * 1000)) + RST); }
   }
   function tuiHtml(items, o) {
     var h = "", lines = [];
@@ -830,11 +831,13 @@
   // 画好的对话（HTML）；没有对话是 ""
   function snapHtml(a, o) {
     var s = sessOf(a, o.session), ts = (s && s.turns) || [], last = ts[ts.length - 1], rt = A.runtime(a.id);
-    var sig = [s && s.id, ts.length, last ? (last.parts || []).map(function (q) { return (q.kind || "")[0] + String(q.text || "").length + (q.status || ""); }).join(",") + "|" + String(last.answer || "").length + "|" + (last.error || "") + "|" + (last.stats ? 1 : 0) + "|" + (rt.stream && rt.stream.turn === last ? 1 : 0) : "", o.gui, o.light, o.cols, o.n, en(), S.get ? S.get("highlightScheme") : ""].join("~");
+    var bgA = (rt.tasks || []).filter(function (x) { return x.status === "running" && x.kind === "agent" && x.background; }).length; // 还在跑的后台 Agent（「Waiting for …」那行）
+    var sig = [s && s.id, ts.length, last ? (last.parts || []).map(function (q) { return (q.kind || "")[0] + String(q.text || "").length + (q.status || ""); }).join(",") + "|" + String(last.answer || "").length + "|" + (last.error || "") + "|" + (last.stats ? 1 : 0) + "|" + (rt.stream && rt.stream.turn === last ? 1 : 0) : "", o.gui, o.light, o.cols, o.n, en(), S.get ? S.get("highlightScheme") : "", bgA].join("~");
     var key = a.id + "|" + (o.session || "") + "|" + (o.mini ? "m" : "f") + o.n, c = SNAPS[key];
     if (c && c.sig === sig) return c.html;
     var turns = ts.filter(function (t) { return !(t.system && !t.social && !(t.notices || []).length); }).slice(-o.n), html = "";
     o.live = function (t) { return !!(rt.stream && rt.stream.turn === t); };
+    o.bgAgents = function () { return bgA; };
     if (turns.length && window.TTU) {
       if (o.gui) html = '<div class="gv xp-gsnap"><div class="gv-col gv-list">' + turns.map(function (t) { return '<div class="gv-turn">' + guiTurn(t, o) + "</div>"; }).join("") + "</div></div>";
       else { var items = []; turns.forEach(function (t) { tuiTurn(t, o, items); }); items.push({ l: "" }); html = '<div class="xp-tsnap' + (o.light ? " tl" : "") + '"><pre class="term terminal-style-ui' + (o.light ? " ttu-light" : "") + '"><span class="out">' + tuiHtml(items, o) + "</span></pre></div>"; }

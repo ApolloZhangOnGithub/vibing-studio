@@ -233,13 +233,6 @@
   var termPref = function () { return localStorage.getItem("tsu-term") || "auto"; };
   var termLight = function () { var p = termPref(); return p === "auto" ? root.classList.contains("light") : p === "light"; };
   var timeOf = function (t, opts) { return new Date(t).toLocaleTimeString(cfg.time === "24h" ? "en-GB" : "en-US", opts || { hour: "numeric", minute: "2-digit" }); };
-  // 用了多久（同 Claude Code 2.1.281 的 Qt）：不到一分钟按整秒往下取（59.6 秒是 59s）；「2m 5s」「1h 2m 3s」；一天以上「1d 2h 3m」
-  var ccDur = function (ms) {
-    if (ms < 60000) return ms === 0 ? "0s" : ms < 1 ? (ms / 1000).toFixed(1) + "s" : Math.floor(ms / 1000) + "s";
-    var d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4), s = Math.round(ms % 6e4 / 1000);
-    if (s === 60) { s = 0; m++; } if (m === 60) { m = 0; h++; } if (h === 24) { h = 0; d++; }
-    return d > 0 ? d + "d " + h + "h " + m + "m" : h > 0 ? h + "h " + m + "m " + s + "s" : m + "m " + s + "s";
-  };
   // 「done」后面的时间（同 Claude Code 2.1.281 的 A$e）：今天的只写几点；1–6 天前的加星期几（Monday 5:06 AM）；再早的加月、日（Monday, Oct 6 at 5:06 AM）
   var doneAt = function (t) {
     var d = new Date(t); if (isNaN(d.getTime())) return "";
@@ -2532,7 +2525,7 @@
       var waitT = wA || wW ? "Waiting for" + (wA ? " " + num(wA) + " background " + (wA === 1 ? "agent" : "agents") : "") + (wA && wW ? " and" : "") + (wW ? " " + num(wW) + " " + (wW === 1 ? "dynamic workflow" : "dynamic workflows") : "") + " to finish" : "";
       var waiting = !!waitT && ft.indexOf("duration") >= 0;
       ft.forEach(function (f) {
-        if (f === "duration") bits.push(waitT || (st.verb || "Worked") + " for " + ccDur(st.ms != null ? st.ms : st.secs * 1000));
+        if (f === "duration") bits.push(waitT || (st.verb || "Worked") + " for " + F.ccDur(st.ms != null ? st.ms : st.secs * 1000));
         if (f === "tokens" && (st.in || st.out)) bits.push("↑ " + F.k(st.in) + " ↓ " + F.k(st.out) + " tokens");
         if (f === "cost" && st.cost) bits.push("≈" + F.money(st.cost));
       });
@@ -2698,6 +2691,7 @@
         // 不显示「消息」时，这一问还是一组：一行淡的「❯ 问的话」做组的标题（回答、出错跟在它下面，才看得出是回哪一问的）
         if (turn.cont && !String(askText || "").trim()) { /* 接着上一问的（它的问题在还没读进来的那段里）：没有问题这一行 */ }
         else if (vmode("prompts")) {
+          if (turn.fire) { r.text(wrap(turn.fire, P.cols - 2).map(function (l, k) { return D + (k ? "" : "✻ ") + l + RESET; })); r.text([""]); } // 定时任务到点（同 2.1.281 的 scheduled_task_fire）：一行淡的「✻ 内容」在它送进来的这一问上面
           mark(turn.at); askBlock(r, askText, "❯ ");
           // 没送成过、后来才送到的：写的时间、送到的时间（它在记录里的位置是送到的时候，不写的话看着像是后来才说的）
           var wa = rt.writtenAt ? rt.writtenAt(turn.ask) : null;
@@ -2833,7 +2827,14 @@
           var icol = p.level === "warning" ? AMBER : p.level === "notice" ? (P.light ? rgb("102;102;102") : rgb("153;153;153")) : "";
           r.text([""]);
           mark(p.at);
-          r.text(wrapN(p.text, P.cols - 10).map(function (l, k) { return (k ? "  " : icol + DOT + RESET + " ") + icol + l + RESET; }));
+          r.text(wrapN(p.text, P.cols - 10).map(function (l, k) { return (k ? "  " : icol + DOT + RESET + " ") + icol + (p.bold ? BOLD : "") + l + RESET; }));
+          return;
+        }
+        if (p.kind === "killed") { r.text(["", RED + DOT + RESET + " " + D + "All background agents stopped" + RESET]); return; } // 同 2.1.281：红点、淡字
+        if (p.kind === "allowed") { // 同 2.1.281（permission_retry）：「✻ Allowed npm test, git push」——✻ 淡、命令加粗
+          r.text([""]);
+          mark(p.at);
+          r.text(wrapN(p.cmds.length ? "Allowed " + BOLD + p.cmds.join(", ") + RESET : p.text, P.cols - 2).map(function (l, k) { return (k ? "" : D + "✻ " + RESET) + l; }));
           return;
         }
         if (p.kind === "hooks") {

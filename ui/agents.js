@@ -2896,6 +2896,14 @@
     },
     isPeak: isPeak, priceOf: priceOf,
     fmt: { k: fmtK, dur: fmtDur, money: money, kb: kb, plural: plural,
+      // 一问用了多久（同 Claude Code 2.1.281 的 Qt，「✻ Baked for …」那一行）：不到一分钟按整秒往下取（59.6 秒是 59s）；「2m 5s」「1h 2m 3s」；一天以上「1d 2h 3m」
+      ccDur: function (ms) {
+        ms = +ms || 0;
+        if (ms < 60000) return ms === 0 ? "0s" : ms < 1 ? (ms / 1000).toFixed(1) + "s" : Math.floor(ms / 1000) + "s";
+        var d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4), s = Math.round(ms % 6e4 / 1000);
+        if (s === 60) { s = 0; m++; } if (m === 60) { m = 0; h++; } if (h === 24) { h = 0; d++; }
+        return d > 0 ? d + "d " + h + "h " + m + "m" : h > 0 ? h + "h " + m + "m " + s + "s" : m + "m " + s + "s";
+      },
       // 短的（子 Agent 报告那一行）：1h 25m、4m 5s、12s；460k、1.2M
       durS: function (ms) { var s = Math.max(0, Math.round((+ms || 0) / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? h + "h " + m + "m" : m ? m + "m" + (m < 10 && s % 60 ? " " + s % 60 + "s" : "") : s + "s"; },
       kS: function (n) { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, "") + "k" : String(n); } },

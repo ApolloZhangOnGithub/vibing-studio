@@ -209,6 +209,7 @@
     rt.historical = function () { return !!win; };
 
     // ---- 读会话记录 ----
+    var pendFire = null; // 定时任务到点那一行（scheduled_task_fire）：挂到它送进来的那一问上面
     var path = info.path || "", offset = 0, from = 0, win = null, pollT = 0, cur = null, lastCmd = null, lastCompact = null, lastBash = null, byTool = {}, byUuid = {}, loading = null;
     // 跟着读新写进来的，只能一格一格往后走：同一时间只有一次在读（上一次没回来，下一次等着）；重读（load）了，之前发出去还没回来的读作废（gen）；
     // 每条记录按它的 uuid 只认一次（seen）——哪儿读重了也不会多画一份
@@ -639,7 +640,7 @@
         var r = linesOf(buf, s0 > 0), lines = r.lines, head = r.head; // 读到 from 为止，正好是一行的结尾
         // 用一份新的状态读这一段；会话现在的标题、任务清单、模型、上下文不能被旧的盖掉
         var keep = { turns: turns, cur: cur, lastCmd: lastCmd, lastCompact: lastCompact, lastBash: lastBash, byTool: byTool, title: sess.title, name: agent.name, todo: sess.todo.items, model: agent.model, ctx: sess.ctx, queue: queue, turnAt: turnAt, tokById: tokById, agentName: info.agentName, agentSetting: info.agentSetting, modelCmd: modelCmd };
-        turns = []; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; queue = []; tokById = {};
+        turns = []; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; queue = []; tokById = {}; pendFire = null;
         inOlder = true; lines.forEach(feedLine); inOlder = false; // 更早的这段里的任务：载入时已经从前面补过了（prescan），不再算一遍
         finishTurn();
         var older = turns;
@@ -804,6 +805,22 @@
         it0.parts.push({ kind: "info", text: j.content.trim(), level: j.level || "", at: ts(j) });
         return it0;
       }
+      // 定时任务（/loop、cron）到点（system / scheduled_task_fire）：同 2.1.281——一行淡的「✻ 内容」，画在它送进来的那一问上面
+      if (j.type === "system" && j.subtype === "scheduled_task_fire") {
+        if (typeof j.content === "string" && j.content.trim()) pendFire = { text: j.content.trim(), at: ts(j) };
+        return null;
+      }
+      // 换了模型（model_fallback：黄点、黄字，找不到模型 / 没权限的加粗）、后台 Agent 全停了（agents_killed：红点、淡字「All background agents stopped」）、
+      //   放行了刚才被拦的命令（permission_retry：「✻ Allowed npm test, git push」）：同 2.1.281，挂在这一问里
+      if (j.type === "system" && /^(model_fallback|agents_killed|permission_retry)$/.test(j.subtype || "")) {
+        var st0 = cur || lastAskTurn();
+        if (!st0) return null;
+        if (j.subtype === "model_fallback" && typeof j.content === "string" && j.content.trim()) st0.parts.push({ kind: "info", text: j.content.trim(), level: "warning", bold: j.trigger === "model_not_found" || j.trigger === "permission_denied", at: ts(j) });
+        else if (j.subtype === "agents_killed") st0.parts.push({ kind: "killed", at: ts(j) });
+        else if (j.subtype === "permission_retry" && ((j.commands || []).length || String(j.content || "").trim())) st0.parts.push({ kind: "allowed", cmds: (j.commands || []).map(String), text: String(j.content || ""), at: ts(j) });
+        else return null;
+        return st0;
+      }
       // stop hook（system / stop_hook_summary）：同它——平常跑完什么都不画；出错、带回话、拦下了不让停、有名字的才画「● Ran 2 stop hooks」和下面几行
       if (j.type === "system" && j.subtype === "stop_hook_summary") {
         var hErr = Array.isArray(j.hookErrors) ? j.hookErrors : [], hCtx = Array.isArray(j.hookAdditionalContext) ? j.hookAdditionalContext : [];
@@ -903,6 +920,7 @@
         gotAsk(qmt); // 这边送进去的那句已经被读进去了（原样，或者和别的话连在一起）：不再挂成排着的
         var qsp = splitShots(qtext, qimgs);
         cur = { ask: qsp.text, images: qsp.images, imgIds: Array.isArray(j.attachment.imagePasteIds) ? j.attachment.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, queued: true };
+        if (pendFire) { if (ts(j) - pendFire.at < 600000) cur.fire = pendFire.text; pendFire = null; }
         turns.push(cur); byUuid[j.uuid] = cur;
         if (rt.stream) rt.stream.turn = cur; // 接着答的是这一问（前面那一问不再画成在跑）
         return cur;
@@ -954,6 +972,7 @@
           gotAsk(mt);
           var tsp = splitShots(text, imgs);
           cur = { ask: tsp.text, images: tsp.images, imgIds: Array.isArray(j.imagePasteIds) ? j.imagePasteIds : null, parts: [], at: ts(j), uuid: j.uuid, parentUuid: j.parentUuid || "" };
+          if (pendFire) { if (ts(j) - pendFire.at < 600000) cur.fire = pendFire.text; pendFire = null; }
           turns.push(cur);
           byUuid[j.uuid] = cur;
           return cur;
