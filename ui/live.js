@@ -7320,7 +7320,7 @@
       var at = p ? g.editors.indexOf(p) : -1;
       // Claude Code 会话的标签页：最上面「详情」（名字、ID、创建、工作时长、Token……，ccinfo.js）
       var ccSid = p && p.program && /^cc:/.test(p.program.agentId || "") ? String(p.program.agentId).slice(3) : "";
-      var info = ccSid && !/^sub-/.test(ccSid) && window.TSU_CCINFO ? [mi("详情", "", function () { TSU_CCINFO.open(ccSid); }, "info"), { sep: true }] : [];
+      var info = ccSid && !/^sub-/.test(ccSid) && window.TSU_CCINFO ? [mi("详情", "", function () { TSU_CCINFO.open(ccSid, p); }, "info"), { sep: true }] : [];
       var head = p ? info.concat([
         mi("关闭", "⌘W", function () { closeSome([p]); }, "close"),
         mi("关闭其他", "", function () { closeSome(g.editors.filter(function (x) { return x !== p; })); }, "closeOthers", { disabled: g.editors.length < 2 }),

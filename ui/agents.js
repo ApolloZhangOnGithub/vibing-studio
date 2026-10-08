@@ -748,7 +748,9 @@
       var k = r.ns + "|" + r.id, h = r.data == null ? "-" : fp(r.data), ss, owner;
       if (sent[k] === h) return; // 本来就是这样（多半是这台自己推上去的）
       if (r.data != null) { try { JSON.parse(r.data); } catch (e) { console.warn("同步：已跳过一条损坏的记录", k); return; } }
-      if (r.ns === "dir") { // 文件夹（索引的一部分）：vol|path → { vol, path, at }；null = 删了
+      if (r.ns === "tabtime") { // 别的设备上标签页的时间（tabtime.js）：交给它记着，详情里写所有设备加起来的
+        if (window.TSU_TABTIME && TSU_TABTIME.remote) TSU_TABTIME.remote(r.id, r.data);
+      } else if (r.ns === "dir") { // 文件夹（索引的一部分）：vol|path → { vol, path, at }；null = 删了
         if (r.data == null) delete dirs[r.id]; else dirs[r.id] = JSON.parse(r.data);
         dirsDirty = true;
       } else if (r.ns === "agent") {

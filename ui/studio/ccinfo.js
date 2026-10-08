@@ -133,7 +133,42 @@
   }
   var titleOf = function (sid, s) { var rt = null; try { rt = window.TSU_CLAUDE && TSU_CLAUDE.ensure(sid); } catch (e) { rt = null; } return (s && s.main && s.main.title) || (rt && rt.session && rt.session().title) || (rt && rt.info && rt.info.title) || (s && s.main && s.main.aiTitle) || String(sid).slice(0, 8); };
   // 一项项（[名字, 值, 鼠标指上去看的全数]）；没有的不写
-  function sections(sid, s) {
+  // 时长：一分钟以内写秒，一小时以内写分秒，再长写小时、分
+  var durS = function (ms) { var sec = Math.round((ms || 0) / 1000); if (sec < 60) return t(sec + " 秒", sec + " s"); var m = Math.floor(sec / 60); if (m < 60) return t(m + " 分 " + (sec % 60) + " 秒", m + " min " + (sec % 60) + " s"); return dur(ms); };
+  var pct = function (part, whole) { return whole > 0 ? " · " + Math.round(part * 100 / whole) + "%" : ""; };
+  var iso = function (ms) { return ms ? new Date(ms).toISOString() : ""; };
+  // 标签页的时间（tabtime.js，beta）：这一个标签页的；这个会话在界面上的累计（这台设备、所有设备）
+  function tabSections(sid, P) {
+    var TT = window.TSU_TABTIME, out = [], B = " (beta)";
+    if (!TT) return out;
+    var me = P ? TT.forPane(P) : null, row = function (rows, k, v, tip) { if (v !== undefined && v !== null && v !== "") rows.push([k, v, tip || "", ""]); };
+    if (me) {
+      var open0 = Date.now() - me.opened, r = [];
+      row(r, t("打开于", "Opened"), when(iso(me.opened)));
+      row(r, t("已打开", "Open for"), durS(open0));
+      row(r, t("在前台", "In front"), durS(me.focus) + pct(me.focus, open0), t("App 在最前、这个窗口有焦点、看着的就是它", "The app is frontmost, this window has focus and this tab is showing"));
+      row(r, t("可见（未聚焦）", "Visible, not focused"), durS(me.visible) + pct(me.visible, open0), t("显示着，但 App 不在最前、或者焦点在别的分栏", "Showing, but another app or pane has focus"));
+      row(r, t("后台工作", "Working in background"), durS(me.work) + pct(me.work, open0), t("看不见，Agent 在干活", "Not showing while the agent worked"));
+      row(r, t("休眠", "Idle in background"), durS(me.sleep) + pct(me.sleep, open0), t("看不见，也没在干活", "Not showing and not working"));
+      row(r, t("Agent 工作中", "Agent working"), durS(me.busy) + pct(me.busy, open0));
+      out.push([t("这个标签页", "This tab") + B, r]);
+    }
+    var k = TT.forKey("agent:cc:" + sid), h = k.here, a = k.all, many = k.devices > 1, r2 = [];
+    if (h || many) {
+      var both = function (x) { return durS(h ? h[x] : 0) + (many ? t("（所有设备 " + durS(a[x]) + "）", " (all devices " + durS(a[x]) + ")") : ""); };
+      row(r2, t("第一次打开", "First opened"), when(iso(many ? a.first : h.first)));
+      row(r2, t("打开过", "Opened"), t((many ? a.opens : h.opens) + " 次", String(many ? a.opens : h.opens)));
+      row(r2, t("在前台", "In front"), both("focus"));
+      row(r2, t("可见（未聚焦）", "Visible, not focused"), both("visible"));
+      row(r2, t("后台工作", "Working in background"), both("work"));
+      row(r2, t("休眠", "Idle in background"), both("sleep"));
+      row(r2, t("最近在前台", "Last in front"), when(iso(many ? a.lastFocus : h.lastFocus)));
+      if (many) row(r2, t("设备", "Devices"), t(k.devices + " 台", String(k.devices)));
+      out.push([t("界面累计", "Time in Vibing Studio") + B, r2]);
+    }
+    return out;
+  }
+  function sections(sid, s, P) {
     var m = (s && s.main) || {}, b = (s && s.sub) || {}, tk = m.tok || {}, out = [];
     var row = function (rows, k, v, tip, html) { if (v !== undefined && v !== null && v !== "") rows.push([k, v, tip || "", html || ""]); };
     var a = [];
@@ -146,6 +181,7 @@
     row(a, t("权限模式", "Permission mode"), m.mode ? MODES[m.mode] || m.mode : "");
     row(a, "Claude Code", m.version || "");
     out.push([t("会话", "Session"), a]);
+    out = out.concat(tabSections(sid, P));
     if (!s) return out;
     var w = [];
     row(w, t("工作时长", "Working time"), m.workMs ? dur(m.workMs) : "", m.turns ? t(m.turns + " 问记了用时", m.turns + " timed turns") : "");
@@ -188,11 +224,12 @@
 
   // ---- 详情面板（浮在窗口正中；Esc、点外面、× 关） ----
   var panel = null;
-  function close() { if (panel) { panel.remove(); panel = null; document.removeEventListener("keydown", onKey, true); } }
+  function close() { clearInterval(tickT); if (panel) { panel.remove(); panel = null; document.removeEventListener("keydown", onKey, true); } }
   function onKey(e) { if (e.key === "Escape" && panel) { e.preventDefault(); e.stopPropagation(); close(); } }
+  var paneOf = null, tickT = 0;
   function paint(sid, s, err) {
     if (!panel) return;
-    var secs = sections(sid, s);
+    var secs = sections(sid, s, paneOf);
     // 一整块网格：各段的值左边对齐（不是每段各对各的）
     panel.querySelector(".cci-body").innerHTML = '<dl class="cci-rows cci-all">' + secs.filter(function (x) { return x[1].length; }).map(function (x, i) {
       return '<div class="cci-h' + (i ? " sep" : "") + '">' + esc(x[0]) + "</div>" + x[1].map(function (r) { return "<dt>" + esc(r[0]) + '</dt><dd' + (r[2] ? ' title="' + esc(r[2]) + '"' : "") + ">" + (r[3] || esc(r[1])) + "</dd>"; }).join("");
@@ -200,7 +237,8 @@
       (s ? "" : '<p class="cci-wait">' + esc(err ? String(err.message || err) : t("正在统计…", "Counting…")) + "</p>");
     panel.querySelector(".cci-title").textContent = titleOf(sid, s);
   }
-  function open(sid) {
+  // P：从哪个标签页打开的（标签页上右键）；从会话列表打开的找开着它的那个标签页
+  function open(sid, P) {
     close();
     panel = document.createElement("div");
     panel.className = "cci-back";
@@ -216,8 +254,12 @@
       if (rv && LOC() && LOC().exec) LOC().exec({ cmd: "open -R " + shq(rv.dataset.reveal) }).catch(function () {});
     });
     var c0 = cached(sid);
+    paneOf = P || (window.TSU_TABTIME ? TSU_TABTIME.paneFor("cc:" + sid) : null);
     paint(sid, c0);
-    stats(sid, false).then(function (s) { if (panel) paint(sid, s); }, function (e) { if (panel) paint(sid, c0, e); });
+    var got = c0;
+    stats(sid, false).then(function (s) { got = s; if (panel) paint(sid, s); }, function (e) { if (panel) paint(sid, c0, e); });
+    // 开着时标签页的时间跟着走（5 秒一次；正在选字时不重画）
+    tickT = setInterval(function () { if (!panel) return clearInterval(tickT); var sel = window.getSelection(); if (sel && String(sel) && panel.contains(sel.anchorNode)) return; paint(sid, got); }, 5000);
   }
   // 辅助侧栏「详情」那一块：几项要紧的 + 「全部」；还没统计过的先统计（好了 done() 重画）
   function summaryHtml(sid, done) {
