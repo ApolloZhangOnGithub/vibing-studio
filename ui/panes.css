@@ -298,8 +298,8 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .term .grp.live .hot.hitem:hover { filter: brightness(1.6); }
 .tpane.tl .term .grp.live .hot.hitem:hover { filter: brightness(0.55); }
 /* 「ctrl+x ctrl+s to send now」：send now 能点（iPad 上没有这组键）——同链接，虚线下划线、指上去亮一点 */
-.tpane .vs-sendnow, .tpane .vs-retry, .tpane .vs-unsent-edit, .tpane .vs-unsent-cancel, .tpane .vs-qedit, .tpane .vs-bgnow { cursor: pointer; text-decoration: underline dashed; text-underline-offset: 0.2em; color: inherit; }
-.tpane .vs-sendnow:hover, .tpane .vs-retry:hover, .tpane .vs-unsent-edit:hover, .tpane .vs-unsent-cancel:hover, .tpane .vs-qedit:hover, .tpane .vs-bgnow:hover { filter: brightness(1.5); }
+.tpane .vs-sendnow, .tpane .vs-retry, .tpane .vs-unsent-edit, .tpane .vs-unsent-cancel, .tpane .vs-unsent-jump, .tpane .vs-unsent-undo, .tpane .vs-qedit, .tpane .vs-bgnow { cursor: pointer; text-decoration: underline dashed; text-underline-offset: 0.2em; color: inherit; }
+.tpane .vs-sendnow:hover, .tpane .vs-retry:hover, .tpane .vs-unsent-edit:hover, .tpane .vs-unsent-cancel:hover, .tpane .vs-unsent-jump:hover, .tpane .vs-unsent-undo:hover, .tpane .vs-qedit:hover, .tpane .vs-bgnow:hover { filter: brightness(1.5); }
 .tpane .vs-sendnow-row > span, .tpane .vs-unsent > span { display: inline; }
 /* 搜索里点的那一处：浅黄的底亮一下，3 秒后淡掉 */
 .tpane .screen .st-found { background: rgba(255, 210, 60, 0.38); border-radius: 2px; transition: opacity 0.6s; }
@@ -310,3 +310,7 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .vs-sticky[hidden] { display: none; } /* 它也是 .terminal-style-ui（display: block 盖过了 hidden）：以前「收起」了照样露着，翻回最上面时上一句挂在那儿，同下面那一问一模一样两行 */
 .tpane .vs-sticky .ask { display: block; }
 .tpane .vs-sticky:hover .ask { filter: brightness(1.15); }
+
+/* 没送到的那句：放在发出时的位置（live.js placeUnsent）；点了下面「查看」跳过来时闪一下底色 */
+.tpane .term .vs-unsent-here.vs-flash { animation: vs-unsent-flash 1.2s ease-out; }
+@keyframes vs-unsent-flash { 0%, 35% { background: rgba(255, 90, 90, .16); } 100% { background: transparent; } }

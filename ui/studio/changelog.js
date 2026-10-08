@@ -11,6 +11,14 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-08", ver: "0.2.1.430", items: {
+      improved: [
+        ["没送到的消息留在你发出它时的位置（之后从别处说的话排在它下面），不再挂在最下面、看着像后来才说的；最下面另有一行「n 条消息未送达 · 查看」，点了跳过去。", "An undelivered message now stays where you sent it, with anything said later below it, instead of hanging at the bottom as if it came last; a line at the bottom says how many messages were not sent, and Show jumps to them."],
+        ["重试以后才送到的消息，在它那一问下面写「16:33 写 · 16:40 送达」。", "A message delivered only after a retry shows when it was written and when it was delivered."],
+        ["取消一条没送到的消息后，下面留 10 秒「已取消 · 撤销」。", "After cancelling an undelivered message, Undo stays available for 10 seconds."],
+        ["「服务状态」多了「Claude Code 送达」：每一次往会话里送话走的哪条路、成没成、为什么没成，都有记录。", "Service Status now includes Claude Code Delivery: every message sent to a session is recorded with the route it took, whether it arrived and why not."],
+      ],
+    } },
     { date: "2026-10-08", ver: "0.2.1.429", items: {
       improved: [
         ["名字相同的 Claude Code 会话，名字后面淡淡地写上它的短 ID（同 `claude attach` 用的那 8 位）：左边的列表、标签页、Agent 访达、Claude App 样式的侧栏和标题、弹出的窗口都一样；名字不重复的不加。", "Claude Code sessions that share a name now show their short ID (the 8 characters `claude attach` uses) dimmed after the name in the sidebar, tabs, Agent Finder, the Claude App style sidebar and title, and pop-out windows; unique names are unchanged."],

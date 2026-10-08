@@ -2316,7 +2316,7 @@
       var run = !live && (t.parts || []).some(function (x) { return x.status === "running"; });
       var ts0 = rt.session().turns, ix = idxOf && idxOf.has(t) ? idxOf.get(t) : ts0.indexOf(t), nx = ts0[ix + 1];
       // 这一问在第几个（点开 / 收起按它找到是哪一问；前面接上更早的记录时都往后挪）、后面紧跟的是不是回顾（做完那一行挪不挪）也算
-      var k = rcSig + "|" + (t.__rv || 0) + "|" + trN(t) + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : ""), c = rowCache.get(t);
+      var k = rcSig + "|" + (t.__rv || 0) + "|" + trN(t) + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
       var rows = turnRows(t, live), h = P.join(rows);
       htmlN = rows.length;
@@ -2651,7 +2651,12 @@
         }
         // 不显示「消息」时，这一问还是一组：一行淡的「❯ 问的话」做组的标题（回答、出错跟在它下面，才看得出是回哪一问的）
         if (turn.cont && !String(askText || "").trim()) { /* 接着上一问的（它的问题在还没读进来的那段里）：没有问题这一行 */ }
-        else if (vmode("prompts")) { mark(turn.at); askBlock(r, askText, "❯ "); }
+        else if (vmode("prompts")) {
+          mark(turn.at); askBlock(r, askText, "❯ ");
+          // 没送成过、后来才送到的：写的时间、送到的时间（它在记录里的位置是送到的时候，不写的话看着像是后来才说的）
+          var wa = rt.writtenAt ? rt.writtenAt(turn.ask) : null;
+          if (wa) r.text(["  " + D + "⎿  " + (enLang() ? "written " + clockOf(wa.first) + " · delivered " + clockOf(wa.at) : clockOf(wa.first) + " 写 · " + clockOf(wa.at) + " 送达") + RESET]);
+        }
         else hdr = D + "❯ " + clip(String(askText).replace(/\s+/g, " ").trim(), P.cols - 4) + RESET;
         if (turn.images && turn.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(turn.images) : imageRefs(turn.images, 2, imgNo)); // 悬停预览（默认）/ 直接显示
       }
@@ -4984,11 +4989,62 @@
     V.drop = function (e) { Array.prototype.forEach.call(e.dataTransfer.files || [], function (f) { addImage(f); }); };
     V.attachFile = addImage; // 从访达、截图缩略图拖进来的图（原生那边给的是路径，读成文件再交过来）
 
+    // 时刻：今天的写「16:33:05」（英文「4:33:05 PM」），别的日子前面加「10/7」
+    function clockOf(ms) { var d = new Date(ms), en = enLang(), t = en ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : d.toTimeString().slice(0, 8); return d.toDateString() === new Date().toDateString() ? t : (d.getMonth() + 1) + "/" + d.getDate() + " " + t; }
+    // 没送到的那几句：放在你发出它时的位置（在它之后才开始的那一问前面）——顺序同发生的一样，不再挂在最下面、看着像后来才说的；
+    //   它之后还没有新的一问的，照旧在最下面。放在上面的，最下面另有一行「n 条消息未送达 · 查看」，点了跳过去（不会因为在上面就漏看）
+    var unsentEls = [], unsentSig = "";
+    function splitUnsent(list) {
+      var ts = rt.session ? rt.session().turns : [], here = [], rest = [];
+      list.forEach(function (q) {
+        var before = q.local && q.err && q.first ? ts.filter(function (t) { return (t.at || 0) > q.first && blocks.has(t); })[0] : null;
+        if (before) here.push({ q: q, before: before }); else rest.push(q);
+      });
+      return { here: here, rest: rest };
+    }
+    function placeUnsent(here, D) {
+      var sig = here.map(function (h) { var q = h.q; return [q.li, q.at, q.err, q.fails, q.manual, q.last, String(q.text).length, h.before.at || 0].join(","); }).join("|") + "|" + P.cols + "|" + enLang();
+      if (sig === unsentSig && unsentEls.every(function (e) { return e.isConnected; })) return;
+      unsentSig = sig;
+      // 插在看着的地方上面：滚动位置跟着挪（看着的内容不跳）；贴着底的照旧贴着底
+      var sc = P.screen, top0 = sc.scrollTop, fol = P.following(), dh = 0;
+      unsentEls.forEach(function (e) { if (e.isConnected) { if (e.offsetTop < top0) dh -= e.offsetHeight; e.remove(); } });
+      unsentEls = [];
+      here.forEach(function (h) {
+        var b = blocks.get(h.before);
+        if (!b || b.parentNode !== P.out) return;
+        var rr = new P.Rows();
+        pendRows(rr, [h.q], D, true);
+        var el = document.createElement("div");
+        el.className = "vs-unsent-here";
+        el.innerHTML = P.join(rr.flush().rows);
+        P.out.insertBefore(el, b);
+        unsentEls.push(el);
+        if (el.offsetTop < top0) dh += el.offsetHeight;
+      });
+      if (fol) P.stick(); else if (dh) { sc.scrollTop = top0 + dh; if (P.onScroll) P.onScroll(); }
+    }
+    function unsentRows(r, here, D) {
+      var en = enLang();
+      if (here.length) {
+        r.text([""]);
+        r.block('<span class="blk vs-unsent-ind">' + P.toHtml(["  " + RED + (en ? here.length + (here.length === 1 ? " message" : " messages") + " not sent" : here.length + " 条消息未送达") + RESET + D + " · " + RESET]).replace(/\n?$/, "") +
+          '<span class="vs-unsent-jump">' + (en ? "show" : "查看") + "</span></span>");
+      }
+      // 刚取消的那一句：「已取消「…」 · 撤销」留 10 秒（点了原样放回去）
+      var cx = rt.cancelled ? rt.cancelled() : null;
+      if (cx) {
+        r.text([""]);
+        r.block('<span class="blk vs-unsent-ind">' + P.toHtml(["  " + D + (en ? "Cancelled “" : "已取消「") + clip(String(cx.text || "").replace(/\s+/g, " "), Math.max(12, P.cols - 24)) + (en ? "”" : "」") + " · " + RESET]).replace(/\n?$/, "") +
+          '<span class="vs-unsent-undo">' + (en ? "undo" : "撤销") + "</span></span>");
+      }
+    }
+
     // ---- 按键 ----
     // 发出去、它还没读到的那几句（rt.pending）：「❯ 原话」——排在它队里的灰底淡字（同 Claude Code），在发的同平常的一问；
     //   附的图同已经发出去的：一张一行「⎿  [Image #N]」（悬停看、点开）；没送成的下面一行红的「未发送：原因 · 重试」（不再像是排进去了）；
     //   最后一行看 send now 的状态：能点（ctrl+x ctrl+s to send now）/ 点了在发（sending…，不能再点）/ 在压缩（压完自动发，不用点）
-    function pendRows(r, list, D) {
+    function pendRows(r, list, D, inPlace) { // inPlace：画在对话中间的那几句没送到的（placeUnsent）——不画最后那行 send now
       list.forEach(function (q) {
         if (q.from) { var fl = []; String(q.text || "").split("\n").forEach(function (p0) { fl.push.apply(fl, wrap(p0, P.cols - 4)); }); r.text(["", D + "› Message from @" + q.from + RESET].concat(fl.slice(0, 6).map(function (l) { return "  " + D + l + RESET; }), fl.length > 6 ? ["  " + D + "… +" + (fl.length - 6) + " lines" + RESET] : [])); return; }
         if (q.sys) { // 它自己排的（/goal 的「Goal set: …」）：上面一行是你打的那条命令（排着的样子），下面「⎿ Goal set: …」——不再只有孤零零的一行挂在正在跑的工具下面；淡的、不能改、不出 send now
@@ -5009,7 +5065,7 @@
           //   重试（再送一次）、编辑（拿回输入框改，同按 ↑）、取消（这一句不发了）——编辑、取消只有这边排着的才有，都只对这一句
           var en = enLang(), canE = q.local && q.li != null && !!rt.editUnsent, canC = q.local && q.li != null && !!rt.cancelUnsent;
           var el = wrap((en ? "Not sent: " : "未发送：") + q.err, Math.max(20, P.cols - 6));
-          var hm = function (ms) { var d = new Date(ms), t = en ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : d.toTimeString().slice(0, 8); return d.toDateString() === new Date().toDateString() ? t : (d.getMonth() + 1) + "/" + d.getDate() + " " + t; };
+          var hm = clockOf;
           var facts = [];
           if (q.fails > 1) facts.push(en ? "failed " + q.fails + " times" : "失败 " + q.fails + " 次");
           if (q.manual) facts.push(en ? "retried " + q.manual + (q.manual === 1 ? " time" : " times") : "手动重试 " + q.manual + " 次");
@@ -5025,6 +5081,7 @@
             (ft && oneLine ? "" : P.toHtml(["     "]).replace(/\n?$/, "")) + acts.join(sep) + "</span>");
         }
       });
+      if (inPlace) return;
       var st = rt.sendNowState ? rt.sendNowState() : list.some(function (q) { return !q.sending && !q.from && !q.sys; }) ? "ready" : null;
       var canEd = !!rt.editQueued && list.some(function (q) { return !q.from && !q.err && !q.sys; });
       if (rt.editingQueued && rt.editingQueued()) r.text(["  " + D + "editing…" + RESET]);
@@ -5033,7 +5090,7 @@
       else if (st === "waiting") r.text(["  " + D + "queued · sent once the dialog is answered" + RESET]); // 它在等你处理对话框（权限、提问）：同上面 compacting 那一行，英文、一句
       else if (st === "compacting") r.block('<span class="blk vs-sendnow-row">' + P.toHtml(["  " + D + "queued · sent automatically when compaction finishes" + (canEd ? " · ↑ to " : "") + RESET]) + (canEd ? '<span class="vs-qedit">edit</span>' : "") + "</span>");
       var se = rt.sendNowError ? rt.sendNowError() : "";
-      if (se && !list.some(function (q) { return q.err; })) r.text(wrap(se, Math.max(20, P.cols - 6)).map(function (l, i) { return "  " + RED + (i ? "   " : "⎿  ") + l + RESET; }));
+      if (se && !list.some(function (q) { return q.err; }) && !(rt.pending ? rt.pending() : []).some(function (q) { return q.err; })) r.text(wrap(se, Math.max(20, P.cols - 6)).map(function (l, i) { return "  " + RED + (i ? "   " : "⎿  ") + l + RESET; }));
     }
     // 「ctrl+x ctrl+s to send now」那一行：send now 这几个字能点（iPad 上没有这组键）——点了同按 ctrl+x ctrl+s：排着的马上发
     // tail === "edit"：后面接「· ↑ to edit」，edit 也能点（取回排着的最新那句，同在 Claude Code 里按 ↑ 再回车）
@@ -5084,7 +5141,10 @@
       if (nb && window.TSU_TERM && TSU_TERM.agent && (nb.dataset.aid || needsAid)) { e.preventDefault(); e.stopPropagation(); TSU_TERM.agent(nb.dataset.aid || needsAid); return; }
       var b = e.target.closest(".vs-sendnow"), rb = e.target.closest(".vs-retry"), qe = e.target.closest(".vs-qedit"), ue = e.target.closest(".vs-unsent-edit"), uc = e.target.closest(".vs-unsent-cancel");
       if (ue) { e.preventDefault(); e.stopPropagation(); editUnsentNow(+ue.dataset.li, +ue.dataset.at); return; }
-      if (uc) { e.preventDefault(); e.stopPropagation(); if (rt.cancelUnsent) rt.cancelUnsent(+uc.dataset.li, +uc.dataset.at); renderStatus(); return; } // 取消：只这一句不发了
+      if (uc) { e.preventDefault(); e.stopPropagation(); if (rt.cancelUnsent) rt.cancelUnsent(+uc.dataset.li, +uc.dataset.at); renderStatus(); setTimeout(renderStatus, 10100); return; } // 取消：只这一句不发了（「撤销」留 10 秒）
+      var uj = e.target.closest(".vs-unsent-jump"), uu = e.target.closest(".vs-unsent-undo");
+      if (uj) { e.preventDefault(); e.stopPropagation(); var u0 = P.out.querySelector(".vs-unsent-here"); if (u0) { u0.scrollIntoView({ block: "center" }); u0.classList.remove("vs-flash"); void u0.offsetWidth; u0.classList.add("vs-flash"); } return; } // 跳到上面那条没送到的
+      if (uu) { e.preventDefault(); e.stopPropagation(); if (rt.undoCancel) rt.undoCancel(); renderStatus(); return; }
       if (qe) { e.preventDefault(); e.stopPropagation(); editQueuedNow(); return; }
       if (rb && (rt.retryOne || rt.retryQueued)) { e.preventDefault(); e.stopPropagation(); if (rt.retryOne && rb.dataset.li != null && rb.dataset.li !== "undefined") rt.retryOne(+rb.dataset.li, +rb.dataset.at); else rt.retryQueued(); renderStatus(); return; } // 重试：只这一句
       if (!b) return;
