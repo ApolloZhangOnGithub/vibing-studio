@@ -1270,6 +1270,9 @@
       evAdd(t);
       confirmSent(t); // 送出去、等着确认的：记录里见到了就算送到
       var n = lq.length, tq = qnorm(t); // 按去掉引号、空白比（开头的路径送出去时加了引号）
+      // 没送成过、过了一阵才送到的：记下它第一次发出的时刻（记录里那一问下面写「16:33 写 · 16:40 送达」）
+      var m0 = sendMeta[tq];
+      if (m0 && m0.first && (m0.fails || Date.now() - m0.first > 60000) && !late[tq]) { late[tq] = { first: m0.first, at: Date.now() }; lateSave(); }
       delete sendMeta[tq]; // 送到了：它送的经过不用再记
       lq = lq.filter(function (x) { return qnorm(x.text) !== tq && !(x.u && sameMsg(x.text, t)); });
       var wasSending = lqSending && qnorm(lqSending) === tq;
