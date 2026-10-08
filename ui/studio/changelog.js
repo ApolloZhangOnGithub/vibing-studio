@@ -13,11 +13,13 @@
   var LOG = [
     { date: "2026-10-08", ver: "0.2.1.429", items: {
       improved: [
+        ["名字相同的 Claude Code 会话，名字后面淡淡地写上它的短 ID（同 `claude attach` 用的那 8 位）：左边的列表、标签页、Agent 访达、Claude App 样式的侧栏和标题、弹出的窗口都一样；名字不重复的不加。", "Claude Code sessions that share a name now show their short ID (the 8 characters `claude attach` uses) dimmed after the name in the sidebar, tabs, Agent Finder, the Claude App style sidebar and title, and pop-out windows; unique names are unchanged."],
         ["「未发送」的每一句都有自己的「重试 · 编辑 · 取消」（只对这一句），下面写着这一句失败了几次、手动重试了几次、什么时候发出、最近一次是什么时候。", "Each unsent message has its own Retry, Edit and Cancel (for that message only), with how many times it failed, how many times you retried it, when it was first sent and when it was last tried."],
       ],
       fixed: [
         ["关掉 iTerm 以后消息送不到：会话原来开在 iTerm 里、进程跟着没了，或者 Claude Code 的后台服务跟着退了，现在会在后台把这个会话重新跑起来再送，不再依赖 iTerm；会话正在起来时等它好了再送。", "Messages no longer fail after iTerm is closed: if the session’s process or Claude Code’s background service went away with it, the session is resumed in the background and the message is delivered; while a session is starting, sending waits for it."],
         ["「未发送」的一句点「重试」以后第一行是空的：送出去和画出来都去掉前后的空行。", "After Retry, an unsent message showed an empty first line; leading and trailing blank lines are now dropped when sending and displaying."],
+        ["「子 Agent」里同一个分出去的 agent 一层套一层画了好几层：它的记录开头抄着开它的那一下调用，被当成它自己又开了一个。现在只画一行；进它的标签页，第一问就是交给它的那段话。", "A forked sub-agent was drawn nested inside itself several levels deep, because its transcript begins with the call that spawned it. It now shows as one row, and its tab starts with the task it was given."],
       ],
     } },
     { date: "2026-10-07", ver: "0.2.1.428", items: {

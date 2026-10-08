@@ -218,6 +218,8 @@
     var on = function (k) { var v = vm(k); return v !== false && v !== "hidden"; };
     var modeOf = function (p) { return TT().toolMode ? TT().toolMode(p, P.view) : A.toolMode(p); };
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
+    // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（同终端界面，见 live.js titleInto）
+    V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
     V.working = function () { return !!rt.stream; };
     V.busy = function () { return false; };
     V.spec = function () { return { sh: P.shell.spec().sh, agent: agentId, ui: "gui" }; };
