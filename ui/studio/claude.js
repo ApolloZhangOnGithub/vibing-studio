@@ -210,6 +210,7 @@
     var path = info.path || "", offset = 0, from = 0, win = null, pollT = 0, cur = null, lastCmd = null, lastCompact = null, lastBash = null, byTool = {}, byUuid = {}, loading = null;
     // 跟着读新写进来的，只能一格一格往后走：同一时间只有一次在读（上一次没回来，下一次等着）；重读（load）了，之前发出去还没回来的读作废（gen）；
     // 每条记录按它的 uuid 只认一次（seen）——哪儿读重了也不会多画一份
+    var forkSpawn = {}; // 分出去的（fork）的记录开头抄进来的那一下 Agent 调用（开它的那一下）：它的 id，结果也不画
     var gen = 0, loadingNow = false, pollBusy = false, pollAgain = false, seen = new Set(), readOnce = false; // readOnce：记录读过一遍了（上次没送完的这时才接着送：先看记录里是不是已经有了）
     // 一段字节 → 完整的行：按字节找换行（一个字的几个字节被切在两次读里也不会读坏）；最后没写完的半行不要（offset 停在它前面，下次连着读）。
     // dropHead：不是从行首读起的，开头半行丢掉
@@ -546,7 +547,7 @@
         var n = Math.min(size - start, WINDOW);
         return LOC.read(path, { offset: start, max: n }).then(function (buf) {
           if (g !== gen) return; // 这期间又重读了：这一份作废
-          turns.length = 0; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; byUuid = {}; seen = new Set(); queue = []; taken = []; turnAt = 0; tokById = {};
+          turns.length = 0; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; byUuid = {}; seen = new Set(); forkSpawn = {}; queue = []; taken = []; turnAt = 0; tokById = {};
           resetTasks(); taskEvents = []; preFrom = -1; goalSeen = false;
           // 没从头读的：头一行是半截，丢掉（往前接着读时从它开头接上）。更早的不显示提示——滚到顶自动接着往前读（同终端的回滚，一直往上翻都有）
           var r = linesOf(buf, start > 0);
@@ -756,6 +757,12 @@
       // 同一条记录只认一次：按它的 uuid（没有 uuid 的对话记录：类型 + 消息 id + 时间 + 长度）
       var dk = j.uuid || (j.type === "user" || j.type === "assistant" || j.type === "system" ? j.type + "|" + (j.message && j.message.id || "") + "|" + (j.timestamp || "") + "|" + line.length : "");
       if (dk) { if (seen.has(dk)) return null; seen.add(dk); }
+      // 分出去的（fork）的记录：开头一条 fork-context-ref（指着主会话前面那一大段，没抄进来），接着是主会话开它的那一下 Agent 调用、「Fork started」——
+      //   不是它自己做的事：不画，也不当成它又开了一个子 agent（以前同一个 agent 在子 Agent 里一层套一层画了五层）；同一条里交给它的那段话照常是一问
+      if (j.type === "fork-context-ref") return null;
+      var mc0 = j.message && Array.isArray(j.message.content) ? j.message.content : null;
+      if (j.type === "assistant" && j.parentUuid == null && /\/subagents\//.test(path || "") && mc0 && mc0.length && mc0.every(function (b) { return b && b.type === "tool_use" && (b.name === "Agent" || b.name === "Task"); })) { mc0.forEach(function (b) { forkSpawn[b.id] = 1; }); return null; }
+      if (j.type === "user" && mc0 && mc0.some(function (b) { return b && b.type === "tool_result" && forkSpawn[b.tool_use_id]; })) j.message.content = mc0.filter(function (b) { return !(b && b.type === "tool_result" && forkSpawn[b.tool_use_id]); });
       if (!inOlder && typeof j.cwd === "string" && j.cwd) sess.cwd = j.cwd; // 它现在在哪个目录（同 Claude Code 显示路径用：目录里的写相对路径）
       // 在等它回（它在想）：最后一条是要它回的（你的话、工具结果）、它还没写出东西——转圈那一行据此写 thinking / deep in thought（rt.thinkSince）
       if (!inOlder && (j.type === "assistant" || (j.type === "user" && !j.isMeta))) { var tj = ts(j); if (j.type === "assistant") lastOut = Math.max(lastOut, tj); else lastIn = Math.max(lastIn, tj); }
@@ -2507,7 +2514,11 @@
     if (run && !nestWatch[aid]) nestWatch[aid] = r.on(function (type) { if (type === "tasks") famRedraw(); });
     else if (!run && nestWatch[aid]) { nestWatch[aid](); delete nestWatch[aid]; nestRead[aid] = 1; } // 跟着读到它跑完：不用再读
     if (!run && !nestRead[aid]) { nestRead[aid] = 1; r.latest().then(famRedraw, function () {}); }
-    return (r.tasks || []).filter(function (x) { return x.kind === "agent"; });
+    // 不列它自己、不列它上面那几层：分出去的（fork）的记录开头抄着主会话的最后一段——连开它的那一下 Agent 调用（「Fork started」）也在里面，
+    //   当成它自己又开了一个，就一层套一层（同一个 agent 画了五层）
+    var up = {};
+    for (var a = prt, k = 0; a && k < 8; k++) { if (a.sid) up[String(a.sid).replace(/^sub-/, "")] = 1; a = a.info && a.info.parent ? rts["cc:" + a.info.parent] : null; }
+    return (r.tasks || []).filter(function (x) { return x.kind === "agent" && x.id !== t.id && !(t.toolUseId && x.toolUseId === t.toolUseId) && !up[x.id]; });
   }
   // 进去看一个子 agent（t：主会话 rt.tasks 里的那一条；prt：主会话）：开一个标签页，标题是它的说明（「↳ 说明」），已经开着就跳过去
   function openSub(t, prt, tw) {
