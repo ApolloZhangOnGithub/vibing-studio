@@ -254,7 +254,7 @@
       if (rv && LOC() && LOC().exec) LOC().exec({ cmd: "open -R " + shq(rv.dataset.reveal) }).catch(function () {});
     });
     var c0 = cached(sid);
-    paneOf = P || (window.TSU_TABTIME ? TSU_TABTIME.paneFor("cc:" + sid) : null);
+    paneOf = window.TSU_TABTIME ? TSU_TABTIME.paneFor("cc:" + sid) || P || null : P || null; // 开着这个会话的、现在显示着的那个标签页
     paint(sid, c0);
     var got = c0;
     stats(sid, false).then(function (s) { got = s; if (panel) paint(sid, s); }, function (e) { if (panel) paint(sid, c0, e); });

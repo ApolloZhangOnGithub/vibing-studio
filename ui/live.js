@@ -784,7 +784,7 @@
     var lastCaret = "";
     // 「[Image #N]」「[Pasted text #N +M lines]」是一整块（同 Claude Code）：光标不进到里面——方向键挪进去就跳到另一头、点在里面放到近的那一头；
     //   选中的一头落在里面就扩到整块；Delete（往后删）紧挨着它整块删（Backspace 往前删整块在各自的程序里）
-    var TAG_RE = /\[(?:Image #\d+|Pasted text #\d+(?: \+\d+ lines?)?|\.\.\.Truncated text #\d+(?: \+\d+ lines?)?)\]/g, selWas = [0, 0];
+    var TAG_RE = /\[(?:Image #\d+|Pasted text #\d+(?: \+\d+ lines?)?|\.\.\.Truncated text #\d+(?: \+\d+ lines?)?(?:\.\.\.)?)\]/g, selWas = [0, 0];
     var tagSpans = function (v) { var out = [], m; TAG_RE.lastIndex = 0; while ((m = TAG_RE.exec(v))) out.push([m.index, m.index + m[0].length]); return out; };
     function snapTags() {
       var a = ta.selectionStart, b = ta.selectionEnd, a1 = a, b1 = b;
@@ -4976,7 +4976,7 @@
     function truncLong() {
       var ta = P.ta, v = ta.value;
       if (v.length <= 10000) return;
-      var adj = function (pos, toStart) { var m, re = new RegExp(TAG_RE.source, "g"); while ((m = re.exec(v))) { var a = m.index, b = a + m[0].length; if (pos > a && pos < b) return toStart ? a : b; } return pos; };
+      var adj = function (pos, toStart) { var m, re = /\[(?:Image #\d+|Pasted text #\d+(?: \+\d+ lines?)?|\.\.\.Truncated text #\d+(?: \+\d+ lines?)?(?:\.\.\.)?)\]/g; while ((m = re.exec(v))) { var a = m.index, b = a + m[0].length; if (pos > a && pos < b) return toStart ? a : b; } return pos; };
       var head = adj(500, true), tail = adj(v.length - 500, false), mid = v.slice(head, tail);
       pastes = pastes.filter(function (p) { if (mid.indexOf(p.tag) < 0) return true; mid = mid.split(p.tag).join(p.text); return false; });
       var nl = (mid.match(/\n/g) || []).length, pn = takeNo(), tag = "[...Truncated text #" + pn + " +" + nl + " lines...]";

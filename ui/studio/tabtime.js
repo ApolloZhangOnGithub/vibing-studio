@@ -17,7 +17,7 @@
   // 一个标签页记在哪一项下面：Agent / 会话（agent:<id>，Claude Code 的是 agent:cc:<会话 id>）、页面（page:<种类>:<参数>）、有名字的终端（term:<id>）
   function keyOf(P) {
     var pr = P && P.program;
-    if (!pr) return "";
+    if (!pr || P.footOnly) return ""; // 面板里那一层（跟着 agent 的输入框、状态）不是标签页
     if (pr.agentId) return "agent:" + pr.agentId;
     if (pr.page) return "page:" + pr.page + (pr.arg ? ":" + pr.arg : "");
     if (P.shell && P.shell.termId) return "term:" + P.shell.termId;
@@ -55,7 +55,7 @@
       var bucket = me.st === "focus" ? "focus" : me.st === "visible" ? "visible" : me.b ? "work" : "sleep";
       me[bucket] += dt; a[bucket] += dt;
       if (me.b) { me.busy += dt; a.busy += dt; }
-      if (me.st === "focus") a.lastFocus = now;
+      if (me.st === "focus") { a.lastFocus = now; me.lastFocus = now; }
       a.last = now;
       me.st = stateOf(P, front, hf, dv); me.b = busyOf(P);
       dirty = true;
@@ -95,10 +95,16 @@
       return { here: here, all: sum([here].concat(others)), devices: others.length + (here ? 1 : 0) };
     },
     // 开着这个 Agent / 会话的标签页（最近在前台的那一个）
+    //   （同一个会话开着几个：先挑现在显示着的，再挑最近在前台过的）
     paneFor: function (agentId) {
-      var TT = window.TSU_TERM, best = null, bt = -1;
+      var TT = window.TSU_TERM, best = null, bs = -1;
       if (!TT || !TT.panes) return null;
-      TT.panes().forEach(function (P) { if (P.program && P.program.agentId === agentId && !P.closed) { var me = inst && inst.get(P), t = me ? me.focus : 0; if (t > bt) { bt = t; best = P; } } });
+      tick();
+      TT.panes().forEach(function (P) {
+        if (!P.program || P.program.agentId !== agentId || P.closed) return;
+        var me = inst && inst.get(P), sc = me ? (me.st !== "hidden" ? 1e15 : 0) + (me.lastFocus || me.opened || 0) : 0;
+        if (sc > bs) { bs = sc; best = P; }
+      });
       return best;
     },
     // 账户里别的设备的（agents.js 拉到 tabtime 的记录时交过来）
