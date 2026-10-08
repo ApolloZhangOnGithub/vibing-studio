@@ -1518,9 +1518,11 @@
       var b64 = btoa(unescape(encodeURIComponent(req)));
       // 送出去以后等它回的那一行（{"ok":true,"op":"reply"}）再断开：原来用 nc，读完输入就退，常常等不到这一行——
       //   明明送到了却当成没送到、放回这边排着，下一句又拼上它再送一遍（消息越叠越长、重复）。perl 是 macOS 自带的
-      var cmd = "K=$(tr -d '\\n' < \"$HOME/.claude/daemon/control.key\"); S=$(ls /tmp/cc-daemon-$(id -u)/*/control.sock 2>/dev/null | head -1); [ -n \"$S\" ] || { echo '{\"ok\":false,\"error\":\"找不到 Claude Code 后台服务\",\"code\":\"ENOCONN\"}'; exit 0; }; printf '%s' '" + b64 + "' | base64 -D | sed \"s/__CCKEY__/$K/\" | /usr/bin/perl -e '" + DAEMON_PL + "' \"$S\"";
-      var tries = 0, t0 = Date.now();
+      //   很长的一句（粘贴了几 MB 的日志）：先写进文件、从文件读（放在命令行里超过系统的上限，spawn 报「Argument list too long」）
+      var cmd = "", tries = 0, t0 = Date.now();
+      var src = b64.length > BIG_ARG ? bigFile("reply-" + job + ".json", req).then(function (p) { return "cat " + shq(p); }) : Promise.resolve("printf '%s' '" + b64 + "' | base64 -D");
       var once = function () {
+        if (!cmd) return src.then(function (s0) { cmd = "K=$(tr -d '\\n' < \"$HOME/.claude/daemon/control.key\"); S=$(ls /tmp/cc-daemon-$(id -u)/*/control.sock 2>/dev/null | head -1); [ -n \"$S\" ] || { echo '{\"ok\":false,\"error\":\"找不到 Claude Code 后台服务\",\"code\":\"ENOCONN\"}'; exit 0; }; " + s0 + " | sed \"s/__CCKEY__/$K/\" | /usr/bin/perl -e '" + DAEMON_PL + "' \"$S\""; return once(); });
         return LOC.exec({ cmd: cmd }).then(function (r) {
           var out = String((r && (r.out || r.stdout)) || ""), m = /\{[^\n]*\}/.exec(out), j = null;
           try { j = m ? JSON.parse(m[0]) : null; } catch (e) { j = null; }
