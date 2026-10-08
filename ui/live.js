@@ -244,7 +244,7 @@
   var doneAt = function (t) {
     var d = new Date(t); if (isNaN(d.getTime())) return "";
     var day0 = function (x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); };
-    var n = Math.round((day0(new Date()) - day0(d)) / 864e5), o = { hour: "numeric", minute: "2-digit" };
+    var n = Math.round((day0(new Date(Date.now())) - day0(d)) / 864e5), o = { hour: "numeric", minute: "2-digit" };
     if (n !== 0) { o.weekday = "long"; if (!(n > 0 && n < 7)) { o.month = "short"; o.day = "numeric"; } }
     return d.toLocaleString(cfg.time === "24h" ? "en-GB" : "en-US", o);
   };
@@ -2029,7 +2029,7 @@
     var V = this, rt = A.runtime(agentId), agent = rt.agent;
     V.style = opt && opt.style || "claude-code"; // 外壳的样子：claude-code / teyvat（见上面登记的两种）
     var DIM = function () { return P.DIM; };
-    var blocks = new Map(), statusEl = null, bannerEl = null;
+    var blocks = new Map(), statusEl = null, bannerEl = null, bgSig = ""; // bgSig：上次画的时候后台还在跑的（见 liveBg）
     var panel = null, menuIdx = 0, histIdx = -1, draft = "", attach = [], pastes = [], verbose = false, open = {}, moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
     V.agentId = agentId;
     // ---- agent 自己的底部（输入框 → 在跑的那一行 → 状态行）：自动高度；右上角 ··· 管显示哪几块 ----
@@ -2130,7 +2130,12 @@
         renderStatus(); renderInput(); if (P.win.syncTitlesSoon) P.win.syncTitlesSoon(); else P.win.syncTitles();
         ccWatch();
       }
-      else if (type === "tasks") { renderStatus(); if (panel && panel.kind === "tasks") renderInput(); if (rt.stream) drawTurn(rt.stream.turn); }
+      else if (type === "tasks") {
+        renderStatus(); if (panel && panel.kind === "tasks") renderInput(); if (rt.stream) drawTurn(rt.stream.turn);
+        // 后台 Agent 跑完 / 还在跑的变了：对话里写着「Waiting for N background agents to finish」的那几问（和最后一问）结尾那行跟着换
+        var bgs = liveBg().sig;
+        if (bgs !== bgSig) { bgSig = bgs; var ldb = lastDone(); rt.session().turns.slice(-60).forEach(function (t) { if (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === ldb) && blocks.has(t) && !footDone(t) && !(rt.stream && rt.stream.turn === t)) drawTurn(t); }); }
+      }
       else if (type === "config") { renderInput(); if (bannerEl) bannerEl.innerHTML = P.rowsHtml(banner()); }
     });
     setTimeout(function () { if (!P.closed) ccWatch(); }, 1200); // 打开时它已经在等（面板开着）：也看一眼
@@ -2553,14 +2558,16 @@
       return { agents: agents, wf: 0, summary: summary, sig: agents + ":" + n + ":" + summary };
     }
     // 最后一问（做完了的）：闲着时它那行「✻ … for …」画在输入框下面（footDone），对话最后就不再画一遍
-    //   最后一问：跳过不是「一问」的（回顾、压缩、别的会话 / 后台发来的通知、/ 命令、! 命令）——它们后面没有自己的「✻ … for …」
+    //   最后一问：跳过不是「一问」的（回顾、压缩、/ 命令、! 命令）——它们后面没有自己的「✻ … for …」；
+    //   后台 Agent 跑完的通知、别的会话发来的话：它接着回答完也记一行（同 Claude Code：通知叫醒的那一轮结尾也是「✻ Baked for 20s」）——有就算它；
+    //   一轮中间读进去、挂在后面的（自己没有那一行）跳过，接着往前找
     // 最后一问（不管有没有「用了多久」）
     function lastAsk() { var ts = rt.session().turns; for (var i = ts.length - 1; i >= 0; i--) { var t = ts[i]; if (t.recap !== undefined || t.compact || t.system || t.cmd !== undefined || t.bash !== undefined || t.ask === undefined) continue; return t; } return null; }
     function lastDone() {
       var ts = rt.session().turns;
       for (var i = ts.length - 1; i >= 0; i--) {
         var t = ts[i];
-        if (t.recap !== undefined || t.compact || t.system || t.cmd !== undefined || t.bash !== undefined || t.ask === undefined) continue;
+        if (t.recap !== undefined || t.compact || t.cmd !== undefined || t.bash !== undefined || t.ask === undefined || (t.system && !t.stats)) continue;
         return t.stats ? t : null;
       }
       return null;
