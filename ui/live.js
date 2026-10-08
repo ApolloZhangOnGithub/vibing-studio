@@ -233,6 +233,21 @@
   var termPref = function () { return localStorage.getItem("tsu-term") || "auto"; };
   var termLight = function () { var p = termPref(); return p === "auto" ? root.classList.contains("light") : p === "light"; };
   var timeOf = function (t, opts) { return new Date(t).toLocaleTimeString(cfg.time === "24h" ? "en-GB" : "en-US", opts || { hour: "numeric", minute: "2-digit" }); };
+  // 用了多久（同 Claude Code 2.1.281 的 Qt）：不到一分钟按整秒往下取（59.6 秒是 59s）；「2m 5s」「1h 2m 3s」；一天以上「1d 2h 3m」
+  var ccDur = function (ms) {
+    if (ms < 60000) return ms === 0 ? "0s" : ms < 1 ? (ms / 1000).toFixed(1) + "s" : Math.floor(ms / 1000) + "s";
+    var d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4), s = Math.round(ms % 6e4 / 1000);
+    if (s === 60) { s = 0; m++; } if (m === 60) { m = 0; h++; } if (h === 24) { h = 0; d++; }
+    return d > 0 ? d + "d " + h + "h " + m + "m" : h > 0 ? h + "h " + m + "m " + s + "s" : m + "m " + s + "s";
+  };
+  // 「done」后面的时间（同 Claude Code 2.1.281 的 A$e）：今天的只写几点；1–6 天前的加星期几（Monday 5:06 AM）；再早的加月、日（Monday, Oct 6 at 5:06 AM）
+  var doneAt = function (t) {
+    var d = new Date(t); if (isNaN(d.getTime())) return "";
+    var day0 = function (x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); };
+    var n = Math.round((day0(new Date()) - day0(d)) / 864e5), o = { hour: "numeric", minute: "2-digit" };
+    if (n !== 0) { o.weekday = "long"; if (!(n > 0 && n < 7)) { o.month = "short"; o.day = "numeric"; } }
+    return d.toLocaleString(cfg.time === "24h" ? "en-GB" : "en-US", o);
+  };
 
   // ---- 终端颜色：TTU 只认真彩色（38;2）。shell 输出里的 16 色 / 256 色换成真彩色（调色板同 VS Code 的终端）----
   var PALETTE = ["0;0;0", "205;49;49", "13;188;121", "229;229;16", "36;114;200", "188;63;188", "17;168;205", "229;229;229",
@@ -2504,31 +2519,34 @@
       var st = turn.stats, bits = [], ft = (cfg.footer || []).slice(), D = P.DIM;
       if (foot && ft.indexOf("duration") < 0) ft.unshift("duration");
       if (foot && ft.indexOf("time") < 0) ft.push("time");
-      // 同 Claude Code 2.1.281（turn_duration 那一行）：这一问结束时还有后台 Agent / 动态工作流没跑完、现在也还在跑——
-      //   「✻ Waiting for 2 background agents to finish」，不写用了多久、done 几点；跑完了就回到「✻ Baked for 3m · done …」
+      // 同 Claude Code 2.1.281（Sg，turn_duration 那一行）：这一问结束时还有后台 Agent / 动态工作流没跑完、现在也还在跑——
+      //   「✻ Waiting for 2 background agents to finish」（数字加粗），顶替「Baked for 3m · done …」；跑完了就回到「✻ Baked for 3m · done …」
       var live = foot || turn === lastDone(), bg = live || st.pendAgents || st.pendWf ? liveBg() : null;
       var wA = st.pendAgents && bg && bg.agents > 0 ? st.pendAgents : 0, wW = st.pendWf && bg && bg.wf > 0 ? st.pendWf : 0;
-      if (wA || wW) bits.push("Waiting for" + (wA ? " " + wA + " background " + (wA === 1 ? "agent" : "agents") : "") + (wA && wW ? " and" : "") + (wW ? " " + wW + " " + (wW === 1 ? "dynamic workflow" : "dynamic workflows") : "") + " to finish");
-      else ft.forEach(function (f) {
-        if (f === "duration") bits.push((st.verb || "Worked") + " for " + F.dur(st.secs * 1000));
+      var num = function (n) { return BOLD + n + RESET + D; };
+      var waitT = wA || wW ? "Waiting for" + (wA ? " " + num(wA) + " background " + (wA === 1 ? "agent" : "agents") : "") + (wA && wW ? " and" : "") + (wW ? " " + num(wW) + " " + (wW === 1 ? "dynamic workflow" : "dynamic workflows") : "") + " to finish" : "";
+      var waiting = !!waitT && ft.indexOf("duration") >= 0;
+      ft.forEach(function (f) {
+        if (f === "duration") bits.push(waitT || (st.verb || "Worked") + " for " + ccDur(st.ms != null ? st.ms : st.secs * 1000));
         if (f === "tokens" && (st.in || st.out)) bits.push("↑ " + F.k(st.in) + " ↓ " + F.k(st.out) + " tokens");
         if (f === "cost" && st.cost) bits.push("≈" + F.money(st.cost));
       });
-      // 「done 3:04 PM」就是「完成时间」这一项：关了就整段不显示（不单留一个 done）
-      if (!wA && !wW && ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + timeOf(st.at));
+      // 「done 3:04 PM」就是「完成时间」这一项：关了就整段不显示（不单留一个 done）；在等后台 Agent 时不写
+      if (!waiting && ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + doneAt(st.at));
       // token 预算（/budget）：「12k / 50k (24%)」，用够了「50k used (50k min ✓)」；催过几次；/focus 藏起来的几条
       if (st.budget) bits.push((st.budget.used >= st.budget.limit ? F.k(st.budget.used) + " used (" + F.k(st.budget.limit) + " min ✓)" : F.k(st.budget.used) + " / " + F.k(st.budget.limit) + " (" + Math.round(st.budget.used * 100 / Math.max(1, st.budget.limit)) + "%)") + (st.budget.nudges ? " · " + st.budget.nudges + " " + (st.budget.nudges === 1 ? "nudge" : "nudges") : ""));
       if (st.hidden) bits.push(st.hidden + " " + (st.hidden === 1 ? "message" : "messages") + " hidden (/focus to show)");
-      // 现在还在跑的后台活（最后一问那行、闲着时输入框下面那行；在写「Waiting for …」时不写）：「· 1 shell still running」
-      if (!wA && !wW && live && bg && bg.summary) bits.push(bg.summary + " still running");
+      // 现在还在跑的后台活（最后一问那行、闲着时输入框下面那行；写着「Waiting for …」时不写）：「· 1 shell still running」
+      if (!waiting && live && bg && bg.summary) bits.push(bg.summary + " still running");
       return bits.length ? D + "✻ " + bits.join(" · ") + RESET : "";
     }
-    // 现在还在跑的后台活（同 Claude Code：后台 Agent 算「Waiting for」那边；别的写「1 shell」「2 local agents」，几种混着写「3 background tasks」）
+    // 现在还在跑的后台活（同 Claude Code 的 Rhe / Sye）：后台 Agent 的个数（「Waiting for」那边用）；还在跑的一句话——
+    //   全是命令「1 shell」「2 shells」，全是后台 Agent「1 local agent」，几种混着「3 background tasks」
     function liveBg() {
-      var run = (rt.tasks || []).filter(function (x) { return x.status === "running"; });
-      var agents = run.filter(function (x) { return x.kind === "agent" && x.background; }).length, rest = run.filter(function (x) { return !(x.kind === "agent" && x.background); });
-      var kinds = {}; rest.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
-      var ks = Object.keys(kinds), n = rest.length, summary = "";
+      var run = (rt.tasks || []).filter(function (x) { return x.status === "running" && (x.kind !== "agent" || x.background); });
+      var agents = run.filter(function (x) { return x.kind === "agent"; }).length, kinds = {};
+      run.forEach(function (x) { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
+      var ks = Object.keys(kinds), n = run.length, summary = "";
       if (n && ks.length === 1 && ks[0] === "shell") summary = n === 1 ? "1 shell" : n + " shells";
       else if (n && ks.length === 1 && ks[0] === "agent") summary = n === 1 ? "1 local agent" : n + " local agents";
       else if (n) summary = n + " background " + (n === 1 ? "task" : "tasks");
@@ -2802,18 +2820,35 @@
           return;
         }
         flushGroup();
-        if (p.kind === "info") { // Claude Code 的提示（informational）：同它——「● 内容」，warning 黄、notice 灰
-          var icol = p.level === "warning" ? AMBER : p.level === "notice" ? D : "";
-          r.text([""].concat(wrap(p.text, P.cols - 4).map(function (l, k) { return (k ? "  " : icol + "●" + RESET + " ") + icol + l + RESET; })));
+        // 按列数 - 10 折行（同 Claude Code 这两种的宽度），原文里的换行照留
+        var wrapN = function (s, w) { return [].concat.apply([], String(s).split("\n").map(function (x) { return wrap(x, w); })); };
+        if (p.kind === "info") { // Claude Code 的提示（system / informational）：同 2.1.281（wg）——「⏺ 内容」，点和字同色：warning 黄、notice 灰（inactive）、别的默认色
+          var icol = p.level === "warning" ? AMBER : p.level === "notice" ? (P.light ? rgb("102;102;102") : rgb("153;153;153")) : "";
+          r.text([""]);
+          mark(p.at);
+          r.text(wrapN(p.text, P.cols - 10).map(function (l, k) { return (k ? "  " : icol + DOT + RESET + " ") + icol + l + RESET; }));
           return;
         }
-        if (p.kind === "hooks") { // stop hook 出错、带回话、拦下了不让停（同它：「● Ran 2 stop hooks」，下面一行行「⎿  …」）；有名字的写成一行淡的「⎿  Ran 1 <名字> hook」
-          if (p.label) { r.text(["  " + D + "⎿  Ran " + p.n + " " + p.label + " " + (p.n === 1 ? "hook" : "hooks") + RESET]); return; }
-          var hl = ["", "● Ran " + p.n + " stop " + (p.n === 1 ? "hook" : "hooks")];
-          if (p.stop) hl = hl.concat(wrap(p.stop, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; }));
-          p.errors.forEach(function (er) { hl = hl.concat(wrap("Stop hook error: " + er, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; })); });
-          p.ctx.forEach(function (cx) { hl = hl.concat(wrap("Stop hook feedback: " + cx, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; })); });
-          r.text(hl);
+        if (p.kind === "hooks") {
+          // stop hook（同 2.1.281 的 xg）：出错、带回话、拦下了不让停的才画——「⏺ Ran 2 stop hooks (ctrl+o to expand)」，下面一行行「⎿  …」；
+          //   点「Ran 2 stop hooks」（或 ctrl+o）列出跑的是哪几条；有名字的（hookLabel）只写一行淡的「  ⎿  Ran 1 <名字> hook」
+          var hk = ti + ":hk" + i, ho = verbose || !!open[hk], hn = p.n === 1 ? "hook" : "hooks";
+          var sub = function (s, dimAll) { return wrapN("⎿  " + s, P.cols - 10).map(function (l, k) { return "  " + (dimAll ? D + l + RESET : k ? l : D + "⎿  " + RESET + l.slice(3)); }); };
+          if (p.label) {
+            r.text(["  " + D + "⎿  Ran " + p.n + " " + p.label + " " + hn + RESET]);
+            if (verbose) r.text(p.cmds.map(function (c) { return "     " + D + "⎿ " + c + RESET; }));
+            return;
+          }
+          var head = "Ran " + BOLD + p.n + RESET + " stop " + hn, hl = [];
+          r.text([""]);
+          mark(p.at);
+          if (p.cmds.length && !verbose) r.block('<span class="grp' + (ho ? " open" : "") + '" data-key="' + hk + '">' + hotHtml([DOT + " " + HOT + head + HOT_END + (ho ? "" : " " + D + "(ctrl+o to expand)" + RESET)]) + "</span>");
+          else r.text([DOT + " " + head]);
+          if (ho) p.cmds.forEach(function (c) { hl = hl.concat(sub(c, true)); });
+          if (p.stop) hl = hl.concat(sub(p.stop));
+          p.errors.forEach(function (er) { hl = hl.concat(sub("Stop hook error: " + er)); });
+          p.ctx.forEach(function (cx) { hl = hl.concat(sub("Stop hook feedback: " + cx)); });
+          if (hl.length) r.text(hl);
           return;
         }
         if (p.kind === "notice") { // 一轮中间读进去的通知：后台命令的按「后台任务通知」，子 agent 跑完的按「Agent 消息 › 子 Agent 报告」

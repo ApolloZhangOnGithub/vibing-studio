@@ -810,7 +810,9 @@
         if (!hErr.length && !hCtx.length && !j.preventedContinuation && !j.hookLabel) return null;
         var ht0 = cur || lastAskTurn();
         if (!ht0) return null;
-        ht0.parts.push({ kind: "hooks", n: j.hookCount || (j.hookInfos || []).length, label: j.hookLabel || "", errors: hErr.map(String), ctx: hCtx.map(String), stop: j.preventedContinuation ? String(j.stopReason || "") : "", at: ts(j) });
+        var hInf = Array.isArray(j.hookInfos) ? j.hookInfos : [];
+        ht0.parts.push({ kind: "hooks", n: j.hookCount || hInf.length, label: j.hookLabel || "", errors: hErr.map(String), ctx: hCtx.map(String), stop: j.preventedContinuation ? String(j.stopReason || "") : "", at: ts(j),
+          cmds: hInf.map(function (h) { return h && h.command === "prompt" ? "prompt: " + (h.promptText || "") : String((h && h.command) || ""); }) });
         return ht0;
       }
       // 一问做完：它自己记的用时（turn_duration）——「✻ Baked for 3m 15s · done 5:06 AM」用这个（比按消息时间估的准）
@@ -819,7 +821,7 @@
         if (!tt) return null;
         // 同 Claude Code 2.1.281：一问结束时还在跑的后台 Agent、动态工作流（有就画成「Waiting for N background agents to finish」）、
         //   token 预算（「12k / 50k (24%)」）、/focus 藏起来的消息数
-        tt.stats = { secs: Math.max(1, Math.round(j.durationMs / 1000)), verb: j.uuid ? doneVerbU(j.uuid) : doneVerb(tt.at), at: ts(j), pendAgents: j.pendingBackgroundAgentCount || 0, pendWf: j.pendingWorkflowCount || 0,
+        tt.stats = { secs: Math.max(1, Math.round(j.durationMs / 1000)), ms: j.durationMs, verb: j.uuid ? doneVerbU(j.uuid) : doneVerb(tt.at), at: ts(j), pendAgents: j.pendingBackgroundAgentCount || 0, pendWf: j.pendingWorkflowCount || 0,
           budget: j.budgetLimit !== undefined ? { used: j.budgetTokens || 0, limit: j.budgetLimit, nudges: j.budgetNudges || 0 } : null, hidden: j.briefHiddenCount || 0 };
         return tt;
       }
