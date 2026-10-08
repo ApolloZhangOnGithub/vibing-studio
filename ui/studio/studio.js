@@ -3686,7 +3686,7 @@
       return [
         { key: "os", label: "应用风格", desc: "Studio 的整体界面风格", must: true, kind: "seg", options: osModesNow().map(function (x) { return [x[0], x[1]]; }), value: getv("os"), def: SET_DEF.os },
       ].concat(ui, theme, [
-        { key: "lang", label: "显示语言", desc: "菜单、设置和提示使用的语言", must: true, kind: "seg", options: [["auto", "跟随系统"], ["en", "English"], ["zh", "简体中文"]], value: getv("lang"), def: SET_DEF.lang },
+        { key: "lang", label: "显示语言", desc: "菜单、设置和提示使用的语言", must: true, kind: "seg", options: [["auto", LANG_AUTO()], ["en", "English"], ["zh", "简体中文"]], value: getv("lang"), def: SET_DEF.lang },
       ], tr0.length ? [{ head: "翻译" }].concat(tr0, [{ head: "" }]) : [], [
         { key: "linkOpen", label: "打开链接", desc: "在对话和终端中点按链接时使用的浏览器", must: true, kind: "seg", options: [["builtin", "内置浏览器"], ["system", "系统浏览器"]], value: getv("linkOpen"), def: SET_DEF.linkOpen },
         { key: "askPopup", label: "提问卡片", desc: "会话问你问题而你没在看它时，在窗口中间弹出问题卡片，可直接回答；按 Esc 稍后再答", must: true, kind: "toggle", value: getv("askPopup") === true, def: false },
@@ -4864,9 +4864,11 @@
     });
   }
   // 显示语言（同 VS Code 的「配置显示语言」）
+  function LANG_AUTO() { return window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en" ? "Follow System (跟随系统)" : "跟随系统 (Follow System)"; }
   function pickLang(tw) {
     var cur = getv("lang");
-    quickPick(tw, { placeholder: "选择显示语言", items: [{ id: "auto", title: "跟随系统", on: cur !== "en" && cur !== "zh" }, { id: "en", title: "English", on: cur === "en" }, { id: "zh", title: "简体中文", on: cur === "zh" }],
+    // 「跟随系统」两种语言都写（认错了语言、界面变成看不懂的那种时，也找得到这一项）；语言的名字本来就是它自己的写法
+    quickPick(tw, { placeholder: "选择显示语言", items: [{ id: "auto", title: LANG_AUTO(), on: cur !== "en" && cur !== "zh" }, { id: "en", title: "English", on: cur === "en" }, { id: "zh", title: "简体中文", on: cur === "zh" }],
       pick: function (it) { setv("lang", it.id); if (window.TSU_I18N) TSU_I18N.set(it.id); } });
   }
   function oldLayoutItems(tw, mi) {

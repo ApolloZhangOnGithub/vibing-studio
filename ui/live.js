@@ -5429,6 +5429,7 @@
           pmTree() ? mi("新建 Agent…", "", function () { if (!caNew()) startEdit("agent"); }, "agent") : null,
           pmTree() ? Object.assign(mi("新建文件夹…", "", function () { startEdit("folder"); }), { icon: TREE_IC.newFolder }) : null,
           window.TSU_LOCAL && ccOn() ? mi("新建 Claude Code 会话", "", function () { S.newCC(); }, "term") : null,
+          window.TSU_TERMS ? mi("新建独立终端…", "", function () { S.newTerm(); }, "term") : null, // 有名字、关掉标签页也照跑的终端（同 tmux）；有了才在下面列出来
           { sep: true },
           mi("刷新", "", function () { refreshAll(); }, "recap"),
           mi("全部折叠", "", function () { collapseAll(); }, "collapse"),
@@ -6110,9 +6111,10 @@
         }
       }
       // ---- 终端（terms.js：有名字的终端，同 tmux 的会话）：关掉标签页它照跑，这里找回来；前面是终端的图标，右边是前台在跑的程序或者多久前有过输出 ----
+      //   不属于哪个 Agent 的终端（叫「独立终端」）：有了才列；没有时不占地方（新建在上面 ··· 菜单里）
       var TMS = window.TSU_TERMS, tmAll = TMS ? TMS.list().filter(function (x) { return !qToks.length || qHit(x.name, x.id); }) : [];
-      if (TMS && (!qToks.length || tmAll.length || (edit && edit.kind === "term"))) {
-        out += "\n" + row("ts-fold ts-head", foldAt("tm", false), [[chev("tm"), ""], [tt("终端", "Terminals"), BOLD]], [["new-tm", "", tt("新建终端", "New Terminal")]]);
+      if (TMS && (tmAll.length || (edit && edit.kind === "term"))) {
+        out += "\n" + row("ts-fold ts-head", foldAt("tm", false), [[chev("tm"), ""], [tt("独立终端", "Standalone Terminals"), BOLD]], [["new-tm", "", tt("新建独立终端", "New Standalone Terminal")]]);
         if (!folded("tm")) {
           var TMI = '<i class="ts-ccl ts-tml"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="2"/><path d="M4.6 6.4l2 1.6-2 1.6M8.4 10h3"/></svg></i>';
           var tmIn = function (h) { return String(h).replace(//g, TMI); };
@@ -6124,7 +6126,6 @@
               : '<span class="ts-row ts-edit">' + tmIn(H("   ")) + inp + "</span>\n" + errH;
           };
           if (edit && edit.kind === "term") out += tmEditRow(edit.value);
-          if (!tmAll.length && !(edit && edit.kind === "term")) out += H("  " + DIMC + tt("没有终端", "No terminals") + RESET) + "\n";
           tmAll.forEach(function (x) {
             if (edit && edit.kind === "rentm" && edit.id === x.id) { out += tmEditRow(edit.value); return; }
             var pv = tmOpen[x.id], isCur = !!pv && pv === tw.ws.active, fg = TMS.fg(x.id), last = TMS.last(x.id);

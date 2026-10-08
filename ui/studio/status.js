@@ -135,12 +135,12 @@
     for (var i = 0; i < NB; i++) list.push({ from: start + i * step, to: start + (i + 1) * step });
     return { range: range, step: step, start: start, end: end, list: list };
   }
-  // 一根的颜色（同 status page）：up 绿；minor 黄（慢、限流、要登录、断过、偶尔一次失败）；partial 橙（失败不少）；major 红（四分之一以上失败）；
+  // 一根的颜色（同 status page）：up 绿；minor 黄（慢、限流、要登录、断过、偶尔一次失败）；partial 橙（失败不少）；major 红（失败两次以上、占四分之一以上）；
   //   none 浅灰：这个服务开始有记录之前。有记录以后没有调用的算正常（同 status page：没出事就是好的）
   function sevOf(a, before) {
     if (!a.n) return before ? "none" : "up";
     var f = a.fail / a.n;
-    if (a.fail && f >= 0.25) return "major";
+    if (a.fail >= 2 && f >= 0.25) return "major";
     if (a.fail && (f >= 0.05 || a.fail >= 3)) return "partial";
     if (a.fail || a.limit || a.auth || a.drop || a.slow / a.n >= 0.2) return "minor";
     return "up";
@@ -163,7 +163,7 @@
     return { k: "up", text: t("正常", "Operational") };
   }
   // 事件：同一个服务里不正常的调用，前后隔不到 5 分钟的连成一段；有失败、或者不正常的有两次以上才算。
-  //   严重：失败占四分之一以上或者失败三次以上（红）；别的（橙）
+  //   严重：失败三次以上、占四分之一以上（红）；别的（橙）
   function incidents(calls) {
     var by = {}, out = [];
     calls.forEach(function (r) { if (r.cls !== "ok") (by[r.svc] = by[r.svc] || []).push(r); });
@@ -182,8 +182,8 @@
     });
     out.forEach(function (x) {
       x.kind = ["fail", "limit", "auth", "drop", "slow"].filter(function (k) { return x.c[k]; })[0];
-      x.sev = x.c.fail && (x.c.fail / x.c.n >= 0.25 || x.c.fail >= 3) ? "major" : "minor";
-      var errs = {}; x.list.forEach(function (r) { if (r.err && r.cls !== "ok") errs[r.err] = (errs[r.err] || 0) + 1; });
+      x.sev = x.c.fail >= 3 && x.c.fail / x.c.n >= 0.25 ? "major" : "minor";
+      var errs = {}; x.list.forEach(function (r) { if (r.err && r.cls === "fail") errs[r.err] = (errs[r.err] || 0) + 1; }); // 失败的错误（最常见的那句）
       x.err = Object.keys(errs).sort(function (a, b) { return errs[b] - errs[a]; })[0] || "";
       var last = calls.filter(function (r) { return r.svc === x.svc; })[0];
       x.live = Date.now() - x.end < GAP && last && last.cls !== "ok";
@@ -198,7 +198,8 @@
   // 一句话说清这一段出了什么事（同 status page 事件下面那句）
   function incText(x) {
     var c = x.c, n = svcName(x.svc), p = [];
-    if (c.fail) p.push(t([n + "的 ", ""], [n + ": ", ""]), t(c.n + " 次调用中有 " + c.fail + " 次失败", c.fail + " of " + c.n + (c.n === 1 ? " call" : " calls") + " failed"));
+    if (c.fail) p.push(t([n + "的 ", ""], [n + ": ", ""]), c.fail === c.n ? t(c.n === 1 ? "1 次调用失败" : c.n + " 次调用全部失败", c.n === 1 ? "the call failed" : "all " + c.n + " calls failed")
+      : t(c.n + " 次调用中有 " + c.fail + " 次失败", c.fail + " of " + c.n + " calls failed"));
     if (c.limit) p.push(t([n, ""], [n + ": ", ""]), t("被限流 " + c.limit + " 次", "rate limited " + times(c.limit)) + (x.wait ? t("，最长等待 " + dur(x.wait), ", waited up to " + dur(x.wait)) : ""));
     if (c.auth) p.push(t([n, ""], [n + ": ", ""]), t("要求重新登录 " + c.auth + " 次", "asked to sign in " + times(c.auth)));
     if (c.drop) p.push(t([n + "的", ""], [n + ": ", ""]), t("连接中断 " + c.drop + " 次", "connection dropped " + times(c.drop)));
@@ -206,7 +207,8 @@
     // p 是成对的：[第一段前面接的（带服务名）, 后面几段前面接的], 那一段的话
     var s = "";
     for (var i = 0; i < p.length; i += 2) s += (i ? t("；", "; ") + p[i][1] : p[i][0]) + p[i + 1];
-    if (x.err) s += t("，错误：", ". Error: ") + x.err;
+    var err = c.fail ? String(x.err || "").replace(/[\s.。]+$/, "") : "";
+    if (err) s += t("，错误：", ". Error: ") + err;
     return s + t("。", ".");
   }
 
@@ -265,7 +267,7 @@
       var cells = V.ssBars[s.id] = fill(g, d, s.id, first[s.id]), tot = ZERO(), c = cur[s.id], has = !!first[s.id];
       cells.forEach(function (x) { plus(tot, x.a); });
       var up = has ? (tot.n ? fmtUp(100 * (1 - tot.fail / tot.n)) : "100%") + t(" 可用", " uptime") : t("无记录", "No data");
-      return '<div class="svs-svc' + (ss.svc === s.id ? " on" : "") + (ss.win && ss.win.svc === s.id ? " win" : "") + '" data-svc="' + s.id + '">' +
+      return '<div class="svs-svc' + (ss.svc === s.id ? " on" : "") + (ss.win && ss.win.svc === s.id ? " svs-picked" : "") + '" data-svc="' + s.id + '">' +
         '<div class="svs-r1"><button type="button" class="svs-name" data-pick="' + s.id + '">' + esc(svcName(s.id)) + '</button><span class="svs-st svs-' + c.k + '">' + esc(c.text) + "</span></div>" +
         barsSvg(cells, s.id, ss) +
         '<div class="svs-axis"><span>' + esc(ss.range === "24h" ? t("24 小时前", "24 hours ago") : t("30 天前", "30 days ago")) + "</span><i></i><span>" + esc(up) + "</span><i></i><span>" + esc(ss.range === "24h" ? t("现在", "Now") : t("今天", "Today")) + "</span></div></div>";

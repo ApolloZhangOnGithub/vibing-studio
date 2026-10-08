@@ -1,96 +1,112 @@
-/* status.css —— 「服务状态」App（status.js）：同 status.claude.com——每个服务一行格子，下面事件、调用记录 */
+/* status.css —— 「服务状态」App（status.js），照 status.claude.com：一条实色的总状态；一张卡片，每个服务一行 90 根细条；过往事件按天；调用记录 */
 .st-pg-status { position: relative; container-type: inline-size; font-family: var(--st-ui-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); }
-.svs { max-width: 940px; margin: 0 auto; padding: 28px 32px 56px; box-sizing: border-box; color: var(--st-fg); font-size: 13px; }
+/* 颜色同 status page 的那一套（不跟终端配色走：终端的绿、红太亮）。默认是深色，html.light 是浅色 */
+.svs {
+  --svs-up: #6aa33a; --svs-minor: #cfa43a; --svs-partial: #e08a3e; --svs-major: #e05a55; --svs-none: #2f2f2f;
+  --svs-ok-bg: #4d8a2c; --svs-warn-bg: #c27426; --svs-bad-bg: #c44646;
+  max-width: 960px; margin: 0 auto; padding: 40px 44px 80px; box-sizing: border-box;
+  color: var(--st-fg); font-size: 14px; line-height: 1.5;
+}
+html.light .svs {
+  --svs-up: #76ad2a; --svs-minor: #d9a92f; --svs-partial: #ee8d33; --svs-major: #e2463f; --svs-none: #e7e5df;
+  --svs-ok-bg: #5f9b26; --svs-warn-bg: #e08a2b; --svs-bad-bg: #d6453f;
+}
 .svs-dim { color: var(--st-dim); }
-.svs-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-.svs-head h1 { margin: 0; font-size: 22px; font-weight: 650; color: var(--st-hi); }
-.svs-seg { display: inline-flex; padding: 2px; border: 1px solid var(--st-line); border-radius: 8px; background: var(--st-bg2); }
-.svs-seg button { padding: 4px 12px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); font: inherit; font-size: 12px; cursor: pointer; }
-.svs-seg button.on { background: var(--st-hover2, var(--st-hover)); color: var(--st-hi); }
-/* 总的一行 */
-.svs-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; padding: 12px 16px; border: 1px solid var(--st-line); border-radius: 10px; color: var(--st-hi); font-size: 14px; }
-.svs-banner > svg { width: 18px; height: 18px; flex: none; }
-.svs-banner b { font-weight: 600; }
-.svs-banner .svs-dim { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
-.svs-banner.svs-ok { border-color: color-mix(in srgb, var(--st-green) 45%, var(--st-line)); background: color-mix(in srgb, var(--st-green) 10%, transparent); }
-.svs-banner.svs-warn { border-color: color-mix(in srgb, var(--st-yellow) 50%, var(--st-line)); background: color-mix(in srgb, var(--st-yellow) 12%, transparent); }
-.svs-banner.svs-bad { border-color: color-mix(in srgb, var(--st-red) 50%, var(--st-line)); background: color-mix(in srgb, var(--st-red) 12%, transparent); }
-.svs-banner.svs-ok > svg { color: var(--st-green); }
-.svs-banner.svs-warn > svg { color: var(--st-yellow); }
-.svs-banner.svs-bad > svg { color: var(--st-red); }
-/* 每个服务 */
-.svs-list, .svs-incs, .svs-calls { border: 1px solid var(--st-line); border-radius: 10px; overflow: hidden; }
-.svs-svc { padding: 14px 16px 10px; border-top: 1px solid var(--st-line); }
+.svs-head h1 { margin: 0 0 24px; color: var(--st-hi); font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+
+/* 总的一条：实色、白字 */
+.svs-banner { display: flex; align-items: baseline; gap: 16px; padding: 15px 22px; border-radius: 4px; color: #fff; }
+.svs-banner b { font-size: 17px; font-weight: 600; }
+.svs-banner span { margin-left: auto; font-size: 12.5px; opacity: .85; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.svs-banner.svs-up { background: var(--svs-ok-bg); }
+.svs-banner.svs-partial { background: var(--svs-warn-bg); }
+.svs-banner.svs-major { background: var(--svs-bad-bg); }
+
+/* 「过去 24 小时的可用率。查看过去 30 天」 */
+.svs-range { margin: 44px 0 9px; color: var(--st-dim); font-size: 13px; text-align: right; }
+.svs-range button { padding: 0; border: 0; background: none; color: var(--st-hi); font: inherit; cursor: pointer; }
+.svs-range button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* 卡片：每个服务一行，行间一条细线 */
+.svs-card { border: 1px solid var(--st-line); border-radius: 4px; }
+.svs-svc { padding: 22px 26px 18px; border-top: 1px solid var(--st-line); }
 .svs-svc:first-child { border-top: 0; }
 .svs-svc.on { background: var(--st-bg2); }
-.svs-r1 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; min-width: 0; }
-.svs-name { padding: 0; border: 0; background: none; color: var(--st-hi); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.svs-r1 { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 11px; }
+.svs-name { min-width: 0; padding: 0; border: 0; background: none; color: var(--st-hi); font: inherit; font-size: 15px; font-weight: 500; text-align: left; cursor: pointer; }
 .svs-name:hover { text-decoration: underline; text-underline-offset: 3px; }
-.svs-scope { color: var(--st-dim); font-size: 11.5px; white-space: nowrap; }
-.svs-up { margin-left: auto; color: var(--st-dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.svs-now { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
-.svs-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st-faint); flex: none; align-self: center; }
-.svs-now.svs-ok .svs-dot { background: var(--st-green); }
-.svs-now.svs-warn .svs-dot { background: var(--st-yellow); }
-.svs-now.svs-bad .svs-dot { background: var(--st-red); }
-.svs-now.svs-bad { color: var(--st-red); }
-.svs-bars { display: flex; gap: 2px; height: 28px; }
-.svs-b { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: var(--st-bg3); cursor: pointer; }
-.svs-b.svs-ok { background: var(--st-green); }
-.svs-b.svs-warn { background: var(--st-yellow); }
-.svs-b.svs-bad { background: var(--st-red); }
-.svs-b:hover { opacity: .72; }
-.svs-b.sel { outline: 2px solid var(--st-hi); outline-offset: 1px; }
-.svs-axis { display: flex; justify-content: space-between; margin-top: 5px; color: var(--st-dim); font-size: 11px; }
-/* 格子上的数 */
-.svs-tip { position: absolute; z-index: 5; display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--st-line); border-radius: 8px; background: var(--st-bg2); color: var(--st-fg); box-shadow: 0 8px 24px rgba(0, 0, 0, .3); font-size: 12px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
-html.light .svs-tip { box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+.svs-st { flex: none; font-size: 13.5px; white-space: nowrap; }
+.svs-st.svs-up { color: var(--svs-up); }
+.svs-st.svs-partial { color: var(--svs-partial); }
+.svs-st.svs-major { color: var(--svs-major); }
+.svs-st.svs-none { color: var(--st-dim); }
+.svs-bars { display: block; width: 100%; height: 34px; overflow: visible; }
+.svs-b { fill: var(--svs-up); cursor: pointer; }
+.svs-b.svs-minor { fill: var(--svs-minor); }
+.svs-b.svs-partial { fill: var(--svs-partial); }
+.svs-b.svs-major { fill: var(--svs-major); }
+.svs-b.svs-none { fill: var(--svs-none); }
+.svs-b:hover { opacity: .65; }
+.svs-svc.svs-picked .svs-b:not(.sel) { opacity: .35; } /* 点了一根：别的淡下去 */
+.svs-axis { display: flex; align-items: center; gap: 14px; margin-top: 9px; color: var(--st-dim); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.svs-axis i { flex: 1; height: 1px; background: var(--st-line); }
+
+/* 指着一根时的数 */
+.svs-tip { position: absolute; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border: 1px solid var(--st-line); border-radius: 4px; background: var(--st-bg); color: var(--st-fg); box-shadow: 0 6px 20px rgba(0, 0, 0, .35); font-size: 12.5px; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+html.light .svs-tip { box-shadow: 0 6px 20px rgba(0, 0, 0, .1); }
 .svs-tip[hidden] { display: none; }
 .svs-tip b { color: var(--st-hi); font-weight: 600; }
-/* 事件 */
-.svs-h2 { margin: 30px 0 10px; color: var(--st-hi); font-size: 15px; font-weight: 650; }
-.svs-empty { padding: 14px 16px; border: 1px solid var(--st-line); border-radius: 10px; color: var(--st-dim); }
-.svs-inc { border-top: 1px solid var(--st-line); }
-.svs-inc:first-child { border-top: 0; }
-.svs-incH { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 10px 14px; border: 0; background: none; color: var(--st-fg); font: inherit; text-align: left; cursor: pointer; }
-.svs-incH:hover { background: var(--st-hover); }
-.svs-incH > svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
-.svs-incH > svg:first-child { color: var(--st-dim); transition: transform .12s; }
-.svs-inc.open .svs-incH > svg:first-child { transform: rotate(90deg); }
-.svs-inc.svs-warn .svs-incH > svg:nth-child(2) { color: var(--st-yellow); }
-.svs-inc.svs-bad .svs-incH > svg:nth-child(2) { color: var(--st-red); }
-.svs-incT { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.svs-l1 { display: flex; align-items: center; gap: 8px; }
-.svs-l1 b { color: var(--st-hi); font-weight: 600; }
-.svs-live { padding: 0 6px; border-radius: 4px; background: color-mix(in srgb, var(--st-red) 18%, transparent); color: var(--st-red); font-size: 11px; font-weight: 600; line-height: 17px; }
-.svs-incT .svs-dim { font-size: 12px; font-variant-numeric: tabular-nums; }
-.svs-err { color: var(--st-dim); font: 11.5px/1.45 var(--st-mono, Menlo, monospace); word-break: break-word; }
-.svs-incL { border-top: 1px solid var(--st-line); }
+.svs-tipd { color: var(--st-dim); }
+
+/* 过往事件（同 Past Incidents）：日期、下面一条细线；标题按严重程度着色；一句话；灰的时间 */
+.svs-h2 { margin: 64px 0 4px; color: var(--st-hi); font-size: 23px; font-weight: 650; letter-spacing: -.01em; }
+.svs-day { padding-top: 26px; }
+.svs-day h3 { margin: 0 0 14px; padding-bottom: 9px; border-bottom: 1px solid var(--st-line); color: var(--st-hi); font-size: 16px; font-weight: 600; }
+.svs-noinc { margin: 0; color: var(--st-dim); font-size: 14px; }
+.svs-inc + .svs-inc { margin-top: 22px; }
+.svs-incT { display: block; padding: 0; border: 0; background: none; font: inherit; font-size: 16px; font-weight: 600; line-height: 1.4; text-align: left; cursor: pointer; }
+.svs-incT.svs-minor { color: var(--svs-partial); }
+.svs-incT.svs-major { color: var(--svs-major); }
+.svs-incT:hover { text-decoration: underline; text-underline-offset: 3px; }
+.svs-incB { margin: 7px 0 3px; color: var(--st-fg); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.svs-incB b { color: var(--st-hi); font-weight: 600; }
+.svs-incD { margin: 0; color: var(--st-dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.svs-incL { margin-top: 12px; border: 1px solid var(--st-line); border-radius: 4px; overflow: hidden; }
 .svs-incL .svs-call:first-child > .svs-row { border-top: 0; }
+
 /* 调用记录 */
-.svs-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; scroll-margin-top: 16px; }
-.svs-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--st-line); border-radius: 999px; background: none; color: var(--st-fg); font: inherit; font-size: 12px; cursor: pointer; }
-.svs-chip:hover { background: var(--st-hover); }
-.svs-chip.on { border-color: var(--st-hi); background: var(--st-hi); color: var(--st-bg); }
+.svs-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 18px 0 12px; scroll-margin-top: 16px; }
+.svs-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 0; border-radius: 4px; background: none; color: var(--st-dim); font: inherit; font-size: 13px; cursor: pointer; }
+.svs-chip:hover { color: var(--st-hi); background: var(--st-hover); }
+.svs-chip.on { color: var(--st-hi); background: var(--st-hover2, var(--st-hover)); }
 .svs-chip > svg { width: 12px; height: 12px; }
-.svs-tg { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; cursor: pointer; }
-.svs-row { display: grid; grid-template-columns: 132px 128px minmax(0, 1fr) 76px 132px; gap: 10px; align-items: center; width: 100%; padding: 7px 14px; border: 0; border-top: 1px solid var(--st-line); background: none; color: var(--st-fg); font: inherit; font-size: 12.5px; text-align: left; font-variant-numeric: tabular-nums; }
+.svs-tg { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--st-dim); font-size: 13px; cursor: pointer; }
+.svs-calls { border: 1px solid var(--st-line); border-radius: 4px; overflow: hidden; }
+.svs-row { display: grid; grid-template-columns: 130px 140px minmax(0, 1fr) 80px 120px; gap: 12px; align-items: center; width: 100%; padding: 8px 16px; border: 0; border-top: 1px solid var(--st-line); background: none; color: var(--st-fg); font: inherit; font-size: 13px; text-align: left; font-variant-numeric: tabular-nums; }
 button.svs-row { cursor: pointer; }
 button.svs-row:hover { background: var(--st-hover); }
-.svs-th { border-top: 0; background: var(--st-bg2); color: var(--st-dim); font-size: 11.5px; }
+.svs-th { border-top: 0; color: var(--st-dim); font-size: 12px; }
 .svs-row > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.svs-row.svs-warn .svs-res { color: var(--st-yellow); }
-.svs-row.svs-bad .svs-res { color: var(--st-red); }
+.svs-row.svs-warn .svs-res { color: var(--svs-partial); }
+.svs-row.svs-bad .svs-res { color: var(--svs-major); }
 .svs-call.open > .svs-row { background: var(--st-bg2); }
-.svs-det { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 18px; margin: 0; padding: 10px 14px 14px 28px; border-top: 1px solid var(--st-line); background: var(--st-bg2); font-size: 12px; }
+.svs-det { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 20px; margin: 0; padding: 10px 16px 14px 32px; border-top: 1px solid var(--st-line); background: var(--st-bg2); font-size: 12.5px; }
 .svs-det dt { color: var(--st-dim); }
-.svs-det dd { margin: 0; color: var(--st-fg); word-break: break-word; font-variant-numeric: tabular-nums; }
-.svs-more { display: block; margin: 10px auto 0; padding: 5px 14px; border: 1px solid var(--st-line); border-radius: 6px; background: none; color: var(--st-fg); font: inherit; font-size: 12px; cursor: pointer; }
+.svs-det dd { margin: 0; color: var(--st-fg); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.svs-more { display: block; margin: 12px auto 0; padding: 5px 14px; border: 1px solid var(--st-line); border-radius: 4px; background: none; color: var(--st-fg); font: inherit; font-size: 13px; cursor: pointer; }
 .svs-more:hover { background: var(--st-hover); }
+
 @container (max-width: 640px) {
-  .svs { padding: 18px 14px 40px; }
-  .svs-r1 { flex-wrap: wrap; row-gap: 4px; }
-  .svs-row { grid-template-columns: 64px minmax(0, 1fr) 60px 92px; }
+  .svs { padding: 24px 16px 48px; }
+  .svs-head h1 { font-size: 22px; margin-bottom: 18px; }
+  .svs-banner { padding: 12px 16px; }
+  .svs-banner b { font-size: 15px; }
+  .svs-range { margin-top: 28px; }
+  .svs-svc { padding: 16px 16px 14px; }
+  .svs-bars { height: 28px; }
+  .svs-axis { gap: 8px; font-size: 11.5px; }
+  .svs-h2 { margin-top: 44px; font-size: 20px; }
+  .svs-row { grid-template-columns: 64px minmax(0, 1fr) 64px 92px; padding: 8px 12px; }
   .svs-row > span:nth-child(2) { display: none; }
-  .svs-det { padding-left: 14px; }
+  .svs-det { padding-left: 12px; }
 }

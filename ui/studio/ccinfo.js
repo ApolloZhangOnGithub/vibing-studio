@@ -29,7 +29,7 @@
     "      if ($l =~ /\"timestamp\":\"([^\"]+)\"/) { $agg->{first} //= $1; $agg->{last} = $1; }",
     "      if ($l =~ /\"subtype\":\"turn_duration\",\"durationMs\":(\\d+)/) { $agg->{workMs} += $1; $agg->{turns}++; }",
     "      $agg->{compactions}++ if $l =~ /\"subtype\":\"compact_boundary\"/;",
-    "      $agg->{prompts}{$1} = 1 if $l =~ /\"promptId\":\"([^\"]+)\",\"type\":\"user\"/;",
+    "      $agg->{prompts}{$1} = 1 if $l =~ /\"promptId\":\"([^\"]+)\"/;",
     "      if ($l =~ /^\\{\"type\":\"custom-title\",\"customTitle\":\"((?:[^\"\\\\]|\\\\.)*)\"/) { $agg->{title} = $1; }",
     "      if ($l =~ /^\\{\"type\":\"ai-title\",\"aiTitle\":\"((?:[^\"\\\\]|\\\\.)*)\"/) { $agg->{aiTitle} = $1; }",
     "      if ($l =~ /^\\{\"type\":\"permission-mode\",\"permissionMode\":\"([^\"]+)\"/) { $agg->{mode} = $1; }",
@@ -71,7 +71,7 @@
     "    $sub{count}++;",
     "    my $meta = $f; $meta =~ s/\\.jsonl$/.meta.json/;",
     "    my $type = 'agent';",
-    "    if (open(my $mh, '<', $meta)) { local $/; my $mj = <$mh>; close $mh; $type = $1 if $mj =~ /\"agentType\":\"([^\"]+)\"/; }",
+    "    if (open(my $mh, '<', $meta)) { local $/; my $mj = <$mh>; close $mh; $type = $1 if $mj =~ /\"agentType\"\\s*:\\s*\"([^\"]+)\"/; }",
     "    $sub{types}{$type}++;",
     "    scan($f, \\%sub, 0);",
     "  }",
@@ -80,6 +80,7 @@
   ].join("\n") + "\n";
 
   // ---- 统计 ----
+  var VER = 3; // 统计的算法改了就加一：记着的旧结果不再用
   var CK = "tsu-ccinfo", cache = (function () { try { return JSON.parse(localStorage.getItem(CK) || "{}") || {}; } catch (e) { return {}; } })(), busy = {}, plReady = null;
   var keep = function () { try { var ks = Object.keys(cache); if (ks.length > 60) ks.sort(function (a, b) { return cache[a].data.at - cache[b].data.at; }).slice(0, ks.length - 60).forEach(function (k) { delete cache[k]; }); localStorage.setItem(CK, JSON.stringify(cache)); } catch (e) { /* 满了 */ } };
   var plPath = function () { return LOC().info().home + "/Library/Application Support/Vibing Studio/run/ccstats.pl"; };
@@ -90,21 +91,21 @@
     return L.ccFind(sid).then(function (x) {
       if (!x || !x.path) throw new Error(t("找不到这个会话的记录", "The transcript for this session wasn't found"));
       var c = cache[sid];
-      if (!force && c && c.size === x.size && c.path === x.path) return c.data;
+      if (!force && c && c.v === VER && c.size === x.size && c.path === x.path) return c.data;
       if (busy[sid]) return busy[sid];
       var sub = x.path.replace(/\.jsonl$/, "") + "/subagents";
       busy[sid] = ensurePl().then(function () { return L.exec({ cmd: "/usr/bin/perl " + shq(plPath()) + " " + shq(x.path) + " " + shq(sub) }); }).then(function (r) {
         var out = String((r && (r.out || r.stdout)) || "").trim().split("\n").pop();
         var j = JSON.parse(out);
         j.file = { path: x.path, size: x.size }; j.at = Date.now();
-        cache[sid] = { size: x.size, path: x.path, data: j }; keep();
+        cache[sid] = { v: VER, size: x.size, path: x.path, data: j }; keep();
         delete busy[sid];
         return j;
       }, function (e) { delete busy[sid]; throw e; });
       return busy[sid];
     });
   }
-  var cached = function (sid) { return cache[sid] ? cache[sid].data : null; };
+  var cached = function (sid) { return cache[sid] && cache[sid].v === VER ? cache[sid].data : null; };
 
   // ---- 写成给人看的 ----
   var num = function (n) { return Number(n || 0).toLocaleString(en() ? "en-US" : "zh-CN"); };
@@ -157,8 +158,9 @@
     row(k, t("输出", "Output"), big(tk.out) + (tk.think ? t("（其中思考 " + big(tk.think) + "）", " (" + big(tk.think) + " thinking)") : ""), num(tk.out));
     row(k, t("缓存读取", "Cache read"), big(tk.cr), num(tk.cr));
     row(k, t("缓存写入", "Cache write"), big(tk.cw), num(tk.cw));
+    // 模型：用过几个就一行一个（几条回复、输出多少）
     var models = Object.keys(m.byModel || {}).sort(function (x, y) { return m.byModel[y].n - m.byModel[x].n; });
-    models.forEach(function (id) { var bm = m.byModel[id]; row(k, models.length > 1 ? id : t("模型", "Model"), models.length > 1 ? t(num(bm.n) + " 条 · 输出 " + big(bm.out), num(bm.n) + " responses · " + big(bm.out) + " output") : id); });
+    if (models.length) row(k, t("模型", "Model"), models.join(", "), "", models.map(function (id) { var bm = m.byModel[id]; return esc(id) + (models.length > 1 ? ' <span class="cci-dim">· ' + esc(t(num(bm.n) + " 条 · 输出 " + big(bm.out), num(bm.n) + " responses · " + big(bm.out) + " output")) + "</span>" : ""); }).join("<br>"));
     out.push(["Token", k]);
     if (b.count) {
       var sb = [], types = Object.keys(b.types || {}).sort(function (x, y) { return b.types[y] - b.types[x]; });
@@ -191,7 +193,10 @@
   function paint(sid, s, err) {
     if (!panel) return;
     var secs = sections(sid, s);
-    panel.querySelector(".cci-body").innerHTML = secs.map(function (x) { return x[1].length ? '<section><h3>' + esc(x[0]) + "</h3>" + rowsHtml(x[1]) + "</section>" : ""; }).join("") +
+    // 一整块网格：各段的值左边对齐（不是每段各对各的）
+    panel.querySelector(".cci-body").innerHTML = '<dl class="cci-rows cci-all">' + secs.filter(function (x) { return x[1].length; }).map(function (x, i) {
+      return '<div class="cci-h' + (i ? " sep" : "") + '">' + esc(x[0]) + "</div>" + x[1].map(function (r) { return "<dt>" + esc(r[0]) + '</dt><dd' + (r[2] ? ' title="' + esc(r[2]) + '"' : "") + ">" + (r[3] || esc(r[1])) + "</dd>"; }).join("");
+    }).join("") + "</dl>" +
       (s ? "" : '<p class="cci-wait">' + esc(err ? String(err.message || err) : t("正在统计…", "Counting…")) + "</p>");
     panel.querySelector(".cci-title").textContent = titleOf(sid, s);
   }

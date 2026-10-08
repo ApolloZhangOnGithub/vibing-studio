@@ -71,7 +71,7 @@
     if (/^(TodoWrite|TaskCreate|TaskUpdate|TaskList|TaskGet)$/.test(name)) return "toolTodo";
     return "toolOther";
   }
-  var CFG_DEFAULT = { thinking: "collapsed", tips: true, autoscroll: true, copyOnSelect: true, time: "12h", webSearch: true, webFetch: true, sandbox: true, wrap: "wrap", recap: true, taskList: true, bgList: true, subList: true, footInfo: true, translateTasks: "off", translateReplies: "off", translateShow: "swap",
+  var CFG_DEFAULT = { thinking: "collapsed", tips: true, autoscroll: true, copyOnSelect: true, time: "12h", webSearch: true, webFetch: true, sandbox: true, wrap: "wrap", recap: true, taskList: true, bgList: true, subList: true, infoList: false, footInfo: true, translateTasks: "off", translateReplies: "off", translateShow: "swap",
     statusline: ["balance", "context"], footer: ["duration"], instructions: "", defaultModel: "",
     toolRead: "call", toolBash: "preview", toolEdit: "preview", toolWeb: "call", toolAgent: "call", toolTodo: "full", toolOther: "preview", mergeReads: true, errorsFull: true, sysErrors: "full", workLine: "full", progress: "full", toolModes: {}, agentPrompt: false, agentSteps: true, agentResult: true, timestamps: "hide",
     bashOut: "preview", recaps: true, notices: true, images: true, imageShow: "hover", doneLine: true, prompts: true, answers: true, // 回顾（※ recap）：同 Claude Code 自己，默认显示
@@ -94,6 +94,7 @@
     // agent 自己那几块的开关（位置是定死的：任务清单、后台任务、子 Agent 在 agent 的右侧；运行状态、输入框、状态信息在 agent 底部）
     bgList: { bool: true, about: "show the agent's background commands in its right side panel" },
     subList: { bool: true, about: "show the agent's subagents in its right side panel" },
+    infoList: { bool: true, about: "show a Claude Code session's details (created, working time, tokens) in its right side panel" },
     translateTasks: { one: ["off", "display", "zh", "en", "ja", "ko", "fr", "de", "es"], about: "translate task titles, background task and subagent descriptions and the working line into a language (display = the display language); uses your credit, cached so nothing is translated twice" },
     translateShow: { one: ["swap", "only"], about: "how translated replies appear: swap = show the original first, replace it when the translation arrives; only = show nothing until the translation is ready (no original flashing)" },
     translateReplies: { one: ["off", "display", "zh", "en", "ja", "ko", "fr", "de", "es"], about: "translate the agent's replies (its messages, not tool output or code) into a language (display = the display language); uses your credit, cached per paragraph so nothing is translated twice" },
