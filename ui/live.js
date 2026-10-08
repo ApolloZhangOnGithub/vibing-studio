@@ -2802,6 +2802,20 @@
           return;
         }
         flushGroup();
+        if (p.kind === "info") { // Claude Code 的提示（informational）：同它——「● 内容」，warning 黄、notice 灰
+          var icol = p.level === "warning" ? AMBER : p.level === "notice" ? D : "";
+          r.text([""].concat(wrap(p.text, P.cols - 4).map(function (l, k) { return (k ? "  " : icol + "●" + RESET + " ") + icol + l + RESET; })));
+          return;
+        }
+        if (p.kind === "hooks") { // stop hook 出错、带回话、拦下了不让停（同它：「● Ran 2 stop hooks」，下面一行行「⎿  …」）；有名字的写成一行淡的「⎿  Ran 1 <名字> hook」
+          if (p.label) { r.text(["  " + D + "⎿  Ran " + p.n + " " + p.label + " " + (p.n === 1 ? "hook" : "hooks") + RESET]); return; }
+          var hl = ["", "● Ran " + p.n + " stop " + (p.n === 1 ? "hook" : "hooks")];
+          if (p.stop) hl = hl.concat(wrap(p.stop, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; }));
+          p.errors.forEach(function (er) { hl = hl.concat(wrap("Stop hook error: " + er, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; })); });
+          p.ctx.forEach(function (cx) { hl = hl.concat(wrap("Stop hook feedback: " + cx, P.cols - 6).map(function (l, k) { return "  " + (k ? "   " : D + "⎿  " + RESET) + l; })); });
+          r.text(hl);
+          return;
+        }
         if (p.kind === "notice") { // 一轮中间读进去的通知：后台命令的按「后台任务通知」，子 agent 跑完的按「Agent 消息 › 子 Agent 报告」
           var pbg = (p.notices || []).filter(function (n) { return n.kind !== "agent"; }), prp = (p.notices || []).filter(function (n) { return n.kind === "agent"; });
           if (pbg.length && vmode("notices")) { r.text([""]); noticeBlock(r, pbg, ti + ":pn" + i + ":"); }
