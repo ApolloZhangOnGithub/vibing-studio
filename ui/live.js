@@ -216,6 +216,15 @@
   }
   var clip = function (s, w) { var c = ""; Array.from(String(s)).some(function (ch) { if (W(c + ch) > w - 1) return true; c += ch; return false; }); return c.length < String(s).length ? c + "…" : c; };
   var link = function (url, text) { return "\x1b]8;;" + url + "\x07" + text + "\x1b]8;;\x07"; };
+  // 标签页、窗口标题栏上写一个面板的名字：同名的 Claude Code 会话后面淡淡地带上短 id（P.program.titleTag，见 TSU_CLAUDE.dupTag）；没变就不动
+  function titleInto(el, p, pre, post, fallback) {
+    if (!el) return;
+    var t = (pre || "") + (p ? p.title() : fallback || "") + (post || ""), tag = p && p.program && p.program.titleTag ? p.program.titleTag() : "", full = t + (tag ? " " + tag : "");
+    if (el._ttag === tag && el.textContent === full) return;
+    el._ttag = tag;
+    el.textContent = t;
+    if (tag) { var s = document.createElement("small"); s.className = "ttag"; s.textContent = tag; el.appendChild(document.createTextNode(" ")); el.appendChild(s); }
+  }
   // agent 的底部（输入框、状态行、子 agent）拖出来的高度：按 agent 记在本机（终端界面、图形界面共用，刷新也在）；0 = 贴着内容
   var FH_KEY = "tsu-foot-h";
   function footHOf(aid) { try { return +((JSON.parse(localStorage.getItem(FH_KEY) || "{}") || {})[aid]) || 0; } catch (e) { return 0; } }
@@ -2060,6 +2069,8 @@
     var d0 = draftsMap()[agentId];
     if (d0 && !P.ta.value) { P.ta.value = d0.text; pastes = (d0.pastes || []).slice(); } // 上次没发出去的
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
+    // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（titleInto）
+    V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
     V.working = function () { return !!rt.stream; };
     // 在等你：问答（AskUserQuestion 还没答）、或者它自己登记成 waiting（权限确认、要你输入）——同 Claude Code 的「needs you / awaiting input」
     V.needsYou = function () {
@@ -4269,7 +4280,8 @@
           // 现在这个会话：它自己的标志（Claude Code 的会话是 Claude 的标志，Codex 的是 OpenAI 的；renderInput 换成图标），不用「✻」这种字符
           var dot = it.current ? (/^cx:/.test(agentId) ? "\uE035" : /^pi:/.test(agentId) ? "\uE038" : "\uE030") : (it.st === "failed" ? RED : it.st === "working" ? ORANGE : done ? GREEN : D) + (done ? "•" : "·") + RESET;
           var mark = sel && panel.moved; // 挪过了才亮选中的那一行（刚打开时同 Claude Code：光标在下面的输入框里）
-          var nm = it.current ? (mark ? LAV : "") + BOLD + "current session" + RESET : (mark ? LAV + BOLD : "") + clip(it.name, nameW - 3) + RESET;
+          // 同名的：名字后面淡淡地带短 id（claude.js 的 islandOf 给的 tag）
+          var nm = it.current ? (mark ? LAV : "") + BOLD + "current session" + RESET : (mark ? LAV + BOLD : "") + clip(it.name, nameW - 3 - (it.tag ? it.tag.length + 1 : 0)) + RESET + (it.tag ? " " + D + it.tag + RESET : "");
           var rw = w - nameW - 2, rt0 = String(it.right || ""), right = it.term ? LAV + clip(rt0.split(" · ")[0], rw) + RESET + D + " · " + clip(rt0.split(" · ").slice(1).join(" · "), Math.max(4, rw - W(rt0.split(" · ")[0]) - 3)) + RESET : D + clip(rt0, rw) + RESET;
           panel.map[rows.length] = { island: i };
           rows.push(indent + dot + " " + pad(nm, nameW) + right);
@@ -4985,16 +4997,31 @@
           r.text(wrap(String(q.text || ""), P.cols - 6).slice(0, 4).map(function (l, i) { return (i ? "     " : "  " + D + "⎿  ") + D + l + RESET; }));
           return;
         }
-        var pl = []; String(q.text || "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, P.cols - 2)); }); // 附的图：只写 [Image #N]，不露路径
+        // 前后的空行不画（Claude Code 收下的一句前后的空行它也不算）
+        var pl = []; String(q.text || "").replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, P.cols - 2)); }); // 附的图：只写 [Image #N]，不露路径
         r.text([""]);
         r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
         if (pl.length > 12) r.text(["  " + D + "… +" + (pl.length - 12) + " lines" + RESET]);
         if (q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
         if (q.err) {
-          // 后面两个能点：重试（再送一次）、编辑（拿回输入框改，同按 ↑；这边排着的才有）
-          var en = enLang(), el = wrap((en ? "Not sent: " : "未发送：") + q.err, Math.max(20, P.cols - 22)), rl = en ? "retry" : "重试", ql = en ? "edit" : "编辑", canE = q.local && q.li != null && !!rt.editUnsent;
-          r.block('<span class="blk vs-unsent">' + P.toHtml(el.map(function (l, i) { return "  " + (i ? "   " : RED + "⎿  ") + RED + l + RESET + (i === el.length - 1 ? D + " · " + RESET : ""); })).replace(/\n?$/, "") + '<span class="vs-retry">' + rl + "</span>" +
-            (canE ? P.toHtml([D + " · " + RESET]).replace(/\n?$/, "") + '<span class="vs-unsent-edit" data-li="' + q.li + '" data-at="' + (q.at || 0) + '" title="' + (en ? "Put it back in the input to edit" : "放回输入框修改") + '">' + ql + "</span>" : "") + "</span>");
+          // 红的「未发送：原因」；下面淡的一行是这一句送的经过（失败几次、手动重试几次、第一次什么时候发的、最近一次），后面能点：
+          //   重试（再送一次）、编辑（拿回输入框改，同按 ↑）、取消（这一句不发了）——编辑、取消只有这边排着的才有，都只对这一句
+          var en = enLang(), canE = q.local && q.li != null && !!rt.editUnsent, canC = q.local && q.li != null && !!rt.cancelUnsent;
+          var el = wrap((en ? "Not sent: " : "未发送：") + q.err, Math.max(20, P.cols - 6));
+          var hm = function (ms) { var d = new Date(ms), t = en ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : d.toTimeString().slice(0, 8); return d.toDateString() === new Date().toDateString() ? t : (d.getMonth() + 1) + "/" + d.getDate() + " " + t; };
+          var facts = [];
+          if (q.fails > 1) facts.push(en ? "failed " + q.fails + " times" : "失败 " + q.fails + " 次");
+          if (q.manual) facts.push(en ? "retried " + q.manual + (q.manual === 1 ? " time" : " times") : "手动重试 " + q.manual + " 次");
+          if (q.first) facts.push(en ? "sent " + hm(q.first) : hm(q.first) + " 发出");
+          if (q.last && q.first && q.last - q.first > 1000) facts.push(en ? "last tried " + hm(q.last) : "最近一次 " + hm(q.last));
+          var link = function (cls, label, title) { return '<span class="' + cls + '" data-li="' + q.li + '" data-at="' + (q.at || 0) + '"' + (title ? ' title="' + title + '"' : "") + ">" + label + "</span>"; };
+          var labels = [en ? "retry" : "重试"].concat(canE ? [en ? "edit" : "编辑"] : [], canC ? [en ? "cancel" : "取消"] : []);
+          var acts = [link("vs-retry", labels[0])].concat(canE ? [link("vs-unsent-edit", en ? "edit" : "编辑", en ? "Put it back in the input to edit" : "放回输入框修改")] : [], canC ? [link("vs-unsent-cancel", en ? "cancel" : "取消", en ? "Don’t send this message" : "这一条不发了")] : []);
+          var sep = P.toHtml([D + " · " + RESET]).replace(/\n?$/, ""), ft = facts.join(" · ");
+          var oneLine = W(ft) + W(labels.join(" · ")) + 8 <= P.cols; // 放得下：经过和几个按钮一行；放不下：按钮另起一行
+          r.block('<span class="blk vs-unsent">' + P.toHtml(el.map(function (l, i) { return "  " + (i ? "   " : RED + "⎿  ") + RED + l + RESET; })).replace(/\n?$/, "\n") +
+            (ft ? P.toHtml(wrap(ft, Math.max(20, P.cols - 6)).map(function (l) { return "     " + D + l + RESET; })).replace(/\n?$/, oneLine ? "" : "\n") + (oneLine ? sep : "") : "") +
+            (ft && oneLine ? "" : P.toHtml(["     "]).replace(/\n?$/, "")) + acts.join(sep) + "</span>");
         }
       });
       var st = rt.sendNowState ? rt.sendNowState() : list.some(function (q) { return !q.sending && !q.from && !q.sys; }) ? "ready" : null;
@@ -5054,10 +5081,11 @@
       if (bgb) { e.preventDefault(); e.stopPropagation(); if (rt.toBackground) rt.toBackground(); if (rt.stream) drawTurn(rt.stream.turn); return; }
       var nb = e.target.closest(".vs-needs");
       if (nb && window.TSU_TERM && TSU_TERM.agent && (nb.dataset.aid || needsAid)) { e.preventDefault(); e.stopPropagation(); TSU_TERM.agent(nb.dataset.aid || needsAid); return; }
-      var b = e.target.closest(".vs-sendnow"), rb = e.target.closest(".vs-retry"), qe = e.target.closest(".vs-qedit"), ue = e.target.closest(".vs-unsent-edit");
+      var b = e.target.closest(".vs-sendnow"), rb = e.target.closest(".vs-retry"), qe = e.target.closest(".vs-qedit"), ue = e.target.closest(".vs-unsent-edit"), uc = e.target.closest(".vs-unsent-cancel");
       if (ue) { e.preventDefault(); e.stopPropagation(); editUnsentNow(+ue.dataset.li, +ue.dataset.at); return; }
+      if (uc) { e.preventDefault(); e.stopPropagation(); if (rt.cancelUnsent) rt.cancelUnsent(+uc.dataset.li, +uc.dataset.at); renderStatus(); return; } // 取消：只这一句不发了
       if (qe) { e.preventDefault(); e.stopPropagation(); editQueuedNow(); return; }
-      if (rb && rt.retryQueued) { e.preventDefault(); e.stopPropagation(); rt.retryQueued(); renderStatus(); return; }
+      if (rb && (rt.retryOne || rt.retryQueued)) { e.preventDefault(); e.stopPropagation(); if (rt.retryOne && rb.dataset.li != null && rb.dataset.li !== "undefined") rt.retryOne(+rb.dataset.li, +rb.dataset.at); else rt.retryQueued(); renderStatus(); return; } // 重试：只这一句
       if (!b) return;
       e.preventDefault(); e.stopPropagation(); sendQueuedNow();
     });
@@ -5842,7 +5870,8 @@
             var icc = "\uE030 ", iccC = busy || g !== "o" ? rgb("217;119;87") : DIMC;
             if (isCur && UNR["cc:" + x.id]) { delete UNR["cc:" + x.id]; ccMarkRead(x.id); } // 正看着：已读
             var unDot = UNR["cc:" + x.id] ? [[" ●", rgb("61;123;245")]] : []; // 未读：名字后面一个蓝点（同 Claude App）
-            out += '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cc="' + x.id + '">' + ccLogoIn(HR([[ind + "  ", ""], [icc, iccC]].concat(marks(EXTc.name["cc:" + x.id] || x.title, x.dimTitle && !EXTc.name["cc:" + x.id] && !nameC ? DIMC : nameC), unDot), DIMC + when + RESET, true), busy, x.id) + "</span>\n";
+            var ccNm = EXTc.name["cc:" + x.id] || x.title, ccTag = window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(x.id, ccNm) : ""; // 同名的：名字后面淡淡地带短 id
+            out += '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cc="' + x.id + '">' + ccLogoIn(HR([[ind + "  ", ""], [icc, iccC]].concat(marks(ccNm, x.dimTitle && !EXTc.name["cc:" + x.id] && !nameC ? DIMC : nameC), ccTag ? [[" " + ccTag, DIMC]] : [], unDot), DIMC + when + RESET, true), busy, x.id) + "</span>\n";
           };
           var top = { kids: {}, items: [] };
           ccL.filter(function (x) { return !EXTc.pin[ccKey(x)] && !EXTc.arch[ccKey(x)] && !ccGrpOf(x); }).forEach(function (x) {
@@ -6785,8 +6814,7 @@
     };
     // 标题栏：当前面板里在跑的东西（shell：user@code: ~；agent：它的名字）；标签页栏：多于一个才出现
     ws.syncTitles = function () {
-      var t = ws.active ? ws.active.title() : "终端";
-      if (tw.titleEl) tw.titleEl.textContent = t;
+      titleInto(tw.titleEl, ws.active, "", "", "终端"); // 同名的会话：名字后面淡淡地带短 id
       if (window.TSU_DESK && TSU_DESK.front() && TSU_DESK.front().el === tw.el) TSU_DESK.refreshMenus();
       var termapp = document.documentElement.classList.contains("termapp");
       tw.tabsEl.hidden = !termapp && ws.tabs.length < 2 && !tw.showTabs; // Paimon Terminal：同浏览器，一个标签页也显示标签页栏
@@ -6796,7 +6824,7 @@
         b.className = "tab" + (i === ws.cur ? " on" : "");
         b.innerHTML = '<i class="tx" title="关闭标签页">×</i><span></span><kbd>' + (window.nadosNative ? "⌘" : "⌥⌘") + (i + 1) + "</kbd>";
         var p = tb.active || ws.leaves(tb.root)[0].pane, rang = ws.leaves(tb.root).some(function (l) { return l.pane.bell; });
-        b.querySelector("span").textContent = (rang ? "🔔 " : "") + p.title();
+        titleInto(b.querySelector("span"), p, rang ? "🔔 " : "");
         if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
         b.addEventListener("mousedown", function (e) {
           e.preventDefault();

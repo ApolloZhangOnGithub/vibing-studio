@@ -88,9 +88,14 @@
     return jobsNow().then(function (J) {
       var needs = [], working = [], done = [], me = { id: curSid, name: "current session", current: true, st: cur.busy ? "working" : "needs", right: cur.fresh ? "send a prompt to start" : cur.busy ? "working" : clip(cur.last || "send a prompt to continue", 200) };
       (cur.busy ? working : needs).push(me);
+      // 同名的（这一列表里重名、或者和别的会话重名）：名字后面带短 id（tag，见 dupTag）
+      seeNames(J.list.map(function (j) { return { id: j.sessionId, name: j.name }; }), true);
+      var nOf = function (j) { return tidy(j.name || j.intent || j.short).slice(0, 60); }, cnt = {};
+      J.list.forEach(function (j) { if (j.sessionId) { var k = nameKey(nOf(j)); cnt[k] = (cnt[k] || 0) + 1; } });
       J.list.forEach(function (j) {
         if (!j.sessionId || j.sessionId === curSid) return;
-        var reg = J.regs[j.sessionId], it = { id: j.sessionId, job: j.short, cwd: j.cwd || "", name: tidy(j.name || j.intent || j.short).slice(0, 60), st: j.state || "" };
+        var reg = J.regs[j.sessionId], it = { id: j.sessionId, job: j.short, cwd: j.cwd || "", name: nOf(j), st: j.state || "" };
+        it.tag = cnt[nameKey(it.name)] > 1 ? String(j.sessionId).slice(0, 8) : dupTag(j.sessionId, it.name);
         if (reg && reg.kind === "interactive") { it.term = true; it.right = "Open in a terminal · continue it there"; }
         else it.right = clip(String(j.detail || (j.output && j.output.result) || j.state || ""), 200);
         if (j.state === "working") working.push(it); else if (/^(needs_input|needs-input|waiting|blocked|input)$/.test(j.state || "")) needs.push(it); else done.push(it);
@@ -1238,8 +1243,9 @@
     //   ! 命令一条一条单独发（同 Claude Code 它队里的 bash 命令一条一条跑）：拼进别的话里就不是命令了；排在最前面的是命令时，后面的话接上去会被当成命令的一部分在 shell 里跑
     function lqTake() {
       lq = lq.filter(function (x) { return !(x.sentAt && evHas(x.text, x.sentAt - EV_WIN)) && unpad(x.text).trim(); }); // 以为没收到、放回来的：记录里其实有了就不再重送（以前这样一句发了两遍）
-      var bang = function (x) { return /^\s*!/.test(x.text); }, n = lq.length && bang(lq[0]) ? 1 : 0;
-      if (!n) while (n < lq.length && !bang(lq[n])) n++;
+      // 没送成、还没重试的（带着 err）不跟着一起走：它在最前面就一句都不取（按顺序，等你重试、编辑或取消它）
+      var bang = function (x) { return /^\s*!/.test(x.text); }, n = lq.length && !lq[0].err && bang(lq[0]) ? 1 : 0;
+      if (!n) while (n < lq.length && !bang(lq[n]) && !lq[n].err) n++;
       var took = lq.slice(0, n), t = took.map(function (x) { return unpad(x.text); }).join("\n\n");
       if (t) sendMeta[qnorm(t)] = metaJoin(took);
       lq = lq.slice(n); lqSending = t; lqSave(); emit("status"); return t;
@@ -1312,21 +1318,33 @@
     };
     rt.takeQueued = function () { if (!lq.length) return null; var t = lq.map(function (x) { return x.text; }).join("\n\n"); lq = []; lqSave(); emit("status"); return { text: t, images: [] }; };
     // 「未发送 · 重试 · 编辑」的编辑：这一句从排着的里拿掉，原话（附的图跟着）交回输入框改——同在 Claude Code 里按 ↑ 把排着的拿回来改。at：画的时候它的时间（对一下是不是同一句）
+    var lqAt = function (i, at) { return lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; }); };
+    // 拿掉、改了没送成的那一句以后：别的都送得出去了（没有别的没送成的）就不再拦着，排着的接着送
+    var lqUnhold = function () { if (lq.some(function (y) { return y.err; })) return; lqHold = false; qErr = ""; if (lq.length) flushSoon(); };
     rt.editUnsent = function (i, at) {
-      var k = lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; });
+      var k = lqAt(i, at);
       if (k < 0) return null;
       var x = lq.splice(k, 1)[0];
-      if (!lq.length) { lqHold = false; qErr = ""; }
-      lqSave(); emit("status");
+      lqUnhold(); lqSave(); emit("status");
       return splitShots(x.text);
     };
     // 「取消」：这一句不发了（只这一句；排着的别的照旧）
     rt.cancelUnsent = function (i, at) {
-      var k = lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; });
+      var k = lqAt(i, at);
       if (k < 0) return false;
       lq.splice(k, 1);
-      if (!lq.length) { lqHold = false; qErr = ""; }
-      lqSave(); emit("status");
+      lqUnhold(); lqSave(); emit("status");
+      return true;
+    };
+    // 「重试」：只再送这一句（挪到最前面；送的经过跟着，手动重试 +1）——别的没送成的照旧等你处理
+    rt.retryOne = function (i, at) {
+      var k = lqAt(i, at);
+      if (k < 0) return false;
+      var x = lq.splice(k, 1)[0];
+      x.manual = (x.manual || 0) + 1; delete x.err;
+      lq.unshift(x);
+      if (!lq.some(function (y) { return y.err; })) qErr = "";
+      lqHold = false; retryN = 0; lqSave(); emit("status"); flushSoon();
       return true;
     };
     function lqBack(text, meta) { if (lqSending === text) lqSending = ""; text = unpad(text); if (!text.trim()) return; lq.unshift(Object.assign({ text: text, at: Date.now() }, meta || {})); lqSave(); emit("status"); }
@@ -2230,8 +2248,8 @@
     // 再送一次排着的（没送成的那几句）。auto：自己隔 4 秒再试的那一次（不算你的「手动重试」）
     rt.retryQueued = function (keep, auto) {
       if (!lq.length) return false;
-      if (!auto) lq.forEach(function (x) { if (x.err) x.manual = (x.manual || 0) + 1; });
-      lqHold = false; if (!keep) qErr = ""; emit("status");
+      lq.forEach(function (x) { if (x.err) { if (!auto) x.manual = (x.manual || 0) + 1; delete x.err; } });
+      lqHold = false; if (!keep) qErr = ""; lqSave(); emit("status");
       if (rt.elsewhere() && !rt.canInject() && info.live && info.live.kind !== "bg") { deliver(lqTake()); return true; } // iTerm2 里的、还没成功过一次的：照样先试 iTerm2
       flushSoon();
       return true;
@@ -2587,15 +2605,51 @@
       if (!x.custom && chore(x.title)) { x.title = fallbackTitle(x); x.dimTitle = true; } // 只是 /exit、/login 这种：先写目录名 + 时间，读了文件有更好的再换
       if (!x.custom && (messy(x.rawTitle) || /^\//.test(x.title) || x.dimTitle || !x.title)) todo.push(x);
     });
+    seeNames(list);
     if (!todo.length) return;
     var left = todo.length, any = false, next = function () {
       var x = todo.shift();
       if (!x) return;
-      deepTitle(x).then(function (r) { if (r && r.t && r.t !== x.title) { x.title = r.t; x.dimTitle = !!r.dim; any = true; } if (--left === 0 && any && changed) changed(); next(); });
+      deepTitle(x).then(function (r) { if (r && r.t && r.t !== x.title) { x.title = r.t; x.dimTitle = !!r.dim; any = true; seeNames([x]); } if (--left === 0 && any && changed) changed(); next(); });
     };
     for (var i = 0; i < 3; i++) next();
   }
-  var API = { ensure: ensure, openSub: openSub, subTasks: subTasks, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; } };
+  // ---- 同名的会话：Claude Code 允许几个会话起一样的名字（名字只是给人看的，认会话照样按 id）——列表、标签页、窗口标题、← 视图里
+  //   名字后面淡淡地写上它的短 id（会话 id 前 8 位，同 claude attach、~/.claude/jobs/ 用的那个），分得清是哪一个；不重名的照旧。
+  //   比名字：去掉首尾空白、不分大小写，-、–、— 算一样；在这边改过名的（st-claude-ext）按改的名字比。见过的会话：各处的列表（titles）、后台服务的 job
+  var SEEN = {}, DUPX = null, DUPRAW = null;
+  var nameKey = function (s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/[–—]/g, "-"); };
+  // weak：只补还没见过的（后台服务的 job 名；列表里的标题为准）
+  function seeNames(list, weak) {
+    var ch = false;
+    (list || []).forEach(function (x) {
+      var id = x && String(x.id || x.sessionId || ""), n = x ? String(x.title || x.name || "").trim() : "";
+      if (!id || !n || /^sub-/.test(id) || SEEN[id] === n || (weak && SEEN[id])) return;
+      SEEN[id] = n; ch = true;
+    });
+    if (ch) DUPX = null;
+  }
+  function dupIndex() {
+    var raw = ""; try { raw = localStorage.getItem("st-claude-ext") || ""; } catch (e) { /* 读不了：不算改过的名字 */ }
+    if (DUPX && raw === DUPRAW) return DUPX;
+    var ext = {}; try { ext = (JSON.parse(raw || "{}") || {}).name || {}; } catch (e) { ext = {}; }
+    var by = {}, shown = function (id) { return ext["cc:" + id] || SEEN[id] || ""; };
+    Object.keys(SEEN).forEach(function (id) { var k = nameKey(shown(id)); if (k) (by[k] = by[k] || []).push(id); });
+    DUPRAW = raw; DUPX = { by: by, shown: shown };
+    return DUPX;
+  }
+  // 这个会话名字后面要不要带短 id：name 是它现在显示的名字（不给就按见过的）；不重名回 ""
+  function dupTag(id, name) {
+    id = String(id || "");
+    if (!id || /^sub-/.test(id)) return "";
+    var I = dupIndex(), k = nameKey(name != null && String(name).trim() ? name : I.shown(id)), ids = k ? I.by[k] || [] : [];
+    for (var i = 0; i < ids.length; i++) if (ids[i] !== id) return id.slice(0, 8);
+    return "";
+  }
+  // 一打开就把后台服务里的 job（它们的名字）记上：列表还没读到的那几个也比得上
+  (LOC.ready || Promise.resolve()).then(function () { if (LOC.list && LOC.info) setTimeout(function () { jobsNow().then(function (J) { seeNames((J.list || []).map(function (j) { return { id: j.sessionId, name: j.name }; }), true); }, function () {}); }, 2500); }, function () {});
+  var API = { ensure: ensure, openSub: openSub, subTasks: subTasks, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; },
+    dupTag: dupTag, seeNames: seeNames };
   if (window.TSU_CONNECTORS && TSU_CONNECTORS.provide) TSU_CONNECTORS.provide("claude-code", { newSession: newSession });
   A.setExternalResolver(function (aid) { return window.TSU_CLAUDE ? ensure(aid.slice(3)) : null; });
   var EXT = window.TSU_EXT;
