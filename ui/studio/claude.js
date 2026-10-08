@@ -1257,6 +1257,7 @@
       evAdd(t);
       confirmSent(t); // 送出去、等着确认的：记录里见到了就算送到
       var n = lq.length, tq = qnorm(t); // 按去掉引号、空白比（开头的路径送出去时加了引号）
+      delete sendMeta[tq]; // 送到了：它送的经过不用再记
       lq = lq.filter(function (x) { return qnorm(x.text) !== tq && !(x.u && sameMsg(x.text, t)); });
       var wasSending = lqSending && qnorm(lqSending) === tq;
       if (wasSending) lqSending = "";
@@ -1288,9 +1289,9 @@
       if (!late.length) return;
       unc = unc.filter(function (u) { return late.indexOf(u) < 0; });
       late.forEach(function (u) { inj = inj.filter(function (x) { return x.text !== u.text; }); });
-      lq = late.map(function (u) { return { text: u.text, at: Date.now(), sentAt: u.at }; }).concat(lq);
-      lqHold = true;
       qErr = tr("Claude Code 没有收到（30 秒内未出现在会话记录中）");
+      lq = late.map(function (u) { var m = metaOf(u); m.fails = (m.fails || 0) + 1; m.err = qErr; return Object.assign({ text: u.text, at: Date.now(), sentAt: u.at }, m); }).concat(lq);
+      lqHold = true;
       lqSave(); emit("status");
     }
 
@@ -1319,7 +1320,16 @@
       lqSave(); emit("status");
       return splitShots(x.text);
     };
-    function lqBack(text) { if (lqSending === text) lqSending = ""; if (!text) return; lq.unshift({ text: text, at: Date.now() }); lqSave(); emit("status"); }
+    // 「取消」：这一句不发了（只这一句；排着的别的照旧）
+    rt.cancelUnsent = function (i, at) {
+      var k = lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; });
+      if (k < 0) return false;
+      lq.splice(k, 1);
+      if (!lq.length) { lqHold = false; qErr = ""; }
+      lqSave(); emit("status");
+      return true;
+    };
+    function lqBack(text, meta) { if (lqSending === text) lqSending = ""; text = unpad(text); if (!text.trim()) return; lq.unshift(Object.assign({ text: text, at: Date.now() }, meta || {})); lqSave(); emit("status"); }
     // 排着还没被读到的：它自己记的队（queue-operation）+ 这边送进去、还没出现在记录里的（inj）+ 这边排着、还没送的（local）；太久没出队的（它没在跑）不算
     //   闲着时送进去的（inj 里 q 为 false）不是排着：它马上就当这一问开始——sending（画成平常的一问，不写「ctrl+x ctrl+s to send now」）
     rt.pending = function () {
@@ -1341,7 +1351,9 @@
       taken = taken.filter(function (x) { return Date.now() - x.at < 20000; }); // 20 秒还没在记录里出现：不再挂
       taken.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: bangOf(x.text), at: x.at, sending: true }); });
       inj.forEach(function (x) { if (!out.some(function (q) { return qnorm(q.text) === qnorm(x.text); })) out.push({ text: x.text, at: x.at, ours: true, sending: now0 || !x.q }); });
-      lq.forEach(function (x, i) { out.push({ text: x.text, at: x.at, local: true, li: i, sending: now0 && !lqHold, err: lqHold && qErr ? qErr : "" }); }); // li：排在这边的第几句（「编辑」拿回的就是它）
+      // li：排在这边的第几句（「编辑」「取消」对的就是它）；没送成的带着自己的原因、失败几次、手动重试几次、什么时候（老的记录没有这些：用整体的原因）
+      var anyErr = lq.some(function (y) { return y.err; });
+      lq.forEach(function (x, i) { out.push(Object.assign({ text: unpad(x.text), at: x.at, local: true, li: i, sending: now0 && !lqHold, err: x.err || (lqHold && qErr && (x.u || !anyErr) ? qErr : "") }, x.err || lqHold ? { first: x.first || x.sentAt || x.at, last: x.last || 0, tries: x.tries || 0, fails: x.fails || 0, manual: x.manual || 0 } : {})); });
       // 附的图（[Image #N: "路径"]）：字里留 [Image #N]，图另给（images，同已经发出去的那几问：下面一张一行「⎿  [Image #N]」，悬停看、点开）
       out.forEach(function (q) { if (q.from || q.text.indexOf("[Image") < 0) return; var sp = splitShots(q.text); if (sp.images.length) { q.text = sp.text; q.images = sp.images; } else { var bk = shotsBack(q); if (bk) q.images = bk; } }); // 排进它的队以后也一直有图（不只是在发的那几秒）
       return out;
@@ -1448,13 +1460,14 @@
       // 送出去以后等它回的那一行（{"ok":true,"op":"reply"}）再断开：原来用 nc，读完输入就退，常常等不到这一行——
       //   明明送到了却当成没送到、放回这边排着，下一句又拼上它再送一遍（消息越叠越长、重复）。perl 是 macOS 自带的
       var cmd = "K=$(tr -d '\\n' < \"$HOME/.claude/daemon/control.key\"); S=$(ls /tmp/cc-daemon-$(id -u)/*/control.sock 2>/dev/null | head -1); [ -n \"$S\" ] || { echo '{\"ok\":false,\"error\":\"找不到 Claude Code 后台服务\",\"code\":\"ENOCONN\"}'; exit 0; }; printf '%s' '" + b64 + "' | base64 -D | sed \"s/__CCKEY__/$K/\" | /usr/bin/perl -e '" + DAEMON_PL + "' \"$S\"";
-      var tries = 0;
+      var tries = 0, t0 = Date.now();
       var once = function () {
         return LOC.exec({ cmd: cmd }).then(function (r) {
           var out = String((r && (r.out || r.stdout)) || ""), m = /\{[^\n]*\}/.exec(out), j = null;
           try { j = m ? JSON.parse(m[0]) : null; } catch (e) { j = null; }
           if (j && j.ok) return true;
-          if (j && /^(ESTARTING|ENOREPLY|ERESPAWNING)$/.test(j.code || "") && tries++ < 15) return new Promise(function (res) { setTimeout(res, 250); }).then(once);
+          // 它正在起来（后台服务刚重新起来、会话刚在后台跑起来，大的会话要读好一会儿）：等它好了再送——先密后疏，最多等 45 秒
+          if (j && /^(ESTARTING|ENOREPLY|ERESPAWNING)$/.test(j.code || "") && Date.now() - t0 < 45000) return new Promise(function (res) { setTimeout(res, tries++ < 12 ? 250 : 1000); }).then(once);
           // 没等到回话（超时、断了）：送没送到不知道——不放回来重送（宁可让你再说一遍，也不重复塞给它）
           if (!j || j.code === "ETIMEOUT" || j.code === "ECLOSED") return "unknown";
           throw Object.assign(new Error(j.error || j.code || "后台服务没收"), { code: j.code || "" });
@@ -1916,19 +1929,20 @@
     // 送进后台会话的：它马上就忙起来（状态文件要过一会儿才改）——先当它在忙；闲着时送的，这一轮从现在算
     // 斜杠命令（/goal、/model……）：Claude Code 收到当场就执行、不进它的队（记录里也不会出现原话）——送到了就不再画成「排着」（以前一直挂着 send now 三分钟）
     //   ! 命令也不等确认：它跑完才把这一条（连同输出）写进记录，跑得久的 30 秒内本来就不会出现——不能算「没收到」；记录里出现了才划掉（gotAsk）
-    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !/^\s*!/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push({ text: st0, at: Date.now() }); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
+    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !/^\s*!/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push(Object.assign({ text: st0, at: Date.now() }, sendMeta[qnorm(st0)] || {})); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
       setTimeout(poll, 600); refreshLive(); emit("status"); if (lq.length) flushSoon(); }
     // 没送成：放回排着的最前面，不自己一遍遍重试（等你 ctrl+enter 再试、再说一句，或者在终端里接上它处理）
     // dying：自己起的、正在退出的那个 claude -p（打断没停下来被停掉的、换模型停掉的、闲着关掉的）——它还没退干净时不另起一个 --resume 同一个会话，排着等它退了再发
     var lqHold = false, dying = null, intSeq = 0, resSeq = 0;
     //   原因写在排着的那句下面（红的「未发送：……」，能点「重试」）——不再另记一条（同一句话出现两遍，看着像排进去了、其实没有）；隔 4 秒自己再试一次（多半是一时的）
     var qErr = "", retryN = 0, chordAfter = false, sendNowAt = 0;
-    if (lq.some(function (x) { return x.u; })) { lqHold = true; qErr = tr("上次发送后未确认 Claude Code 已收到；确认未收到再点「重试」"); }
+    if (lq.some(function (x) { return x.u; })) { lqHold = true; qErr = tr("上次发送后未确认 Claude Code 已收到；确认未收到再点「重试」"); lq.forEach(function (x) { if (x.u && !x.err) x.err = qErr; }); }
     function unsentBg(text, e) {
-      inj = inj.filter(function (x) { return x.text !== text; }); lqBack(text); lqHold = true; chordAfter = false; sendNowAt = 0; nowAt = 0;
       qErr = String(e && e.message || e).split("\n")[0].slice(0, 200);
+      var m = metaOf(sendMeta[qnorm(text)]); m.fails = (m.fails || 0) + 1; m.err = qErr; m.last = m.last || Date.now();
+      inj = inj.filter(function (x) { return x.text !== text; }); lqBack(text, m); lqHold = true; chordAfter = false; sendNowAt = 0; nowAt = 0;
       emit("status");
-      if (retryN++ < 1) setTimeout(function () { if (lqHold && lq.length) rt.retryQueued(); }, 4000);
+      if (retryN++ < 1) setTimeout(function () { if (lqHold && lq.length) rt.retryQueued(false, true); }, 4000); // 自己再试的这一次不算「手动重试」
     }
     var flushT = 0;
     function flushSoon() { clearTimeout(flushT); flushT = setTimeout(flushQ, 80); }
@@ -2041,41 +2055,58 @@
       if (busy || injecting || interrupting || lq.length || (dying && dying.alive())) { lqAdd(text); flushSoon(); return true; }
       return deliver(text);
     };
+    // 从后台服务送：后台服务不在了（关掉 iTerm 时它跟着退了：ENOCONN）、这个 job 没了（ENOJOB）——同一个会话在后台重新跑起来再送
+    function viaDaemonOrResume(text) {
+      return viaDaemon(text).catch(function (e) {
+        if (!e || !/^(ENOJOB|ENOCONN)$/.test(e.code || "")) throw e;
+        return resumeAndSend(text);
+      });
+    }
+    // 再看一眼它现在在哪：后台服务里有它就从那里送；哪儿都没在跑就用 claude --bg --resume 在后台跑起来再送；
+    //   还开在某个终端里（不是后台的）不另起——另起一个 --resume 同一个会话，Claude Code 会分叉出一份
+    function resumeAndSend(text) {
+      return ccFindL().then(function (x) {
+        if (x && x.live && !(x.live.kind === "bg" && x.job)) throw new Error(tr("该会话正在另一个终端中运行（进程 " + x.live.pid + "），请在该终端中继续"));
+        if (x && x.live) { info.live = x.live; info.job = x.job; emit("config"); return viaDaemon(text); }
+        info.live = null; emit("config");
+        return viaBg().then(function () { return viaDaemon(text); });
+      });
+    }
     function deliver(text) {
-      if (!text) return false;
+      text = unpad(text);
+      if (!text.trim()) return false;
+      // 送的经过记在这一句上：第一次送出的时刻、送了几次、最近一次（「未发送」那一行照它写）
+      var mt = sendMeta[qnorm(text)] || (sendMeta[qnorm(text)] = {});
+      mt.first = mt.first || Date.now(); mt.tries = (mt.tries || 0) + 1; mt.last = Date.now();
       // 正在送的这一句先记下来（同排着的，存在这台设备上）：送到了（sentBg / lqSent）才划掉——送的中间 App 退出、页面重新载入，下次打开接着送，
       //   不会凭空没了（记录里已经有了的 lqDrop 会划掉，不会重复）。以前只有排着的才记，直接送的一句在半路上 App 一退就丢了
       if (!lqSending) { lqSending = text; lqSave(); }
       if (rt.elsewhere()) {
+        var started = function () { injecting = true; inj.push({ text: text, at: Date.now(), q: busy, cmd: /^\s*\//.test(text) }); emit("status"); };
+        var done = function () { injecting = false; sentBg(text); }, failed = function (e) { injecting = false; unsentBg(text, e); };
+        // 送不进它在的那个终端（关掉了 iTerm 的窗口、进程没了、AppleScript 被拦……）、或者以为它开在别的终端程序里：先再看一眼它现在在哪——
+        //   不再开在终端里了（后台服务里有它、或者哪儿都没在跑）：从后台送（不依赖 iTerm）；还开在那个终端里：在 iTerm2 里只是这一次没送成的排着、
+        //   写清楚为什么，不在 iTerm2 的写清楚它在哪个 App 里（cantReach）
+        var recheck = function (e, inIterm) {
+          ccFindL().then(function (x) {
+            if (x && x.live && !(x.live.kind === "bg" && x.job)) { info.live = x.live; injecting = false; return inIterm ? unsentBg(text, e) : cantReach(text); }
+            return resumeAndSend(text).then(done, failed);
+          }, function () { failed(e); });
+        };
         if (typable() || (info.live && info.live.kind !== "bg" && itermOK === null)) { // 自己的终端标签页 / iTerm2：直接敲进去；没试过 iTerm2 的先试一次
-          injecting = true;
-          inj.push({ text: text, at: Date.now(), q: busy, cmd: /^\s*\//.test(text) });
-          emit("status");
+          started();
           var tried = typable();
-          termText(text).then(function () { injecting = false; sentBg(text); }, function (e) {
-            injecting = false;
-            if (tried || /控制 iTerm2/.test(e && e.message || "")) return unsentBg(text, e); // 在 iTerm2 里、只是这一次没送成（被 macOS 拦了……）：排着，写清楚为什么
-            cantReach(text); // 不在 iTerm2 里
-          });
+          termText(text).then(done, function (e) { recheck(e, tried || /控制 iTerm2/.test(e && e.message || "")); });
           return true;
         }
         if (rt.canInject()) {
-          injecting = true;
-          inj.push({ text: text, at: Date.now(), q: busy, cmd: /^\s*\//.test(text) });
-          emit("status");
-          viaDaemon(text).catch(function (e) {
-            // 后台会话已经退了（ENOJOB）：同一个会话在后台重新跑起来再送（它没在别处开着才起，不分叉）
-            if (!e || e.code !== "ENOJOB") throw e;
-            return ccFindL().then(function (x) {
-              if (x && x.live && !(x.live.kind === "bg" && x.job)) throw new Error("该会话正在另一个终端中运行（进程 " + x.live.pid + "），请在该终端中继续");
-              if (x && x.live) { info.live = x.live; info.job = x.job; return viaDaemon(text); }
-              return viaBg().then(function () { return viaDaemon(text); });
-            });
-          }).then(function () { injecting = false; sentBg(text); }, function (e) { injecting = false; unsentBg(text, e); });
+          started();
+          viaDaemonOrResume(text).then(done, failed);
           return true;
         }
-        // 开在别的终端程序里：送不进去，排着、写清楚为什么
-        cantReach(text);
+        // 以为它开在别的终端程序里：先再看一眼（它可能已经退了、或者其实在后台）
+        started();
+        recheck(new Error(tr("这个会话不在 Vibing Studio 能送达的地方运行")), false);
         return true;
       }
       // 没在跑的已有会话：不自己起 claude -p（那个进程只有这里接得上，Claude Code 的 agent 面板会被拒「running in another terminal」）——
@@ -2196,8 +2227,10 @@
     // ctrl+enter 带着字：这句照常送（忙着就排进它的队），送到了马上按 ctrl+x ctrl+s。自己起的 claude -p 没有这一套：返回 false，照旧打断
     rt.sendNowAfter = function () { if (proc && proc.alive()) return false; chordAfter = !!busy; if (busy) { sendNowAt = nowAt = Date.now(); emit("status"); } return true; };
     // 没送成的再送一次（点「重试」、ctrl+enter、出错 4 秒后自己试一次）
-    rt.retryQueued = function (keep) {
+    // 再送一次排着的（没送成的那几句）。auto：自己隔 4 秒再试的那一次（不算你的「手动重试」）
+    rt.retryQueued = function (keep, auto) {
       if (!lq.length) return false;
+      if (!auto) lq.forEach(function (x) { if (x.err) x.manual = (x.manual || 0) + 1; });
       lqHold = false; if (!keep) qErr = ""; emit("status");
       if (rt.elsewhere() && !rt.canInject() && info.live && info.live.kind !== "bg") { deliver(lqTake()); return true; } // iTerm2 里的、还没成功过一次的：照样先试 iTerm2
       flushSoon();
