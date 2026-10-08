@@ -281,6 +281,8 @@
     add(t("模型", "Model"), i.model);
     add(t("语言", "Language"), i.lang);
     if (i.dev) add(t("设备", "Device"), devName(i.dev));
+    // 往 Claude Code 的会话里送的那一句（claude.js）：哪个会话、送的什么、第几次送、之前没送成几次
+    if (r.svc === "cc") { add(t("会话", "Session"), i.session); add(t("内容", "Message"), i.text); if (i.tries > 1) add(t("第几次送", "Attempt"), i.tries); if (i.fails) add(t("之前没送成", "Earlier failures"), i.fails); }
     add(t("记录来源", "Recorded by"), r.src === "server" ? t("服务器", "Server") : t("这台设备", "This device"));
     add(t("错误", "Error"), r.err);
     if (i.note) add(t("备注", "Note"), i.note);

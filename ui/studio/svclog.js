@@ -14,6 +14,7 @@
   // 服务：id、名字、多久算慢（毫秒）
   var SVCS = [
     { id: "translate", zh: "翻译", en: "Translation", slow: 20000 },
+    { id: "cc", zh: "Claude Code 送达", en: "Claude Code Delivery", slow: 30000 }, // 往 Claude Code 的会话里送话（claude.js 自己记：走的哪条路、成没成、为什么没成）
     { id: "sync", zh: "同步", en: "Sync", slow: 5000 },
     { id: "relay", zh: "远程 Mac 中转", en: "Remote Mac Relay", slow: 5000 },
     { id: "account", zh: "登录与账户", en: "Sign-in and Account", slow: 5000 },

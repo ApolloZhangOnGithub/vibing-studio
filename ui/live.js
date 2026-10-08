@@ -3659,7 +3659,8 @@
       if (fsash) { // 标签页自己的底部：在跑的那一行画在底部里（workRows）；发出去、它还没读到的那几句画在对话最后（发了就是到上面，不在底部）
         var rq = new P.Rows(), D0 = P.DIM, pq = V.style !== "teyvat" && rt.pending ? rt.pending().slice() : [];
         if (rt.queued) pq.push({ text: rt.queued.text });
-        pendRows(rq, pq, D0);
+        var sp = splitUnsent(pq); placeUnsent(sp.here, D0); // 没送到的：放回发出时的位置；下面一行提醒
+        pendRows(rq, sp.rest, D0); unsentRows(rq, sp.here, D0);
         // 最后总留一行空行：对话区最底下那一行被 .botgap（贴底的一行底色）盖着——没有这行空行，盖住的就是最后一问的最后一行
         //   （最后一张 [Image #N]、回复的最后一行、「ctrl+x ctrl+s to send now」都会看不见，等下一条来了往上挪才露出来）
         var qh = P.join(rq.text([""]).flush().rows);
@@ -3685,7 +3686,7 @@
           r.text(["", ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + shimmer(spinLabel(s) + "…", s.t0) + SD + " (" + took + (n > 0 ? " · ↓ " + F.k(n) + " tokens" : "") + phase + escHint() + ")" + RESET +
             (!pend && rt.pendingMsgs && rt.pendingMsgs() ? " " + LAV + F.plural(rt.pendingMsgs(), "msg") + " pending" + RESET : "")]);
           // 排着的几句（已经发出去、它下一步读到）：转圈下面「❯ 原话」，最后一行淡的「ctrl+x ctrl+s to send now」（同 Claude Code；ctrl+enter 也行）
-          if (pend && pend.length) pendRows(r, pend, D);
+          if (pend && pend.length) { var sp2 = splitUnsent(pend); placeUnsent(sp2.here, D); pendRows(r, sp2.rest, D); unsentRows(r, sp2.here, D); }
         }
         if (rt.queued) {
           r.text([""]);

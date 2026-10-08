@@ -1236,6 +1236,26 @@
     var metaJoin = function (xs) { var m = {}; xs.forEach(function (x) { var a = metaOf(x); if (a.first && (!m.first || a.first < m.first)) m.first = a.first; ["last", "tries", "fails", "manual"].forEach(function (k) { if (a[k] > (m[k] || 0)) m[k] = a[k]; }); if (a.err) m.err = a.err; }); return m; };
     // 前后的空行不算（送出去、画出来都去掉：以前重试过的一句第一行是空的）
     var unpad = function (t) { return String(t || "").replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, ""); };
+    // 晚送到的（没送成、重试以后才送到的）：第一次发出的时刻记在这台设备上——记录里那一问下面淡淡写「16:33 写 · 16:40 送达」，
+    //   不然它在记录里的位置看着像是你后来才说的
+    var LATEK = "tsu-cc-late", lateAt = (function () { try { return (JSON.parse(localStorage.getItem(LATEK) || "{}") || {})[sid] || {}; } catch (e) { return {}; } })();
+    function lateSave() {
+      try {
+        var ks = Object.keys(lateAt); if (ks.length > 40) ks.sort(function (a, b) { return lateAt[a].at - lateAt[b].at; }).slice(0, ks.length - 40).forEach(function (k) { delete lateAt[k]; });
+        var m = JSON.parse(localStorage.getItem(LATEK) || "{}") || {}; m[sid] = lateAt; localStorage.setItem(LATEK, JSON.stringify(m));
+      } catch (e) { /* 满了 */ }
+    }
+    rt.writtenAt = function (text) { var k = qnorm(text); return (k && lateAt[k]) || null; };
+    // 每一次送（成没成、走的哪条路、用了多久、为什么没成）都记进服务记录：「服务状态」里的「Claude Code 送达」——哪天什么时候送不进去，回头查得到
+    var VIA = { daemon: "daemon", iterm: "iTerm2", pane: "terminal tab", resume: "resume in background", proc: "claude -p" };
+    function svcRec(text, m, ok, err) {
+      try {
+        if (!window.TSU_SVCLOG || !TSU_SVCLOG.rec) return;
+        m = m || {};
+        TSU_SVCLOG.rec({ svc: "cc", op: ok === "confirm" ? "confirm" : "send · " + (VIA[m.via] || "daemon"), at: m.t0 || Date.now(), ms: m.t0 ? Date.now() - m.t0 : 0, st: ok === true ? 200 : 0, err: ok === true ? "" : String(err || ""),
+          info: { session: String(sid).slice(0, 8), text: String(text || "").replace(/\s+/g, " ").slice(0, 120), tries: m.tries || 1, fails: m.fails || 0 } });
+      } catch (e) { /* 记不了也不影响送 */ }
+    }
     var lq = (function () { try { var q = (JSON.parse(localStorage.getItem(LQK) || "{}") || {})[sid]; return q && Date.now() - q.at < LQ_TTL && Array.isArray(q.items) ? q.items.filter(function (x) { return x && unpad(x.text).trim(); }) : []; } catch (e) { return []; } })();
     function lqSave() {
       try {
@@ -1272,7 +1292,7 @@
       var n = lq.length, tq = qnorm(t); // 按去掉引号、空白比（开头的路径送出去时加了引号）
       // 没送成过、过了一阵才送到的：记下它第一次发出的时刻（记录里那一问下面写「16:33 写 · 16:40 送达」）
       var m0 = sendMeta[tq];
-      if (m0 && m0.first && (m0.fails || Date.now() - m0.first > 60000) && !late[tq]) { late[tq] = { first: m0.first, at: Date.now() }; lateSave(); }
+      if (m0 && m0.first && (m0.fails || Date.now() - m0.first > 60000) && !lateAt[tq]) { lateAt[tq] = { first: m0.first, at: Date.now() }; lateSave(); }
       delete sendMeta[tq]; // 送到了：它送的经过不用再记
       lq = lq.filter(function (x) { return qnorm(x.text) !== tq && !(x.u && sameMsg(x.text, t)); });
       var wasSending = lqSending && qnorm(lqSending) === tq;
@@ -1306,7 +1326,7 @@
       unc = unc.filter(function (u) { return late.indexOf(u) < 0; });
       late.forEach(function (u) { inj = inj.filter(function (x) { return x.text !== u.text; }); });
       qErr = tr("Claude Code 没有收到（30 秒内未出现在会话记录中）");
-      lq = late.map(function (u) { var m = metaOf(u); m.fails = (m.fails || 0) + 1; m.err = qErr; return Object.assign({ text: u.text, at: Date.now(), sentAt: u.at }, m); }).concat(lq);
+      lq = late.map(function (u) { var m = metaOf(u); m.fails = (m.fails || 0) + 1; m.err = qErr; svcRec(u.text, Object.assign({}, u, m), "confirm", qErr); return Object.assign({ text: u.text, at: Date.now(), sentAt: u.at }, m); }).concat(lq);
       lqHold = true;
       lqSave(); emit("status");
     }
@@ -1339,11 +1359,22 @@
       return splitShots(x.text);
     };
     // 「取消」：这一句不发了（只这一句；排着的别的照旧）
+    //   取消的那一句留一会儿（rt.cancelled）：下面写「已取消 · 撤销」，点了原样放回去（失败几次、什么时候发的都在）
+    var lastCancel = null;
     rt.cancelUnsent = function (i, at) {
       var k = lqAt(i, at);
       if (k < 0) return false;
-      lq.splice(k, 1);
+      lastCancel = { x: lq.splice(k, 1)[0], k: k, at: Date.now() };
       lqUnhold(); lqSave(); emit("status");
+      return true;
+    };
+    rt.cancelled = function () { return lastCancel && Date.now() - lastCancel.at < 10000 ? lastCancel.x : null; };
+    rt.undoCancel = function () {
+      if (!rt.cancelled()) return false;
+      var c = lastCancel; lastCancel = null;
+      lq.splice(Math.min(c.k, lq.length), 0, c.x);
+      if (c.x.err) lqHold = true;
+      lqSave(); emit("status");
       return true;
     };
     // 「重试」：只再送这一句（挪到最前面；送的经过跟着，手动重试 +1）——别的没送成的照旧等你处理
@@ -1957,7 +1988,7 @@
     // 送进后台会话的：它马上就忙起来（状态文件要过一会儿才改）——先当它在忙；闲着时送的，这一轮从现在算
     // 斜杠命令（/goal、/model……）：Claude Code 收到当场就执行、不进它的队（记录里也不会出现原话）——送到了就不再画成「排着」（以前一直挂着 send now 三分钟）
     //   ! 命令也不等确认：它跑完才把这一条（连同输出）写进记录，跑得久的 30 秒内本来就不会出现——不能算「没收到」；记录里出现了才划掉（gotAsk）
-    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !/^\s*!/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push(Object.assign({ text: st0, at: Date.now() }, sendMeta[qnorm(st0)] || {})); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
+    function sentBg(text) { var st0 = typeof text === "string" && text ? text : lqSending; if (st0 && !/^\s*\/[\w:-]+(\s|$)/.test(st0) && !/^\s*!/.test(st0) && !evHas(st0, Date.now() - EV_WIN)) unc.push(Object.assign({ text: st0, at: Date.now() }, sendMeta[qnorm(st0)] || {})); /* 回话回来之前记录里已经有了：算送到 */ lqSent(); if (st0) svcRec(st0, sendMeta[qnorm(st0)], true); sentAt = Date.now(); qErr = ""; retryN = 0; inj = inj.filter(function (x) { return !x.cmd; }); if (chordAfter) { chordAfter = false; setTimeout(sendChord, 250); } if (!/^\s*\/[\w:-]+(\s|$)/.test(st0 || "")) { if (!busy) newRound(sentAt); setBusy(true, sentAt); } /* 斜杠命令：多半不开始一问（面板、/rename 这种），不先当它在忙——真开始了它的状态会改过来 */ // 它忙着时送进去的：还是这一轮（时间、token 不重新算）
       setTimeout(poll, 600); refreshLive(); emit("status"); if (lq.length) flushSoon(); }
     // 没送成：放回排着的最前面，不自己一遍遍重试（等你 ctrl+enter 再试、再说一句，或者在终端里接上它处理）
     // dying：自己起的、正在退出的那个 claude -p（打断没停下来被停掉的、换模型停掉的、闲着关掉的）——它还没退干净时不另起一个 --resume 同一个会话，排着等它退了再发
@@ -1968,6 +1999,7 @@
     function unsentBg(text, e) {
       qErr = String(e && e.message || e).split("\n")[0].slice(0, 200);
       var m = metaOf(sendMeta[qnorm(text)]); m.fails = (m.fails || 0) + 1; m.err = qErr; m.last = m.last || Date.now();
+      svcRec(text, Object.assign({}, sendMeta[qnorm(text)], m), false, qErr);
       inj = inj.filter(function (x) { return x.text !== text; }); lqBack(text, m); lqHold = true; chordAfter = false; sendNowAt = 0; nowAt = 0;
       emit("status");
       if (retryN++ < 1) setTimeout(function () { if (lqHold && lq.length) rt.retryQueued(false, true); }, 4000); // 自己再试的这一次不算「手动重试」
@@ -2105,7 +2137,7 @@
       if (!text.trim()) return false;
       // 送的经过记在这一句上：第一次送出的时刻、送了几次、最近一次（「未发送」那一行照它写）
       var mt = sendMeta[qnorm(text)] || (sendMeta[qnorm(text)] = {});
-      mt.first = mt.first || Date.now(); mt.tries = (mt.tries || 0) + 1; mt.last = Date.now();
+      mt.first = mt.first || Date.now(); mt.tries = (mt.tries || 0) + 1; mt.last = mt.t0 = Date.now(); mt.via = proc && proc.alive() ? "proc" : rt.elsewhere() ? "daemon" : "resume";
       // 正在送的这一句先记下来（同排着的，存在这台设备上）：送到了（sentBg / lqSent）才划掉——送的中间 App 退出、页面重新载入，下次打开接着送，
       //   不会凭空没了（记录里已经有了的 lqDrop 会划掉，不会重复）。以前只有排着的才记，直接送的一句在半路上 App 一退就丢了
       if (!lqSending) { lqSending = text; lqSave(); }
@@ -2118,18 +2150,18 @@
         var recheck = function (e, inIterm) {
           ccFindL().then(function (x) {
             if (x && x.live && !(x.live.kind === "bg" && x.job)) { info.live = x.live; injecting = false; return inIterm ? unsentBg(text, e) : cantReach(text); }
-            return resumeAndSend(text).then(done, failed);
+            mt.via = "resume"; return resumeAndSend(text).then(done, failed);
           }, function () { failed(e); });
         };
         if (typable() || (info.live && info.live.kind !== "bg" && itermOK === null)) { // 自己的终端标签页 / iTerm2：直接敲进去；没试过 iTerm2 的先试一次
           started();
-          var tried = typable();
+          var tried = typable(); mt.via = ownPane() ? "pane" : "iterm";
           termText(text).then(done, function (e) { recheck(e, tried || /控制 iTerm2/.test(e && e.message || "")); });
           return true;
         }
         if (rt.canInject()) {
           started();
-          viaDaemonOrResume(text).then(done, failed);
+          mt.via = "daemon"; viaDaemonOrResume(text).then(done, failed);
           return true;
         }
         // 以为它开在别的终端程序里：先再看一眼（它可能已经退了、或者其实在后台）
