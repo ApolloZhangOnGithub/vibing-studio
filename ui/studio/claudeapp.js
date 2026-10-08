@@ -1265,6 +1265,7 @@
     if (rowEl) rowEl.classList.add("ca-mopen"); // 先亮起来（⋮ 出来）：菜单按它的位置开
     var M = S.menu(tidy([
       { label: tr("打开位置", "Open in"), items: openIn },
+      kind === "cc" && window.TSU_CCINFO ? { label: tr("详情", "Details"), acc: "I", run: function () { TSU_CCINFO.open(id); } } : null, // 名字、ID、创建、工作时长、Token……（ccinfo.js）
       { sep: true },
       a && !a.archived ? { label: a.pinned ? tr("取消固定", "Unpin") : tr("固定", "Pin"), acc: "P", run: function () { A.pin(id, !a.pinned); later(w); } } : null,
       !a && isConnK(kind) ? { label: EXTS.pin[key] ? tr("取消固定", "Unpin") : tr("固定", "Pin"), acc: "P", run: function () { if (EXTS.pin[key]) delete EXTS.pin[key]; else EXTS.pin[key] = 1; saveExt(); refresh(w, true); } } : null,

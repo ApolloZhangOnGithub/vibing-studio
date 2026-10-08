@@ -6634,6 +6634,7 @@
             x0.cwd && LC && LC.exec && CC_VSCODE ? { label: "Visual Studio Code", icon: MIc0.json, run: function () { LC.exec({ cmd: "open -a " + shq(CC_VSCODE) + " " + shq(x0.cwd) }).catch(function () {}); } } : null,
             x0.cwd && LC && LC.exec ? { label: tt("访达", "Finder"), icon: MIc0.window, run: function () { LC.exec({ cmd: "open " + shq(x0.cwd) }).catch(function () {}); } } : null,
           ].filter(Boolean); } },
+          window.TSU_CCINFO ? { label: tt("详情", "Details"), acc: "I", icon: MIc0.info, run: function () { TSU_CCINFO.open(cid); } } : null, // 名字、ID、创建、工作时长、Token……（ccinfo.js）
           { sep: true },
           { label: exN.pin[kk] ? tt("取消固定", "Unpin") : tt("固定", "Pin"), acc: "P", run: function () { setExt(function (ex) { if (ex.pin[kk]) delete ex.pin[kk]; else { ex.pin[kk] = Date.now(); delete ex.arch[kk]; } }); } },
           { label: isUn ? tt("标为已读", "Mark as Read") : tt("标为未读", "Mark as Unread"), acc: "U", run: function () { var u = ccUnread(); if (u[kk]) delete u[kk]; else u[kk] = 1; ccUnreadSave(u); S.render(true); document.dispatchEvent(new Event("tsu-cc")); } },
@@ -7316,12 +7317,15 @@
       var radio = function (label, ic, key, opts) { return mi(label, "", null, ic, { items: function () { var cur = get(key); return opts.map(function (x) { return { label: x[1], radio: true, checked: cur === x[0], run: function () { STUDIO.setv(key, x[0]); } }; }); } }); };
       var closeSome = function (list) { if (list.length) askClose(list, "标签页", function () { list.forEach(function (x) { ws.closePane(x); }); }); };
       var at = p ? g.editors.indexOf(p) : -1;
-      var head = p ? [
+      // Claude Code 会话的标签页：最上面「详情」（名字、ID、创建、工作时长、Token……，ccinfo.js）
+      var ccSid = p && p.program && /^cc:/.test(p.program.agentId || "") ? String(p.program.agentId).slice(3) : "";
+      var info = ccSid && !/^sub-/.test(ccSid) && window.TSU_CCINFO ? [mi("详情", "", function () { TSU_CCINFO.open(ccSid); }, "info"), { sep: true }] : [];
+      var head = p ? info.concat([
         mi("关闭", "⌘W", function () { closeSome([p]); }, "close"),
         mi("关闭其他", "", function () { closeSome(g.editors.filter(function (x) { return x !== p; })); }, "closeOthers", { disabled: g.editors.length < 2 }),
         mi("关闭右侧", "", function () { closeSome(g.editors.slice(at + 1)); }, "close", { disabled: at === g.editors.length - 1 }),
         mi("全部关闭", "", function () { closeSome(g.editors.slice()); }, "close"),
-      ].concat(p.program && p.program.page === "file" ? [{ sep: true }, mi("复制路径", "", function () { if (navigator.clipboard) navigator.clipboard.writeText(p.program.arg || ""); }, "open")] : [])
+      ]).concat(p.program && p.program.page === "file" ? [{ sep: true }, mi("复制路径", "", function () { if (navigator.clipboard) navigator.clipboard.writeText(p.program.arg || ""); }, "open")] : [])
         .concat(canNewWin() ? [{ sep: true }, mi("移到新窗口", "", function () { toNewWindow(tw, p, true); }, "window", { disabled: !!(p.program && p.program.pty) }), mi("复制到新窗口", "", function () { toNewWindow(tw, p, false); }, "window")] : [])
         : [
         pmTree() ? mi("新建 Agent", "", function () { if (caNew()) return; var ag = A.create({}); var np = ws.newPane({ agent: ag.id }); if (!np.program || np.program.agentId !== ag.id) np.run(makeView(np, ag.id)); ws.adopt(np); }, "agent") : null,

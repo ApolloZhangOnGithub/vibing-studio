@@ -211,7 +211,9 @@
   function familyHtml(P, only) {
     var d = famData(P);
     if (d && only) { if (only.indexOf("todo") < 0) { d.todo = []; d.fg = []; d.fgOn = false; } if (only.indexOf("bg") < 0) d.sh = []; if (only.indexOf("sub") < 0) d.sa = []; }
-    if (!d || !(d.goal || d.main || d.fgOn || d.todo.length || d.sh.length || d.sa.length)) return "";
+    // 「详情」那一块（辅助侧栏 ··· 里勾上才有；只在 Claude Code 的会话里）：几项要紧的（创建、工作时长、Token、子 Agent）+「全部详情…」（ccinfo.js）
+    var infoOn = !!(d && (!only || only.indexOf("todo") >= 0) && acfg().infoList === true && /^cc:/.test(d.aid) && !/^cc:sub-/.test(d.aid) && window.TSU_CCINFO);
+    if (!d || !(d.goal || d.main || d.fgOn || d.todo.length || d.sh.length || d.sa.length || infoOn)) return "";
     var aid = d.aid;
     // /goal 在跑：最上面一行「◎ Goal · 条件 · active 1d」（同 Claude Code 输入框上面那句 ◎ /goal active (1d)）；放不下的点一下换行
     var gl = d.goal, gAge = gl && gl.at ? Date.now() - gl.at : 0, gk = aid + ":goal";
@@ -276,7 +278,8 @@
       (d.fgOn ? sec("fg", fgItems.length ? head("正在运行", fgItems) : "正在运行", fgTotal(), fgItems.length ? rows(fgItems, "fg", fgRow) : '<div class="st-dim st-fgnone">还没有运行过命令</div>') : "") +
       (d.todo.length ? sec("todo", todoHead(d.todo), cur ? (function (s0) { var t = trT(s0, aid); return '<span class="st-fcur"' + trTitle(t, s0) + ">" + esc(t) + "</span>"; })(cur.activeForm || cur.subject) : "", todoRowsHtml(d.todo, aid)) : "") +
       (d.sh.length ? sec("bg", head("后台任务", d.sh), "", rows(d.sh, "bg")) : "") +
-      (d.sa.length ? sec("sub", head("子 Agent", d.sa), "", rows(d.sa, "sub")) : "") + "</div>";
+      (d.sa.length ? sec("sub", head("子 Agent", d.sa), "", rows(d.sa, "sub")) : "") +
+      (infoOn ? sec("info", "详情", "", TSU_CCINFO.summaryHtml(aid.slice(3), familyChanged)) : "") + "</div>";
   }
   // 右侧栏这一块的 TUI 样子（右上角「TUI / 图形」换，只记在这台设备上，不进设置）：同 Claude Code 终端里的写法——
   //   ◎ Goal、Running 下面一条条 ⏺ 工具(参数)、Todos 的 ☐ / ☒、Background commands、Agents，用时写在后面
@@ -380,7 +383,9 @@
     var TRL = [["off", "关"], ["display", "跟随显示语言"], ["zh", "简体中文"], ["en", "English"], ["ja", "日本語"], ["ko", "한국어"], ["fr", "Français"], ["de", "Deutsch"], ["es", "Español"]];
     var trNow = acfg().translateTasks || "off";
     var trItem = { label: "任务翻译", icon: MI0.web, value: (TRL.filter(function (x) { return x[0] === trNow; })[0] || TRL[0])[1], items: function () { return TRL.map(function (x) { return { label: x[1], radio: true, checked: (acfg().translateTasks || "off") === x[0], run: function () { A.setCfg("translateTasks", x[0]); familyChanged(); } }; }); } };
-    return [{ label: "任务清单", icon: MI0.checklist || MI0.status, keys: "⌃T", checked: on, run: function () { TODO_T = {}; A.setCfg("taskList", !on); if (!on) revealFamily(); familyChanged(); } }, chk("bgList", "后台任务", MI0.term), chk("subList", "子 Agent", MI0.fork || MI0.agent), { sep: true }, trItem];
+    return [{ label: "任务清单", icon: MI0.checklist || MI0.status, keys: "⌃T", checked: on, run: function () { TODO_T = {}; A.setCfg("taskList", !on); if (!on) revealFamily(); familyChanged(); } }, chk("bgList", "后台任务", MI0.term), chk("subList", "子 Agent", MI0.fork || MI0.agent),
+      /^cc:/.test(aid || "") && !/^cc:sub-/.test(aid || "") && window.TSU_CCINFO ? { label: "详情", icon: MI0.info, checked: acfg().infoList === true, run: function () { A.setCfg("infoList", acfg().infoList !== true); familyChanged(); } } : null, // 默认不开
+      { sep: true }, trItem].filter(Boolean);
   }
   function previewSlot(site, id, slot) { var k = site + ":" + id; if (slot) SLOTP[k] = slot; else delete SLOTP[k]; placed(site, id); }
 
@@ -626,6 +631,7 @@
     if (what === "new-agent") return newAgent(tw);
     if (what === "fam-tui") { localStorage.setItem("tsu-fam-tui", famTui() ? "0" : "1"); return familyChanged(); } // 右侧栏这一块：TUI ↔ 图形
     if (what === "fam-fold") { var fs = el && el.closest(".st-fsec"); if (fs) toggleFamFold(fs.dataset.aid, fs.dataset.sec); return; } // 「任务」一家子某一块的标题行：收起 / 展开
+    if (what === "cc-info") { if (window.TSU_CCINFO && el && el.dataset.sid) TSU_CCINFO.open(el.dataset.sid); return; } // 「详情」那一块的「全部详情…」
     if (/^open-main-/.test(what)) { var ms0 = what.slice(10); if (tw.side && tw.side.viewCC) tw.side.viewCC(ms0); return; } // 子 agent 的标签页里点「main」：回到主 agent
     if (/^sub-open-/.test(what)) { // 子 Agent：进去看它自己的记录（Claude Code 的：只读的标签页，已经开着就跳过去）；没有记录可看的就地看详情
       var sk = what.slice(9), sa = sk.lastIndexOf("@"), sAid = sa > 0 ? sk.slice(sa + 1) : "", sKey = sa > 0 ? sk.slice(0, sa) : sk, sRt = sAid ? tdRt(sAid) : null;
