@@ -1217,23 +1217,32 @@
     // 留在这边，这一问答完了（或者 ctrl+enter 打断以后）拼成一条（空一行隔开）一次发出去。自己起的 claude -p 也一样（不一句一句写进 stdin）。
     // 刷新页面也不丢：记在这台设备上（十分钟内的还算数）；正在送的那条（lqSending）送到了才从记着的里面划掉
     var LQK = "tsu-cc-queued", LQ_TTL = 600000, lqSending = "", unc = [], UNC_MS = 30000, seenAt = 0; // unc：送出去了（后台服务说收下了）、记录里还没见到的——见到才算送到；seenAt：上一次读完记录的时刻
-    var lq = (function () { try { var q = (JSON.parse(localStorage.getItem(LQK) || "{}") || {})[sid]; return q && Date.now() - q.at < LQ_TTL && Array.isArray(q.items) ? q.items : []; } catch (e) { return []; } })();
+    // 同一句话送的经过（放回来、拼起来、重试都跟着走；记在排着的那一条上）：first 第一次送出的时刻、last 最近一次、tries 送了几次、
+    //   fails 没送成几次、manual 你点「重试」几次、err 最近一次没送成的原因——「未发送」那一行照它写（失败几次、手动重试几次、什么时候）
+    var META = ["first", "last", "tries", "fails", "manual", "err"], sendMeta = {};
+    var metaOf = function (x) { var m = {}; META.forEach(function (k) { if (x && x[k] != null && x[k] !== "") m[k] = x[k]; }); return m; };
+    var metaJoin = function (xs) { var m = {}; xs.forEach(function (x) { var a = metaOf(x); if (a.first && (!m.first || a.first < m.first)) m.first = a.first; ["last", "tries", "fails", "manual"].forEach(function (k) { if (a[k] > (m[k] || 0)) m[k] = a[k]; }); if (a.err) m.err = a.err; }); return m; };
+    // 前后的空行不算（送出去、画出来都去掉：以前重试过的一句第一行是空的）
+    var unpad = function (t) { return String(t || "").replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, ""); };
+    var lq = (function () { try { var q = (JSON.parse(localStorage.getItem(LQK) || "{}") || {})[sid]; return q && Date.now() - q.at < LQ_TTL && Array.isArray(q.items) ? q.items.filter(function (x) { return x && unpad(x.text).trim(); }) : []; } catch (e) { return []; } })();
     function lqSave() {
       try {
-        var m = JSON.parse(localStorage.getItem(LQK) || "{}") || {}, items = (lqSending ? [{ text: lqSending, at: Date.now() }] : []).concat((unc || []).map(function (u) { return { text: u.text, at: u.at, u: 1 }; }), lq);
+        var m = JSON.parse(localStorage.getItem(LQK) || "{}") || {}, items = (lqSending ? [Object.assign({ text: lqSending, at: Date.now() }, sendMeta[qnorm(lqSending)] || {})] : []).concat((unc || []).map(function (u) { return Object.assign({ text: u.text, at: u.at, u: 1 }, metaOf(u)); }), lq);
         Object.keys(m).forEach(function (k) { if (!m[k] || Date.now() - m[k].at > LQ_TTL) delete m[k]; });
         if (items.length) m[sid] = { items: items, at: Date.now() }; else delete m[sid];
         localStorage.setItem(LQK, JSON.stringify(m));
       } catch (e) { /* 满了 */ }
     }
-    function lqAdd(text) { lq.push({ text: text, at: Date.now() }); lqSave(); emit("status"); }
+    function lqAdd(text) { text = unpad(text); if (!text.trim()) return; lq.push({ text: text, at: Date.now() }); lqSave(); emit("status"); }
     // 真要送的那一刻才取（接上后台会话要一两秒，这期间又排进来的也在里面）；没送成的放回最前面
     //   ! 命令一条一条单独发（同 Claude Code 它队里的 bash 命令一条一条跑）：拼进别的话里就不是命令了；排在最前面的是命令时，后面的话接上去会被当成命令的一部分在 shell 里跑
     function lqTake() {
-      lq = lq.filter(function (x) { return !(x.sentAt && evHas(x.text, x.sentAt - EV_WIN)); }); // 以为没收到、放回来的：记录里其实有了就不再重送（以前这样一句发了两遍）
+      lq = lq.filter(function (x) { return !(x.sentAt && evHas(x.text, x.sentAt - EV_WIN)) && unpad(x.text).trim(); }); // 以为没收到、放回来的：记录里其实有了就不再重送（以前这样一句发了两遍）
       var bang = function (x) { return /^\s*!/.test(x.text); }, n = lq.length && bang(lq[0]) ? 1 : 0;
       if (!n) while (n < lq.length && !bang(lq[n])) n++;
-      var t = lq.slice(0, n).map(function (x) { return x.text; }).join("\n\n"); lq = lq.slice(n); lqSending = t; lqSave(); emit("status"); return t;
+      var took = lq.slice(0, n), t = took.map(function (x) { return unpad(x.text); }).join("\n\n");
+      if (t) sendMeta[qnorm(t)] = metaJoin(took);
+      lq = lq.slice(n); lqSending = t; lqSave(); emit("status"); return t;
     }
     function lqSent() { lqSending = ""; lqSave(); }
     // 记录里已经有了的（它排进自己的队 / 已经当一问读了）：这边排着的同一句划掉——送到了却以为没送到、放回来的，不再拼进下一句重送
