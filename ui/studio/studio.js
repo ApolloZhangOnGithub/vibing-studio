@@ -1128,10 +1128,19 @@
 
   // ======== 有新版本（同 VS Code 的「重启以更新」）：每分钟看一眼页面的脚本变了没有；变了状态栏右边出「有新版本」，点一下重新载入（终端会接回去）========
   var verSig = null, updateReady = false;
-  // 界面的版本号（部署时写进 version.json）：现在这一页的、有新版本时新的那一个（「重新载入以更新（v0.2.301）」）
-  var uiVer = { cur: "", next: "" };
-  var readVer = function () { return fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.version ? String(j.version) : ""; }, function () { return ""; }); };
-  readVer().then(function (v) { uiVer.cur = v; });
+  // 界面的版本号（部署时写进 version.json）：现在跑的这一份（cur、built）、有新版本时新的那一个（next：「重新载入以更新（v0.2.301）」）、网站上最新的（site）。
+  //   App 从这台 Mac 上读界面（TSU_UI_LOCAL）时，现在跑的、重新载入后会用的都是本机那份的 version.json——以前读的是网站上的：本机那份旧了也说「已是最新版本」
+  var uiVer = { cur: "", built: "", next: "", site: "", siteAt: 0 };
+  var verJ = function (j) { return j && j.version ? j : null; };
+  var siteVerJ = function () { return fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(verJ, function () { return null; }); };
+  var localVerJ = function () {
+    var LU = window.TSU_UI_LOCAL;
+    if (!LU || !LU.dir || !LOC() || !LOC().read) return Promise.resolve(null);
+    return LOC().read(LU.dir + "/version.json").then(function (b) { try { return verJ(JSON.parse(new TextDecoder().decode(new Uint8Array(b)))); } catch (e) { return null; } }, function () { return null; });
+  };
+  var readVerJ = function () { return window.TSU_UI_LOCAL ? localVerJ() : siteVerJ(); }; // 重新载入后会用的那一份
+  var readVer = function () { return readVerJ().then(function (j) { return j ? String(j.version) : ""; }); };
+  (LOC() && LOC().ready ? LOC().ready : Promise.resolve()).then(readVerJ, readVerJ).then(function (j) { if (j) { uiVer.cur = String(j.version); uiVer.built = j.built || ""; } });
   document.addEventListener("st-update-ready", function () { readVer().then(function (v) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); }); });
   var localVer = ""; // 本地界面：页面载入后第一次读到的 version.json
   function checkVersion(force) {
