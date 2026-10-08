@@ -3917,7 +3917,7 @@
       panel.sel = (x0.options || []).length; panel.typing = true;
       return true;
     }
-    V.inputChanged = function (t) { if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
+    V.inputChanged = function (t) { if (t === "input" && P.ta.value.length > 10000) truncLong(); if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
 
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
     function openPanel(p) {
@@ -4971,12 +4971,29 @@
       };
       img.src = url;
     }
+    // 输入框里超过 10000 个字（同 Claude Code 2.1.281）：前后各留 500 个字，中间收成「[...Truncated text #N +M lines...]」，原文另存、发的时候展开——
+    //   中间那段里原来的粘贴块先展开进去一起收；前后的边界不切开「[Pasted text …]」「[Image …]」这种一整块
+    function truncLong() {
+      var ta = P.ta, v = ta.value;
+      if (v.length <= 10000) return;
+      var adj = function (pos, toStart) { var m, re = new RegExp(TAG_RE.source, "g"); while ((m = re.exec(v))) { var a = m.index, b = a + m[0].length; if (pos > a && pos < b) return toStart ? a : b; } return pos; };
+      var head = adj(500, true), tail = adj(v.length - 500, false), mid = v.slice(head, tail);
+      pastes = pastes.filter(function (p) { if (mid.indexOf(p.tag) < 0) return true; mid = mid.split(p.tag).join(p.text); return false; });
+      var nl = (mid.match(/\n/g) || []).length, pn = takeNo(), tag = "[...Truncated text #" + pn + " +" + nl + " lines...]";
+      pastes.push({ tag: tag, text: mid, no: pn });
+      ta.value = v.slice(0, head) + tag + v.slice(tail);
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+      draftSet(agentId, ta.value, pastes);
+      renderInput();
+    }
     V.paste = function (e) {
       var text = e.clipboardData && e.clipboardData.getData("text/plain"), ta = P.ta;
       if (panel && panel.kind === "cc" && ccT) { e.preventDefault(); if (text) ccT.tui.send(ccT.paste ? "\x1b[200~" + text + "\x1b[201~" : text); return; }
-      if (text && (text.split("\n").length > 10 || text.length > 1000)) {
+      // 同 Claude Code 2.1.281：粘贴的超过 800 个字、或者超过 2 行（窗口很矮时更少）就收成「[Pasted text #N +M lines]」，原文另存；短的照原样放进去
+      var nlP = text ? (text.match(/\r\n|\r|\n/g) || []).length : 0;
+      if (text && (text.length > 800 || nlP > Math.max(0, Math.min((P.rows || 40) - 10, 2)))) {
         e.preventDefault();
-        text = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+        text = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r\n|\r/g, "\n").replace(/\t/g, "    ");
         var nl = (text.match(/\r\n|\r|\n/g) || []).length, pn = takeNo(), tag = "[Pasted text #" + pn + (nl ? " +" + nl + " lines]" : "]"); // 同 Claude Code：和图共用一个号
         pastes.push({ tag: tag, text: text, no: pn });
         ta.setRangeText(tag, ta.selectionStart, ta.selectionEnd, "end");
@@ -4989,6 +5006,9 @@
     V.drop = function (e) { Array.prototype.forEach.call(e.dataTransfer.files || [], function (f) { addImage(f); }); };
     V.attachFile = addImage; // 从访达、截图缩略图拖进来的图（原生那边给的是路径，读成文件再交过来）
 
+    // 一段字有几行（很长的算过的记着：排着的那几句每次重画都要用）
+    var LNS = typeof Map === "function" ? new Map() : null;
+    function linesOf(t) { if (!LNS || t.length < 20000) return t.split("\n").length; var c = LNS.get(t); if (c === undefined) { c = (t.match(/\n/g) || []).length + 1; LNS.set(t, c); if (LNS.size > 12) LNS.delete(LNS.keys().next().value); } return c; }
     // 时刻：今天的写「16:33:05」（英文「4:33:05 PM」），别的日子前面加「10/7」
     function clockOf(ms) { var d = new Date(ms), en = enLang(), t = en ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }) : d.toTimeString().slice(0, 8); return d.toDateString() === new Date().toDateString() ? t : (d.getMonth() + 1) + "/" + d.getDate() + " " + t; }
     // 没送到的那几句：放在你发出它时的位置（在它之后才开始的那一问前面）——顺序同发生的一样，不再挂在最下面、看着像后来才说的；
@@ -5055,10 +5075,14 @@
           return;
         }
         // 前后的空行不画（Claude Code 收下的一句前后的空行它也不算）
-        var pl = []; String(q.text || "").replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, P.cols - 2)); }); // 附的图：只写 [Image #N]，不露路径
+        // 画成输入框里的样子（粘贴的大段收成「[Pasted text #N +M lines]」，同 Claude Code）；很长的只看前面一截、只折前 13 行（以前几万行每次都整个折一遍，界面卡死）
+        var full0 = String(q.shown || q.text || ""), src0 = full0.length > 20000 ? full0.slice(0, 20000) : full0;
+        var paras = src0.replace(/^(?:[ \t]*\n)+/, "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n"), pl = [], more = 0; // 附的图：只写 [Image #N]，不露路径
+        while (paras.length && !paras[paras.length - 1].trim() && full0.length === src0.length) paras.pop();
+        for (var pi = 0; pi < paras.length; pi++) { if (pl.length > 12) { more = linesOf(full0) - pi; break; } pl.push.apply(pl, wrap(paras[pi].length > 2000 ? paras[pi].slice(0, 2000) : paras[pi], P.cols - 2)); }
         r.text([""]);
         r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
-        if (pl.length > 12) r.text(["  " + D + "… +" + (pl.length - 12) + " lines" + RESET]);
+        if (pl.length > 12 || more > 0) r.text(["  " + D + "… +" + (Math.max(0, pl.length - 12) + Math.max(0, more)) + " lines" + RESET]);
         if (q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
         if (q.err) {
           // 红的「未发送：原因」；下面淡的一行是这一句送的经过（失败几次、手动重试几次、第一次什么时候发的、最近一次），后面能点：
@@ -5104,7 +5128,9 @@
         if (!im.no && rt.takeImageNo) { im.no = rt.takeImageNo(); t = "[Image #" + im.no + "] " + t; } // 老的写法（没有号）：编一个号，放在最前面
         if (im.no) attach.push({ no: im.no, tag: "[Image #" + im.no + "]", media_type: im.media_type || "image/png", data: im.data || "", path: im.path });
       });
+      (r.pastes || []).forEach(function (p) { if (p && p.tag && t.indexOf(p.tag) >= 0 && !pastes.some(function (q) { return q.tag === p.tag; })) pastes.push(p); }); // 粘贴的大段：原文跟着回来（输入框里还是收着的样子）
       ta.value = t + (ta.value ? "\n" + ta.value : ""); ta.selectionStart = ta.selectionEnd = t.length;
+      if (ta.value.length > 10000) truncLong(); // 原文太长（重新打开过、分段不在了）：同 Claude Code 收起来，不把几万行塞进输入框
       draftSet(agentId, ta.value, pastes); renderInput(); ta.focus();
     }
     function editQueuedNow() {
@@ -5177,6 +5203,7 @@
         var exact = /^\/\S+$/.test(ta.value) && (COMMANDS.some(function (c) { return c.name === ta.value; }) || /^\/(status|usage|cost|stats|thinking|bashes|new|settings|access|quit|logout)$/.test(ta.value));
         var v = items.length && !exact ? items[menuIdx].name : ta.value, imgs = attach.filter(function (a) { return (a.data || a.path) && ta.value.indexOf(a.tag) >= 0; }).sort(function (a, b) { return ta.value.indexOf(a.tag) - ta.value.indexOf(b.tag); }); // 字里删掉了「[Image #N]」的图不发
         if (items.length && !exact && items[menuIdx].args && v === items[menuIdx].name) { ta.value = v + " "; renderInput(); return; }
+        var shownV = v, pastesV = pastes.slice(); // 输入框里的样子（粘贴的大段还收着）：排着、没送到、编辑时照它
         pastes.forEach(function (p) { v = v.split(p.tag).join(p.text); });
         // 正在别的设备上跑（账号里的租约在那台）：这台不插进去，输入留着；ctrl+enter = 接管到这台
         var far = A.elsewhere && A.elsewhere(agentId);
@@ -5197,7 +5224,7 @@
           if (rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { P.toBottom(); return; }
           if (now && rt.sendNowAfter && rt.sendNowAfter()) now = false; // ctrl+enter：这句照常送进它的队，送到了马上按它的 ctrl+x ctrl+s（同在它那里按，不打断）
           else if (now && rt.interrupt) rt.interrupt(); // 自己起的 claude -p：打断这一问，这句马上当下一问（它排着，打断后接着读）
-          rt.send(v, imgs); P.toBottom();
+          rt.send(v, imgs, pastesV.length ? { shown: shownV, pastes: pastesV } : null); P.toBottom();
           if (rt.tui && /^\/[\w:-]+(\s|$)/.test(v.trim()) && !imgs.length) setTimeout(function () { ccTuiOpen("cmd"); }, 120); // 斜杠命令：它可能弹面板（/config、/model…）——接上它的界面看一眼，没弹就断开
           return;
         }

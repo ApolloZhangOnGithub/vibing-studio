@@ -690,8 +690,15 @@
     // 别的会话发来的（<cross-session-message …>正文</cross-session-message>）：排进去时带 hop-chain、读进去时不带——只按正文认，不然永远「排着」
     var XS_RE = /^\s*<cross-session-message\b([^>]*)>\n?([\s\S]*?)(\n?<\/cross-session-message>)?\s*$/;
     var IMG_ANY = /\[Image(?: #\d+)?(?:: "[^"\n]*")?\]/g;
+    // 很长的一句（粘贴了几 MB）：算过的记着（排着的、等确认的每次对一遍都要算——以前一粘贴整个界面卡住）
+    var QN = typeof Map === "function" ? new Map() : null;
     var qnorm = function (t) {
-      t = String(t || ""); var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2];
+      t = String(t || "");
+      if (QN && t.length > 4000) { var c0 = QN.get(t); if (c0 !== undefined) return c0; var v0 = qnorm0(t); QN.set(t, v0); if (QN.size > 24) QN.delete(QN.keys().next().value); return v0; }
+      return qnorm0(t);
+    };
+    var qnorm0 = function (t) {
+      var xs = XS_RE.exec(t); if (xs) t = "xs:" + xs[2];
       t = t.replace(/^\s*!/, ""); // 「! 命令」（bash 模式）：它记成 <bash-input>命令</bash-input>、排进它的队时也只记命令本身——按命令本身认（以前认不出：跑完了还挂着一行「❯ ! …」，30 秒后误报没收到）
       var k = t.replace(IMG_ANY, "").replace(/[\s\u200b"`]+/g, ""); // 引号、反引号也不算（开头的路径送出去时加了引号，图片路径包了反引号）
       if (k) return k;
@@ -1234,6 +1241,15 @@
     var META = ["first", "last", "tries", "fails", "manual", "err"], sendMeta = {};
     var metaOf = function (x) { var m = {}; META.forEach(function (k) { if (x && x[k] != null && x[k] !== "") m[k] = x[k]; }); return m; };
     var metaJoin = function (xs) { var m = {}; xs.forEach(function (x) { var a = metaOf(x); if (a.first && (!m.first || a.first < m.first)) m.first = a.first; ["last", "tries", "fails", "manual"].forEach(function (k) { if (a[k] > (m[k] || 0)) m[k] = a[k]; }); if (a.err) m.err = a.err; }); return m; };
+    // 粘贴的大段（同 Claude Code：输入框里是「[Pasted text #N +M lines]」，原文另存）：送出去是展开的原文；
+    //   排着、没送到的画成输入框里的样子，「编辑」放回输入框时也放回原来的样子（原文跟着）——不把几万行一下子塞回输入框
+    var PASTE = typeof Map === "function" ? new Map() : null;
+    var pasteOf = function (t) { return (PASTE && PASTE.get(t)) || null; };
+    function withPastes(x) {
+      var r = splitShots(x.text), pm = pasteOf(x.text);
+      if (pm) { var r2 = splitShots(pm.shown); r2.images = r.images; r2.pastes = pm.pastes; return r2; }
+      return r; // 原文的分段不在了（重新打开过）：给原文，输入框那边太长的照 Claude Code 收起来
+    }
     // 前后的空行不算（送出去、画出来都去掉：以前重试过的一句第一行是空的）
     var unpad = function (t) { return String(t || "").replace(/^(?:[ \t]*\n)+/, "").replace(/(?:\n[ \t]*)+$/, ""); };
     // 晚送到的（没送成、重试以后才送到的）：第一次发出的时刻记在这台设备上——记录里那一问下面淡淡写「16:33 写 · 16:40 送达」，
@@ -1260,12 +1276,13 @@
     function lqSave() {
       try {
         var m = JSON.parse(localStorage.getItem(LQK) || "{}") || {}, items = (lqSending ? [Object.assign({ text: lqSending, at: Date.now() }, sendMeta[qnorm(lqSending)] || {})] : []).concat((unc || []).map(function (u) { return Object.assign({ text: u.text, at: u.at, u: 1 }, metaOf(u)); }), lq);
+        items = items.filter(function (x) { return String(x.text || "").length < 300000; }); // 几百 KB 以上的（粘贴的大日志）只留在内存里：存进去会撑爆本地存储
         Object.keys(m).forEach(function (k) { if (!m[k] || Date.now() - m[k].at > LQ_TTL) delete m[k]; });
         if (items.length) m[sid] = { items: items, at: Date.now() }; else delete m[sid];
         localStorage.setItem(LQK, JSON.stringify(m));
       } catch (e) { /* 满了 */ }
     }
-    function lqAdd(text) { text = unpad(text); if (!text.trim()) return; lq.push({ text: text, at: Date.now() }); lqSave(); emit("status"); }
+    function lqAdd(text) { text = unpad(text); if (!text.trim()) return; var pm = pasteOf(text); lq.push(Object.assign({ text: text, at: Date.now() }, pm ? { shown: pm.shown } : {})); lqSave(); emit("status"); }
     // 真要送的那一刻才取（接上后台会话要一两秒，这期间又排进来的也在里面）；没送成的放回最前面
     //   ! 命令一条一条单独发（同 Claude Code 它队里的 bash 命令一条一条跑）：拼进别的话里就不是命令了；排在最前面的是命令时，后面的话接上去会被当成命令的一部分在 shell 里跑
     function lqTake() {
@@ -1294,6 +1311,7 @@
       var m0 = sendMeta[tq];
       if (m0 && m0.first && (m0.fails || Date.now() - m0.first > 60000) && !lateAt[tq]) { lateAt[tq] = { first: m0.first, at: Date.now() }; lateSave(); }
       delete sendMeta[tq]; // 送到了：它送的经过不用再记
+      if (PASTE) PASTE.forEach(function (v, k0) { if (qnorm(k0) === tq) PASTE.delete(k0); });
       lq = lq.filter(function (x) { return qnorm(x.text) !== tq && !(x.u && sameMsg(x.text, t)); });
       var wasSending = lqSending && qnorm(lqSending) === tq;
       if (wasSending) lqSending = "";
@@ -1346,7 +1364,7 @@
       if (!rt.canInject() || typable()) return Promise.reject(new Error(tr("该会话未在后台运行，无法在此回答，请在其终端中回答")));
       return viaDaemon(text).then(function () { setTimeout(poll, 400); setTimeout(poll, 1500); emit("status"); });
     };
-    rt.takeQueued = function () { if (!lq.length) return null; var t = lq.map(function (x) { return x.text; }).join("\n\n"); lq = []; lqSave(); emit("status"); return { text: t, images: [] }; };
+    rt.takeQueued = function () { if (!lq.length) return null; var t = lq.map(function (x) { return x.shown || x.text; }).join("\n\n"); lq = []; lqSave(); emit("status"); return { text: t, images: [] }; };
     // 「未发送 · 重试 · 编辑」的编辑：这一句从排着的里拿掉，原话（附的图跟着）交回输入框改——同在 Claude Code 里按 ↑ 把排着的拿回来改。at：画的时候它的时间（对一下是不是同一句）
     var lqAt = function (i, at) { return lq[i] && (at == null || lq[i].at === at) ? i : lq.findIndex(function (x) { return x.at === at; }); };
     // 拿掉、改了没送成的那一句以后：别的都送得出去了（没有别的没送成的）就不再拦着，排着的接着送
@@ -1356,7 +1374,7 @@
       if (k < 0) return null;
       var x = lq.splice(k, 1)[0];
       lqUnhold(); lqSave(); emit("status");
-      return splitShots(x.text);
+      return withPastes(x);
     };
     // 「取消」：这一句不发了（只这一句；排着的别的照旧）
     //   取消的那一句留一会儿（rt.cancelled）：下面写「已取消 · 撤销」，点了原样放回去（失败几次、什么时候发的都在）
@@ -1388,7 +1406,7 @@
       lqHold = false; retryN = 0; lqSave(); emit("status"); flushSoon();
       return true;
     };
-    function lqBack(text, meta) { if (lqSending === text) lqSending = ""; text = unpad(text); if (!text.trim()) return; lq.unshift(Object.assign({ text: text, at: Date.now() }, meta || {})); lqSave(); emit("status"); }
+    function lqBack(text, meta) { if (lqSending === text) lqSending = ""; text = unpad(text); var pm0 = pasteOf(text); if (pm0) meta = Object.assign({}, meta || {}, { shown: pm0.shown }); if (!text.trim()) return; lq.unshift(Object.assign({ text: text, at: Date.now() }, meta || {})); lqSave(); emit("status"); }
     // 排着还没被读到的：它自己记的队（queue-operation）+ 这边送进去、还没出现在记录里的（inj）+ 这边排着、还没送的（local）；太久没出队的（它没在跑）不算
     //   闲着时送进去的（inj 里 q 为 false）不是排着：它马上就当这一问开始——sending（画成平常的一问，不写「ctrl+x ctrl+s to send now」）
     rt.pending = function () {
@@ -1414,6 +1432,8 @@
       var anyErr = lq.some(function (y) { return y.err; });
       lq.forEach(function (x, i) { out.push(Object.assign({ text: unpad(x.text), at: x.at, local: true, li: i, sending: now0 && !lqHold, err: x.err || (lqHold && qErr && (x.u || !anyErr) ? qErr : "") }, x.err || lqHold ? { first: x.first || x.sentAt || x.at, last: x.last || 0, tries: x.tries || 0, fails: x.fails || 0, manual: x.manual || 0 } : {})); });
       // 附的图（[Image #N: "路径"]）：字里留 [Image #N]，图另给（images，同已经发出去的那几问：下面一张一行「⎿  [Image #N]」，悬停看、点开）
+      out.forEach(function (q) { if (q.from || q.sys) return; var pm = pasteOf(q.text); if (pm) q.shown = pm.shown; }); // 画成输入框里的样子（粘贴的大段收着）
+      lq.forEach(function (x) { if (!x.shown) return; out.forEach(function (q) { if (q.local && q.text === unpad(x.text) && !q.shown) q.shown = x.shown; }); });
       out.forEach(function (q) { if (q.from || q.text.indexOf("[Image") < 0) return; var sp = splitShots(q.text); if (sp.images.length) { q.text = sp.text; q.images = sp.images; } else { var bk = shotsBack(q); if (bk) q.images = bk; } }); // 排进它的队以后也一直有图（不只是在发的那几秒）
       return out;
     };
@@ -1453,6 +1473,9 @@
     //   它忙着时就排进它自己的队（同在它终端里回车），闲着就直接开始这一问。还在起、重启中的，隔 200ms 再试几次（同 CLI）
     // 连上后台服务的控制口，把请求原样写进去，等它回一行再退（最多 20 秒）；连不上 / 断开 / 超时各回一行说明
     var DAEMON_PL = 'use IO::Socket::UNIX; my $s = IO::Socket::UNIX->new(Peer => $ARGV[0]) or do { print qq({"ok":false,"code":"ENOCONN","error":"连不上 Claude Code 后台服务"}\\n); exit 0 }; print $s join(q(), <STDIN>); $s->flush; $SIG{ALRM} = sub { print qq({"ok":false,"code":"ETIMEOUT"}\\n); exit 0 }; alarm 20; my $l = <$s>; print(defined $l ? $l : qq({"ok":false,"code":"ECLOSED"}\\n));';
+    // 命令行放得下的长度（macOS 一条命令连参数最多 1 MB 左右，再长 spawn 报「Argument list too long」）：更长的写进文件，命令从文件读
+    var BIG_ARG = 60000;
+    function bigFile(name, data) { var p = LOC.info().home + "/Library/Application Support/Vibing Studio/run/" + name; return LOC.write(p, data).then(function () { return p; }); }
     // 以路径开头的话（拖进来的截图「/Users/…/截屏 09.12.33.png 说明」）：Claude Code 把「/」开头的一律当斜杠命令——一轮中间不读、等这一轮完了才轮到，
     //   而且弹出命令补全、回车被补全吃掉，后面几句会粘成一条。前面垫看不见的字没用（它会把零宽字符、各种空格去掉）。
     //   做法：开头那个路径加上引号（"/Users/…png" 说明）——不再是斜杠命令，同平常说的话一样下一步就读到（实测）；真的命令 /model、/compact 不动
@@ -1778,7 +1801,7 @@
     // ---- 按键直接送进后台会话：不起 claude attach（起一个要等它的 shell、它自己启动、界面画出来，好几秒——按 Esc 要等好几秒才打断），
     //   直接跟后台服务说 attach（同 claude attach 用的那条连接），回话一到就把键送进去，按完就断开；整个不到 0.3 秒。
     //   steps：{ keys: 原样的键 } / { pause: 毫秒 } / { expect: "正则", ms: 等多久 }（等它屏幕上出现这几个字才往下走，没等到就停、什么都不再按）
-    var DAEMON_KEYS_PL = 'use IO::Socket::UNIX; use IO::Select; use Time::HiRes qw(time sleep); use MIME::Base64; $| = 1; my ($sp, $sb) = @ARGV; my $s = IO::Socket::UNIX->new(Peer => $sp) or do { print qq(fail:ENOCONN\\n); exit 0 }; print $s join(q(), <STDIN>); $s->flush; my $sel = IO::Select->new($s); my $buf = q(); my $t0 = time; while (time - $t0 < 5) { last if $buf =~ /\\n/; if ($sel->can_read(0.2)) { my $n = sysread($s, my $c, 65536); last unless $n; $buf .= $c; } } my ($first) = split(/\\n/, $buf, 2); unless (defined $first && $first =~ /"ok":true/) { $first = q(ETIMEOUT) unless defined $first; print qq(fail:$first\\n); exit 0 } for my $st (split /\\x1e/, decode_base64($sb)) { if ($st =~ /^k:(.*)$/s) { syswrite($s, decode_base64($1)); } elsif ($st =~ /^p:(\\d+)$/) { my $end = time + $1 / 1000; while (time < $end) { if ($sel->can_read($end - time)) { sysread($s, my $c, 65536) or last; } } } elsif ($st =~ /^w:(\\d+):(.*)$/s) { my ($ms, $re) = ($1, $2); my $seen = q(); my $end = time + $ms / 1000; my $ok = 0; while (time < $end) { if ($sel->can_read($end - time)) { my $n = sysread($s, my $c, 65536); last unless $n; $seen .= $c; my $pl = $seen; $pl =~ s/\\e\\[[0-9;?]*[ -\\/]*[@-~]//g; $pl =~ s/\\e\\][^\\a\\e]*(?:\\a|\\e\\\\)//g; $pl =~ s/\\e[()][0-9A-Za-z]//g; if ($pl =~ /$re/) { $ok = 1; last } } } unless ($ok) { print qq(fail:nomatch\\n); close $s; exit 0 } } } sleep 0.12; close $s; print qq(ok\\n);';
+    var DAEMON_KEYS_PL = 'use IO::Socket::UNIX; use IO::Select; use Time::HiRes qw(time sleep); use MIME::Base64; $| = 1; my ($sp, $sb) = @ARGV; if ($sb =~ /^\\@(.+)$/s) { open(my $fh, q(<), $1) or do { print qq(fail:EARG\\n); exit 0 }; local $/; $sb = <$fh>; close $fh; } my $s = IO::Socket::UNIX->new(Peer => $sp) or do { print qq(fail:ENOCONN\\n); exit 0 }; print $s join(q(), <STDIN>); $s->flush; my $sel = IO::Select->new($s); my $buf = q(); my $t0 = time; while (time - $t0 < 5) { last if $buf =~ /\\n/; if ($sel->can_read(0.2)) { my $n = sysread($s, my $c, 65536); last unless $n; $buf .= $c; } } my ($first) = split(/\\n/, $buf, 2); unless (defined $first && $first =~ /"ok":true/) { $first = q(ETIMEOUT) unless defined $first; print qq(fail:$first\\n); exit 0 } for my $st (split /\\x1e/, decode_base64($sb)) { if ($st =~ /^k:(.*)$/s) { syswrite($s, decode_base64($1)); } elsif ($st =~ /^p:(\\d+)$/) { my $end = time + $1 / 1000; while (time < $end) { if ($sel->can_read($end - time)) { sysread($s, my $c, 65536) or last; } } } elsif ($st =~ /^w:(\\d+):(.*)$/s) { my ($ms, $re) = ($1, $2); my $seen = q(); my $end = time + $ms / 1000; my $ok = 0; while (time < $end) { if ($sel->can_read($end - time)) { my $n = sysread($s, my $c, 65536); last unless $n; $seen .= $c; my $pl = $seen; $pl =~ s/\\e\\[[0-9;?]*[ -\\/]*[@-~]//g; $pl =~ s/\\e\\][^\\a\\e]*(?:\\a|\\e\\\\)//g; $pl =~ s/\\e[()][0-9A-Za-z]//g; if ($pl =~ /$re/) { $ok = 1; last } } } unless ($ok) { print qq(fail:nomatch\\n); close $s; exit 0 } } } sleep 0.12; close $s; print qq(ok\\n);';
     function daemonKeys(steps) {
       var job = String(info.job || "").replace(/[^\w-]/g, "");
       if (!job || !LOC.exec) return Promise.reject(new Error(tr("没有后台会话")));
@@ -1786,8 +1809,12 @@
       return jobSize().then(function (sz) {
         var req = JSON.stringify({ proto: 1, op: "attach", short: job, auth: "__CCKEY__", cols: sz ? sz.cols : 120, rows: sz ? sz.rows : 40, caps: { terminal: null, mux: null, ssh: false, colorLevel: 3 } }) + "\n"; // caps 要按它的格式给全（terminal、mux、ssh 必须有），少了它回「malformed request」
         var enc = steps.map(function (st) { return st.keys != null ? "k:" + u8b64(st.keys) : st.expect ? "w:" + (st.ms || 1500) + ":" + st.expect : "p:" + (st.pause || 0); }).join("\x1e");
-        var cmd = "K=$(tr -d '\\n' < \"$HOME/.claude/daemon/control.key\"); S=$(ls /tmp/cc-daemon-$(id -u)/*/control.sock 2>/dev/null | head -1); [ -n \"$S\" ] || { echo fail:ENOCONN; exit 0; }; printf '%s' '" + u8b64(req) + "' | base64 -D | sed \"s/__CCKEY__/$K/\" | /usr/bin/perl -e '" + DAEMON_KEYS_PL + "' \"$S\" '" + u8b64(enc) + "'";
-        return LOC.exec({ cmd: cmd }).then(function (r) {
+        // 要按的键很长（粘贴了几 MB）：写进文件，perl 读「@文件」（放在命令行里超过系统的上限）
+        var e64 = u8b64(enc), arg = e64.length > BIG_ARG ? bigFile("keys-" + job + ".b64", e64).then(function (p) { return "@" + p; }) : Promise.resolve(e64);
+        return arg.then(function (a0) {
+          var cmd = "K=$(tr -d '\\n' < \"$HOME/.claude/daemon/control.key\"); S=$(ls /tmp/cc-daemon-$(id -u)/*/control.sock 2>/dev/null | head -1); [ -n \"$S\" ] || { echo fail:ENOCONN; exit 0; }; printf '%s' '" + u8b64(req) + "' | base64 -D | sed \"s/__CCKEY__/$K/\" | /usr/bin/perl -e '" + DAEMON_KEYS_PL + "' \"$S\" " + shq(a0);
+          return LOC.exec({ cmd: cmd });
+        }).then(function (r) {
           var out = String((r && (r.out || r.stdout)) || "").trim();
           if (/^ok$/m.test(out)) return;
           var m = /fail:(.*)/.exec(out);
@@ -1873,7 +1900,7 @@
     rt.editQueued = function () {
       if (editing) return Promise.resolve(null);
       var users = rt.pending().filter(function (q) { return !q.from && !q.local && !q.err && !q.sys; });
-      var takeLocal = function () { var xs = lq.splice(0); lqHold = false; qErr = ""; lqSave(); return xs.map(function (x) { return splitShots(x.text); }); };
+      var takeLocal = function () { var xs = lq.splice(0); lqHold = false; qErr = ""; lqSave(); return xs.map(withPastes); };
       var join = function (list) { return { text: list.map(function (q) { return q.text; }).filter(Boolean).join("\n"), images: [].concat.apply([], list.map(function (q) { return q.images || []; })) }; };
       if (!users.length) { if (!lq.length) return Promise.resolve(null); var l0 = takeLocal(); emit("status"); return Promise.resolve(join(l0)); }
       // 按 ↑：它把排着的几句一起放回它的输入框（用换行连起来）；再按退格把它那边的输入框删空（ctrl+l 在它那里只是重画屏幕，删不掉——
@@ -2105,10 +2132,12 @@
       if (burstT) return;
       burstT = setInterval(function () { if (Date.now() > burstEnd) { clearInterval(burstT); burstT = 0; return; } poll(); }, 150);
     }
-    rt.send = function (text, imgs) {
+    // opts.shown：输入框里原来的样子（粘贴的大段还是「[Pasted text #N +M lines]」）、opts.pastes：那几段的原文——排着、没送到时照它画，「编辑」时照它放回输入框
+    rt.send = function (text, imgs, opts) {
       burst();
       text = String(text || "").trim();
-      if (imgs && imgs.length) return withImages(text, imgs, function (t) { rt.send(t); });
+      if (imgs && imgs.length) return withImages(text, imgs, function (t) { rt.send(t, null, opts); });
+      if (opts && opts.shown && PASTE && String(opts.shown).trim() !== text) { PASTE.set(text, { shown: String(opts.shown).trim(), pastes: opts.pastes || [] }); if (PASTE.size > 30) PASTE.delete(PASTE.keys().next().value); }
       if (!text) return false;
       if (rt.elsewhere() && !rt.canInject()) return deliver(text); // 开在别的终端里：只读（deliver 写一句说明）
       lqHold = false;
