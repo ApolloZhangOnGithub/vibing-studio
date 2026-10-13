@@ -219,25 +219,225 @@
     });
   }
 
-  // ---- 从「设备」点一台电脑：找到通到它远程桌面的路（这台 Mac 上在听的端口里，证书是它名字的那个），存成一个连接、直接连——不用填 ----
-  var devices = {}; // 连接的 id → 那台设备 { id, name }
+  // ---- 从「设备」点一台电脑：不用填——找路、要账号都自己来 ----
+  //   路：这台 Mac 上通到它的端口（隧道转过来的；证书上的名字就是那台电脑的名字，rdp.discover）→ 都没有就经 Vibing Studio 自己的连接（中转，
+  //   那台电脑上的 App 在那边接到它本机的远程桌面端口；要那台打开了「其他设备使用这台电脑」）。
+  //   账号：钥匙串里没有、或者不对了：经同一条连接问那台电脑（GNOME 远程桌面自己记着的：grdctl status --show-credentials），连上了才记进钥匙串；
+  //   问不到（不是 GNOME 的远程桌面、那台还没允许这台 Mac……）才让人输
+  var devices = {}; // 连接的 id → 那台设备 { id, name, relay }
   var devHostId = function (dev) { return "dev-" + String(dev.id).replace(/[^A-Za-z0-9-]/g, "").slice(0, 32); };
+  var tunnelOK = function () { return cmds.indexOf("rdp.tunWrite") >= 0; }; // 新版 App（300 起）才有中转通道
   function connectDevice(dev, tw) {
     if (!native() || !dev) return null;
     var hid = devHostId(dev);
-    devices[hid] = { id: dev.id, name: dev.name || "" };
+    devices[hid] = { id: dev.id, name: dev.name || "", relay: dev.host || "" };
+    var V0 = sessions["rdp:" + hid];
+    if (V0 && V0.dev && dev.host) V0.dev.relay = dev.host;
     return openHost(hid, tw);
   }
+  // 存着的「设备」连接：记着它是哪台设备（重新载入、下次打开时认得）
+  var devOfHost = function (h) { return h && h.device ? { id: h.device, name: h.name || "", relay: h.relay || "" } : null; };
+  var devAddr = function (V, h) {
+    var u = h && h.user ? h.user : "";
+    var via = V.route && V.route.tunnel ? t("经 Vibing Studio 连接", "via Vibing Studio") : V.route && V.route.host ? (V.route.host === "127.0.0.1" ? t("本机端口 ", "local port ") + V.route.port : addrOf({ host: V.route.host, port: V.route.port })) : "";
+    return [u, via].filter(Boolean).join(" · ");
+  };
+  function linkFor(V) { var r = V.dev && V.dev.relay; return r && window.TSU_RLINK ? TSU_RLINK.open(r) : null; }
+  function saveDevHost(V, more) {
+    var h = hostOf(V.hostId) || {};
+    var o = Object.assign({}, h, { id: V.hostId, name: V.dev.name || h.name || "", device: V.dev.id, relay: V.dev.relay || h.relay || "" }, more || {});
+    if (!o.host) o.host = String(V.dev.name || "device").replace(/[^A-Za-z0-9._-]/g, "") || "device"; // 还没有直连的路：先写它的名字（连的时候走 route）
+    return N.call("rdp.saveHost", o).then(loadHosts);
+  }
   function findDevice(V) {
-    V.finding = true; V.notFound = false; paint(V);
+    V.finding = true; V.notFound = false; V.tunErr = ""; V.st = null; paint(V);
+    var L = linkFor(V);
+    if (L) creds(V); // 一边找路，一边先问它要账号（中转那边慢）
     return N.call("rdp.discover", { name: V.dev.name }).then(function (r) {
       var m = r && r.match;
-      if (!m) { V.finding = false; V.notFound = true; paint(V); return; }
-      return N.call("rdp.saveHost", { id: V.hostId, name: V.dev.name, host: m.host + ":" + m.port, user: m.user || "" }).then(loadHosts).then(function () {
-        V.finding = false; paint(V); open(V);
+      if (m) {
+        V.route = { host: m.host, port: m.port };
+        return saveDevHost(V, { host: m.host + ":" + m.port, via: "", user: (hostOf(V.hostId) || {}).user || m.user || "" }).then(function () { V.finding = false; go(V); });
+      }
+      if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "nordp" : V.dev.relay ? "offline" : true; paint(V); return; }
+      // 这台 Mac 通不到它：经 Vibing Studio 自己的连接
+      return creds(V).then(function (c) {
+        V.finding = false;
+        if (!c) { V.notFound = L.state === "offline" ? "offline" : "nordp"; paint(V); return; }
+        V.route = { tunnel: true };
+        return saveDevHost(V, c.user ? { user: c.user, rport: c.port || 3389 } : { rport: c.port || 3389 }).then(function () { go(V); });
       });
-    }, function (e) { V.finding = false; V.notFound = true; paint(V); });
+    }, function () { V.finding = false; V.notFound = true; paint(V); });
   }
+  // 连：问到了账号就带上（钥匙串里的可能是旧的；连上了才记下）
+  function go(V) {
+    var c = V.cred;
+    if (c && c.pass && !V.credUsed) { V.credUsed = true; V.credTried = true; return open(V, { password: c.pass, remember: true, again: true }); }
+    open(V, { again: true });
+  }
+  // 问那台电脑它的远程桌面账号（GNOME 远程桌面：grdctl；没有、关着的回 null）。一个标签页问一次
+  function creds(V) {
+    if (V.credP) return V.credP;
+    var L = linkFor(V);
+    if (!L) return Promise.resolve(null);
+    V.credP = TSU_RLINK.exec(L, "LC_ALL=C grdctl status --show-credentials 2>&1", 15000).then(function (r) {
+      var g = parseGrd(r && r.out);
+      if (!g || !g.enabled) return null;
+      var pin = String((hostOf(V.hostId) || {}).pin || "").replace(/[^0-9a-f]/gi, "").toLowerCase(), fp = g.fp.replace(/[^0-9a-f]/gi, "").toLowerCase();
+      if (pin && fp && pin.length === fp.length && pin !== fp) return null; // 证书对不上：它那边的账号不是这个远程桌面的
+      V.cred = g.user && g.pass && g.pass !== "(hidden)" ? g : null;
+      return g;
+    }, function () { return null; });
+    return V.credP;
+  }
+  // grdctl status 的样子：「RDP:」下面一行一项（Status: enabled、Port: 3389、TLS fingerprint: …、Username: …、Password: …）
+  function parseGrd(s) {
+    s = String(s || "").replace(/\x1b\[[0-9;]*m/g, "");
+    var m = /(?:^|\n)RDP:\n((?:[ \t]+[^\n]*(?:\n|$))*)/.exec(s);
+    if (!m) return null;
+    var o = {};
+    m[1].split("\n").forEach(function (l) { var k = /^[ \t]+([^:]+):[ ]?(.*)$/.exec(l); if (k) o[k[1].trim().toLowerCase()] = k[2]; });
+    return { enabled: /^enabled/i.test(o.status || ""), port: +o.port || 0, fp: o["tls fingerprint"] || "", user: o.username || "", pass: o.password || "" };
+  }
+  // 「设备」连接的状态：要密码 → 问那台要；路断了 → 重新找（直连的）；中转的那头起不来 → 写明。处理了回 true（这一条不再往下画）
+  function devState(V, d) {
+    var st = d.state;
+    if (st === "connected") {
+      V.credUsed = false; V.refound = false;
+      var via = V.route && V.route.tunnel ? "tunnel" : "", h0 = hostOf(V.hostId) || {};
+      if ((h0.via || "") !== via) saveDevHost(V, { via: via });
+      return false;
+    }
+    if (st === "needpass" || st === "error" && d.kind === "auth") {
+      if (V.credTried || !V.dev.relay) return false;
+      V.credTried = true;
+      V.st = { state: "connecting" }; paint(V);
+      creds(V).then(function (c) {
+        if (!sessions[V.id]) return;
+        if (c && c.user && c.pass) {
+          var h = hostOf(V.hostId) || {};
+          return (h.user !== c.user || (c.port && h.rport !== c.port) ? saveDevHost(V, { user: c.user, rport: c.port || h.rport || 3389 }) : Promise.resolve()).then(function () { V.credUsed = true; open(V, { password: c.pass, remember: true, again: true }); });
+        }
+        V.st = d; paint(V); // 问不到：让人输
+      });
+      return true;
+    }
+    if (st === "error" && d.kind === "net" && V.route && !V.route.tunnel && !V.refound) { V.refound = true; findDevice(V); return true; } // 隧道断了、换了端口：重新找
+    if (st === "error" && V.route && V.route.tunnel && V.tunErr && d.kind !== "auth") { var L0 = linkFor(V); V.notFound = L0 && L0.state === "offline" ? "offline" : "nordp"; V.st = d; paint(V); return true; }
+    return false;
+  }
+  // ---- 中转通道的那一头：原生在本机开的端口每来一条连接（rdp.tun open），在那台电脑上起一个小程序（python3）接到它本机的远程桌面端口，
+  //   两边的字节经中转来回（一行一段 base64）。那台电脑上的 App 不用更新：用的是它本来就给的「起一个程序、写它的输入、读它的输出」
+  var PY = [
+    "import socket,sys,base64,threading,time",
+    "h,p=sys.argv[1],int(sys.argv[2])",
+    "try:",
+    " s=socket.create_connection((h,p),10)",
+    "except Exception as e:",
+    " sys.stderr.write('connect %s:%d: %s\\n'%(h,p,e));sys.exit(3)",
+    "s.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)",
+    "s.settimeout(5)",
+    "last=[time.time()]",
+    "def up():",
+    " r=sys.stdin.buffer",
+    " while True:",
+    "  l=r.readline()",
+    "  if not l:break",
+    "  last[0]=time.time()",
+    "  l=l.strip()",
+    "  if l:",
+    "   try:s.sendall(base64.b64decode(l))",
+    "   except Exception:break",
+    " try:s.shutdown(socket.SHUT_WR)",
+    " except Exception:pass",
+    "threading.Thread(target=up,daemon=True).start()",
+    "w=sys.stdout",
+    "while True:",
+    " try:d=s.recv(262144)",
+    " except socket.timeout:",
+    "  if time.time()-last[0]>90:break",
+    "  continue",
+    " except Exception:break",
+    " if not d:break",
+    " w.write(base64.b64encode(d).decode()+'\\n');w.flush()",
+  ].join("\n");
+  var rid = function () { return Math.random().toString(36).slice(2, 10); };
+  var TPK = "vs-rdp-tunprocs"; // 那台电脑上还开着的小程序（这一页重新载入后收拾上一回的）
+  var tprocs = function () { try { return JSON.parse(localStorage.getItem(TPK) || "{}") || {}; } catch (e) { return {}; } };
+  var setTprocs = function (o) { try { localStorage.setItem(TPK, JSON.stringify(o)); } catch (e) { /* 满了 */ } };
+  function tunFor(V) {
+    if (V.tun) return V.tun;
+    var L = linkFor(V);
+    if (!L) return null;
+    var T = V.tun = { L: L, conns: {}, byPid: {} };
+    var old = tprocs(), mine = old[L.dev] || [];
+    mine.forEach(function (p) { L.call("proc.kill", { id: p }, 10000).catch(function () {}); }); // 上一回（页面重新载入、App 退出前）留下的
+    old[L.dev] = []; setTprocs(old);
+    T.offData = L.on("proc.data", function (x) {
+      var C = x && T.byPid[x.id];
+      if (!C) return;
+      if (x.e) C.err = (C.err + x.e).slice(-2000);
+      if (!x.o) return;
+      C.buf += x.o;
+      var i = C.buf.lastIndexOf("\n");
+      if (i < 0) return;
+      var lines = C.buf.slice(0, i).split("\n").filter(Boolean);
+      C.buf = C.buf.slice(i + 1);
+      if (lines.length && !C.ended) { C.got = true; V.tunErr = ""; N.call("rdp.tunWrite", { id: V.id, c: C.c, b64: lines }).catch(function () {}); }
+    });
+    T.offExit = L.on("proc.exit", function (x) {
+      var C = x && T.byPid[x.id];
+      if (!C) return;
+      forget(T, C);
+      if (!C.got) V.tunErr = (C.err || "").trim() || "exit " + x.code; // 一个字节都没回就退了：python3 没有、端口不对……
+      if (!C.ended) N.call("rdp.tunEnd", { id: V.id, c: C.c }).catch(function () {});
+    });
+    T.beat = setInterval(function () { Object.keys(T.byPid).forEach(function (p) { var C = T.byPid[p]; if (C.up && !C.ended) T.L.call("proc.write", { id: p, data: "\n" }, 20000).catch(function () {}); }); }, 30000); // 那边 90 秒没收到就自己退
+    return T;
+  }
+  function forget(T, C) {
+    delete T.byPid[C.pid]; delete T.conns[C.c];
+    var o = tprocs(); o[T.L.dev] = (o[T.L.dev] || []).filter(function (p) { return p !== C.pid; }); setTprocs(o);
+  }
+  function tunStop(V) {
+    var T = V.tun;
+    if (!T) return;
+    V.tun = null;
+    clearInterval(T.beat); T.offData(); T.offExit();
+    Object.keys(T.byPid).forEach(function (p) { var C = T.byPid[p]; T.L.call("proc.kill", { id: p }, 10000).catch(function () {}); forget(T, C); });
+  }
+  if (N && N.on) N.on("rdp.tun", function (d) {
+    var V = d && sessions[d.id], T = V && (V.tun || (V.dev && tunFor(V)));
+    if (!T) { if (d && !d.end) N.call("rdp.tunEnd", { id: d.id, c: d.c }).catch(function () {}); return; }
+    var C = T.conns[d.c];
+    if (d.open) {
+      C = { c: d.c, pid: "rdt" + rid(), q: [], up: false, buf: "", err: "" };
+      T.conns[d.c] = C; T.byPid[C.pid] = C;
+      var o = tprocs(); (o[T.L.dev] = o[T.L.dev] || []).push(C.pid); setTprocs(o);
+      var port = (hostOf(V.hostId) || {}).rport || 3389;
+      T.L.call("proc.start", { id: C.pid, argv: ["python3", "-u", "-c", PY, "127.0.0.1", String(port)] }, 20000).then(function () {
+        C.up = true;
+        if (C.q.length) T.L.call("proc.write", { id: C.pid, data: C.q.join("\n") + "\n" }, 20000).catch(function () {});
+        C.q = [];
+        if (C.ended) T.L.call("proc.close", { id: C.pid }, 10000).catch(function () {});
+      }, function (e) {
+        V.tunErr = String((e && e.message) || e);
+        forget(T, C);
+        N.call("rdp.tunEnd", { id: V.id, c: d.c }).catch(function () {});
+      });
+      return;
+    }
+    if (!C) { if (!d.end) N.call("rdp.tunEnd", { id: d.id, c: d.c }).catch(function () {}); return; } // 认不得的（这一页重新载入以前开的）：关掉，助手自己重连
+    if (d.b64) { if (C.up) T.L.call("proc.write", { id: C.pid, data: d.b64 + "\n" }, 20000).catch(function () {}); else C.q.push(d.b64); }
+    if (d.end) {
+      C.ended = true;
+      if (C.up) T.L.call("proc.close", { id: C.pid }, 10000).catch(function () {});
+      setTimeout(function () { if (T.byPid[C.pid]) { T.L.call("proc.kill", { id: C.pid }, 10000).catch(function () {}); forget(T, C); } }, 10000);
+    }
+  });
+  // 关了的标签页：中转那一头收拾掉
+  setInterval(function () { Object.keys(sessions).forEach(function (id) { var V = sessions[id]; if (V.P && V.P.closed) { delete sessions[id]; tunStop(V); } }); }, 2000);
+
   // 拖进来 / 用它打开的 .rdp 文件：读出地址、用户名，存成一个连接，直接连
   function openFile(path, tw) {
     if (!native()) return null;
@@ -386,8 +586,14 @@
       // 点画面以外的那块（卡片的空白处）不抢焦点；连着时点了这一块（原生那块盖着，一般到不了这里）交给原生
       V.box.addEventListener("mousedown", function () { if (V.want()) N.call("rdp.focus", { id: V.id }).catch(function () {}); });
       (hostsReady ? Promise.resolve() : loadHosts()).then(function () {
-        V.dev = devices[V.hostId] || null;
-        if (V.dev && !hostOf(V.hostId)) { V.devName = V.dev.name; return findDevice(V); } // 从「设备」点进来、还没连过：先找路
+        var h = hostOf(V.hostId), dv = devices[V.hostId];
+        V.dev = dv || devOfHost(h);
+        if (!V.dev) return open(V);
+        V.devName = V.dev.name;
+        if (!V.dev.relay && h && h.relay) V.dev.relay = h.relay;
+        if (!h || !h.device) return findDevice(V); // 从「设备」点进来、还没连过：先找路
+        V.route = h.via === "tunnel" ? { tunnel: true } : { host: h.host, port: h.port }; // 上一次通的那条；不通了 devState 再找
+        if (dv && dv.relay && dv.relay !== h.relay) saveDevHost(V);
         open(V);
       });
     }

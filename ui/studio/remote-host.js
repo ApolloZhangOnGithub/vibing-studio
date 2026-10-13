@@ -117,7 +117,7 @@
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.sys === "client-join") { clients[m.from] = m.cname || "iPad"; fire(); return; }
-      if (m.sys === "client-leave") { delete clients[m.from]; Object.keys(owner).forEach(function (k) { if (owner[k] === m.from) delete owner[k]; }); Object.keys(tails).forEach(function (k) { if (tails[k].from === m.from) delete tails[k]; }); fire(); return; }
+      if (m.sys === "client-leave") { if (m.left > 0) return; delete clients[m.from]; Object.keys(owner).forEach(function (k) { if (owner[k] === m.from) delete owner[k]; }); Object.keys(tails).forEach(function (k) { if (tails[k].from === m.from) delete tails[k]; }); fire(); return; } // left：这台设备还开着几页（另一个窗口、远程桌面的旁路）——都关了才收拾它开的终端、程序
       if (m.sys) return;
       if (m.cmd && m.from) { clients[m.from] = m.cname || clients[m.from] || "iPad"; gate(m); }
     };

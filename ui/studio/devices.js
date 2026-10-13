@@ -163,7 +163,7 @@
       var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
       if (card && card._key === key) return closeCard();
       // 别的 Linux / Windows 电脑：点一下就连它的桌面（远程桌面标签页；用户 2026-10-13：「点击设备直接就可以连了」）；它的信息在右键里
-      if (n && canDesk(n)) { closeCard(); return window.TSU_RDP.connectDevice({ id: n.id, name: n.label }, P.win); }
+      if (n && canDesk(n)) { closeCard(); return window.TSU_RDP.connectDevice({ id: n.id, name: n.label, host: n.host || "" }, P.win); }
       if (n) openCard(host, P, nd, n, key, V);
     });
     host.addEventListener("contextmenu", function (e) {
@@ -261,7 +261,7 @@
         if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); }); else window.open(u, "_blank", "noopener");
         return;
       }
-      if (a === "desk" && window.TSU_RDP) { closeCard(); return TSU_RDP.connectDevice({ id: nn.id, name: nn.label }, P.win); }
+      if (a === "desk" && window.TSU_RDP) { closeCard(); return TSU_RDP.connectDevice({ id: nn.id, name: nn.label, host: nn.host || "" }, P.win); }
       if (a === "open" && nn.host) {
         closeCard();
         // App：开一个窗口连那台 Mac（已经开着就叫到前面）；网页、iPad：这一页换成用那台 Mac

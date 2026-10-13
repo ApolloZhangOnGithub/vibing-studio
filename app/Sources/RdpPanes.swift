@@ -191,7 +191,7 @@ enum RdpStore {
                             "avc444": a["avc444"] as? Bool ?? old["avc444"] as? Bool ?? true, "dynres": a["dynres"] as? Bool ?? old["dynres"] as? Bool ?? true,
                             "cmd": ["ctrl", "super"].contains(a["cmd"] as? String ?? "") ? a["cmd"] as! String : old["cmd"] as? String ?? "ctrl",
                             "scale": ["fit", "1:1"].contains(a["scale"] as? String ?? "") ? a["scale"] as! String : old["scale"] as? String ?? "fit"]
-    for k in ["device", "relay"] {
+    for k in ["device", "relay", "via"] { // via：上一次通的是哪条路（"tunnel" 经中转；空的 = 直连 host:port）
       let v = a[k] != nil ? clean(a[k], 80) : old[k] as? String ?? ""
       if !v.isEmpty { h[k] = v }
     }
