@@ -198,6 +198,7 @@ enum RdpStore {
     if let rp = (a["rport"] as? NSNumber)?.intValue ?? old["rport"] as? Int, (1...65535).contains(rp) { h["rport"] = rp }
     // 帧率上限（0 = 不限）、分辨率（auto = 跟着窗口；「1920x1080」= 固定）
     if let f = (a["fps"] as? NSNumber)?.intValue ?? old["fps"] as? Int, (0...240).contains(f) { h["fps"] = f }
+    if let v = a["hud"] as? Bool ?? old["hud"] as? Bool { h["hud"] = v } // 画面角上的统计浮层
     if let r = a["res"] as? String ?? old["res"] as? String, r == "auto" || r.range(of: #"^\d{3,4}x\d{3,4}$"#, options: .regularExpression) != nil { h["res"] = r }
     // 证书指纹：地址没变就留着（换了地址就是另一台，重新认）；「设备」里的电脑认的是那台本身，换了路（隧道、中转）也留着
     let sameDevice = !(h["device"] as? String ?? "").isEmpty && old["device"] as? String == h["device"] as? String
@@ -344,7 +345,7 @@ enum RdpDiscover {
 @MainActor
 final class RdpPanes: NSObject {
   static let commands = ["rdp.available", "rdp.hosts", "rdp.saveHost", "rdp.removeHost", "rdp.import", "rdp.open", "rdp.frame", "rdp.close", "rdp.list",
-                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh", "rdp.discover", "rdp.readFile", "rdp.tunWrite", "rdp.tunEnd"]
+                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh", "rdp.discover", "rdp.readFile", "rdp.tunWrite", "rdp.tunEnd", "rdp.pause", "rdp.window"]
   weak var controller: WebController?
   private var sessions: [String: RdpSession] = [:]
 
@@ -419,6 +420,11 @@ final class RdpPanes: NSObject {
       sessions[id]?.view.setOptions(a)
       if let f = (a["fps"] as? NSNumber)?.intValue { sessions[id]?.send("f \(max(0, min(240, f)))") }
       return nil
+    case "rdp.pause":
+      // 暂停：两边都停画面——叫远端先别发（不编码、不占流量），这边不送键盘鼠标；连接、登录都留着。继续：远端整个重画一遍
+      guard let s = sessions[id] else { return nil }
+      s.setPaused(a["on"] as? Bool ?? !s.paused)
+      return s.snapshotState()
     case "rdp.window":
       // 单独的窗口（能全屏、单独一个桌面空间，不占 Vibing Studio 的窗口）：window / fullscreen 分出去，tab 放回标签页
       guard let s = sessions[id] else { return nil }
@@ -613,6 +619,7 @@ final class RdpSession {
   private var route: [String: Any] = [:] // 这一次走哪条路（rdp.open 的 route）：自己重连时照旧
   private(set) var tunnel: RdpTunnel?
   private var lastPresents = 0
+  private(set) var paused = false
   // 分出去的窗口（rdp.window）：画面那一块挪进它里面；关窗口 = 放回标签页
   private var popWin: NSWindow?
   private var popDelegate: RdpWindowDelegate?
@@ -627,7 +634,7 @@ final class RdpSession {
     panes.controller?.webView.addSubview(view)
   }
 
-  func snapshotState() -> [String: Any] { var d = extra; d["id"] = id; d["state"] = state; d["host"] = hostId; d["popped"] = popWin != nil; return d }
+  func snapshotState() -> [String: Any] { var d = extra; d["id"] = id; d["state"] = state; d["host"] = hostId; d["popped"] = popWin != nil; d["paused"] = paused; return d }
   private func setState(_ s: String, _ more: [String: Any] = [:]) {
     state = s
     extra = more
@@ -636,7 +643,7 @@ final class RdpSession {
     panes?.emit(snapshotState())
   }
 
-  func apply(_ h: [String: Any]) { view.setOptions(["cmd": h["cmd"] as Any, "scale": h["scale"] as Any, "dynres": h["dynres"] as Any, "clip": h["clip"] as Any, "res": h["res"] as? String ?? "auto"]) }
+  func apply(_ h: [String: Any]) { view.setOptions(["cmd": h["cmd"] as Any, "scale": h["scale"] as Any, "dynres": h["dynres"] as Any, "clip": h["clip"] as Any, "res": h["res"] as? String ?? "auto", "hud": h["hud"] as? Bool ?? false]) }
 
   // 连：密码（给了的、钥匙串里的）→ 起助手 → 把参数写进去。route：nil = 照上一次的路（自己重连、换了证书再连）
   func connect(_ h: [String: Any], password given: String?, remember: Bool, route r: [String: Any]? = nil) async -> [String: Any] {
@@ -773,6 +780,7 @@ final class RdpSession {
   func send(_ s: String, raw: Bool = false) {
     let fd = stdinFD
     guard fd >= 0 else { return }
+    if paused, !raw, let c = s.first, "mxwkus".contains(c) { return } // 暂停着：键盘、鼠标、滚轮不送
     let d = Array((raw ? s : s + "\n").utf8)
     writeQ.async { d.withUnsafeBufferPointer { b in var off = 0; while off < b.count { let n = write(fd, b.baseAddress! + off, b.count - off); if n <= 0 { if errno == EINTR { continue }; break }; off += n } } }
   }
@@ -830,6 +838,12 @@ final class RdpSession {
         d["route"] = route["tunnel"] as? Bool == true ? "relay" : "\(route["host"] as? String ?? (RdpStore.get(hostId)?["host"] as? String ?? "")):\((route["port"] as? NSNumber)?.intValue ?? (RdpStore.get(hostId)?["port"] as? Int ?? 3389))"
         nonisolated(unsafe) let dd = d
         panes?.controller?.emit("rdp.stats", dd)
+        let ms = max(1.0, (e["ms"] as? NSNumber)?.doubleValue ?? 1000), rx = (e["rx"] as? NSNumber)?.doubleValue ?? 0, fr = (e["frames"] as? NSNumber)?.doubleValue ?? 0
+        let mb = rx * 8 / ms / 1000, codec = e["codec"] as? String ?? "", rtt = (e["rtt"] as? NSNumber)?.intValue ?? 0
+        var bits = ["\(view.fbW)×\(view.fbH)", "\(Int((fr * 1000 / ms).rounded())) fps", String(format: mb >= 10 ? "%.0f Mbps" : mb >= 1 ? "%.1f Mbps" : "%.2f Mbps", mb)]
+        if !codec.isEmpty { bits.append(codec) }
+        if rtt > 0 { bits.append("\(rtt) ms") }
+        view.setHud(paused ? bits[0] : bits.joined(separator: "  ·  ")) // 暂停着：只写分辨率（画面是暗的）
       case "beep":
         NSSound.beep()
       default:
@@ -930,6 +944,15 @@ final class RdpSession {
   func focus() { if let w = popWin { w.makeKeyAndOrderFront(nil) }; view.window?.makeFirstResponder(view) }
   private func num(_ x: Any?) -> CGFloat { CGFloat((x as? NSNumber)?.doubleValue ?? 0) }
 
+  func setPaused(_ on: Bool) {
+    guard on != paused else { return }
+    if on { view.setPaused(true) } // 先松开按着的键、鼠标（这时还送得过去）
+    paused = on
+    if !on { view.setPaused(false) }
+    send(on ? "v 0" : "v 1")
+    panes?.emit(snapshotState())
+  }
+
   // ---- 分出去：一个单独的窗口（标题是那台电脑的名字；绿色按钮全屏，单独一个桌面空间）。大小、位置按连接记着；画面跟着窗口改分辨率 ----
   func popOut(fullscreen: Bool) {
     if let w = popWin {
@@ -964,7 +987,7 @@ final class RdpSession {
     popWin = win
     view.setVisible(true)
     win.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
+    if ProcessInfo.processInfo.environment["NADOS_TESTJS"] == nil { NSApp.activate(ignoringOtherApps: true) } // 自动测试：不抢前台
     win.makeFirstResponder(view)
     if fullscreen { win.toggleFullScreen(nil) }
     view.requestResize(force: true)
@@ -1039,6 +1062,7 @@ final class RdpView: NSView {
   private var stride = 0
   private var fb: UnsafeRawPointer?
   private let img = CALayer()
+  private let hud = CATextLayer() // 角上的统计（分辨率、帧率、码率、编码、往返时间），选项里开
   private var surfaces: [IOSurface] = []
   private var dirty: [CGRect] = []
   private var cur = 0
@@ -1085,6 +1109,15 @@ final class RdpView: NSView {
     img.minificationFilter = .linear
     img.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "frame": NSNull()]
     layer?.addSublayer(img)
+    hud.isHidden = true
+    hud.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    hud.fontSize = 11
+    hud.foregroundColor = NSColor.white.cgColor
+    hud.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+    hud.cornerRadius = 6
+    hud.alignmentMode = .center
+    hud.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "hidden": NSNull()]
+    layer?.addSublayer(hud)
     addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect, .cursorUpdate], owner: self))
     NotificationCenter.default.addObserver(self, selector: #selector(winResign), name: NSWindow.didResignKeyNotification, object: nil)
   }
@@ -1104,6 +1137,20 @@ final class RdpView: NSView {
       if nf?.w != fixedRes?.w || nf?.h != fixedRes?.h { fixedRes = nf; lastAsked = (0, 0); requestResize(force: true) }
     }
     if let c = a["clip"] as? Bool { clipOn = c }
+    if let v = a["hud"] as? Bool { hudOn = v; hud.isHidden = !v || hudText.isEmpty }
+  }
+  private var hudOn = false, hudText = ""
+  func setHud(_ t: String) {
+    hudText = t
+    guard hudOn else { return }
+    let w = ceil((t as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)]).width) + 18
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    hud.string = t
+    hud.contentsScale = window?.backingScaleFactor ?? 2
+    hud.frame = CGRect(x: max(8, bounds.width - w - 10), y: 10, width: w, height: 20)
+    hud.isHidden = false
+    CATransaction.commit()
   }
 
   // ---- 画面 ----
@@ -1206,12 +1253,23 @@ final class RdpView: NSView {
   }
 
   // 看不看得见：藏起来 3 秒以上让远端先别发画面（省流量）；露出来马上接着发
+  // 暂停着：画面暗下来（停在最后一帧），点一下继续
+  private(set) var paused = false
+  func setPaused(_ on: Bool) {
+    paused = on
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    img.opacity = on ? 0.35 : 1
+    CATransaction.commit()
+    if on { releaseAll() }
+  }
   func setVisible(_ v: Bool) {
     let was = !isHidden
     isHidden = !v
     if v && !was { schedulePresent(); placeImage() }
     if !v, window?.firstResponder === self { window?.makeFirstResponder(superview) }
     suppressItem?.cancel()
+    if paused { visibleNow = v; return } // 暂停着：远端一直先别发，看得见了也不叫它接着发
     if v != visibleNow {
       if v { visibleNow = true; session?.send("v 1"); flushClipboardIfPending() }
       else {
@@ -1303,7 +1361,10 @@ final class RdpView: NSView {
   override func rightMouseDragged(with e: NSEvent) { mouse(RdpView.MOVE, e) }
   override func otherMouseDragged(with e: NSEvent) { mouse(RdpView.MOVE, e) }
   override func mouseEntered(with e: NSEvent) { cursorNow.set() }
-  override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); beforeInput(); buttons |= RdpView.B1; mouse(RdpView.DOWN | RdpView.B1, e) }
+  override func mouseDown(with e: NSEvent) {
+    if paused { session?.setPaused(false); return } // 暂停着：点一下是「继续」，不送过去
+    window?.makeFirstResponder(self); beforeInput(); buttons |= RdpView.B1; mouse(RdpView.DOWN | RdpView.B1, e)
+  }
   override func mouseUp(with e: NSEvent) { buttons &= ~RdpView.B1; mouse(RdpView.B1, e) }
   override func rightMouseDown(with e: NSEvent) { window?.makeFirstResponder(self); beforeInput(); buttons |= RdpView.B2; mouse(RdpView.DOWN | RdpView.B2, e) }
   override func rightMouseUp(with e: NSEvent) { buttons &= ~RdpView.B2; mouse(RdpView.B2, e) }

@@ -194,7 +194,7 @@
   };
   // 在那台 Mac 上问「允许」时写的名字：App 里是这台电脑自己的名字（sync.js 认出来记着的「Kezhen 的 MacBook Pro」）
   var cname = hybrid ? (localStorage.getItem("tsu-device-auto") || (/Linux/.test(ua) ? "Linux" : "Mac")) : isPhone ? "iPhone" : isPad ? "iPad" : brName();
-  var ws = null, up = false, outQ = [], pend = {}, parts = {}, subs = {}, seq = 0, retry = 0, state = "connecting", hostInfo = null;
+  var ws = null, up = false, outQ = [], offQ = [], pend = {}, parts = {}, subs = {}, seq = 0, retry = 0, state = "connecting", hostInfo = null;
   root.classList.add("remote-mac");
   if (hybrid) root.classList.add("remote-win");
 
@@ -275,7 +275,9 @@
         var id = pid + "." + (++seq);
         pend[id] = { resolve: resolve, reject: reject, cmd: cmd, t: setTimeout(function () { if (pend[id]) { delete pend[id]; var e = new Error(tr("「" + macName + "」没有回应（", "“" + macName + "” didn’t respond (") + cmd + tr("）", ")")); e.code = "E_TIMEOUT"; reject(e); } }, cmd === "cc.sessions" || cmd === "cc.search" ? 120000 : 60000) };
         var m = JSON.stringify({ id: id, cmd: cmd, args: args, k: 1, s: sess });
-        if (up) ws.send(m); else outQ.push(m);
+        pend[id].msg = m;
+        // 那台暂时断开了（网络抖一下、它在重连）：先排着，它回来了再发——不直接报错
+        if (up && state !== "offline") ws.send(m); else if (up) offQ.push(m); else outQ.push(m);
       });
     },
     on: function (type, fn) { (subs[type] = subs[type] || []).push(fn); return function () { api.off(type, fn); }; },
@@ -304,6 +306,7 @@
   function done(m) {
     var p = pend[m.id];
     if (!p) return; // 同一台设备另一页的回复（中转发给这台设备的每一页）
+    if (!m.ok && m.error && m.error.code === "E_OFFLINE" && p.msg) { offQ.push(p.msg); return; } // 中转说那台不在：排着，等它回来（host-online）再发；超时照旧
     delete pend[m.id];
     clearTimeout(p.t);
     if (m.ok) { if (p.cmd === "info") hostInfo = m.value; if (p.cmd !== "auth.prove" && !firstOk) { firstOk = true; clearTimeout(waitT); clearTimeout(connT); if (authNow && authNow !== "code") { authNow = ""; if (authCard) authCard.hidden = true; } badge(); } boot("ready"); return p.resolve(m.value); } // Mac 回话了：能用了
@@ -321,13 +324,13 @@
     clearTimeout(waitT); waitT = setTimeout(function () { if (!firstOk && (authNow === "connecting" || authNow === "")) authShow("asking"); }, 3000);
     var u = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/relay/client?device=" + encodeURIComponent(mac) + "&client=" + encodeURIComponent(cid) + "&cname=" + encodeURIComponent(cname);
     try { ws = new WebSocket(u); } catch (e) { return later(); }
-    ws.onopen = function () { boot("waiting"); var again = retry > 0 || seq > 0; up = true; retry = 0; state = "open"; badge(); var l = outQ; outQ = []; l.forEach(function (m) { ws.send(m); }); if (again) rewatchAll(); };
+    ws.onopen = function () { boot("waiting"); var again = retry > 0 || seq > 0; up = true; retry = 0; state = "open"; badge(); var l = outQ.concat(offQ); outQ = []; offQ = []; l.forEach(function (m) { ws.send(m); }); if (again) rewatchAll(); };
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       // Mac 那边断了（它的 App 更新、重新载入，一会儿就回来）：不盖整屏、不重新载入（以前一断就整屏盖住，回来时整页重载——iPad 上黑一下）；
       //   断了 4 秒还没回来才在底下一行小字，回来了就收起，页面接着用
       if (m.sys === "host-offline") { boot("offline"); state = "offline"; badge(); clearTimeout(offT); offT = setTimeout(function () { if (state === "offline") toast(tr("连不上「" + macName + "」，正在重新连接", "Can’t reach “" + macName + "”. Reconnecting…")); }, 4000); return; }
-      if (m.sys === "host-online") { clearTimeout(offT); if (state === "offline") state = "open"; badge(); toast(""); lastNonce = ""; rewatchAll(); return; }
+      if (m.sys === "host-online") { clearTimeout(offT); if (state === "offline") state = "open"; badge(); toast(""); lastNonce = ""; var q0 = offQ; offQ = []; q0.forEach(function (x) { ws.send(x); }); rewatchAll(); return; }
       if (m.sys === "auth") {
         if (m.host) setName(m.host);
         if (m.policy) policy = m.policy;

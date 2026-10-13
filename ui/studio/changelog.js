@@ -11,8 +11,16 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-14", ver: "0.2.1.458", items: {
+    { date: "2026-10-14", ver: "0.2.1.459", items: {
+      new: [
+        ["远程桌面的「连接选项」：分辨率（跟随窗口、1280×720 到 3840×2160；那台电脑不支持改时写明由它的显示器决定）、帧率上限（不限、60、30、15：少发几帧、省流量）、画质（AVC444 / AVC420）、显示、⌘ 键、剪贴板、声音，最上面一行是现在的统计。", "Remote Desktop Connection Options: resolution (match window, 1280×720 up to 3840×2160; when that computer can’t change it, the menu says its display decides), frame rate limit (no limit, 60, 30, 15 — fewer frames, less data), quality (AVC444 / AVC420), display, ⌘ key, clipboard and audio, with the live stats on top."],
+        ["远程桌面的实时统计：状态栏右边一行——分辨率、帧率、码率、编码、往返时间，每秒更新，点它出连接选项；全屏、单独的窗口里可以显示在画面右上角（「画面上显示统计」）。", "Live Remote Desktop stats in the status bar — resolution, frame rate, bitrate, codec and round-trip time, updated every second; click them for the connection options. In full screen or a separate window they can be shown in the picture’s top-right corner (Show Stats on Picture)."],
+        ["远程桌面暂停 / 继续：暂停时那边停止发画面（不编码、不占流量），这边不送键盘鼠标，连接和登录都留着；点一下画面或按钮继续。", "Pause and resume Remote Desktop: while paused that computer stops sending the picture (no encoding, no data) and this Mac sends no keyboard or mouse input, but the connection and sign-in stay; click the picture or the button to resume."],
+        ["远程桌面「在单独的窗口中打开」「全屏」：分到自己的窗口（绿色按钮全屏，单独一个桌面空间），不占 Vibing Studio 的窗口；关掉那个窗口就放回标签页，连接不断。", "Remote Desktop Open in Separate Window and Full Screen: the session moves to its own window (the green button makes it full screen in its own Space) without taking over the Vibing Studio window; closing that window puts it back in the tab without disconnecting."],
+      ],
       fixed: [
+        ["Linux 那台「在新窗口中打开」一连就「无法连接到 Mac」：那台网络抖一下时，请求先排着、等它回来再发，断开后最多 4 秒重连（那台的 Vibing Studio 重新载入一次后生效）；也不再把别的电脑都叫成 Mac。", "Open in New Window for the Linux computer said “Can’t reach the Mac” right away: when its network blips, requests now wait and are sent when it’s back, and it reconnects within 4 seconds (after Vibing Studio there reloads once); other computers are no longer all called “Mac”."],
+        ["「设备」里关系线的箭头是歪的：线的两头各有一小段直的，箭头顺着它。", "Arrows on the relationship lines in Devices looked crooked; each line now ends in a short straight run the arrow follows."],
         ["Linux 电脑在「设备」里只有远程桌面：那台的 Vibing Studio 默认不让别的设备用。现在登录同一个账号的电脑默认都让用，Linux 那台也有「在新窗口中打开」「打开终端」（那台的 Vibing Studio 重新载入一次后生效；每台新设备第一次连时那边问一次「允许」）。", "A Linux computer in Devices only offered Remote Desktop, because Vibing Studio there didn’t let other devices use it by default. Computers signed in to the same account now allow it by default, so the Linux one also has Open in New Window and Open Terminal (after Vibing Studio there reloads once; the first time each new device connects, that computer asks once to allow it)."],
       ],
     } },

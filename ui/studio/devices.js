@@ -205,7 +205,8 @@
       ks2.forEach(function (q) { tree.push("M" + q.x + " " + y2 + "V" + (q.y + 2)); });
     }
     // 谁能用谁：从用的那台到被用的那台（箭头在被用的那台）。上面一排 → 下面一排：从账户旁边绕过去；同在下面一排（一台电脑用另一台）：从下面兜过去
-    var specs = String(map.getAttribute("data-rel") || "").split(" ").filter(Boolean), side = { l: 0, r: 0 }, arcs = [];
+    // 每条线两头各一小段直的（TAIL 像素）：箭头顺着这一段，不随曲线最后那一点点的弯度歪
+    var TAIL = 10, specs = String(map.getAttribute("data-rel") || "").split(" ").filter(Boolean), side = { l: 0, r: 0 }, arcs = [];
     specs.forEach(function (sp) {
       var p0 = sp.split(":"), ab0 = p0[0].split(">"), fl = p0[1] || "", a = nodeAt(ab0[0]), b = nodeAt(ab0[1]);
       if (!a || !b) return;
@@ -216,8 +217,8 @@
         var y0 = R(u.b.t + u.b.h + 2), y1 = icTop(w0) - 6, ym = R((y0 + y1) / 2), mx = (ux + wx) / 2;
         if (A && mx > A.l - 16 && mx < A.l + A.w + 16) {
           var left = mx < A.l + A.w / 2, sx = R(left ? A.l - 22 - 12 * side.l++ : A.l + A.w + 22 + 12 * side.r++);
-          d = "M" + ux + " " + y0 + "C" + ux + " " + R(y0 + 36) + " " + sx + " " + R(A.t - 10) + " " + sx + " " + R(A.t + A.h / 2) + "S" + wx + " " + R(y1 - 36) + " " + wx + " " + y1;
-        } else d = "M" + ux + " " + y0 + "C" + ux + " " + ym + " " + wx + " " + ym + " " + wx + " " + y1;
+          d = "M" + ux + " " + y0 + "V" + (y0 + TAIL) + "C" + ux + " " + R(y0 + 36) + " " + sx + " " + R(A.t - 10) + " " + sx + " " + R(A.t + A.h / 2) + "S" + wx + " " + R(y1 - 36) + " " + wx + " " + (y1 - TAIL) + "V" + y1;
+        } else d = "M" + ux + " " + y0 + "V" + (y0 + TAIL) + "C" + ux + " " + ym + " " + wx + " " + ym + " " + wx + " " + (y1 - TAIL) + "V" + y1;
         if (!aUp) { var t0 = both; both = true; if (!t0) fl += "X"; } // 从下往上的（少见）：箭头画在上面那一头
       } else arcs.push({ a: a, b: b, ax: ax3, bx: bx, up: aUp, fl: fl, key: ab0, live: live, both: both });
       if (d) rel.push('<path class="dv-e' + (live ? " live" : "") + '" data-a="' + ab0[0] + '" data-b="' + ab0[1] + '" d="' + d + '"' + (/X/.test(fl) ? ' marker-start="url(#dv-arr' + (live ? "-live" : "") + ')"' : ' marker-end="url(#dv-arr' + (live ? "-live" : "") + ')"' + (both ? ' marker-start="url(#dv-arr' + (live ? "-live" : "") + ')"' : "")) + "/>");
@@ -227,8 +228,8 @@
     var below = 0;
     arcs.forEach(function (c, k2) {
       var dip = 30 + 16 * k2;
-      if (c.up) { var yt = R(Math.min(c.a.b.t, c.b.b.t) - 2); var d2 = "M" + (c.ax + 5) + " " + yt + "C" + (c.ax + 5) + " " + (yt - dip) + " " + (c.bx - 5) + " " + (yt - dip) + " " + (c.bx - 5) + " " + (yt - 4); }
-      else { var yb = R(Math.max(c.a.b.t + c.a.b.h, c.b.b.t + c.b.b.h) + 2); var d2 = "M" + (c.ax + 5) + " " + yb + "C" + (c.ax + 5) + " " + (yb + dip) + " " + (c.bx - 5) + " " + (yb + dip) + " " + (c.bx - 5) + " " + (yb + 4); below = Math.max(below, dip); }
+      if (c.up) { var yt = R(Math.min(c.a.b.t, c.b.b.t) - 4); var d2 = "M" + (c.ax + 5) + " " + yt + "V" + (yt - TAIL) + "C" + (c.ax + 5) + " " + (yt - dip) + " " + (c.bx - 5) + " " + (yt - dip) + " " + (c.bx - 5) + " " + (yt - TAIL) + "V" + yt; }
+      else { var yb = R(Math.max(c.a.b.t + c.a.b.h, c.b.b.t + c.b.b.h) + 4); var d2 = "M" + (c.ax + 5) + " " + yb + "V" + (yb + TAIL) + "C" + (c.ax + 5) + " " + (yb + dip) + " " + (c.bx - 5) + " " + (yb + dip) + " " + (c.bx - 5) + " " + (yb + TAIL) + "V" + yb; below = Math.max(below, dip); }
       var mk = "url(#dv-arr" + (c.live ? "-live" : "") + ")";
       rel.push('<path class="dv-e' + (c.live ? " live" : "") + '" data-a="' + c.key[0] + '" data-b="' + c.key[1] + '" d="' + d2 + '" marker-end="' + mk + '"' + (c.both ? ' marker-start="' + mk + '"' : "") + "/>");
     });
