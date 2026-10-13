@@ -1783,13 +1783,25 @@
   function transcriptCtx(e, P) {
     var pr = P && P.program, aid = pr && pr.agentId;
     if (!aid || P.side || !window.STUDIO || !STUDIO.menu) return;
-    if (String(window.getSelection() || "").trim()) return;
+    var sel = window.getSelection(), selText = String(sel || "").trim(), C = window.TSU_CLIPS;
+    var inHere = !!(selText && sel.rangeCount && P.screen.contains(sel.getRangeAt(0).commonAncestorContainer));
+    if (selText && (!inHere || !C)) return; // 选着别处的字：系统自己的菜单
     e.preventDefault();
     var MI = STUDIO.menuIcons ? STUDIO.menuIcons() : {};
+    // 摘录本（clips.js）：选着字——收藏到摘录本（原文 + 出处）；没选——标记这一问（再点一次取消）
+    var src = C && pr.clipSrc ? pr.clipSrc(inHere ? sel.getRangeAt(0).startContainer : e.target) : null, clipIt = [];
+    if (inHere && src) {
+      var txt = String(sel);
+      clipIt.push({ label: "收藏到摘录本", icon: MI.bookmark || MI.star, run: function () { C.add("clip", txt, src); if (STUDIO.toast) STUDIO.toast("已收藏到摘录本"); } },
+        { label: "复制", icon: MI.copy, keys: "⌘C", run: function () { if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {}); } });
+    }
+    if (src) { var fl = pr.flagOf ? pr.flagOf(src) : null; clipIt.push(fl ? { label: "取消标记", icon: MI.flag, run: function () { C.remove(fl.id); } } : { label: "标记这里", icon: MI.flag, run: function () { C.add("flag", src.label || String(inHere ? sel : "").slice(0, 160), src); } }); }
+    if (clipIt.length) clipIt.push({ sep: true });
+    if (inHere) return STUDIO.menu(function () { return clipIt.concat(transcriptMenu(MI, aid, P)); }, { x: e.clientX, y: e.clientY });
     // 手机、iPad：对话里不让系统自己选字（一碰就整屏选中、松手了还在选），要复制的长按这里：复制按住的那一段
     var blk = document.documentElement.classList.contains("ipad") && e.target && e.target.closest ? e.target.closest(".blk") : null, bt = blk ? String(blk.innerText || "").replace(/\s+$/, "") : "";
     var copyIt = bt ? [{ label: "复制这一段", icon: MI.copy, run: function () { if (navigator.clipboard) navigator.clipboard.writeText(bt).catch(function () {}); } }, { sep: true }] : [];
-    STUDIO.menu(function () { return copyIt.concat(transcriptMenu(MI, aid, P)); }, { x: e.clientX, y: e.clientY });
+    STUDIO.menu(function () { return clipIt.concat(copyIt, transcriptMenu(MI, aid, P)); }, { x: e.clientX, y: e.clientY });
   }
   var DOTS3 = '<svg viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="12" cy="8" r="1.1" fill="currentColor"/></svg>';
   // 终端界面、图形界面的对话都交这一个按钮（只在 macOS 风格的窗口标题栏里：别的风格有编辑区的 ···，Claude App 的在它自己的标题 ⌄ 里）
@@ -2286,7 +2298,7 @@
     }
     stk.addEventListener("mousedown", function (e) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); stickyGo(); });
     stk.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
-    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); stickyHide(); P.foot.removeEventListener("wheel", onCcWheel); document.removeEventListener("keydown", onDocKey, true); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
+    V.detach = function () { ccTuiDrop(""); clearTimeout(ccWaitT); stickyHide(); P.foot.removeEventListener("wheel", onCcWheel); document.removeEventListener("keydown", onDocKey, true); if (sashRO) { sashRO.disconnect(); sashRO = null; } if (fsash) { fsash.remove(); fsash = null; P.foot.style.height = ""; P.foot.style.paddingLeft = ""; P.el.classList.remove("fh-set", "agentfoot"); P.foot.querySelectorAll(":scope > .st-fmore").forEach(function (x) { x.remove(); }); if (P.foot._footItems === footItems) P.foot._footItems = null; } off1(); off2(); document.removeEventListener("vs-needs", onNeeds); document.removeEventListener("vs-clips", onClipsEv); P.screen.removeEventListener("scroll", onSc); P.screen.removeEventListener("wheel", onTopPull); P.screen.removeEventListener("touchmove", onTopPull); clearTimeout(earlierT); document.removeEventListener("visibilitychange", onBack); window.removeEventListener("focus", onBack); if (window.STUDIO) STUDIO.clear(P, "paimon"); if (P.el.classList.contains("ts-show") || P.el.classList.contains("ts-hover")) { P.el.classList.remove("ts-show", "ts-hover"); if (P.measure) P.measure(); } };
     // 跳到某一问（搜索结果）：滚过去，闪一下
     // 跳到一问（搜索里点的那一处）：给了找到的字就在这一问里找到第 nth 处、滚到它在屏幕上三分之一的地方、亮一下（不是只跳到这一问开头——一问很长时差好几屏）；
     //   折行、行首的缩进不算（照字连起来找），不分大小写；这一问里没画出来（收着的工具输出里）就退回到这一问开头
@@ -2307,6 +2319,27 @@
       b.classList.remove("st-flash"); void b.offsetWidth; b.classList.add("st-flash");
       return true;
     };
+    // 摘录本（clips.js）：对话里的一处是哪一问——出处（哪个连接器、哪段会话、哪一问的 uuid / 时间 / 第几问、谁说的），收藏、标记时记下，以后跳得回来
+    V.clipSrc = function (node) {
+      var el0 = node && node.nodeType === 3 ? node.parentElement : node, b = el0 && el0.closest ? el0.closest(".blk") : null, t = b && b._t;
+      if (!t) return null;
+      var turns = rt.session().turns, sid = (rt.session && rt.session().id) || String(agentId).replace(/^[a-z]{2}:/, "");
+      var kind = /^cc:/.test(agentId) ? "cc" : /^cx:/.test(agentId) ? "cx" : /^pi:/.test(agentId) ? "pi" : /^ty:/.test(agentId) ? "ty" : "pm";
+      var cwd = ""; try { cwd = rt.home ? String(rt.home() || "") : ""; } catch (e) { cwd = ""; }
+      return { kind: kind, agent: agentId, session: sid, title: String(agent.name || (V.title ? V.title() : "") || ""), cwd: cwd, uuid: t.uuid || "", turn: turns.indexOf(t), at: t.at || 0, role: el0.closest(".ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
+    };
+    // 标记了的那一问：左边一道橙线（clips.css）。标记一变（这台、别的设备）就重看一遍
+    var flagKeys = null;
+    function flagSet() {
+      if (flagKeys) return flagKeys;
+      flagKeys = {};
+      if (window.TSU_CLIPS) TSU_CLIPS.flagsFor(agentId).forEach(function (f) { var s0 = f.src || {}; if (s0.uuid) flagKeys["u:" + s0.uuid] = 1; else if (s0.at) flagKeys["a:" + s0.at] = 1; });
+      return flagKeys;
+    }
+    function flagMark(b, t) { var k = flagSet(); if (b && b.classList) b.classList.toggle("vs-flag", !!(t && ((t.uuid && k["u:" + t.uuid]) || (!t.uuid && t.at && k["a:" + t.at])))); }
+    V.flagOf = function (src) { if (!src || !window.TSU_CLIPS) return null; return TSU_CLIPS.flagsFor(agentId).filter(function (f) { var s0 = f.src || {}; return src.uuid ? s0.uuid === src.uuid : s0.at === src.at; })[0] || null; };
+    function onClipsEv() { flagKeys = null; blocks.forEach(function (b, t) { flagMark(b, t); }); }
+    document.addEventListener("vs-clips", onClipsEv);
     // 先按搜索结果那一行的上下文认（同一个词在一问里出现好几次时认得出是哪一处）；认不出按这一问里第 nth 处，再不行第一处。
     //   比的时候空白、Markdown 记号（` * _ ~）都不算：画出来的字没有这些
     function findIn(root, needle, nth, ctx) {
@@ -2357,7 +2390,7 @@
     // 整段重画（换了宽度：拆分、挪标签页、合并……；换了筛选）：贴着底看的时候，先画最后几问（够三屏，马上就看得到），
     //   更早的在后面分几次补上（一次十来毫秒，插在最前面；贴着底的还贴着底，往上翻着看的那段不动）——几千块的大会话一次整段画完要一两秒，拆分、挪标签页时卡住
     var renderGen = 0, pendTurns = null, firstBlk = null;
-    function placeTurn(t, ref) { var h = htmlOf(t, liveOf(t)), b = P.block(h, ref); b._n = htmlN; blocks.set(t, b); markOpened(b); return b; }
+    function placeTurn(t, ref) { var h = htmlOf(t, liveOf(t)), b = P.block(h, ref); b._n = htmlN; b._t = t; blocks.set(t, b); markOpened(b); flagMark(b, t); return b; }
     // 一问画成的那一段：宽度、字宽、深浅、筛选、设置、后台任务、这一问自己（有变就 drawTurn 升一版）、它的译文到了几段都没变——直接用上次画的；
     //   拆分、挪标签页、合并时宽度来回变，变回来过的那个宽度不用再算一遍（几千行的一问算一遍要几十上百毫秒）。在跑的那一问、还有在跑的工具的不留
     var rowCache = new Map(), rcSig = "", htmlN = 0, idxOf = null;
@@ -2468,7 +2501,7 @@
       if (pendTurns && pendTurns.indexOf(t) >= 0) return; // 还没轮到补画的更早的一问：补画时画在它自己的位置
       if (pendTail) { if (pendTail.indexOf(t) < 0) pendTail.push(t); return; } // 后面的还在分段补画：新来的排在它们后面（不插到中间去）
       var was0 = liveT, b = P.block(htmlOf(t, liveOf(t)), statusEl);
-      blocks.set(t, b);
+      b._t = t; blocks.set(t, b); flagMark(b, t);
       var ts1 = rt.session().turns, pv1 = ts1[ts1.indexOf(t) - 1]; // 前一问做完那一行原来在输入框下面（它曾是最后一问）：现在回到对话里它自己的位置
       if (pv1 && pv1 !== was0 && pv1.stats && blocks.has(pv1)) drawTurn(pv1);
       if (was0 && was0 !== t && blocks.has(was0) && !(rt.stream && rt.stream.turn === was0)) { if (liveT === was0) liveT = null; drawTurn(was0); }

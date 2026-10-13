@@ -1,0 +1,40 @@
+/* clips.css —— 摘录本（clips.js）：按出处分组的一张张卡片——引文（只读）、出处、备注、几个按钮；对话里被标记的那一问左边一道橙线 */
+.st-pg-clips { overflow: auto; font-family: var(--st-ui-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); }
+.cl { max-width: 860px; margin: 0 auto; padding: 26px 32px 56px; box-sizing: border-box; color: var(--st-fg); font-size: 13px; }
+.cl-head { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.cl-head h1 { margin: 0; font-size: 22px; font-weight: 650; color: var(--st-hi); }
+.cl-fill { flex: 1; min-width: 0; }
+.cl-segs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--st-hover); }
+.cl-seg { padding: 3px 11px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); font: inherit; cursor: pointer; }
+.cl-seg em { font-style: normal; opacity: .7; }
+.cl-seg.on { background: var(--st-bg); color: var(--st-fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.cl-q-in { width: 240px; height: 28px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg); color: var(--st-fg); font: inherit; outline: 0; }
+.cl-q-in:focus { border-color: var(--st-accent, #0a84ff); }
+.cl-empty { padding: 70px 20px; text-align: center; color: var(--st-dim); }
+.cl-empty h2 { margin: 10px 0 6px; font-size: 16px; color: var(--st-fg); }
+.cl-empty p { max-width: 460px; margin: 0 auto; line-height: 1.6; }
+.cl-eic { width: 44px; height: 44px; margin: 0 auto; color: var(--st-dim); }
+.cl-eic svg { width: 100%; height: 100%; }
+.cl-grp { margin-bottom: 22px; }
+.cl-grp > header { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.cl-grp > header b { font-size: 14px; font-weight: 650; }
+.cl-grp > header span { color: var(--st-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-grp > header em { margin-left: auto; font-style: normal; color: var(--st-dim); font-size: 12px; }
+.cl-it { margin-bottom: 10px; padding: 12px 14px 10px; border: 1px solid var(--st-line); border-radius: 10px; background: var(--st-bg2); }
+.cl-q { margin: 0 0 8px; padding: 2px 0 2px 12px; border-left: 3px solid color-mix(in srgb, var(--st-accent, #0a84ff) 55%, transparent); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; max-height: 18em; overflow: auto; }
+.cl-fl { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; line-height: 1.5; }
+.cl-fl i { flex: none; width: 15px; height: 15px; margin-top: 2px; color: #ff9f0a; }
+.cl-fl i svg { width: 100%; height: 100%; }
+.cl-fl span { overflow-wrap: anywhere; }
+.cl-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--st-dim); font-size: 11.5px; }
+.cl-note { min-height: 18px; margin-top: 6px; padding: 3px 6px; border-radius: 5px; color: var(--st-fg); outline: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cl-note:empty::before { content: attr(data-ph); color: var(--st-dim); opacity: .7; }
+.cl-note:hover, .cl-note:focus { background: var(--st-hover); }
+.cl-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.cl-acts button { padding: 3px 10px; border: 1px solid var(--st-line); border-radius: 6px; background: var(--st-bg); color: var(--st-fg); font: inherit; font-size: 12px; cursor: pointer; }
+.cl-acts button:hover { background: var(--st-hover); }
+.cl-acts button.cl-primary { border-color: transparent; background: var(--st-accent, #0a84ff); color: #fff; }
+.cl-acts button.cl-del { color: #ff6b62; }
+.cl-acts button.done { border-color: #30d158; }
+/* 对话里被标记的那一问：左边一道橙线（指着出现那条标记的备注） */
+.tpane .term .out > .blk.vs-flag::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: #ff9f0a; pointer-events: none; }

@@ -4975,6 +4975,8 @@
   // ⚙ 管理菜单（同 VS Code 左下那个）
   var MIc = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var MI = {
+    flag: MIc('<path d="M3.5 14V2.5"/><path d="M3.5 3h8.2l-1.8 3 1.8 3H3.5"/>'), // 标记这里（摘录本）
+    bookmark: MIc('<path d="M4.5 2.5h7v11l-3.5-2.6-3.5 2.6z"/>'), // 收藏到摘录本
     palette: MIc('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"/><path d="M4.6 6.4l2 1.6-2 1.6M8 9.8h3.4"/>'),
     gear: MIc('<circle cx="8" cy="8" r="2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/>'),
     json: MIc('<path d="M6 2.5C4.8 2.5 4.3 3 4.3 4.2v1.6c0 .8-.5 1.4-1.3 1.7.8.3 1.3.9 1.3 1.7v1.6c0 1.2.5 1.7 1.7 1.7M10 2.5c1.2 0 1.7.5 1.7 1.7v1.6c0 .8.5 1.4 1.3 1.7-.8.3-1.3.9-1.3 1.7v1.6c0 1.2-.5 1.7-1.7 1.7"/>'),
@@ -5980,6 +5982,6 @@
     updateReady: function () { return updateReady; },
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）
     needsList: needsList, // 有新版本了（页面的脚本在服务器上变了）：重新载入就用上
-    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview,
+    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview,
   };
 })();
