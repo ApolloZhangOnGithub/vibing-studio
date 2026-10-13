@@ -256,7 +256,7 @@
     return N.call("rdp.discover", { name: V.dev.name }).then(function (r) {
       var m = r && r.match;
       if (m) {
-        V.route = { host: m.host, port: m.port };
+        V.route = { host: m.host, port: m.port }; V.routeFp = m.fp || "";
         return saveDevHost(V, { host: m.host + ":" + m.port, via: "", user: (hostOf(V.hostId) || {}).user || m.user || "" }).then(function () { V.finding = false; go(V); });
       }
       if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "nordp" : V.dev.relay ? "offline" : true; paint(V); return; }
@@ -264,16 +264,34 @@
       return creds(V).then(function (c) {
         V.finding = false;
         if (!c) { V.notFound = L.state === "offline" ? "offline" : "nordp"; paint(V); return; }
-        V.route = { tunnel: true };
-        return saveDevHost(V, c.user ? { user: c.user, rport: c.port || 3389 } : { rport: c.port || 3389 }).then(function () { go(V); });
+        V.route = { tunnel: true }; V.routeFp = "";
+        return saveDevHost(V, { rport: c.port || 3389 }).then(function () { go(V); });
       });
     }, function () { V.finding = false; V.notFound = true; paint(V); });
   }
-  // 连：问到了账号就带上（钥匙串里的可能是旧的；连上了才记下）
+  // 连：问到了能用的账号就用它（钥匙串里的可能是旧的）；没有就照常连（钥匙串里的，没有再问）
   function go(V) {
-    var c = V.cred;
-    if (c && c.pass && !V.credUsed) { V.credUsed = true; V.credTried = true; return open(V, { password: c.pass, remember: true, again: true }); }
+    var c = usable(V);
+    if (c && !V.credUsed) return withCred(V, c);
     open(V, { again: true });
+  }
+  // 用问到的账号连：用户名、端口存进连接；密码连上了才记进钥匙串（原生那边）
+  function withCred(V, c) {
+    V.credUsed = true; V.credTried = true;
+    var h = hostOf(V.hostId) || {}, more = {};
+    if (h.user !== c.user) more.user = c.user;
+    if (c.port && h.rport !== c.port) more.rport = c.port;
+    var go2 = function () { open(V, { password: c.pass, remember: true, again: true }); };
+    return (Object.keys(more).length ? saveDevHost(V, more) : Promise.resolve()).then(go2, go2);
+  }
+  // 问到的账号是不是这条路上那个远程桌面的：它的证书指纹（grdctl 给的）和这条路上的（刚找到的、记着的）对得上——
+  //   对不上的（比如这条路通的是「远程登录」，问到的是「桌面共享」的账号）不用，让人输
+  function usable(V) {
+    var g = V.cred;
+    if (!g || !g.user || !g.pass || g.pass === "(hidden)") return null;
+    var norm = function (s) { return String(s || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); };
+    var want = norm(V.routeFp || (hostOf(V.hostId) || {}).pin), fp = norm(g.fp);
+    return want && fp && want.length === fp.length && want !== fp ? null : g;
   }
   // 问那台电脑它的远程桌面账号（GNOME 远程桌面：grdctl；没有、关着的回 null）。一个标签页问一次
   function creds(V) {
@@ -283,9 +301,7 @@
     V.credP = TSU_RLINK.exec(L, "LC_ALL=C grdctl status --show-credentials 2>&1", 15000).then(function (r) {
       var g = parseGrd(r && r.out);
       if (!g || !g.enabled) return null;
-      var pin = String((hostOf(V.hostId) || {}).pin || "").replace(/[^0-9a-f]/gi, "").toLowerCase(), fp = g.fp.replace(/[^0-9a-f]/gi, "").toLowerCase();
-      if (pin && fp && pin.length === fp.length && pin !== fp) return null; // 证书对不上：它那边的账号不是这个远程桌面的
-      V.cred = g.user && g.pass && g.pass !== "(hidden)" ? g : null;
+      V.cred = g;
       return g;
     }, function () { return null; });
     return V.credP;
@@ -309,15 +325,15 @@
       return false;
     }
     if (st === "needpass" || st === "error" && d.kind === "auth") {
+      if (V.credBusy) return true; // 正在问（原生的事件和 rdp.open 的回复各报一次）
       if (V.credTried || !V.dev.relay) return false;
-      V.credTried = true;
+      V.credTried = true; V.credBusy = true;
       V.st = { state: "connecting" }; paint(V);
-      creds(V).then(function (c) {
+      creds(V).then(function () {
+        V.credBusy = false;
         if (!sessions[V.id]) return;
-        if (c && c.user && c.pass) {
-          var h = hostOf(V.hostId) || {};
-          return (h.user !== c.user || (c.port && h.rport !== c.port) ? saveDevHost(V, { user: c.user, rport: c.port || h.rport || 3389 }) : Promise.resolve()).then(function () { V.credUsed = true; open(V, { password: c.pass, remember: true, again: true }); });
-        }
+        var c = usable(V);
+        if (c) return withCred(V, c);
         V.st = d; paint(V); // 问不到：让人输
       });
       return true;
@@ -606,7 +622,7 @@
       if (arg === "new") return t("新建连接", "New Connection");
       var h = hostOf(/^edit:/.test(arg) ? arg.slice(5) : arg);
       if (/^edit:/.test(arg)) return t("编辑：", "Edit: ") + (h ? h.name : "");
-      return h ? h.name : t("远程桌面", "Remote Desktop");
+      return h ? h.name : devices[arg] && devices[arg].name ? devices[arg].name : t("远程桌面", "Remote Desktop"); // 「设备」里点的、还没存成连接的：写那台电脑的名字
     },
     address: function (arg) { var h = arg && !/^(new|edit:)/.test(arg) ? hostOf(arg) : null; return h ? "rdp://" + addrOf(h) : "rdp.local.paimon"; },
     icon: function () { return LOGO; },

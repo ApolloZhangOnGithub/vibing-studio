@@ -151,6 +151,7 @@ static size_t FBMAX;
 static char* PIN;      // 认过的证书指纹（App 记着的）：对不上就不连，告诉 App
 static BOOL WANT_AUDIO;
 static BOOL QUIT;      // App 叫断开的（q）：不算出错
+static BOOL PROBE;     // 只看证书（rdp.discover 找路）：不登录——证书一到就停
 
 // 剪贴板：这台 Mac 上现在复制的文字（UTF-16，带结尾的 0）；远端要的时候给
 static pthread_mutex_t clipLock = PTHREAD_MUTEX_INITIALIZER;
@@ -448,7 +449,12 @@ static void vs_post_disconnect(freerdp* instance) {
 
 // 缺密码：不在终端里问（这里没有终端），告诉 App，App 在标签页里让人输
 static BOOL vs_authenticate(freerdp* instance, char** username, char** password, char** domain, rdp_auth_reason reason) {
-  (void)instance; (void)username; (void)password; (void)domain;
+  (void)instance; (void)domain;
+  if (PROBE) { // 只看证书：只用 TLS 的（xrdp、关了 NLA 的 Windows）在 TLS 之前就要账号——给个占位的让它走到握手（账号在 TLS 里面才发，证书一到就停了，发不出去）
+    if (username && !*username) *username = _strdup("probe");
+    if (password && !*password) *password = _strdup("probe");
+    return TRUE;
+  }
   ev("{\"ev\":\"needpass\",\"reason\":%d}", (int)reason);
   return FALSE;
 }
@@ -465,6 +471,7 @@ static DWORD vs_cert(const char* fp, const char* subject, const char* issuer, BO
   sb_json(&b, issuer);
   sb_fmt(&b, ",\"ok\":%s,\"changed\":%s}", ok ? "true" : "false", changed ? "true" : "false");
   ev_send(&b);
+  if (PROBE) return 0; // 只看证书：到这里就停
   return ok ? 2 : 0; // 2：这一次接受（不写进 FreeRDP 自己的证书库，认不认由 App 记着的指纹定）
 }
 static DWORD vs_verify_cert(freerdp* instance, const char* host, UINT16 port, const char* cn, const char* subject, const char* issuer,
@@ -681,6 +688,7 @@ static BOOL read_config(vsConfig* c) {
     else if (!strcmp(l, "h264")) c->h264 = atoi(v) != 0;
     else if (!strcmp(l, "gfx")) c->gfx = atoi(v) != 0;
     else if (!strcmp(l, "pin")) PIN = strdup(v);
+    else if (!strcmp(l, "probe")) PROBE = atoi(v) != 0;
     else if (!strcmp(l, "cfg")) c->cfg = strdup(v);
   }
 }

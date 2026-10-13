@@ -295,11 +295,11 @@ enum RdpDiscover {
       }
     }
   }
-  // 证书：助手连一下、不登录（没给用户名：到要密码那一步就停），读它报的证书
+  // 证书：助手连一下、不登录（probe：证书一到就停），读它报的证书
   static func certOf(port: Int) async -> [String: Any]? {
     let st = await RdpHelper.resolve()
     guard st["ok"] as? Bool == true, let helper = RdpHelper.path else { return nil }
-    let r = await RdpProc.run(helper, [], input: "host 127.0.0.1\nport \(port)\nconnect\n", timeout: 8)
+    let r = await RdpProc.run(helper, [], input: "host 127.0.0.1\nport \(port)\nprobe 1\nconnect\n", timeout: 8)
     for line in r.out.split(separator: "\n") {
       guard let d = line.data(using: .utf8), let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], j["ev"] as? String == "cert" else { continue }
       let subj = j["subject"] as? String ?? ""
