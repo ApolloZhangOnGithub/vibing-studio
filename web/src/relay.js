@@ -1,7 +1,8 @@
 // relay.js —— Vibing Studio 的 iPad 端：iPad 上的页面借你的 Mac 干活（终端、文件、Claude Code / Codex 的会话都在 Mac 上）。
 //   Mac 上 App 的页面（host）、iPad 的页面（client）各连一条 WebSocket 到这里；同一个账号一个 Durable Object（Relay），只转发：
 //   client → host：调用（{ id, cmd, args }，带上是哪台设备 from / cname）；host → client：回复（to: 那台设备）、事件（to: "*" 给这台 Mac 的所有 client）。
-//   谁能连：Worker 先验会话（只有这个账号自己），交过来时按账号分好；Mac 那边还要逐台设备点「允许」（ui/studio/remote-host.js），并只放行一部分命令。
+//   谁能连：Worker 先验会话（只有这个账号自己），交过来时按账号分好；Mac 那边（app/Sources/RemoteHost.swift）再认设备：每台设备一把自己的密钥（remote.js），
+//   按 Mac 上选的连入方式（直接允许 / 首次确认 / 每次确认 / 验证码）放行，并只放行一部分命令。
 //   GET /api/relay/hosts：这个账号现在在线的 Mac（iPad 上选连哪一台）
 const clean = (s) => (/^[\w-]{4,64}$/.test(s || "") ? s : "");
 const cleanName = (s) => String(s || "").replace(/[\u0000-\u001f]/g, "").slice(0, 80);
@@ -69,8 +70,9 @@ export class Relay {
       delete m.to;
       if (to === "*") this.toClients(a.dev, m);
       else if (to) {
-        const c = this.state.getWebSockets("cid:" + to).filter((w) => (w.deserializeAttachment() || {}).dev === a.dev)[0];
-        if (c) { try { c.send(JSON.stringify(m)); } catch (e) { /* 断了 */ } }
+        // 同一台设备开着几页（浏览器的两个标签页、App 的窗口）：每一页都送（各页按自己的请求编号、终端编号认领），以前只送第一页——第二页一直等不到回复
+        const s = JSON.stringify(m);
+        this.state.getWebSockets("cid:" + to).forEach((c) => { if ((c.deserializeAttachment() || {}).dev === a.dev) { try { c.send(s); } catch (e) { /* 断了 */ } } });
       }
     }
   }
@@ -79,6 +81,11 @@ export class Relay {
   gone(ws) {
     const a = ws.deserializeAttachment() || {};
     if (a.role === "host" && !this.state.getWebSockets("host:" + a.dev).some((w) => w !== ws)) this.toClients(a.dev, { sys: "host-offline" });
-    if (a.role === "client") { const host = this.host(a.dev); if (host) { try { host.send(JSON.stringify({ sys: "client-leave", from: a.cid })); } catch (e) { /* 断了 */ } } }
+    if (a.role === "client") {
+      // left：这台设备连着这台 Mac 的还剩几页（都关了 Mac 那边才收拾它开的终端、盯着的记录）
+      const left = this.state.getWebSockets("cid:" + a.cid).filter((w) => w !== ws && (w.deserializeAttachment() || {}).dev === a.dev).length;
+      const host = this.host(a.dev);
+      if (host) { try { host.send(JSON.stringify({ sys: "client-leave", from: a.cid, left })); } catch (e) { /* 断了 */ } }
+    }
   }
 }
