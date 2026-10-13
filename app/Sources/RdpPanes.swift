@@ -228,11 +228,108 @@ enum RdpStore {
   }
 }
 
+// MARK: - 找路：这台 Mac 上在听的 TCP 端口里，哪个是远程桌面、证书叫什么（隧道转过来的、本机的都算）
+@MainActor
+enum RdpDiscover {
+  // X.224 连接请求（要 TLS / NLA）：远程桌面会回一个 TPKT（03 00 …）带 X.224 连接确认（0xD0）
+  private static let x224: [UInt8] = [0x03, 0x00, 0x00, 0x13, 0x0e, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00]
+  static func find(name: String) async -> [String: Any] {
+    let want = name.lowercased().trimmingCharacters(in: .whitespaces)
+    let ls = await RdpProc.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"], timeout: 8)
+    var ports = Set<Int>()
+    for line in ls.out.split(separator: "\n") where line.hasPrefix("n") {
+      let addr = String(line.dropFirst())
+      guard let i = addr.lastIndex(of: ":"), let p = Int(addr[addr.index(after: i)...]) else { continue }
+      let h = String(addr[..<i])
+      if h == "*" || h == "127.0.0.1" || h == "[::1]" || h == "localhost" || h == "0.0.0.0" { ports.insert(p) }
+    }
+    if ports.isEmpty { ports.insert(3389) }
+    // 先用 X.224 握一下手（很快）：只有回了的才是远程桌面；再问证书
+    var rdpPorts: [Int] = []
+    await withTaskGroup(of: (Int, Bool).self) { g in
+      for p in ports.sorted() { g.addTask { (p, await x224Probe(port: p)) } }
+      for await (p, ok) in g where ok { rdpPorts.append(p) }
+    }
+    var found: [[String: Any]] = []
+    for p in rdpPorts.sorted() {
+      if let c = await certOf(port: p) { var e = c; e["host"] = "127.0.0.1"; e["port"] = p; found.append(e) }
+    }
+    let match = found.first { e in
+      let cn = (e["cn"] as? String ?? "").lowercased()
+      return !want.isEmpty && !cn.isEmpty && (cn == want || cn.hasPrefix(want + ".") || want.hasPrefix(cn + ".") || cn.replacingOccurrences(of: "_", with: "-") == want.replacingOccurrences(of: "_", with: "-"))
+    }
+    var out: [String: Any] = ["endpoints": found]
+    if var m = match {
+      if let u = userFromRdpFiles(port: m["port"] as? Int ?? 0) { m["user"] = u }
+      out["match"] = m
+    }
+    return out
+  }
+  nonisolated static func x224Probe(port: Int) async -> Bool {
+    await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+      DispatchQueue.global().async {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { cont.resume(returning: false); return }
+        defer { Darwin.close(fd) }
+        var tv = timeval(tv_sec: 1, tv_usec: 500_000)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var sa = sockaddr_in(); sa.sin_family = sa_family_t(AF_INET); sa.sin_port = in_port_t(UInt16(port).bigEndian); sa.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let ok = withUnsafePointer(to: &sa) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } } == 0
+        guard ok, x224.withUnsafeBufferPointer({ write(fd, $0.baseAddress, $0.count) }) == x224.count else { cont.resume(returning: false); return }
+        var buf = [UInt8](repeating: 0, count: 32)
+        let n = buf.withUnsafeMutableBufferPointer { read(fd, $0.baseAddress, $0.count) }
+        cont.resume(returning: n >= 6 && buf[0] == 0x03 && buf[1] == 0x00 && buf[5] == 0xd0)
+      }
+    }
+  }
+  // 证书：助手连一下、不登录（没给用户名：到要密码那一步就停），读它报的证书
+  static func certOf(port: Int) async -> [String: Any]? {
+    let st = await RdpHelper.resolve()
+    guard st["ok"] as? Bool == true, let helper = RdpHelper.path else { return nil }
+    let r = await RdpProc.run(helper, [], input: "host 127.0.0.1\nport \(port)\nconnect\n", timeout: 8)
+    for line in r.out.split(separator: "\n") {
+      guard let d = line.data(using: .utf8), let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], j["ev"] as? String == "cert" else { continue }
+      let subj = j["subject"] as? String ?? ""
+      let cn = subj.components(separatedBy: ",").compactMap { part -> String? in
+        let t = part.trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix("CN") else { return nil }
+        return t.split(separator: "=", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces) }
+      }.first ?? ""
+      return ["cn": cn, "fp": j["fp"] as? String ?? "", "subject": subj]
+    }
+    return nil
+  }
+  // 用户名：这台 Mac 上指向这个端口的 .rdp 文件（Windows App 用的那种）里写着
+  static func userFromRdpFiles(port: Int) -> String? {
+    let home = RdpHelper.home, fm = FileManager.default
+    var files: [String] = []
+    for d in ["Desktop", "Documents", "Downloads"] {
+      let dir = home + "/" + d
+      for f in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] {
+        let p = dir + "/" + f
+        if f.lowercased().hasSuffix(".rdp") { files.append(p) }
+        else if !f.hasPrefix("."), (try? fm.attributesOfItem(atPath: p)[.type] as? FileAttributeType) == .typeDirectory {
+          for g in (try? fm.contentsOfDirectory(atPath: p)) ?? [] where g.lowercased().hasSuffix(".rdp") { files.append(p + "/" + g) }
+        }
+      }
+    }
+    for f in files {
+      guard let d = fm.contents(atPath: f), d.count < 1 << 20 else { continue }
+      let text = String(data: d, encoding: .utf16).flatMap { $0.contains("full address") ? $0 : nil } ?? String(decoding: d, as: UTF8.self)
+      let h = RdpStore.parseRdpFile(text, name: "")
+      let addr = (h["host"] as? String ?? "").lowercased()
+      if addr.hasSuffix(":\(port)"), addr.hasPrefix("localhost") || addr.hasPrefix("127.0.0.1") || addr.hasPrefix("[::1]"), let u = h["user"] as? String, !u.isEmpty { return u }
+    }
+    return nil
+  }
+}
+
 // MARK: - 页面的命令
 @MainActor
 final class RdpPanes: NSObject {
   static let commands = ["rdp.available", "rdp.hosts", "rdp.saveHost", "rdp.removeHost", "rdp.import", "rdp.open", "rdp.frame", "rdp.close", "rdp.list",
-                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh"]
+                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh", "rdp.discover", "rdp.readFile"]
   weak var controller: WebController?
   private var sessions: [String: RdpSession] = [:]
 
@@ -270,6 +367,14 @@ final class RdpPanes: NSObject {
             let d = try? Data(contentsOf: u), d.count < 1 << 20 else { return nil }
       let text = String(data: d, encoding: .utf16) ?? String(decoding: d, as: UTF8.self) // Windows 存的常是 UTF-16
       return RdpStore.parseRdpFile(text.contains("full address") ? text : String(decoding: d, as: UTF8.self), name: u.deletingPathExtension().lastPathComponent)
+    case "rdp.discover":
+      // 「设备」里点一台电脑的远程桌面：这台 Mac 上哪个端口通到它（证书的名字就是那台电脑的名字）——不用填地址
+      return await RdpDiscover.find(name: a["name"] as? String ?? "")
+    case "rdp.readFile":
+      // 拖进来的 .rdp 文件：读出地址、用户名、选项
+      guard let path = a["path"] as? String, path.lowercased().hasSuffix(".rdp"), let d = FileManager.default.contents(atPath: path), d.count < 1 << 20 else { throw BridgeError.args("rdp.readFile { path: *.rdp }") }
+      let text = String(data: d, encoding: .utf16) ?? String(decoding: d, as: UTF8.self)
+      return RdpStore.parseRdpFile(text.contains("full address") ? text : String(decoding: d, as: UTF8.self), name: ((path as NSString).lastPathComponent as NSString).deletingPathExtension)
     case "rdp.list":
       return sessions.map { ["id": $0.key, "host": $0.value.hostId, "state": $0.value.state, "view": $0.value.view.debugInfo] as [String: Any] }
     default:

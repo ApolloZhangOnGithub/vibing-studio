@@ -16,7 +16,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
   static let protocolVersion = 1
   static let commands = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "screenshot", "badge", "attention", "window.dragRegions", "window.fullscreen",
                          "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "ui.source", "open.pending",
-                         "window.tabDrop", "app.activate", "app.quit", "statusItem.set", "remote.open", "window.close"]
+                         "window.tabDrop", "app.activate", "app.quit", "app.running", "statusItem.set", "remote.open", "window.close"]
   weak var controller: WebController? { didSet { local?.controller = controller; web?.controller = controller; rdp?.controller = controller } }
   let local: Local? = Config.terminal ? Local() : nil // Paimon Terminal：这台 Mac 本身（真终端、命令、文件）
   let web: WebPanes? = Config.terminal ? WebPanes() : nil // Vibing Studio：内嵌的浏览器（页面给位置，这边叠一个真的 WKWebView）
@@ -102,9 +102,14 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       (NSApp.delegate as? AppDelegate)?.setStatusItem((a["on"] as? Bool) ?? true)
       return ["ok": true]
     case "app.quit":
-      // 「重启以更新」：同 ⌘Q（还有程序在跑会先问）；稍后再退，这一下的回话先送回页面
+      // 「重启以更新」：同 ⌘Q（还有程序在跑会先问）；稍后再退，这一下的回话先送回页面。
+      //   force：页面已经问过了（或者没有在工作的会话）——不再弹「要终止正在运行的进程吗」（以前要点两次才重启，2026-10-13）
+      if a["force"] as? Bool == true { (NSApp.delegate as? AppDelegate)?.forceQuit = true }
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApp.terminate(nil) }
       return ["ok": true]
+    case "app.running":
+      // 终端标签页里现在在前台跑的程序（同退出时那句「要终止正在运行的进程吗」列的）：重启以更新之前页面先看一眼
+      return ["names": local?.running() ?? []]
     case "window.dragRegions":
       // 网页的菜单栏里空着的地方：按下能拖窗口、双击同标题栏（macOS 自己的窗口没有标题栏，桌面的菜单栏就是它的标题栏）
       let rects = (a["rects"] as? [[String: Any]] ?? []).compactMap { r -> NSRect? in

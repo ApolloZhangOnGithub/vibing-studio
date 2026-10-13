@@ -87,11 +87,16 @@
     var head = '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + name + '</h2><div class="rd-csub">' + addr + "</div>";
     var btn = function (act, label, primary) { return '<button type="button" data-act="' + act + '"' + (primary ? ' class="rd-primary"' : "") + ">" + esc(label) + "</button>"; };
     var detail = function (s) { return s ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(s) + "</pre></details>" : ""; };
+    if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在找到它的远程桌面…", "Finding its remote desktop…")) + "</div>";
+    if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' + esc(t("没找到它的远程桌面", "Couldn’t find its remote desktop")) + '</div><div class="rd-msg">' +
+      esc(t("要那台电脑的远程桌面开着（GNOME：设置 › 系统 › 远程桌面），而且这台 Mac 能通到它（同一个网络，或者一条转到本机端口的隧道）。", "Its remote desktop must be on (GNOME: Settings › System › Remote Desktop) and reachable from this Mac (same network, or a tunnel to a local port).")) +
+      '</div><div class="rd-cbtns"><button type="button" data-act="refind" class="rd-primary">' + esc(t("再找一次", "Try Again")) + "</button></div>";
     switch (st.state) {
       case "needpass":
       case "pass":
         return head + (V.err ? '<div class="rd-err">' + esc(V.err) + "</div>" : "") +
-          '<form class="rd-pass" autocomplete="on"><input class="rd-in" type="password" name="pw" autocomplete="current-password" placeholder="' + esc(t("密码", "Password")) + '" required>' +
+          '<form class="rd-pass" autocomplete="on">' + (h && !h.user ? '<input class="rd-in" type="text" name="user" autocomplete="username" spellcheck="false" autocapitalize="off" placeholder="' + esc(t("用户名", "User name")) + '" required>' : "") +
+          '<input class="rd-in" type="password" name="pw" autocomplete="current-password" placeholder="' + esc(t("密码", "Password")) + '" required>' +
           '<label class="rd-chk"><input type="checkbox" name="remember" checked> ' + esc(t("记在钥匙串里", "Remember in Keychain")) + "</label>" +
           '<div class="rd-cbtns">' + btn("edit", t("编辑连接…", "Edit Connection…")) + '<button type="submit" class="rd-primary"' + (V.pwBusy ? " disabled" : "") + ">" + esc(t("连接", "Connect")) + "</button></div></form>";
       case "connecting":
@@ -207,6 +212,34 @@
     });
   }
 
+  // ---- 从「设备」点一台电脑：找到通到它远程桌面的路（这台 Mac 上在听的端口里，证书是它名字的那个），存成一个连接、直接连——不用填 ----
+  var devices = {}; // 连接的 id → 那台设备 { id, name }
+  var devHostId = function (dev) { return "dev-" + String(dev.id).replace(/[^A-Za-z0-9-]/g, "").slice(0, 32); };
+  function connectDevice(dev, tw) {
+    if (!native() || !dev) return null;
+    var hid = devHostId(dev);
+    devices[hid] = { id: dev.id, name: dev.name || "" };
+    return openHost(hid, tw);
+  }
+  function findDevice(V) {
+    V.finding = true; V.notFound = false; paint(V);
+    return N.call("rdp.discover", { name: V.dev.name }).then(function (r) {
+      var m = r && r.match;
+      if (!m) { V.finding = false; V.notFound = true; paint(V); return; }
+      return N.call("rdp.saveHost", { id: V.hostId, name: V.dev.name, host: m.host + ":" + m.port, user: m.user || "" }).then(loadHosts).then(function () {
+        V.finding = false; paint(V); open(V);
+      });
+    }, function (e) { V.finding = false; V.notFound = true; paint(V); });
+  }
+  // 拖进来 / 用它打开的 .rdp 文件：读出地址、用户名，存成一个连接，直接连
+  function openFile(path, tw) {
+    if (!native()) return null;
+    return N.call("rdp.readFile", { path: path }).then(function (h) {
+      if (!h || !h.host) throw new Error("no address");
+      var hit = hosts.filter(function (x) { return (x.host + ":" + x.port) === String(h.host).replace(/^localhost/, x.host === "localhost" ? "localhost" : "localhost") && x.user === (h.user || ""); })[0];
+      return (hit ? Promise.resolve(hit) : N.call("rdp.saveHost", Object.assign({ id: "" }, h))).then(function (x) { return loadHosts().then(function () { return openHost(x.id, tw); }); });
+    }).catch(function (e) { alertMsg(t("打不开这个 .rdp 文件", "Couldn’t open this .rdp file"), String((e && e.message) || e)); });
+  }
   // 打开一个连接（已经开着就切过去）
   function openHost(id, tw) { tw = tw || (window.TSU_TERM && TSU_TERM.front ? TSU_TERM.front() : null); return S.openPage(tw, "rdp", id); }
 
@@ -314,10 +347,11 @@
         if (!f) return;
         e.preventDefault();
         if (f.classList.contains("rd-pass")) {
-          var pw = f.elements.pw.value;
-          if (!pw) return;
+          var pw = f.elements.pw.value, un = f.elements.user ? f.elements.user.value.trim() : "", hh = hostOf(V.hostId);
+          if (!pw || (f.elements.user && !un)) return;
           V.pwBusy = true;
-          open(V, { password: pw, remember: !!f.elements.remember.checked });
+          var go = function () { open(V, { password: pw, remember: !!f.elements.remember.checked }); };
+          if (un && hh) N.call("rdp.saveHost", Object.assign({}, hh, { user: un })).then(loadHosts).then(go, go); else go();
           return;
         }
         if (f.classList.contains("rd-form")) saveForm(f, V, V.hostId, false).then(function (h) { if (!h) return; V.editing = false; open(V, { again: true }); });
@@ -328,6 +362,7 @@
         var a = b.dataset.act;
         if (a === "cancel") { if (V.editing) { V.editing = false; V.fill = null; paint(V); return; } N.call("rdp.close", { id: V.id }).catch(function () {}); V.st = { state: "closed", by: "app" }; paint(V); return; }
         if (a === "again") return open(V, { again: true });
+        if (a === "refind" && V.dev) return findDevice(V);
         if (a === "pass") { V.st = { state: "pass" }; paint(V); return; }
         if (a === "edit") { V.editing = true; paint(V); return; }
         if (a === "trust") return N.call("rdp.trust", { id: V.id }).then(function (d) { if (d) { V.st = d; paint(V); } }).catch(function () {});
@@ -340,7 +375,11 @@
       });
       // 点画面以外的那块（卡片的空白处）不抢焦点；连着时点了这一块（原生那块盖着，一般到不了这里）交给原生
       V.box.addEventListener("mousedown", function () { if (V.want()) N.call("rdp.focus", { id: V.id }).catch(function () {}); });
-      (hostsReady ? Promise.resolve() : loadHosts()).then(function () { open(V); });
+      (hostsReady ? Promise.resolve() : loadHosts()).then(function () {
+        V.dev = devices[V.hostId] || null;
+        if (V.dev && !hostOf(V.hostId)) { V.devName = V.dev.name; return findDevice(V); } // 从「设备」点进来、还没连过：先找路
+        open(V);
+      });
     }
     paint(V);
   }
@@ -428,14 +467,7 @@
       if (cmdIds.indexOf(cid) < 0) cmdIds.push(cid);
     });
   }
-  // 「App」里一格
-  if (S.apps && S.apps.add) S.apps.add({
-    id: "rdp", builtin: true, name: function () { return t("远程桌面", "Remote Desktop"); },
-    logo: function () { return LOGO; },
-    ok: function () { return native() || !N; }, // 网页版也列着（点开写明要 App）；iPad / Linux 的原生没有它就不列
-    find: function (tw) { var hit = null; (tw && tw.ws && tw.ws.all ? tw.ws.all() : []).forEach(function (p) { if (!hit && p.program && p.program.page === "rdp" && !p.program.arg) hit = p; }); return hit; },
-    open: function (tw) { return S.openPage(tw, "rdp", ""); },
-  });
+  // 不再在「App」里单独一格（用户 2026-10-13：连的是自己账号里登录着的电脑——从「设备」点那台电脑就连，不用填地址）
   // 页面重新载入之前开着、现在没有标签页认领的连接：断开（15 秒后看一次——恢复出来的标签页那时都画过了）
   ready.then(function () {
     if (!native()) return;
@@ -444,5 +476,5 @@
       N.call("rdp.list").then(function (l) { (l || []).forEach(function (s) { if (!sessions[s.id]) N.call("rdp.close", { id: s.id }).catch(function () {}); }); }).catch(function () {});
     }, 15000);
   });
-  window.TSU_RDP = { open: openHost, hosts: function () { return hosts.slice(); }, reload: loadHosts };
+  window.TSU_RDP = { open: openHost, hosts: function () { return hosts.slice(); }, reload: loadHosts, connectDevice: connectDevice, openFile: openFile, native: function () { return native(); } };
 })();

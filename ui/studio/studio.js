@@ -672,6 +672,7 @@
     if (item && P && P.els && P.els[item.dataset.el]) { var el0 = P.els[item.dataset.el]; if (el0.click) { el0.click(); return renderSoon(tw); } return pop(tw, el0, item); }
   }
   function action(tw, what, el) {
+    if (what === "activity-monitor") return openPage(tw, "activity", "");
     famPress = false; // 点完了（click 在 pointerup 之后）：这一下要的重画马上做——以前按着的标记要等 pointerup 的下一拍才清，这一下的重画被跳过，等下一秒的定时重画才展开（「n 个已结束」点了要等一两秒）
     if (what === "reload") return location.reload();
     if (what === "app-update") return appUpdateNow();
@@ -901,6 +902,11 @@
   // 打开面板里的某个视图（菜单栏 › 显示 › 终端 / Agent 活动）：面板开着、这个视图显示着、展开着。
   // 以前的「后台任务」「子 Agent」都到「Agent 活动」；Claude App 里是右边「后台任务」那张卡片（点标题栏上它的开关）
   function panelView(tw, v) {
+    if (noPanel()) { // 没有面板了：Agent 活动 → 活动监视器标签页；终端 → 新的终端标签页
+      if (v === "term") { var i0 = LOC() && LOC().info ? LOC().info() : null; tw.ws.newTab({ sh: { cwd: (i0 && i0.home) || "", pty: true } }); }
+      else openPage(tw, "activity", "");
+      return;
+    }
     if (v === "agents" || v === "tasks" || v === "activity") v = pvAvail("activity") ? "activity" : "tasks";
     if (v === "tasks" && root.classList.contains("st-os-claude")) { var tg = tw.el.querySelector('.ca-tog[data-c="tasks"]:not(.on)'); if (tg) tg.click(); return; }
     var S = parts(tw);
@@ -914,6 +920,12 @@
   // 状态栏右键的菜单：隐藏状态栏；这个标签页交出来、放在状态栏的每一项（勾掉 = 隐藏，勾上 = 回到状态栏），指着就预览
   function statusMenu(tw) {
     var P = tw.ws.active, items = [{ label: "隐藏状态栏", icon: MI.status, run: function () { setv("statusBar", false); } }];
+    // 最右边的系统状态：显示哪几个（勾掉就不读那一样）；打开活动监视器
+    var on0 = statsOn();
+    items = items.concat([{ sep: true }, { header: true, label: "系统状态" }], STATS.map(function (x) {
+      var on = on0.indexOf(x[0]) >= 0;
+      return { label: x[1], checked: on, run: function () { var nx = STATS.map(function (y) { return y[0]; }).filter(function (k) { return k === x[0] ? !on : on0.indexOf(k) >= 0; }); setv("statusStats", nx); LOAD.busy = false; loadTick(); allWins().forEach(function (w) { statusSoon(w); }); } };
+    }), [{ label: "打开活动监视器", icon: MI.status, run: function () { openPage(tw, "activity", ""); } }]);
     var els = list(P).filter(function (el) {
       if (!TYPES[el.type]) return false;
       var site = el.site || "paimon", k = site + ":" + el.id, cur = slotOf(site, el.id, true);
@@ -939,6 +951,10 @@
     });
   }
   function toggleStatus(on) { setv("statusBar", on === undefined ? !getv("statusBar") : !!on); }
+  // 底部面板只在 Claude App 风格里还有（它的卡片在那张网格里）；别的风格没有面板了（用户 2026-10-13）：
+  //   原来的开关（标题栏那个、⌘J、菜单里的「面板」）换成状态栏的开关；Agent 活动是「活动监视器」标签页；终端是标签页
+  var noPanel = function () { return !root.classList.contains("st-os-claude"); };
+  var panelOrStatus = function (tw, on) { if (noPanel()) toggleStatus(on); else togglePanel(tw, on); };
 
   // ---- TUI 的小菜单（放在哪、状态栏点开的一块）：等宽字、一圈细线、❯ 指着的那项 ----
   var popEl = null;
@@ -1077,6 +1093,61 @@
     layBar(tw);
     crumbs(tw);
   }
+  // ---- 状态栏最右边：整机的 CPU、GPU、内存、磁盘剩余（同菜单栏上的系统状态小工具；用户 2026-10-13）——右键状态栏选显示哪几个，点一下打开活动监视器。
+  //   App 里两秒问一次原生（system.load：不起进程）；老版本的 App、Linux 版用一条很轻的命令兜底。窗口看不见、状态栏关着时不读 ----
+  var STATS = [["cpu", "CPU", "CPU"], ["gpu", "GPU", "GPU"], ["mem", "内存", "Memory"], ["disk", "磁盘剩余", "Disk Free"]];
+  var LOAD = { v: null, busy: false, prev: null };
+  var statsOn = function () { var s0 = getv("statusStats"); return Array.isArray(s0) ? s0 : STATS.map(function (x) { return x[0]; }); };
+  var enUI = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
+  function loadTick() {
+    if (document.hidden || LOAD.busy || !termapp() || !getv("statusBar") || !statsOn().length) return;
+    var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
+    if (N && N.call && !appInfo) { nativeInfo(); return; }
+    var p = N && N.call && cmds.indexOf("system.load") >= 0 ? N.call("system.load") : LOC() && LOC().exec ? loadByShell() : null;
+    if (!p) return;
+    LOAD.busy = true;
+    p.then(function (v) { if (v) { LOAD.v = v; allWins().forEach(function (w) { statusSoon(w); }); } }, function () {}).then(function () { LOAD.busy = false; });
+  }
+  setInterval(loadTick, 2000);
+  // 兜底：一条命令读全（macOS：ps 的 CPU 加起来、vm_stat、df、ioreg 的 GPU；Linux：/proc/stat 两次之间的差、/proc/meminfo、df、有 nvidia-smi 就读 GPU）
+  function loadByShell() {
+    var linux = /Linux/.test(navigator.userAgent) && !/Mac/.test(navigator.platform || "");
+    var cmd = linux ? "head -1 /proc/stat; grep -E '^(MemTotal|MemAvailable):' /proc/meminfo; echo __DF; df -kP / | tail -1; command -v nvidia-smi >/dev/null 2>&1 && { echo __GPU; nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -1; }"
+      : "echo __NCPU; sysctl -n hw.ncpu; echo __PS; ps -A -o %cpu= | awk '{s+=$1} END {print s}'; echo __MEM; sysctl -n hw.memsize; vm_stat; echo __DF; df -kP / | tail -1; echo __GPU; ioreg -r -d 1 -w 0 -c IOAccelerator 2>/dev/null | grep -o '\"Device Utilization %\"=[0-9]*' | head -1";
+    return LOC().exec({ cmd: cmd }).then(function (r) {
+      var o = String((r && (r.out || r.stdout)) || ""), v = {}, num = function (re) { var m = re.exec(o); return m ? +m[1] : null; };
+      var dfl = (/__DF\n(.*)/.exec(o) || [])[1], dfc = dfl ? dfl.trim().split(/\s+/) : [];
+      if (dfc.length >= 4) { v.diskFree = +dfc[3] * 1024; v.diskTotal = +dfc[1] * 1024; }
+      var g = /__GPU\n\D*(\d+)/.exec(o); if (g) v.gpu = +g[1];
+      if (linux) {
+        var c = /^cpu\s+(.*)$/m.exec(o);
+        if (c) { var t = c[1].trim().split(/\s+/).map(Number), tot = t.reduce(function (a, b) { return a + b; }, 0), idle = (t[3] || 0) + (t[4] || 0); if (LOAD.prev && tot > LOAD.prev[0]) v.cpu = Math.round((1 - (idle - LOAD.prev[1]) / (tot - LOAD.prev[0])) * 1000) / 10; LOAD.prev = [tot, idle]; }
+        var mt = num(/MemTotal:\s+(\d+)/), ma = num(/MemAvailable:\s+(\d+)/);
+        if (mt) { v.memTotal = mt * 1024; if (ma != null) v.memUsed = (mt - ma) * 1024; }
+      } else {
+        var nc = num(/__NCPU\n(\d+)/), ps = num(/__PS\n([\d.]+)/); if (nc && ps != null) v.cpu = Math.min(100, Math.round(ps / nc * 10) / 10);
+        var pg = num(/page size of (\d+) bytes/) || 16384, pv = function (k) { var m = new RegExp(k + ":\\s+(\\d+)").exec(o); return m ? +m[1] : 0; };
+        v.memTotal = num(/__MEM\n(\d+)/) || null;
+        v.memUsed = (Math.max(0, pv("Anonymous pages") - pv("Pages purgeable")) + pv("Pages wired down") + pv("Pages occupied by compressor")) * pg;
+      }
+      return v;
+    });
+  }
+  function statsHtml() {
+    var v = LOAD.v, on = statsOn(), en = enUI();
+    if (!v || !on.length) return "";
+    var gb = function (b) { var g = b / 1073741824; return (g >= 100 ? Math.round(g) : g.toFixed(1)) + " GB"; };
+    var name = function (k) { var x = STATS.filter(function (y) { return y[0] === k; })[0]; return x ? (en ? x[2] : x[1]) : k; };
+    var item = function (k, txt, tip) { return '<span class="st-item st-stat" data-st="activity-monitor" data-stat="' + k + '" title="' + esc(tip) + '">' + esc(name(k) + " " + txt) + "</span>"; };
+    var out = [];
+    on.forEach(function (k) {
+      if (k === "cpu" && v.cpu != null) out.push(item(k, Math.round(v.cpu) + "%", en ? "CPU usage (all cores) — click for Activity Monitor" : "CPU 使用率（所有核心）——点一下打开活动监视器"));
+      if (k === "gpu" && v.gpu != null) out.push(item(k, Math.round(v.gpu) + "%", en ? "GPU usage — click for Activity Monitor" : "GPU 使用率——点一下打开活动监视器"));
+      if (k === "mem" && v.memUsed != null) out.push(item(k, gb(v.memUsed), (en ? "Memory used " : "已使用内存 ") + gb(v.memUsed) + (v.memTotal ? (en ? " of " : " / 共 ") + gb(v.memTotal) : "")));
+      if (k === "disk" && v.diskFree != null) out.push(item(k, gb(v.diskFree), (en ? "Free on the startup disk: " : "启动盘剩余 ") + gb(v.diskFree) + (v.diskTotal ? (en ? " of " : " / 共 ") + gb(v.diskTotal) : "")));
+    });
+    return out.join('<span class="st-gap"></span>');
+  }
   // 状态栏（窗口最下面一整行，同 VS Code）：左边在哪、在做什么；右边状态、上下文、模型、文件的语言。
   //   转圈、「几秒」在走的时候每 240ms 只重画这一行（以前整个窗口的东西——面板、右侧栏、标题栏——都跟着重画一遍，菜单开着指一下都卡）
   function statusBar(tw, S, P, els) {
@@ -1097,6 +1168,8 @@
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
       if (appUpd) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+      var stx = statsHtml();
+      if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
       if (S.statusHtml !== sh) { S.statusHtml = sh; S.status.innerHTML = sh; }
     }
@@ -1408,6 +1481,7 @@
     var S = parts(tw);
     if (!window.Terminal || !LOC()) return;
     var P = tw.ws.active, cwd = cwd0 || (P && P.shell && P.shell.cwd ? P.shell.cwd() : "");
+    if (noPanel() && !attach) { var i1 = LOC().info ? LOC().info() : null; return tw.ws.newTab({ sh: { cwd: cwd || (i1 && i1.home) || "", pty: true } }); } // 没有面板的风格：新终端是一个标签页
     var host = document.createElement("div");
     host.className = "st-term";
     S.panel.querySelector(".st-pbody").appendChild(host);
@@ -1673,6 +1747,7 @@
   function pvTabsOn() { return root.classList.contains("st-os-vscode"); } // 面板的几个视图一律是标签页（没有别的样子可选）
   if (window.TSU_I18N && TSU_I18N.add) TSU_I18N.add({ "以标签页显示": "Show as Tabs", "更多视图": "More Views" });
   function renderPanel(tw) {
+    if (noPanel() && L.panel) { L.panel = false; saveL(); } // 没有面板的风格：上次开着的也不再出来
     var S = parts(tw);
     S.panel.classList.toggle("on", !!L.panel);
     var top = S.panel.querySelector(".st-ptop");
@@ -1764,6 +1839,7 @@
   function moveActivity(to) {
     var tw = T() && T().front();
     if (!tw) return;
+    if (noPanel()) { openPage(tw, "activity", ""); return; }
     L.actAt = to === "side" ? "side" : "panel"; saveL();
     if (L.actAt === "side") {
       if (!L.side) toggleSide(tw, true);
@@ -1815,6 +1891,11 @@
     var ids = store(PKEY, []);
     if (!ids.length || !LOC()) return;
     ids.forEach(function (id) { if (LOC().want) LOC().want(id); });
+    if (noPanel()) { // 没有面板了：原来面板里的终端（shell 还开着、里面可能还在跑东西）放进标签页，不丢
+      ids.forEach(function (id) { tw.ws.newTab({ sh: { cwd: "", pty: true, pid: id } }); });
+      keep(PKEY, []);
+      return;
+    }
     if (L.panel) ids.forEach(function (id) { newTerm(tw, id); });
   }
 
@@ -3344,7 +3425,7 @@
   }
   // 发布的默认值 = 作者自己用着的那一套（2026-09-29 照 ~/.paimon/studio.json 抄的）：做完通知、界面用系统字、活动栏精致、布局紧凑、标题栏不放地址放总览、
   //   不要状态栏 / 缩略图 / 路径导航。名字、头像、语言这些个人的不抄
-  var SET_DEF = { linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: false, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
+  var SET_DEF = { linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
   var SET_ABOUT = {
     colorScheme: "配色方案：auto（跟随系统）或方案 ID（paimon-dark、paimon-light、dark-gray、solarized-dark、solarized-light），也可以自定义：{ \"type\": \"dark\", \"colors\": {…}, \"terminal\": {…} }",
     highlightScheme: "（旧的，只认自定义颜色 { \"k\": \"#…\" }）代码高亮现在分浅色、深色两套：见 highlightLight、highlightDark",
@@ -5092,7 +5173,7 @@
     return [mi("布局", "", null, { items: [
         mi("主侧栏", "⌘B", function () { if (tw.side) tw.side.toggle(); }, { checked: !!(tw.side && tw.side.shown()) }),
         mi("辅助侧栏", "⌥⌘I", function () { toggleSide(tw); }, { checked: !!L.side }),
-        mi("面板", "⌘J", function () { togglePanel(tw); }, { checked: !!L.panel }),
+        noPanel() ? mi("状态栏", "⌘J", function () { toggleStatus(); }, { checked: !!getv("statusBar") }) : mi("面板", "⌘J", function () { togglePanel(tw); }, { checked: !!L.panel }),
         { sep: true },
         mi("活动栏", "", function () { setv("activityBar", !getv("activityBar")); }, { checked: !!getv("activityBar") }),
         mi("路径导航", "", function () { setv("breadcrumbs", !getv("breadcrumbs")); }, { checked: !!getv("breadcrumbs") }),
@@ -5140,7 +5221,7 @@
         zen && ap !== "hidden" ? vis("活动栏", MI.act, !zen.hid.act, "", function () { zenShow("act", !!zen.hid.act); }) : vis("活动栏", MI.act, ap !== "hidden", "", function () { setv("activityBar", ap === "hidden"); }),
         vis("主侧栏", MI.sideL, !!(tw.side && tw.side.shown()), "⌘B", function () { if (tw.side) tw.side.toggle(); }),
         vis("辅助侧栏", MI.sideR, !!L.side, "⌥⌘I", function () { toggleSide(tw); }),
-        vis("面板", MI.panel, !!L.panel, "⌘J", function () { togglePanel(tw); }),
+        noPanel() ? vis("状态栏", MI.status, !!getv("statusBar"), "⌘J", function () { toggleStatus(); }) : vis("面板", MI.panel, !!L.panel, "⌘J", function () { togglePanel(tw); }),
         zen && getv("statusBar") ? vis("状态栏", MI.status, !zen.hid.status, "", function () { zenShow("status", !!zen.hid.status); }) : vis("状态栏", MI.status, !!getv("statusBar"), "", function () { setv("statusBar", !getv("statusBar")); }),
         vis("路径导航", MI.crumbs, !!getv("breadcrumbs"), "", function () { setv("breadcrumbs", !getv("breadcrumbs")); }),
       ].concat(one("主侧栏位置", "sideBarPos", [["left", "左侧", MI.sideL], ["right", "右侧", MI.sideR]]))
@@ -5457,6 +5538,8 @@
     custom: '<svg viewBox="0 0 16 16"><rect x="2" y="2.5" width="5" height="11" rx="1" fill="none" stroke="currentColor"/><rect x="9" y="2.5" width="5" height="5" rx="1" fill="none" stroke="currentColor"/><rect x="9" y="9.5" width="5" height="4" rx="1" fill="none" stroke="currentColor"/></svg>',
     left: function (on) { return '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><rect x="2" y="3" width="4.5" height="10" fill="' + (on ? "currentColor" : "none") + '"/><path d="M6.5 3v10" stroke="currentColor"/></svg>'; },
     panel: function (on) { return '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><rect x="2" y="9.5" width="12" height="3.5" fill="' + (on ? "currentColor" : "none") + '"/><path d="M2 9.5h12" stroke="currentColor"/></svg>'; },
+    // 状态栏：窗口最下面一条窄的（比面板那块薄得多）
+    status: function (on) { return '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><path d="M2 11.6h12" stroke="currentColor"/>' + (on ? '<rect x="2" y="11.6" width="12" height="1.4" fill="currentColor"/>' : "") + "</svg>"; },
     right: function (on) { return '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><rect x="9.5" y="3" width="4.5" height="10" fill="' + (on ? "currentColor" : "none") + '"/><path d="M9.5 3v10" stroke="currentColor"/></svg>'; },
     // 暂时收起（系统替你收的，离开这一页自动回来）：侧栏那一块是虚线框、淡淡一层——介于开和关之间
     rightAuto: function () { return '<svg viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor"/><rect x="9.9" y="3.9" width="3.3" height="8.2" rx=".6" fill="currentColor" fill-opacity=".28" stroke="currentColor" stroke-width=".9" stroke-dasharray="1.3 1.1"/></svg>'; },
@@ -5468,6 +5551,9 @@
   LAY_ICONS.web = function () { return '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor"/><path d="M2.2 8h11.6M8 2c1.8 1.8 2.6 3.8 2.6 6s-.8 4.2-2.6 6M8 2C6.2 3.8 5.4 5.8 5.4 8s.8 4.2 2.6 6" fill="none" stroke="currentColor"/></svg>'; };
   var LAY_ITEMS = [{ id: "custom", label: "自定义布局…" }, { id: "left", label: "切换主侧栏", keys: "⌘B" }, { id: "panel", label: "切换面板", keys: "⌘J" }, { id: "right", label: "切换辅助侧栏", keys: "⌥⌘I" }, { id: "web", label: "浏览器" }];
   LAY_ITEMS.forEach(function (x) { x.icon = x.id === "custom" ? LAY_ICONS.custom : LAY_ICONS[x.id](true); });
+  // 没有面板的风格：那一格是状态栏的开关（藏不藏还记在 panel 这个名字下）
+  Object.defineProperty(LAY_ITEMS[2], "label", { get: function () { return noPanel() ? "切换状态栏" : "切换面板"; } });
+  Object.defineProperty(LAY_ITEMS[2], "icon", { get: function () { return noPanel() ? LAY_ICONS.status(true) : LAY_ICONS.panel(true); }, set: function () {} });
   // 布局按钮精简成一个（点开是一个菜单，再选一项——同手机上的习惯）：iPhone 默认这样，设置 › 布局里能换回经典（全部摆出来）
   // 手机的版面（贴边、无边框……studio.css 的 html.st-phone）：iPhone 一直是；别的设备窗口窄到 600 以下也是
   var phoneNow = function () { root.classList.toggle("st-phone", root.classList.contains("iphone") || innerWidth < 600); };
@@ -5493,7 +5579,7 @@
       { label: "新建标签页", icon: ICO.plus, keys: "⌘T", run: function () { (tw.ws.newTabUser || tw.ws.newTab)(); } },
       { sep: true },
       { label: "主侧栏", icon: LAY_ICONS.left(true), keys: "⌘B", checked: sideOn, run: function () { if (tw.side) tw.side.toggle(); layBar(tw); } },
-      { label: "面板", icon: LAY_ICONS.panel(true), keys: "⌘J", checked: !!L.panel, run: function () { togglePanel(tw); layBar(tw); } },
+      noPanel() ? { label: "状态栏", icon: LAY_ICONS.status(true), keys: "⌘J", checked: !!getv("statusBar"), run: function () { toggleStatus(); layBar(tw); } } : { label: "面板", icon: LAY_ICONS.panel(true), keys: "⌘J", checked: !!L.panel, run: function () { togglePanel(tw); layBar(tw); } },
       { label: "辅助侧栏", icon: LAY_ICONS.right(true), keys: "⌥⌘I", checked: !!L.side, run: function () { toggleSide(tw); layBar(tw); } },
       { sep: true },
       { label: "浏览器", icon: LAY_ICONS.web(), run: function () { openBrowser(tw); } },
@@ -5526,6 +5612,7 @@
         if (b.dataset.l === "overview" && window.TSU_BROWSER && TSU_BROWSER.overview) TSU_BROWSER.overview(tw);
         if (b.dataset.l === "left" && tw.side) { tw.side.toggle(); if (zen) zen.hid.side = false; }
         if (b.dataset.l === "panel") { togglePanel(tw); if (zen) zen.hid.panel = false; }
+        if (b.dataset.l === "status") toggleStatus();
         if (b.dataset.l === "right") toggleSide(tw);
         if (b.dataset.l === "web") openBrowser(tw);
         layBar(tw);
@@ -5534,7 +5621,7 @@
     var sideOn = !!(tw.side && tw.side.shown()), hb = function (id) { return tbHidden("layout", id) ? " hidden" : ""; };
     // 禅模式替你收起的（左边栏、面板）：同「暂时收起」画成虚线的那一块——点一下就在禅模式里拿回来
     var zl = !!(zen && zen.hid.side && !sideOn), zp = !!(zen && zen.hid.panel && !L.panel);
-    var h = '<button data-l="newtab" title="新建标签页 (⌘T)">' + ICO.plus + '</button><button data-l="custom" title="自定义布局"' + hb("custom") + ">" + LAY_ICONS.custom + '</button><button data-l="left" title="' + (zl ? "主侧栏：禅模式里收起（点一下拿回来）" : "切换主侧栏 (⌘B)") + '"' + hb("left") + ">" + (zl ? LAY_ICONS.leftAuto() : LAY_ICONS.left(sideOn)) + '</button><button data-l="panel" title="' + (zp ? "面板：禅模式里收起（点一下拿回来）" : "切换面板 (⌘J)") + '"' + hb("panel") + ">" + (zp ? LAY_ICONS.panelAuto() : LAY_ICONS.panel(!!L.panel)) + '</button><button data-l="right" title="' + (sideAuto(tw) ? "辅助侧栏：暂时收起（离开这一页会自动恢复）" : "切换辅助侧栏 (⌥⌘I)") + '"' + hb("right") + ">" + (sideAuto(tw) ? LAY_ICONS.rightAuto() : LAY_ICONS.right(!!L.side)) + '</button><button data-l="web" title="浏览器"' + hb("web") + ">" + LAY_ICONS.web() + '</button><button data-l="overview" title="标签页概览 (⇧⌘\\)">' + LAY_ICONS.overview + "</button>"; // 标签页概览在最右边（同 Safari）
+    var h = '<button data-l="newtab" title="新建标签页 (⌘T)">' + ICO.plus + '</button><button data-l="custom" title="自定义布局"' + hb("custom") + ">" + LAY_ICONS.custom + '</button><button data-l="left" title="' + (zl ? "主侧栏：禅模式里收起（点一下拿回来）" : "切换主侧栏 (⌘B)") + '"' + hb("left") + ">" + (zl ? LAY_ICONS.leftAuto() : LAY_ICONS.left(sideOn)) + '</button>' + (noPanel() ? '<button data-l="status" title="切换状态栏 (⌘J)"' + hb("panel") + ">" + LAY_ICONS.status(!!getv("statusBar")) + "</button>" : '<button data-l="panel" title="' + (zp ? "面板：禅模式里收起（点一下拿回来）" : "切换面板 (⌘J)") + '"' + hb("panel") + ">" + (zp ? LAY_ICONS.panelAuto() : LAY_ICONS.panel(!!L.panel)) + "</button>") + '<button data-l="right" title="' + (sideAuto(tw) ? "辅助侧栏：暂时收起（离开这一页会自动恢复）" : "切换辅助侧栏 (⌥⌘I)") + '"' + hb("right") + ">" + (sideAuto(tw) ? LAY_ICONS.rightAuto() : LAY_ICONS.right(!!L.side)) + '</button><button data-l="web" title="浏览器"' + hb("web") + ">" + LAY_ICONS.web() + '</button><button data-l="overview" title="标签页概览 (⇧⌘\\)">' + LAY_ICONS.overview + "</button>"; // 标签页概览在最右边（同 Safari）
     if (layConcise()) h = '<button data-l="concise" title="布局：侧栏、面板、浏览器、新建标签页">' + LAY_ICONS.custom + "</button>"; // 精简：一个按钮，点开再选
     root.classList.toggle("st-lay-concise", layConcise()); // 手机上：标题栏整条不要，标签页在最上面（灵动岛正下方），这些收进标签栏的 ···（studio.css）
     islandSync();
@@ -5737,8 +5824,8 @@
 
   // ======== 命令 ========
   command("view.side", { title: "切换辅助侧栏", keys: "⌥⌘I", run: function (tw) { toggleSide(tw); } });
-  command("view.panel", { title: "切换面板", keys: "⌘J", run: function (tw) { togglePanel(tw); } });
-  command("view.status", { title: "切换状态栏", run: function () { toggleStatus(); } });
+  command("view.panel", { title: "切换面板", keys: "⌘J", when: function () { return !noPanel(); }, run: function (tw) { togglePanel(tw); } });
+  command("view.status", { title: "切换状态栏", keys: "⌘J", when: function () { return noPanel(); }, run: function () { toggleStatus(); } });
   command("view.left", { title: "切换主侧栏", keys: "⌘B", run: function (tw) { if (tw.side) tw.side.toggle(); } });
   command("view.agents", { title: "显示 Agent", keys: "⇧⌘E", run: function (tw) { showView(tw, "agents"); } });
   command("view.search", { title: "在对话中搜索", keys: "⇧⌘F", run: function (tw) { showView(tw, "search"); } });
@@ -5785,7 +5872,7 @@
     if (!e.metaKey || e.ctrlKey) return;
     if (e.altKey && !e.shiftKey && e.code === "KeyI") return hit(function () { toggleSide(tw); });
     if (e.altKey || !window.nadosNative && !e.shiftKey && e.code !== "KeyJ") { if (e.code !== "Comma") return; }
-    if (!e.shiftKey && e.code === "KeyJ") return hit(function () { togglePanel(tw); });
+    if (!e.shiftKey && e.code === "KeyJ") return hit(function () { panelOrStatus(tw); });
     if (!e.shiftKey && e.code === "KeyB") return hit(function () { if (tw.side) tw.side.toggle(); });
     if (!e.shiftKey && e.key === ",") return hit(function () { settings(tw, sectionFor(tw)); });
     if (e.shiftKey && e.code === "KeyP") return hit(function () { palette(tw, "cmd"); });
@@ -5825,7 +5912,7 @@
     agentPaneFor: agentPaneFor, // agent 这一级跟着哪个标签页（编辑区当前的不是 agent 时，是最近用的那个）
     todoShown: todoShown, toggleTodo: toggleTodo, toggleTodoDone: toggleTodoDone, tasksOf: tasksOf, todoHead: todoHead, todoRowsHtml: todoRowsHtml, agentMenuItems: agentMenuItems,
     inline: inlineOn, place: place, render: render, renderSoon: renderSoon, types: TYPES, composerAway: composerAway, focusSide: focusSide,
-    toggle: toggleSide, isOpen: function () { return !!L.side; }, togglePanel: togglePanel, panelOpen: function () { return !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
+    toggle: toggleSide, isOpen: function () { return !!L.side; }, togglePanel: panelOrStatus, panelOpen: function () { return !noPanel() && !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
     openFile: openFile, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
     askUnsaved: askUnsaved, // 关标签页 / 窗格 / 窗口之前：里面有改了没存的文件就问保存 / 不保存 / 取消（live.js 的 askClose 先走这里）
     renderPanelAll: function () { allWins().forEach(function (w) { try { renderPanel(w); } catch (e) { /* 下一次再画 */ } }); },

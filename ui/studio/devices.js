@@ -46,6 +46,8 @@
     return d.kind === "linux" || /Linux|Ubuntu|Debian|Fedora|Arch/i.test((d.os || "") + " " + (d.label || "")) ? "Linux" : /Windows/i.test(d.os || "") ? "Windows" : "Mac";
   };
 
+  // 能连它桌面的：别的 Linux / Windows 电脑（它们的远程桌面是 RDP；Mac 的以后由 Vibing Studio 自己来）——App 里才有
+  var canDesk = function (n) { return !!(n && !n.self && !n.web && n.family === "computer" && /^(Linux|Windows)$/.test(kindLabel(n)) && window.TSU_RDP && TSU_RDP.native()); };
   // ---- 数据 ----
   var hostsCache = { at: 0, list: [] };
   function loadHosts(done) {
@@ -160,7 +162,17 @@
       if (!nd) return closeCard();
       var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
       if (card && card._key === key) return closeCard();
+      // 别的 Linux / Windows 电脑：点一下就连它的桌面（远程桌面标签页；用户 2026-10-13：「点击设备直接就可以连了」）；它的信息在右键里
+      if (n && canDesk(n)) { closeCard(); return window.TSU_RDP.connectDevice({ id: n.id, name: n.label }, P.win); }
       if (n) openCard(host, P, nd, n, key, V);
+    });
+    host.addEventListener("contextmenu", function (e) {
+      var nd = e.target.closest("[data-node]");
+      if (!nd) return;
+      var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
+      if (!n) return;
+      e.preventDefault();
+      openCard(host, P, nd, n, key, V);
     });
     if (window.ResizeObserver) host._dvRO = new ResizeObserver(function () { if (V.shown()) layout(host); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (V.shown()) layout(host); });
@@ -191,6 +203,7 @@
     if (n.via) rows.push([t("正在使用", "Using"), n.via.label]);
     if (n.ids && n.ids.length) rows.push([t("设备 ID", "Device ID"), n.ids[0], "id"]);
     var acts = [];
+    if (canDesk(n)) acts.push(["desk", t("远程桌面", "Remote Desktop"), "primary"]); // 点那台电脑本身也是连它
     // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
     var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
     if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), "primary"]);
@@ -248,6 +261,7 @@
         if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); }); else window.open(u, "_blank", "noopener");
         return;
       }
+      if (a === "desk" && window.TSU_RDP) { closeCard(); return TSU_RDP.connectDevice({ id: nn.id, name: nn.label }, P.win); }
       if (a === "open" && nn.host) {
         closeCard();
         // App：开一个窗口连那台 Mac（已经开着就叫到前面）；网页、iPad：这一页换成用那台 Mac

@@ -56,7 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     web.emit("open-files", ["count": paths.count])
   }
   // Paimon Terminal：还有程序在跑（claude、npm run dev……）就先问一声再退（同「终端」）；只开着 shell 的直接退
+  var forceQuit = false // 「重启以更新」：页面已经问过了，不再弹这个框
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if forceQuit { return flushThenQuit() }
     guard Config.terminal, !selfTest, !testJS, let names = web?.bridge.local?.running(), !names.isEmpty else { return flushThenQuit() }
     var uniq: [String] = []
     for n in names where !uniq.contains(n) { uniq.append(n) }

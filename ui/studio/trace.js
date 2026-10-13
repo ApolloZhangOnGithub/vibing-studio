@@ -146,6 +146,7 @@
   // 在底部面板里：这几个按钮放进面板标题栏的右边（headActs，同 VS Code 面板的视图按钮），这里不再单独占一行
   function topBar(host, extra) {
     if (host.closest(".st-pv")) return "";
+    if (host.closest(".st-pg-activity")) { var m0 = modeOf(); return '<div class="am-top"><div class="tr-seg">' + [["table", "列表"], ["timeline", "时间线"]].map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === m0 ? " on" : "") + '" data-amm="' + x[0] + '">' + esc(tr(x[1])) + "</button>"; }).join("") + "</div>" + (extra || "") + "</div>"; } // 标签页里：只有列表 / 时间线（不再有浮动、挪到侧栏）
     var side = !!host.closest(".st-aside"), m = modeOf();
     return '<div class="am-top"><div class="tr-seg">' + [["table", "列表"], ["timeline", "时间线"]].map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === m ? " on" : "") + '" data-amm="' + x[0] + '">' + esc(tr(x[1])) + "</button>"; }).join("") + "</div>" + (extra || "") +
       '<span class="am-fill"></span>' + (host.closest(".am-float") ? "" : '<button type="button" class="am-move" data-am-float="1" title="' + esc(tr("浮动显示（在所有标签页上面，可拖动、缩放）")) + '">' + FLOAT_ICO + "</button>") +
@@ -438,7 +439,7 @@
     var openIds = {}; try { (window.TSU_TERM && TSU_TERM.panes ? TSU_TERM.panes() : []).forEach(function (p) { var i = p && p.program && p.program.agentId; if (i) openIds[i] = 1; }); } catch (e) { /* 没有就算了 */ }
     var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; }), W = host.clientWidth, compact = W < 560;
     // 同活动监视器：上面页签、中间会话、底下固定高的一条（整机的 CPU、内存……）；窄的（右侧栏）只列会话
-    var amv = !compact && !!host.closest(".st-pv, .am-float"), open = host._open || (host._open = {});
+    var amv = !compact && !!host.closest(".st-pv, .am-float, .st-pg-activity"), open = host._open || (host._open = {});
     host.classList.toggle("am-amhost", amv);
     if (amv) { sysSample(); batPoll(); }
     var opids = [];
@@ -541,7 +542,12 @@
     render(host);
   }
   function floatClose() { if (!FLT) return; clearInterval(FLT.t); FLT.box.remove(); FLT = null; localStorage.removeItem("tsu-act-floating"); }
-  if (localStorage.getItem("tsu-act-floating")) setTimeout(floatOpen, 1500); // 上次浮着：接着浮着
+  // 浮着的那个假窗口不再有了（用户 2026-10-13：「出来的窗口也是假的窗口」）：活动监视器是一个标签页（「App」里一格，下面）；上次浮着的记号清掉
+  try { localStorage.removeItem("tsu-act-floating"); } catch (e) { /* 没有 */ }
+  function openTab() {
+    var S = window.STUDIO, tw = window.TSU_TERM && TSU_TERM.front ? TSU_TERM.front() : null;
+    if (S && S.openPage && tw) return S.openPage(tw, "activity", "");
+  }
   var last = { key: "", at: 0 };
   function renderTimeline(host) {
     var W = Math.max(360, host.clientWidth), span = spanMin(), now = Date.now(), from = now - span * 60000;
@@ -669,6 +675,29 @@
       '<button type="button" class="st-hbtn am-move" data-am-float="1" title="' + esc(tr("浮动显示（在所有标签页上面，可拖动、缩放）")) + '">' + FLOAT_ICO + '</button><button type="button" class="st-hbtn am-move" data-am-move="side" title="' + esc(tr("挪到右侧栏")) + '">' + MOVE_RIGHT + "</button></span>";
   }
   function rerenderAll() { document.querySelectorAll(".tr-host").forEach(function (h) { h._amLast = null; render(h); }); last.key = ""; if (window.STUDIO && STUDIO.renderPanelAll) STUDIO.renderPanelAll(); }
-  window.TSU_TRACE = { render: render, renderSys: renderSys, snapshot: snapshot, sample: sample, float: floatOpen, unfloat: floatClose, headActs: headActs };
+  window.TSU_TRACE = { render: render, renderSys: renderSys, snapshot: snapshot, sample: sample, float: openTab, unfloat: floatClose, headActs: headActs, open: openTab };
+  // ---- 活动监视器：一个标签页（同 macOS 的活动监视器：上面页签——概览、CPU、GPU、内存、磁盘、网络、能耗；中间每个会话一行；底下一条）----
+  var AM_LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="18" height="17" rx="3"/><path d="M6.5 13h2.6l1.9-4.6 2.6 8.2 1.9-3.6h2"/></svg>';
+  if (window.STUDIO && STUDIO.pages) STUDIO.pages.activity = {
+    title: function () { return tr("活动监视器"); },
+    address: function () { return "activity.local.paimon"; },
+    icon: function () { return AM_LOGO; },
+    render: function (host) {
+      host.classList.add("tr-host", "st-pg-activity");
+      host._amLast = null;
+      render(host);
+    },
+    detach: function () {},
+  };
+  // 「App」里一格（apps.js 在后面才载入：页面载完再登记）
+  window.addEventListener("load", function () {
+    var S = window.STUDIO;
+    if (S && S.apps && S.apps.add) S.apps.add({
+      id: "activity", builtin: true, name: function () { return tr("活动监视器"); },
+      logo: function () { return AM_LOGO; },
+      find: function (tw) { var hit = null; (tw && tw.ws && tw.ws.all ? tw.ws.all() : []).forEach(function (p) { if (!hit && p.program && p.program.page === "activity") hit = p; }); return hit; },
+      open: function (tw) { return S.openPage(tw, "activity", ""); },
+    });
+  });
   setInterval(function () { if (document.hidden) return; document.querySelectorAll(".tr-host.am-amhost").forEach(function (h) { render(h); }); }, 1000); // 底下那一条每秒一新（数据每秒一帧）
 })();

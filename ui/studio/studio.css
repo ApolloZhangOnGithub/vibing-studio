@@ -1174,6 +1174,10 @@ html.light.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #c96442; }
 .am-float { position: fixed; z-index: 400; display: flex; flex-direction: column; background: var(--st-bg2, #1e1e1e); border: 1px solid var(--st-line); border-radius: 10px; box-shadow: var(--st-shadow, 0 10px 32px rgba(0,0,0,.5)); overflow: hidden; color: var(--st-fg); }
 .am-fbar { flex: none; height: 26px; display: flex; align-items: center; padding: 0 10px; font-size: 11.5px; color: var(--st-dim); cursor: grab; border-bottom: 1px solid var(--st-line); user-select: none; }
 .am-fhost { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* 活动监视器标签页（trace.js 的 STUDIO.pages.activity）：同浮动的那块——整块铺满，上面页签、中间会话、底下一条 */
+.st-pg-activity.tr-host { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 6px 0 0; box-sizing: border-box; }
+/* 状态栏最右边的系统状态（CPU、GPU、内存、磁盘剩余）：数字等宽，跳动时不左右晃 */
+.st-stat { font-variant-numeric: tabular-nums; cursor: pointer; }
 .am-fres { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 .am-table { display: flex; flex-direction: column; font-size: 12px; }
 .am-tr { display: grid; grid-template-columns: minmax(130px, 1.2fr) minmax(160px, 2.4fr) 66px 58px 66px 44px 54px; align-items: center; column-gap: 8px; min-height: 26px; padding: 0 10px; cursor: pointer; }
