@@ -1244,6 +1244,20 @@
   //   新版放到原位、重新打开。App 自己终端标签页里还有程序在跑的，退出前它照常问一声 ========
   var appUpd = null, appBuild = 0;
   var UPD_DIR = function () { var I = LOC() && LOC().info ? LOC().info() : null; return I && I.home ? I.home + "/Library/Application Support/Vibing Studio/update" : ""; };
+  // 新版 App 的签名能不能用：签它的证书被 Apple 吊销了的，macOS 一打开就当恶意软件扔进废纸篓（2026-10-13 的 296 就是这样，原来的 App 也跟着没了）——
+  //   这种不放进「待更新」、不给「重启以更新」，挪到 previous/（不删）。签名不完整的同样。没联网、查不了吊销的照旧
+  var sigBad = {}, sigOkAt = {};
+  var shq0 = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
+  function appSigProblem(appPath) {
+    return LOC().exec({ cmd: "/usr/bin/codesign --verify --strict " + shq0(appPath) + " >/dev/null 2>&1 || echo SIGBAD; /usr/sbin/spctl -a -t exec -vv " + shq0(appPath) + " 2>&1 | head -4" }).then(function (r) {
+      var o = String((r && (r.out || r.stdout)) || "") + String((r && (r.err || r.stderr)) || "");
+      return /SIGBAD/.test(o) ? "签名不完整" : /REVOKED/i.test(o) ? "签它的证书已被 Apple 吊销" : "";
+    }, function () { return ""; });
+  }
+  function setAside(dir, build) {
+    var prev = dir.replace(/\/update$/, "/previous");
+    return LOC().exec({ cmd: "U=" + shq0(dir) + "; P=" + shq0(prev) + '; [ -d "$U/Vibing Studio.app" ] && mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/rejected-' + (+build || 0) + '-$(date +%Y%m%d-%H%M%S).app"; echo OK' }).catch(function () {});
+  }
   function checkAppUpdate(force) {
     var N = window.nadosNative, dir = UPD_DIR();
     if (!SLOC() || !N || !N.call || !dir || (document.hidden && !force)) return Promise.resolve();
@@ -1252,6 +1266,16 @@
       return LOC().read(dir + "/Vibing Studio.app/Contents/Info.plist").then(function (b) {
         var x = new TextDecoder().decode(new Uint8Array(b)), bv = /<key>CFBundleVersion<\/key>\s*<string>(\d+)<\/string>/.exec(x), sv = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(x);
         var nu = bv && +bv[1] > cur ? { build: +bv[1], ver: sv ? sv[1] : String(bv[1]) } : null;
+        if (nu && sigBad[nu.build]) nu = null;
+        // 放进来的这一版：签名先查一遍（每版查一次）；不能用的挪走，不给「重启以更新」
+        if (nu && !sigOkAt[nu.build]) {
+          var nb = nu.build;
+          return appSigProblem(dir + "/Vibing Studio.app").then(function (why) {
+            if (why) { sigBad[nb] = why; console.warn("App update " + nb + " rejected: " + why); return setAside(dir, nb).then(function () { if (appUpd) { appUpd = null; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); } }); }
+            sigOkAt[nb] = Date.now();
+            if (JSON.stringify(nu) !== JSON.stringify(appUpd)) { appUpd = nu; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); }
+          });
+        }
         if (JSON.stringify(nu) !== JSON.stringify(appUpd)) { appUpd = nu; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); }
       }, function () { if (appUpd) { appUpd = null; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); } });
     }).catch(function () {});
@@ -1277,6 +1301,7 @@
       if (i.platform !== "macos") return fin({ state: "skip" });
       if (!m || !(+m.build > cur)) return fin({ state: "latest", ver: i.version || "" }); // 没有更新的
       if (appUpd && appUpd.build >= +m.build) return fin({ state: "staged", ver: appUpd.ver }); // 已经下好了
+      if (sigBad[+m.build]) return fin({ state: "error", error: "新版本（" + (m.version || m.build) + "）" + sigBad[+m.build] + "，没有放进待更新" });
       var url = m[i.arch === "x86_64" ? "x86_64" : "arm64"];
       if (!url) return fin({ state: "error", error: "没有这种芯片的安装包" });
       remoteDl = m.version || String(m.build); allWins().forEach(function (w) { renderSoon(w); });
@@ -1284,7 +1309,12 @@
         var zip = dir + "/download-" + m.build + ".zip", prev = dir.replace(/\/update$/, "/previous");
         return LOC().write(zip, new Uint8Array(buf)).then(function () {
           // 「待更新」里旧的那份先挪到 previous/（不删），再把新的解开放进去
-          return LOC().exec({ cmd: "U=" + q(dir) + "; P=" + q(prev) + '; mkdir -p "$U"; if [ -d "$U/Vibing Studio.app" ]; then mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/staged-$(date +%Y%m%d-%H%M%S).app"; fi; /usr/bin/ditto -x -k ' + q(zip) + ' "$U" && echo OK' }).then(function (r) { if (!/OK/.test(String((r && (r.out || r.stdout)) || ""))) throw new Error("解开安装包没有成功"); });
+          return LOC().exec({ cmd: "U=" + q(dir) + "; P=" + q(prev) + '; mkdir -p "$U"; if [ -d "$U/Vibing Studio.app" ]; then mkdir -p "$P" && mv "$U/Vibing Studio.app" "$P/staged-$(date +%Y%m%d-%H%M%S).app"; fi; /usr/bin/ditto -x -k ' + q(zip) + ' "$U" && echo OK' }).then(function (r) { if (!/OK/.test(String((r && (r.out || r.stdout)) || ""))) throw new Error("解开安装包没有成功"); })
+            .then(function () { return appSigProblem(dir + "/Vibing Studio.app"); }).then(function (why) { // 签名不能用的（证书被吊销……）：不放进待更新
+              if (!why) { sigOkAt[+m.build] = Date.now(); return; }
+              sigBad[+m.build] = why;
+              return setAside(dir, m.build).then(function () { throw new Error("新版本（" + (m.version || m.build) + "）" + why + "，没有放进待更新"); });
+            });
         });
       }).then(function () { return checkAppUpdate(true); }).then(function () { return fin({ state: "staged", ver: m.version || String(m.build) }); });
     }).catch(function (e) { console.warn("App update check:", e); return fin({ state: "error", error: String((e && e.message) || e) }); })
