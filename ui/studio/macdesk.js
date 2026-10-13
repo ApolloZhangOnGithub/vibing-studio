@@ -66,7 +66,7 @@
       V.offS = V.L.on("state", function (s) { if (s === "open" && V.wantUp && !V.up && !V.starting) start(V); if (s === "offline") { V.up = false; paint(V); } });
     }
     V.wantUp = true; V.starting = true;
-    V.L.call("screen.start", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680 }, 45000).then(function (info) {
+    V.L.call("screen.start", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680 }, 25000).then(function (info) {
       V.starting = false;
       if (V.closed) return;
       V.info = info || {}; V.up = true; V.axWarn = info && info.ax === false;
@@ -78,7 +78,14 @@
       if (V.closed) return;
       var code = (e && e.code) || "";
       if (code === "E_PERM_SCREEN") V.perm = "screen";
-      else V.err = code === "E_OFFLINE" || V.L.state === "offline" ? t("那台 Mac 现在不在线", "That Mac is offline") : code === "E_DENIED" ? t("那台 Mac 没有允许这台设备", "That Mac hasn’t allowed this device") : String((e && e.message) || e);
+      else {
+        var msg = String((e && e.message) || e || "");
+        // 那台的 App 太旧（没有截屏这一套：它回「不允许使用 screen.start」）、没回话、不在线、没允许——各写各的
+        V.err = code === "E_OFFLINE" || V.L.state === "offline" ? t("那台 Mac 上的 Vibing Studio 没有打开", "Vibing Studio isn’t running on that Mac") :
+          code === "E_DENIED" && /screen\./.test(msg) ? t("那台 Mac 上的 Vibing Studio 要更新到最新版", "Vibing Studio on that Mac needs updating") :
+          code === "E_DENIED" ? t("那台 Mac 没有允许这台设备", "That Mac hasn’t allowed this device") :
+          code === "E_TIMEOUT" ? t("那台 Mac 没有回应", "That Mac isn’t responding") : msg;
+      }
       paint(V);
     });
     // 往返时间：5 秒量一次（问它一个很小的东西）

@@ -703,6 +703,16 @@ final class RdpSession {
     try? FileManager.default.createDirectory(atPath: RdpHelper.supportDir + "/freerdp", withIntermediateDirectories: true)
     send(cfg, raw: true)
     setState("connecting", ["attempt": retries])
+    // 30 秒还没连上（那台不回握手、隧道半死）：不一直转圈——停掉这一次，自己再试两次，还不行写明「那台电脑没有回应」（用户 2026-10-14）
+    let g = gen
+    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self, self.gen == g, self.state == "connecting" else { return }
+        self.stop()
+        if self.retries < 2 { self.reconnectLater(); return }
+        self.setState("error", ["kind": "timeout", "name": "VS_TIMEOUT", "msg": "30 秒没有回应", "log": self.tail.suffix(12).joined(separator: "\n")])
+      }
+    }
     return snapshotState()
   }
 

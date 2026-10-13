@@ -114,8 +114,8 @@
     var detail = function (s) { return s ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(s) + "</pre></details>" : ""; };
     if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在连接…", "Connecting…")) + "</div>";
     if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' +
-      esc({ offline: t("它现在不在线", "It’s offline"), nordp: t("它的远程桌面没有打开", "Its remote desktop is off"), denied: t("它没有允许这台设备", "It hasn’t allowed this device"),
-        noreply: t("它没有回应", "It isn’t responding"), update: t("要先更新这台的 Vibing Studio", "Update Vibing Studio on this Mac first") }[V.notFound] || t("连不上它的远程桌面", "Can’t reach its remote desktop")) + "</div>" +
+      esc({ offline: t("那台电脑上的 Vibing Studio 没有打开", "Vibing Studio isn’t running on that computer"), nordp: t("那台电脑的远程桌面没有打开", "Remote desktop is off on that computer"), denied: t("那台电脑没有允许这台设备", "That computer hasn’t allowed this device"),
+        noreply: t("那台电脑没有回应", "That computer isn’t responding"), update: t("要先更新这台的 Vibing Studio", "Update Vibing Studio on this Mac first") }[V.notFound] || t("连不上那台电脑的远程桌面", "Can’t reach that computer’s remote desktop")) + "</div>" +
       (V.tunErr ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(V.tunErr) + "</pre></details>" : "") +
       '<div class="rd-cbtns">' + (V.notFound === "update" ? '<button type="button" data-act="app-update" class="rd-primary">' + esc(t("更新", "Update")) + "</button>" : '<button type="button" data-act="refind" class="rd-primary">' + esc(t("重试", "Try Again")) + "</button>") + "</div>";
     if (st.popped) return head + '<div class="rd-msg">' + esc(t("在单独的窗口中", "In a separate window")) + '</div><div class="rd-cbtns">' + btn("front", t("显示窗口", "Show Window")) + btn("dock", t("放回这里", "Move Back Here"), true) + "</div>";
@@ -143,6 +143,7 @@
       case "error":
         var title = st.kind === "auth" ? t("用户名或密码不对", "Incorrect user name or password") :
           st.kind === "net" ? t("连接不上 " + addrOf(h).replace(/^[^@]*@/, ""), "Can’t reach " + addrOf(h).replace(/^[^@]*@/, "")) :
+          st.kind === "timeout" ? t("那台电脑没有回应", "The remote computer isn’t responding") :
           st.kind === "ended" ? t("远程会话已结束", "The remote session ended") :
           st.kind === "crash" ? t("远程桌面组件意外退出", "The remote desktop component quit unexpectedly") : t("没能连接", "Couldn’t connect");
         return head + '<div class="rd-err">' + esc(title) + "</div>" +
