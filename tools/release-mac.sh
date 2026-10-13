@@ -25,7 +25,24 @@ AS="Vibing-Studio-$V-macOS-AppleSilicon.zip"; IN="Vibing-Studio-$V-macOS-Intel.z
 ditto -c -k --sequesterRsrc --keepParent "$OUT/arm64/Vibing Studio.app" "$OUT/$AS"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/x86_64/Vibing Studio.app" "$OUT/$IN"
 cp "$OUT/$AS" "$OUT/$IN" "$DL/"
-printf '{"build":%s,"version":"%s","arm64":"downloads/%s","x86_64":"downloads/%s","at":"%s"}\n' "$B" "$V" "$AS" "$IN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DL/macos.json"
+# 这一版比上一版改了什么（别的 Mac 上照这个决定怎么换）：native——App 本身的代码（Sources、bridge.js、build.sh……）变了，要重启才生效，状态栏出「重启以更新」；
+#   files——只有带的小工具（bin/、vs-rdp.c）、图标变了；ui——只有带的界面变了。后两种不打扰：退出 App 时换上（App 301 起，见 AppUpdate.swift）。
+#   history：最近几版各是哪一种（跳着更新的 Mac 看中间每一版）
+A="$HERE/app"
+NH=$(cat "$A"/Sources/*.swift "$A"/Sources/*.h "$A"/Resources/bridge.js "$A"/Paimon.entitlements "$A"/build.sh 2>/dev/null | shasum -a 256 | cut -c1-16)
+FH=$(cat "$A"/Helpers/* "$A"/Resources/bin/* "$A"/Icon/*.swift 2>/dev/null | shasum -a 256 | cut -c1-16)
+python3 - "$DL/macos.json" "$B" "$V" "$AS" "$IN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NH" "$FH" <<'PY'
+import json, sys
+path, b, v, a, i, at, nh, fh = sys.argv[1:9]
+try: old = json.load(open(path))
+except Exception: old = {}
+kind = "native" if old.get("nh") != nh else "files" if old.get("fh") != fh else "ui"
+hist = [h for h in old.get("history", []) if isinstance(h, dict) and h.get("build") != int(b)]
+if old.get("build") and not any(h.get("build") == old["build"] for h in hist): hist.append({"build": old["build"], "kind": old.get("kind", "native")})
+hist = (hist + [{"build": int(b), "kind": kind}])[-30:]
+json.dump({"build": int(b), "version": v, "arm64": "downloads/" + a, "x86_64": "downloads/" + i, "at": at, "kind": kind, "nh": nh, "fh": fh, "history": hist}, open(path, "w"))
+print("kind:", kind)
+PY
 echo "$B" > "$HERE/tools/app-build.txt"
 echo "released $V → $DL（tools/deploy.sh 之后别的 Mac 会自己更新）"
 if [ "${GH:-}" = 1 ]; then

@@ -1167,7 +1167,7 @@
       // agent 的上下文、模型不放这里：在 agent 底部、输入框下面（状态栏只放工作区的东西）
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
-      if (appUpd) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+      if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();
       if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
@@ -1325,6 +1325,21 @@
   //   新版放到原位、重新打开。App 自己终端标签页里还有程序在跑的，退出前它照常问一声 ========
   var appUpd = null, appBuild = 0;
   var UPD_DIR = function () { var I = LOC() && LOC().info ? LOC().info() : null; return I && I.home ? I.home + "/Library/Application Support/Vibing Studio/update" : ""; };
+  // 每一版要怎么换（tools/release-mac.sh 写在 macos.json 里，按构建号记着）：native——App 本身的代码变了，要重启才生效，状态栏出「重启以更新」；
+  //   files（只有带的小工具）、ui（只有带的界面）——不打扰：新版 App（有 app.restartToUpdate 的）退出时自己换上，下次打开就是新的。
+  //   不知道的（自己放进来的、中间几版查不到的）照 native
+  var UKK = "vs-app-upd-kind";
+  var updKinds = function () { try { return JSON.parse(localStorage.getItem(UKK) || "{}") || {}; } catch (e) { return {}; } };
+  function kindFor(m, cur) {
+    var h = Array.isArray(m && m.history) ? m.history : [], rank = { ui: 0, files: 1, native: 2 };
+    if (!h.length || !m.kind) return "native";
+    if (Math.min.apply(null, h.map(function (x) { return +x.build || 0; })) > cur + 1) return "native"; // 跳过的那几版查不到
+    var k = "ui";
+    h.forEach(function (x) { var r = rank[x.kind] == null ? 2 : rank[x.kind]; if (+x.build > cur && +x.build <= +m.build && r > rank[k]) k = r === 2 ? "native" : x.kind; });
+    return k;
+  }
+  var swapAtQuit = function () { return ((appInfo && appInfo.commands) || []).indexOf("app.restartToUpdate") >= 0; };
+  var nagUpd = function () { return !!appUpd && (appUpd.kind === "native" || !swapAtQuit()); }; // 要提醒「重启以更新」的：改了 App 本身，或者这一版 App 退出时还不会自己换
   // 新版 App 的签名能不能用：签它的证书被 Apple 吊销了的，macOS 一打开就当恶意软件扔进废纸篓（2026-10-13 的 296 就是这样，原来的 App 也跟着没了）——
   //   这种不放进「待更新」、不给「重启以更新」，挪到 previous/（不删）。签名不完整的同样。没联网、查不了吊销的照旧
   var sigBad = {}, sigOkAt = {};
@@ -1346,7 +1361,7 @@
       if (!cur) return;
       return LOC().read(dir + "/Vibing Studio.app/Contents/Info.plist").then(function (b) {
         var x = new TextDecoder().decode(new Uint8Array(b)), bv = /<key>CFBundleVersion<\/key>\s*<string>(\d+)<\/string>/.exec(x), sv = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(x);
-        var nu = bv && +bv[1] > cur ? { build: +bv[1], ver: sv ? sv[1] : String(bv[1]) } : null;
+        var nu = bv && +bv[1] > cur ? { build: +bv[1], ver: sv ? sv[1] : String(bv[1]), kind: updKinds()[bv[1]] || "native" } : null;
         if (nu && sigBad[nu.build]) nu = null;
         // 放进来的这一版：签名先查一遍（每版查一次）；不能用的挪走，不给「重启以更新」
         if (nu && !sigOkAt[nu.build]) {
@@ -1381,6 +1396,8 @@
       var i = rs[0] || {}, m = rs[1], cur = +i.build || 0;
       if (i.platform !== "macos") return fin({ state: "skip" });
       if (!m || !(+m.build > cur)) return fin({ state: "latest", ver: i.version || "" }); // 没有更新的
+      var uk = updKinds(); uk[m.build] = kindFor(m, cur); try { localStorage.setItem(UKK, JSON.stringify(uk)); } catch (e) { /* 满了 */ }
+      if (appUpd && appUpd.build === +m.build && appUpd.kind !== uk[m.build]) { appUpd.kind = uk[m.build]; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); }
       if (appUpd && appUpd.build >= +m.build) return fin({ state: "staged", ver: appUpd.ver }); // 已经下好了
       if (sigBad[+m.build]) return fin({ state: "error", error: "新版本（" + (m.version || m.build) + "）" + sigBad[+m.build] + "，没有放进待更新" });
       var url = m[i.arch === "x86_64" ? "x86_64" : "arm64"];
@@ -1446,6 +1463,8 @@
     var N = window.nadosNative;
     var quit = function () { var osa = function () { return LOC().exec({ cmd: "osascript -e 'tell application id \"beer.paimon.terminal\" to quit'" }); }; return N && N.call ? N.call("app.quit", force ? { force: true } : {}).catch(osa) : osa(); };
     var still = function () { setTimeout(function () { updWait = true; allWins().forEach(function (w) { renderSoon(w); }); }, 2500); }; // 还在跑（没退成、或在「要终止正在运行的进程吗」里点了取消）
+    // 新版 App：退出时原生自己换上、再打开（AppUpdate.swift）——不用页面写脚本等着
+    if (swapAtQuit()) { N.call("app.restartToUpdate", force ? { force: true } : {}).then(still, function () { updT = 0; still(); }); return; }
     if (updT && Date.now() - updT < 30 * 60000) { quit().then(still, still); return; } // 脚本已经在等：只再请一次退出
     updT = Date.now();
     var sh = ["PF=" + q(dir + "/swap.pid"),
@@ -4575,7 +4594,7 @@
     var btns = Array.prototype.slice.call(a.querySelectorAll(":scope > [data-a]")).concat(Array.prototype.slice.call(g.querySelectorAll("[data-a]")));
     btns.forEach(function (b) { b.hidden = !actOn(b.dataset.a); b.classList.toggle("on", shown && b.dataset.a === v); });
     var gear = g.querySelector('[data-a="manage"]');
-    if (gear) { gear.classList.toggle("st-badge", updateReady || !!appUpd); gear.title = updateReady || appUpd ? "管理 · 有新版本" : "管理"; }
+    if (gear) { gear.classList.toggle("st-badge", updateReady || nagUpd()); gear.title = updateReady || nagUpd() ? "管理 · 有新版本" : "管理"; }
     // 账户：GitHub 头像
     var me = window.TSU_AGENTS && TSU_AGENTS.me ? TSU_AGENTS.me() : null, inAcc = me && me.loggedIn !== false && me.login, av = inAcc ? avatarHtml(0, "st-avatar") : "", acc = g.querySelector('[data-a="account"]'); // 登录了：自己的头像（设置 › 账号 › 头像选的那种）
     if (acc && acc.dataset.av !== av) { acc.dataset.av = av; acc.innerHTML = av || ACT_ICONS.account; acc.title = inAcc ? me.login + " (GitHub)" : "账户"; }
@@ -5144,6 +5163,7 @@
   }
   function updState(L2) {
     var vv = function (x) { return x ? " " + String(x).replace(/^v/, "") : ""; }, when = function (t) { return new Date(t).toLocaleTimeString(L2("zh-CN", "en-US"), { hour: "numeric", minute: "2-digit" }); };
+    if (appUpd && !nagUpd()) return { text: L2("App 新版本" + vv(appUpd.ver) + " 已下载好：只改了随附的" + (appUpd.kind === "ui" ? "界面" : "小工具") + "，下次退出 App 时自动换上，不用专门重启", "App" + vv(appUpd.ver) + " is downloaded. It only changes bundled " + (appUpd.kind === "ui" ? "interface files" : "helpers") + ", so it’s applied the next time you quit — no restart needed"), btn: "现在重启", act: "appUpdate" };
     if (appUpd) return { text: L2("App 新版本" + vv(appUpd.ver) + " 已下载好，重启后换上（标签页、会话都会接回去）", "App" + vv(appUpd.ver) + " is downloaded; restart to update (tabs and sessions come back)"), btn: "重启以更新", act: "appUpdate" };
     if (remoteDl) return { text: L2("正在下载 App" + vv(remoteDl) + "…", "Downloading App" + vv(remoteDl) + "…"), btn: "检查更新", act: "check" };
     if (updateReady) return { text: L2("界面有新版本" + vv(uiVer.next), "A new interface version is available:" + vv(uiVer.next)), btn: "重新载入", act: "reload" };

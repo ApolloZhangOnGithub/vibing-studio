@@ -69,7 +69,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     a.addButton(withTitle: "取消")
     if !web.window.isVisible { web.window.makeKeyAndOrderFront(nil) }
     NSApp.activate()
-    return a.runModal() == .alertFirstButtonReturn ? flushThenQuit() : .terminateCancel
+    if a.runModal() == .alertFirstButtonReturn { return flushThenQuit() }
+    AppUpdate.relaunch = false // 不退了：之后哪次退出不再自己打开
+    return .terminateCancel
+  }
+  // 退出：「待更新」里有放好的新版就换上（只改了小工具、界面的新版不打扰——哪次退出哪次换；「重启以更新」的换好再打开）
+  func applicationWillTerminate(_ notification: Notification) {
+    if Config.terminal { AppUpdate.swapAtQuit() }
   }
   // 退出前让每个窗口的页面把手上的东西记下来（写了一半的话、正在送的那一句；live.js 的 TSU_FLUSH）——等它们回话，最多 0.6 秒
   private func flushThenQuit() -> NSApplication.TerminateReply {
