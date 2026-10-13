@@ -27,7 +27,8 @@ export default {
       if (url.pathname === "/auth/logout") return logout(url);
       if (url.pathname === "/auth/app") return appLogin(req, env, url);
       // 通行密钥（passkey.js）：登录（/auth/passkey/*）、管理（/account/passkeys、/api/passkeys、/api/passkey/*）
-      if (url.pathname.startsWith("/auth/passkey/") || url.pathname === "/account/passkeys" || url.pathname === "/api/passkeys" || url.pathname.startsWith("/api/passkey/")) return passkey(req, env, url, passkeyHelpers);
+      if (url.pathname.startsWith("/auth/passkey/") || url.pathname === "/account/passkeys" || url.pathname === "/api/passkeys" || url.pathname.startsWith("/api/passkey/") ||
+          url.pathname.startsWith("/auth/devicekey/") || url.pathname === "/api/devicekeys" || url.pathname.startsWith("/api/devicekey/")) return passkey(req, env, url, passkeyHelpers); // devicekey：用 Touch ID 登录（macOS App）
       if (url.pathname === "/api/me") return me(req, env);
       if (url.pathname === "/api/chat" && req.method === "POST") return chat(req, env, ctx);
       if (url.pathname === "/api/usage") return usage(req, env);
@@ -168,9 +169,10 @@ a svg{width:17px;height:17px;fill:currentColor}
 <h1>Vibing Studio</h1>
 <p>${appCtx ? "登录后回到 Vibing Studio" : "登录后连接你的 Mac，使用上面的会话、终端和文件"}</p>
 <a href="${href}"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>使用 GitHub 登录</a>
-<button type="button" class="pk" id="pk">${passkeyIcon}使用通行密钥登录</button>
+<button type="button" class="pk" id="pk" hidden>${passkeyIcon}使用通行密钥登录</button>
 <div class="pkmsg" id="pkmsg"></div>
 <script>${PASSKEY_JS}
+passkeyUsable().then(function(ok){document.getElementById("pk").hidden=!ok;});
 document.getElementById("pk").addEventListener("click",function(){passkeyLogin(${pkCtx},function(t){document.getElementById("pkmsg").textContent=t;});});
 </script>
 </main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });

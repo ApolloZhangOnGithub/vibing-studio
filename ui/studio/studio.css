@@ -1520,6 +1520,6 @@ html.st-noln { --st-cm-gut: none; --st-cm-pl: 14px; } /* 编辑器在影子 DOM 
 /* 同名的 Claude Code 会话：名字后面淡淡的短 id（会话 id 前 8 位；标签页、窗口标题、Claude App 的边栏、Agent Finder） */
 .ttag { font-size: .88em; font-weight: 400; opacity: .55; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 /* 窗口底下一行小字（STUDIO.toast）：做了、但界面上看不出来的事（收藏到摘录本……），两秒后淡掉 */
-.st-toast { position: fixed; left: 50%; bottom: 46px; z-index: 2147483000; transform: translate(-50%, 6px); padding: 6px 14px; border-radius: 14px; background: rgba(40, 40, 40, .92); color: #eee; font: 12.5px -apple-system, "PingFang SC", system-ui, sans-serif; pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s; }
+.st-toast { position: fixed; left: 50%; bottom: 110px; z-index: 2147483000; transform: translate(-50%, 6px); padding: 6px 14px; border-radius: 14px; background: rgba(40, 40, 40, .92); color: #eee; font: 12.5px -apple-system, "PingFang SC", system-ui, sans-serif; pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s; }
 .st-toast.on { opacity: 1; transform: translate(-50%, 0); }
 html.light .st-toast { background: rgba(250, 250, 250, .96); color: #222; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }

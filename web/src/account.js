@@ -4,7 +4,7 @@
 // 大块 JSON Worker 不解析（免费版每个请求只有 10ms CPU）：写入原样交给 SQLite 的 json_each，读出由 SQLite 拼好直接转给浏览器
 // agent = 索引（id、名字、住在哪个卷、哪个文件夹……）；dir = 文件夹（卷|路径，空文件夹也在）。sess / turn 是以前连对话一起同步时的记录：
 // 现在对话只在 agent 住的卷里（不同步），这两种不再新写，留着给还没搬进卷的 agent 读
-const NS = "('agent', 'sess', 'turn', 'dir', 'tabtime')"; // tabtime：每台设备上每个会话的标签页时间（ui/studio/tabtime.js）
+const NS = "('agent', 'sess', 'turn', 'dir', 'tabtime', 'clip')"; // tabtime：每台设备上每个会话的标签页时间（ui/studio/tabtime.js）；clip：摘录本里的摘录、标记（ui/studio/clips.js）
 const PAGE = 1500000; // 一次拉取大约多少字节（按 data 的长度估），多了翻页
 const WEEK = 7 * 864e5;
 const HEAD = "(SELECT rev FROM store_head WHERE github_id = ?1)";

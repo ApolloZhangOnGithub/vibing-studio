@@ -3,6 +3,8 @@
 //   登：登录页和 App 在系统浏览器里打开的登录页都有「使用通行密钥登录」（navigator.credentials.get，可发现的凭据：不用先输账号）。
 //   只存公钥（COSE 原样）和计数；验签用 WebCrypto（ES256 / RS256 / Ed25519）；不要证明（attestation: none，同大多数网站）。
 //   挑战（challenge）存在库里：5 分钟内、只能用一次；登录的那一个记着这次要回哪（网页的 next，或者 App 的 challenge / 本机端口）
+//   另有「用 Touch ID 登录」（devicekeys）：macOS App 在 Secure Enclave 里生成的一把钥匙（拿不出来、每次用都要按指纹）——登录着时把公钥登记上来；
+//   以后 App 要登录就不用开浏览器：要一个随机数 → 按指纹签名 → 交回来换一个一次性的 code（同浏览器那条路，App 再拿 code + verifier 换会话）
 const enc = new TextEncoder(), dec = new TextDecoder();
 const now = () => Date.now();
 const b64u = (buf) => { const u = buf instanceof Uint8Array ? buf : new Uint8Array(buf); let s = ""; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
@@ -16,6 +18,8 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS passkeys (id TEXT PRIMARY KEY, github_id INTEGER NOT NULL, public_key TEXT NOT NULL, alg INTEGER NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, last_used INTEGER)",
   "CREATE INDEX IF NOT EXISTS passkeys_by_user ON passkeys (github_id)",
   "CREATE TABLE IF NOT EXISTS webauthn_challenges (challenge TEXT PRIMARY KEY, kind TEXT NOT NULL, github_id INTEGER, extra TEXT, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0)",
+  "CREATE TABLE IF NOT EXISTS devicekeys (id TEXT PRIMARY KEY, github_id INTEGER NOT NULL, pub TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, last_used INTEGER)",
+  "CREATE INDEX IF NOT EXISTS devicekeys_by_user ON devicekeys (github_id)",
 ];
 let ready = null;
 const ensure = (env) => (ready = ready || env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { ready = null; throw e; }));
@@ -155,6 +159,31 @@ export async function passkey(req, env, url, h) {
       return json({ ok: false, error: String((e && e.message) || e) }, 400);
     }
   }
+  // 用 Touch ID 登录（macOS App）：要随机数（带着 App 这次的 PKCE challenge）→ App 按指纹签「vs-devicekey-v1\n随机数」→ 验对了给一个一次性的 code
+  if (url.pathname === "/auth/devicekey/options" && req.method === "POST") {
+    const b = (await readJSON(req)) || {}, id = String(b.id || ""), app = h.appChallenge(b.app);
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(id) || !app) return json({ ok: false, error: "bad request" }, 400);
+    return json({ ok: true, challenge: await newChallenge(env, "devicekey", null, { id, app }) });
+  }
+  if (url.pathname === "/auth/devicekey/login" && req.method === "POST") {
+    const b = (await readJSON(req)) || {};
+    try {
+      const ch = await takeChallenge(env, b.challenge, "devicekey"), extra = ch && ch.extra ? JSON.parse(ch.extra) : null;
+      if (!ch || !extra || extra.id !== String(b.id || "")) throw new Error("This sign-in request expired. Try again.");
+      const row = await env.DB.prepare("SELECT * FROM devicekeys WHERE id = ?").bind(extra.id).first();
+      if (!row) throw new Error("Touch ID sign-in isn't set up for this Mac anymore. Sign in with GitHub.");
+      const key = await crypto.subtle.importKey("raw", unb64u(row.pub), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+      const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, derToRaw(unb64u(b.sig), 32), enc.encode("vs-devicekey-v1\n" + b.challenge));
+      if (!ok) throw new Error("signature check failed");
+      const user = await env.DB.prepare("SELECT * FROM users WHERE github_id = ?").bind(row.github_id).first();
+      if (!user || !h.privateOk(env, user.github_id)) throw new Error("This is a private site.");
+      await env.DB.prepare("UPDATE devicekeys SET last_used = ? WHERE id = ?").bind(now(), row.id).run();
+      const back = await h.appRedirect(env, user, extra.app, ""), code = /[?&]code=([A-Za-z0-9_-]+)/.exec(back);
+      return json({ ok: true, code: code ? code[1] : "" });
+    } catch (e) {
+      return json({ ok: false, error: String((e && e.message) || e) }, 400);
+    }
+  }
   // 下面的都要登录着
   const user = await h.currentUser(req, env);
   if (url.pathname === "/account/passkeys") {
@@ -197,6 +226,30 @@ export async function passkey(req, env, url, h) {
       return json({ ok: false, error: String((e && e.message) || e) }, 400);
     }
   }
+  // Touch ID 的钥匙：登记（App 生成了以后，公钥是 65 字节的未压缩点）、列出、改名、移除
+  if (url.pathname === "/api/devicekeys" && req.method === "GET") {
+    const r = await env.DB.prepare("SELECT id, name, created, last_used FROM devicekeys WHERE github_id = ? ORDER BY created").bind(user.github_id).all();
+    return json({ devicekeys: r.results || [] });
+  }
+  if (url.pathname === "/api/devicekey/register" && req.method === "POST") {
+    const b = (await readJSON(req)) || {}, pub = String(b.pub || "");
+    let raw = null; try { raw = unb64u(pub); } catch { raw = null; }
+    if (!raw || raw.length !== 65 || raw[0] !== 4) return json({ ok: false, error: "bad public key" }, 400);
+    try { await crypto.subtle.importKey("raw", raw, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]); } catch { return json({ ok: false, error: "bad public key" }, 400); }
+    const id = b64u(crypto.getRandomValues(new Uint8Array(18))), name = String(b.name || "").trim().slice(0, 60) || "Mac";
+    await env.DB.prepare("INSERT INTO devicekeys (id, github_id, pub, name, created) VALUES (?, ?, ?, ?, ?)").bind(id, user.github_id, b64u(raw), name, now()).run();
+    return json({ ok: true, id, name });
+  }
+  if (url.pathname === "/api/devicekey/rename" && req.method === "POST") {
+    const b = (await readJSON(req)) || {};
+    await env.DB.prepare("UPDATE devicekeys SET name = ? WHERE id = ? AND github_id = ?").bind(String(b.name || "").trim().slice(0, 60) || "Mac", String(b.id || ""), user.github_id).run();
+    return json({ ok: true });
+  }
+  if (url.pathname === "/api/devicekey/remove" && req.method === "POST") {
+    const b = (await readJSON(req)) || {};
+    await env.DB.prepare("DELETE FROM devicekeys WHERE id = ? AND github_id = ?").bind(String(b.id || ""), user.github_id).run();
+    return json({ ok: true });
+  }
   if (url.pathname === "/api/passkey/rename" && req.method === "POST") {
     const b = (await readJSON(req)) || {};
     await env.DB.prepare("UPDATE passkeys SET name = ? WHERE id = ? AND github_id = ?").bind(String(b.name || "").trim().slice(0, 60) || "Passkey", String(b.id || ""), user.github_id).run();
@@ -215,6 +268,12 @@ export const PASSKEY_JS = `
 var b64u=function(b){var u=new Uint8Array(b),s="";for(var i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return btoa(s).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");};
 var unb64u=function(s){s=String(s).replace(/-/g,"+").replace(/_/g,"/");var b=atob(s+"===".slice((s.length+3)%4)),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u;};
 var post=function(p,b){return fetch(p,{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(b||{})}).then(function(r){return r.json();});};
+// 通行密钥用不用得了：浏览器说有这台设备上的（Touch ID、Windows Hello）或者能用手机的才露出按钮（App 里的网页、老浏览器不露）
+function passkeyUsable(){
+  if(!window.PublicKeyCredential)return Promise.resolve(false);
+  if(PublicKeyCredential.getClientCapabilities)return PublicKeyCredential.getClientCapabilities().then(function(c){return !!(c&&(c.passkeyPlatformAuthenticator||c.userVerifyingPlatformAuthenticator||c.hybridTransport));},function(){return false;});
+  return PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable?PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(function(){return false;}):Promise.resolve(false);
+}
 function passkeyLogin(ctx,msg){
   if(!window.PublicKeyCredential){msg("这个浏览器不支持通行密钥");return;}
   msg("");
@@ -256,7 +315,7 @@ a.back{color:#0a84ff;text-decoration:none;font-size:14px}
 <h1>通行密钥</h1>
 <p class="sub">用 Touch ID、Face ID、手机或安全密钥登录 Vibing Studio，不用每次都经过 GitHub。账号：${esc(user.login || user.github_id)}</p>
 <ul id="list"><li class="none">读取中…</li></ul>
-<button class="pri" id="add">添加通行密钥</button>
+<button class="pri" id="add" hidden>添加通行密钥</button>
 <div class="msg" id="msg"></div>
 <p><a class="back" href="/">回到 Vibing Studio</a></p>
 </main>
@@ -282,5 +341,6 @@ document.getElementById("add").addEventListener("click",function(){
   }).then(function(r){if(r&&r.ok){load();}else{msg((r&&r.error)||"没有添加成功");}},function(e){msg(e&&e.name==="NotAllowedError"?"已取消":e&&e.name==="InvalidStateError"?"这台设备上已经有一个了":"没有添加成功："+(e&&e.message||e));});
 });
 load();
+passkeyUsable().then(function(ok){document.getElementById("add").hidden=!ok;if(!ok)msg("这个浏览器、这台设备不能创建通行密钥（要 Touch ID、Face ID、Windows Hello，或者能用手机的浏览器）。在 macOS App 里可以改用 Touch ID 登录：设置 › 账号。");});
 </script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }

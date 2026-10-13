@@ -4972,6 +4972,14 @@
     crt.reveal(h.uuid, h.offset).then(function (t) { var pp = find(TSU_CLAUDE.id(g.id)) || p2; if (t && pp) reveal(pp, function () { return t; }); });
   }
 
+  // 窗口底下一行小字，两秒后淡掉（收藏到摘录本之类：做了、但界面上看不出来的事）
+  var toastEl = null, toastT = 0;
+  function toast(msg) {
+    if (!toastEl || !toastEl.isConnected) { toastEl = document.createElement("div"); toastEl.className = "st-toast"; document.body.appendChild(toastEl); }
+    toastEl.textContent = window.TSU_I18N && TSU_I18N.t ? TSU_I18N.t(msg) : msg;
+    toastEl.classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove("on"); }, 2000);
+  }
   // ⚙ 管理菜单（同 VS Code 左下那个）
   var MIc = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var MI = {
