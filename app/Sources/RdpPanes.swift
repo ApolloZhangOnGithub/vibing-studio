@@ -878,6 +878,12 @@ final class RdpSession {
   }
   private func remoteClosed(code: Int) {
     if state == "connected", retries < 8 { reconnectLater(); return }
+    // 还没连上就断了（握手没完成）：自己再试两次，还不行写明「那台电脑没有回应」——不显示「那台电脑断开了连接」
+    if state == "connecting" {
+      if retries < 2 { reconnectLater(); return }
+      setState("error", ["kind": "timeout", "name": "VS_NO_HANDSHAKE", "msg": "握手没有完成", "log": tail.suffix(12).joined(separator: "\n")])
+      return
+    }
     setState("closed", ["by": "remote", "code": code])
   }
   private func reconnectLater() {

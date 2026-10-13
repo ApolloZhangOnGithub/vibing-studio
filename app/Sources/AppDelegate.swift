@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   let testFloat = ProcessInfo.processInfo.environment["NADOS_TEST_FLOAT"] == "1"
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // 打开的是备份里、废纸篓里的那一份（程序坞上的图标跟着旧的走了）：改去打开「应用程序」里那一份（AppUpdate.relocateIfStray）
+    if Config.terminal, !selfTest, !testJS, AppUpdate.relocateIfStray() { NSApp.terminate(nil); return }
     NSApp.mainMenu = makeMenu()
     if !selfTest && !testJS { setStatusItem(UserDefaults.standard.object(forKey: "statusItem.on") as? Bool ?? true) } // 默认显示；页面的设置载好后会再同步一次
     UNUserNotificationCenter.current().delegate = self

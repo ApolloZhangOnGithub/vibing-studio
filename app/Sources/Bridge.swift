@@ -59,7 +59,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       if rdp != nil { cmds += RdpPanes.commands }
       if scr != nil { cmds += ScreenPanes.commands }
       return [
-        "platform": "macos", "app": Config.appName, "version": Config.version, "build": Config.build, "protocol": Bridge.protocolVersion, "local": Config.terminal,
+        "platform": "macos", "app": Config.appName, "version": Config.version, "build": Config.build, "protocol": Bridge.protocolVersion, "local": Config.terminal, "bundle": Bundle.main.bundlePath,
         "os": "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", "arch": arch, "commands": cmds,
         "active": controller?.isActive ?? false, "fullscreen": controller?.isFullScreen ?? false, "inset": controller?.buttonsInset ?? 0,
       ] as [String: Any]
