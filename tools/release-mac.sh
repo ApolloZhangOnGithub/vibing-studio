@@ -3,12 +3,12 @@
 #   部署（tools/deploy.sh）之后，别的 Mac 上开着的 App 自己会下载新版、放进「待更新」，状态栏出「App 有新版本 · 重启以更新」（studio.js 的 checkRemoteApp）。
 #   tools/release-mac.sh            构建号 = tools/app-build.txt + 1
 #   GH=1 tools/release-mac.sh       顺便在 GitHub 上发一个 Release（同样两个 zip）
-# 产物在 ~/Library/Caches/VibingStudio/release/<构建号>/（不进 iCloud）；ui/downloads/ 不进仓库、不进 App 里带的界面
+# 产物在 ~/Library/Caches/VibingStudio/release.noindex/<构建号>/（不进 iCloud）；ui/downloads/ 不进仓库、不进 App 里带的界面
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 B=${BUILD:-$(( $(cat "$HERE/tools/app-build.txt" 2>/dev/null || echo 289) + 1 ))}
 V="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$HERE/ui/version.json")" # 同界面的版本号（tools/deploy.sh 每次 +1）；构建号 $B 另记
-OUT="$HOME/Library/Caches/VibingStudio/release/$B"
+OUT="$HOME/Library/Caches/VibingStudio/release.noindex/$B" # .noindex：聚焦不收录，编出来的 .app 不进系统的 App 列表（「打开方式」里不会多一份）
 DL="$HERE/ui/downloads"
 mkdir -p "$OUT" "$DL"
 cd "$HERE/app"

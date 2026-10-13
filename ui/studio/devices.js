@@ -262,17 +262,23 @@
     host.addEventListener("click", function (e) {
       if (e.target.closest(".dv-card")) return;
       var nd = e.target.closest("[data-node]");
-      if (!nd) return closeCard();
+      if (!nd) { clearTimeout(host._dvPend); host.querySelectorAll(".dv-node.sel").forEach(function (x) { x.classList.remove("sel"); }); return closeCard(); }
       var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
-      if (!n || card && card._key === key) return; // 已经选中的：不收起（同 Finder）
-      openCard(host, P, nd, n, key, V);
+      if (!n || card && card._key === key || e.detail > 1) return; // 已经选中的：不收起（同 Finder）；连按的第二下归 dblclick
+      // 先只标成选中（版面不动）；过了连按两下的间隔还没有第二下，再出右边一栏——它一出地图就挪，连按的第二下会点不到这一台
+      host.querySelectorAll(".dv-node.sel").forEach(function (x) { x.classList.remove("sel"); });
+      nd.classList.add("sel");
+      clearTimeout(host._dvPend);
+      host._dvPend = setTimeout(function () { if (nd.isConnected) openCard(host, P, nd, n, key, V); }, 280);
     });
-    // 连按两下：做它的那件事
+    // 连按两下：做它的那件事（没有可做的：出右边一栏）
     host.addEventListener("dblclick", function (e) {
       var nd = e.target.closest && e.target.closest("[data-node]");
       if (!nd || e.target.closest(".dv-card")) return;
-      var n = V.nodes && V.nodes[nd.dataset.node];
-      if (n && mainAct(n)) { closeCard(); run(mainAct(n), n, P); }
+      clearTimeout(host._dvPend);
+      var key = nd.dataset.node, n = V.nodes && V.nodes[key];
+      if (n && mainAct(n)) { closeCard(); nd.classList.remove("sel"); run(mainAct(n), n, P); }
+      else if (n && !(card && card._key === key)) openCard(host, P, nd, n, key, V);
     });
     host.addEventListener("keydown", function (e) { // ⌘↓、⌘O：同连按两下
       var nd = e.target.closest && e.target.closest(".dv-node[data-node]");
