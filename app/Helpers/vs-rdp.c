@@ -474,8 +474,8 @@ static void vs_channel_connected(void* context, const ChannelConnectedEventArgs*
     // 图形管线：FreeRDP 自己接好以后，在外面再包一层（数帧、看编码、帧率上限）
     if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0 && e->pInterface) {
       RdpgfxClientContext* gfx = (RdpgfxClientContext*)e->pInterface;
-      origSurfaceCommand = gfx->SurfaceCommand; gfx->SurfaceCommand = vs_surface_command;
-      origEndFrame = gfx->EndFrame; gfx->EndFrame = vs_end_frame;
+      if (gfx->SurfaceCommand != vs_surface_command) { origSurfaceCommand = gfx->SurfaceCommand; gfx->SurfaceCommand = vs_surface_command; } // 包过的不再包（不然自己调自己）
+      if (gfx->EndFrame != vs_end_frame) { origEndFrame = gfx->EndFrame; gfx->EndFrame = vs_end_frame; }
       statGfx = TRUE;
     }
   }

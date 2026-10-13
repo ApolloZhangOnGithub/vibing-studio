@@ -11,7 +11,7 @@ import QuartzCore
 // MARK: - 助手（vs-rdp）：App 里带的那个；在这台 Mac 上跑不起来（FreeRDP 的版本不同、Intel 芯片）就用这台 Mac 上的 FreeRDP 现编一个
 @MainActor
 enum RdpHelper {
-  static let protocolVersion = 1
+  static let protocolVersion = 2 // 2：stats 事件、f（帧率上限）
   static var home: String { ProcessInfo.processInfo.environment["NADOS_HOME"] ?? NSHomeDirectory() }
   static var supportDir: String { home + "/Library/Application Support/Vibing Studio/rdp" }
   static let prefixes = ["/opt/homebrew/opt/freerdp", "/usr/local/opt/freerdp"]
@@ -196,6 +196,9 @@ enum RdpStore {
       if !v.isEmpty { h[k] = v }
     }
     if let rp = (a["rport"] as? NSNumber)?.intValue ?? old["rport"] as? Int, (1...65535).contains(rp) { h["rport"] = rp }
+    // 帧率上限（0 = 不限）、分辨率（auto = 跟着窗口；「1920x1080」= 固定）
+    if let f = (a["fps"] as? NSNumber)?.intValue ?? old["fps"] as? Int, (0...240).contains(f) { h["fps"] = f }
+    if let r = a["res"] as? String ?? old["res"] as? String, r == "auto" || r.range(of: #"^\d{3,4}x\d{3,4}$"#, options: .regularExpression) != nil { h["res"] = r }
     // 证书指纹：地址没变就留着（换了地址就是另一台，重新认）；「设备」里的电脑认的是那台本身，换了路（隧道、中转）也留着
     let sameDevice = !(h["device"] as? String ?? "").isEmpty && old["device"] as? String == h["device"] as? String
     if let pin = old["pin"] as? String, sameDevice || old["host"] as? String == host && old["port"] as? Int == port { h["pin"] = pin }
@@ -414,7 +417,17 @@ final class RdpPanes: NSObject {
       return nil
     case "rdp.opts":
       sessions[id]?.view.setOptions(a)
+      if let f = (a["fps"] as? NSNumber)?.intValue { sessions[id]?.send("f \(max(0, min(240, f)))") }
       return nil
+    case "rdp.window":
+      // 单独的窗口（能全屏、单独一个桌面空间，不占 Vibing Studio 的窗口）：window / fullscreen 分出去，tab 放回标签页
+      guard let s = sessions[id] else { return nil }
+      switch a["mode"] as? String ?? "window" {
+      case "tab": s.dockBack()
+      case "fullscreen": s.popOut(fullscreen: true)
+      default: s.popOut(fullscreen: false)
+      }
+      return s.snapshotState()
     case "rdp.keys":
       sessions[id]?.view.sendCombo(a["combo"] as? String ?? "")
       return nil
@@ -599,6 +612,10 @@ final class RdpSession {
   private let writeQ = DispatchQueue(label: "beer.paimon.rdp.write")
   private var route: [String: Any] = [:] // 这一次走哪条路（rdp.open 的 route）：自己重连时照旧
   private(set) var tunnel: RdpTunnel?
+  private var lastPresents = 0
+  // 分出去的窗口（rdp.window）：画面那一块挪进它里面；关窗口 = 放回标签页
+  private var popWin: NSWindow?
+  private var popDelegate: RdpWindowDelegate?
   var alive: Bool { pid > 0 }
 
   init(id: String, panes: RdpPanes) {
@@ -610,15 +627,16 @@ final class RdpSession {
     panes.controller?.webView.addSubview(view)
   }
 
-  func snapshotState() -> [String: Any] { var d = extra; d["id"] = id; d["state"] = state; d["host"] = hostId; return d }
+  func snapshotState() -> [String: Any] { var d = extra; d["id"] = id; d["state"] = state; d["host"] = hostId; d["popped"] = popWin != nil; return d }
   private func setState(_ s: String, _ more: [String: Any] = [:]) {
     state = s
     extra = more
+    if popWin != nil, ["error", "closed", "needpass", "cert", "unavailable"].contains(s) { dockBack(emit: false) } // 要人看的卡片在标签页里：放回去
     if s == "connected" { extra["w"] = view.fbW; extra["h"] = view.fbH; extra["disp"] = view.dispOK }
     panes?.emit(snapshotState())
   }
 
-  func apply(_ h: [String: Any]) { view.setOptions(["cmd": h["cmd"] as Any, "scale": h["scale"] as Any, "dynres": h["dynres"] as Any, "clip": h["clip"] as Any]) }
+  func apply(_ h: [String: Any]) { view.setOptions(["cmd": h["cmd"] as Any, "scale": h["scale"] as Any, "dynres": h["dynres"] as Any, "clip": h["clip"] as Any, "res": h["res"] as? String ?? "auto"]) }
 
   // 连：密码（给了的、钥匙串里的）→ 起助手 → 把参数写进去。route：nil = 照上一次的路（自己重连、换了证书再连）
   func connect(_ h: [String: Any], password given: String?, remember: Bool, route r: [String: Any]? = nil) async -> [String: Any] {
@@ -671,6 +689,7 @@ final class RdpSession {
     line("clip", (h["clip"] as? Bool ?? true) ? "1" : "0")
     line("audio", (h["audio"] as? Bool ?? false) ? "1" : "0")
     line("avc444", (h["avc444"] as? Bool ?? true) ? "1" : "0")
+    line("fps", String(h["fps"] as? Int ?? 0))
     line("pin", h["pin"] as? String ?? "")
     line("cfg", RdpHelper.supportDir + "/freerdp")
     cfg += "connect\n"
@@ -801,6 +820,16 @@ final class RdpSession {
         failed(e)
       case "logon":
         extra["logon"] = e["what"] as? String ?? ""
+      case "stats":
+        // 一秒一次：收了多少、远端来了几帧、这里画了几帧、编码、往返时间；码率、帧率页面按 ms 算
+        let shown = view.presents - lastPresents
+        lastPresents = view.presents
+        var d: [String: Any] = ["id": id, "ms": e["ms"] ?? 1000, "rx": e["rx"] ?? 0, "tx": e["tx"] ?? 0, "frames": e["frames"] ?? 0, "vbytes": e["vbytes"] ?? 0,
+                                "codec": e["codec"] ?? "", "gfx": e["gfx"] ?? false, "rtt": e["rtt"] ?? 0, "bw": e["bw"] ?? 0, "cap": e["cap"] ?? 0,
+                                "shown": shown, "w": view.fbW, "h": view.fbH, "disp": view.dispOK, "popped": popWin != nil]
+        d["route"] = route["tunnel"] as? Bool == true ? "relay" : "\(route["host"] as? String ?? (RdpStore.get(hostId)?["host"] as? String ?? "")):\((route["port"] as? NSNumber)?.intValue ?? (RdpStore.get(hostId)?["port"] as? Int ?? 3389))"
+        nonisolated(unsafe) let dd = d
+        panes?.controller?.emit("rdp.stats", dd)
       case "beep":
         NSSound.beep()
       default:
@@ -874,6 +903,7 @@ final class RdpSession {
   }
   func close(remove: Bool = false) {
     retryItem?.cancel()
+    if popWin != nil { dockBack(emit: false) }
     stop()
     if remove { view.removeFromSuperview(); view.session = nil; tunnel?.close(); tunnel = nil }
     if state != "idle" { setState("closed", ["by": "app"]) }
@@ -891,14 +921,81 @@ final class RdpSession {
   }
 
   func place(_ a: [String: Any]) {
-    guard let host = panes?.controller?.webView else { return }
+    guard popWin == nil, let host = panes?.controller?.webView else { return } // 分出去了：标签页里的位置不管它
     let x = num(a["x"]), y = num(a["y"]), w = max(0, num(a["w"])), h = max(0, num(a["h"]))
     view.frame = NSRect(x: x, y: host.isFlipped ? y : host.bounds.height - y - h, width: w, height: h)
     let vis = (a["visible"] as? Bool ?? true) && w >= 4 && h >= 4
     view.setVisible(vis)
   }
-  func focus() { view.window?.makeFirstResponder(view) }
+  func focus() { if let w = popWin { w.makeKeyAndOrderFront(nil) }; view.window?.makeFirstResponder(view) }
   private func num(_ x: Any?) -> CGFloat { CGFloat((x as? NSNumber)?.doubleValue ?? 0) }
+
+  // ---- 分出去：一个单独的窗口（标题是那台电脑的名字；绿色按钮全屏，单独一个桌面空间）。大小、位置按连接记着；画面跟着窗口改分辨率 ----
+  func popOut(fullscreen: Bool) {
+    if let w = popWin {
+      w.makeKeyAndOrderFront(nil)
+      if fullscreen && !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
+      return
+    }
+    let scr = panes?.controller?.window?.screen ?? NSScreen.main
+    let vis = scr?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    let aspect: CGFloat = view.fbW > 0 && view.fbH > 0 ? CGFloat(view.fbH) / CGFloat(view.fbW) : 9.0 / 16.0
+    var w = min(vis.width * 0.82, 1680), h = w * aspect
+    if h > vis.height * 0.86 { h = vis.height * 0.86; w = h / aspect }
+    let win = NSWindow(contentRect: NSRect(x: vis.midX - w / 2, y: vis.midY - h / 2, width: w, height: h), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+    win.title = RdpStore.get(hostId)?["name"] as? String ?? "远程桌面"
+    win.isReleasedWhenClosed = false
+    win.collectionBehavior = [.fullScreenPrimary, .managed]
+    win.tabbingMode = .disallowed
+    win.backgroundColor = .black
+    win.setFrameAutosaveName("rdp.window." + hostId)
+    let content = NSView(frame: NSRect(origin: .zero, size: win.contentLayoutRect.size))
+    content.wantsLayer = true
+    content.layer?.backgroundColor = NSColor.black.cgColor
+    win.contentView = content
+    let del = RdpWindowDelegate()
+    del.onClose = { [weak self] in self?.dockBack() }
+    win.delegate = del
+    popDelegate = del
+    view.removeFromSuperview()
+    view.frame = content.bounds
+    view.autoresizingMask = [.width, .height]
+    content.addSubview(view)
+    popWin = win
+    view.setVisible(true)
+    win.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    win.makeFirstResponder(view)
+    if fullscreen { win.toggleFullScreen(nil) }
+    view.requestResize(force: true)
+    panes?.emit(snapshotState())
+  }
+  // 放回标签页（关了那个窗口、页面点了「放回」、连接断了要人看卡片）：画面那一块回到页面上，页面接着管它的位置
+  func dockBack(emit: Bool = true) {
+    guard let win = popWin else { return }
+    popWin = nil
+    win.delegate = nil
+    popDelegate = nil
+    view.removeFromSuperview()
+    view.autoresizingMask = []
+    view.setVisible(false)
+    panes?.controller?.webView.addSubview(view)
+    win.orderOut(nil)
+    win.close()
+    panes?.controller?.window?.makeKeyAndOrderFront(nil)
+    if emit { panes?.emit(snapshotState()) }
+  }
+}
+
+// 分出去的窗口：点关闭 = 放回标签页（连接不断）
+@MainActor
+final class RdpWindowDelegate: NSObject, NSWindowDelegate {
+  var onClose: (() -> Void)?
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    let f = onClose
+    DispatchQueue.main.async { f?() }
+    return false
+  }
 }
 
 // MARK: - 键：Mac 的键码 → PC 键盘的扫描码（set 1；扩展键带 0x100）
@@ -951,6 +1048,7 @@ final class RdpView: NSView {
   private var cmdAsCtrl = true
   private var oneToOne = false
   private var dynres = true
+  private var fixedRes: (w: Int, h: Int)? // 固定的分辨率（选项里选的）；nil = 跟着窗口
   private var clipOn = true
   // 键盘鼠标的状态：松手时要补发的
   private var pressed = Set<UInt32>()
@@ -1000,6 +1098,11 @@ final class RdpView: NSView {
     if let c = a["cmd"] as? String { cmdAsCtrl = c != "super" }
     if let s = a["scale"] as? String { oneToOne = s == "1:1"; placeImage() }
     if let d = a["dynres"] as? Bool { dynres = d; if d { requestResize(force: true) } }
+    if let r = a["res"] as? String {
+      let p = r.split(separator: "x").compactMap { Int($0) }
+      let nf: (w: Int, h: Int)? = p.count == 2 ? (p[0], p[1]) : nil
+      if nf?.w != fixedRes?.w || nf?.h != fixedRes?.h { fixedRes = nf; lastAsked = (0, 0); requestResize(force: true) }
+    }
     if let c = a["clip"] as? Bool { clipOn = c }
   }
 
@@ -1079,13 +1182,14 @@ final class RdpView: NSView {
 
   // 远端要多大（连上时、视图大小变了时；远端支持「显示控制」才改得了）：视图的像素大小，缩放跟着屏幕（视网膜屏 200%）
   func wantedPixels() -> (w: Int, h: Int, scale: Int) {
+    if let f = fixedRes { return (min(f.w, 8192) & ~1, min(f.h, 8192), 100) }
     let s = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
     var w = Int(bounds.width * s), h = Int(bounds.height * s)
     if w < 400 || h < 300 { w = Int((NSScreen.main?.frame.width ?? 1440) * s); h = Int((NSScreen.main?.frame.height ?? 900) * s) }
     return (min(w, 8192) & ~1, min(h, 8192), Int(s * 100))
   }
   func requestResize(force: Bool = false) {
-    guard dispOK, dynres, !isHidden, bounds.width >= 200, bounds.height >= 150 else { return }
+    guard dispOK, dynres || fixedRes != nil, !isHidden, bounds.width >= 200, bounds.height >= 150 else { return }
     resizeItem?.cancel()
     let item = DispatchWorkItem { [weak self] in
       MainActor.assumeIsolated {
