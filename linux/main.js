@@ -89,6 +89,55 @@ function setupLocalUI() {
   });
 }
 
+// ======== 自己更新：网站上的 downloads/linux.json 写着最新的是哪一版（tools/release.sh 发的）；比现在跑的新——
+//   AppImage 装的：下载这台芯片的那一份，换掉自己那个文件（Linux 上换掉正在跑的文件没事：跑着的照旧用原来那份），下次打开就是新的；
+//     页面上「重启以更新」点一下就用新的那份重开。
+//   deb 装的（在 /opt 里，要 root 才能换）：只告诉页面有新版本、下载地址（自己装）。一小时看一次；页面也能叫它马上看
+const UPD = { state: "none", version: "", url: "", kind: process.env.APPIMAGE ? "appimage" : "deb", err: "", busy: false, at: 0 };
+const buildOf = (v) => +(String(v || "").split(".")[3] || 0);
+function updEmit() { for (const w of wins.values()) { try { w.bridge.emit("app.update", Object.assign({}, UPD)); } catch (e) { /* 窗口关了 */ } } }
+async function checkUpdate() {
+  if (UPD.busy || HEADLESS) return;
+  UPD.busy = true; UPD.at = Date.now();
+  try {
+    const r = await net.fetch(SERVICE + "/downloads/linux.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("linux.json: HTTP " + r.status); // 没登录（下载要登录）、还没发过
+    const m = await r.json(), arch = process.arch === "arm64" ? "arm64" : "x64";
+    if (!(buildOf(m.version) > buildOf(VS_VER))) { UPD.state = "none"; UPD.err = ""; return; }
+    if (UPD.kind === "appimage") {
+      if (UPD.state === "ready" && UPD.version === m.version) return;
+      // 网站上一个文件最多 25 MB：AppImage 切成几段放（tools/release-linux.sh），这里一段段下、接起来、核对 sha256 再换
+      const rel = m[arch], parts = rel && Array.isArray(rel.parts) ? rel.parts : rel ? [String(rel)] : [];
+      if (!parts.length) throw new Error("no " + arch + " AppImage");
+      const dst = process.env.APPIMAGE, tmp = dst + ".download";
+      UPD.state = "downloading"; UPD.version = m.version; updEmit();
+      const fd = fs.openSync(tmp, "w", 0o755), hash = crypto.createHash("sha256");
+      try {
+        for (const p of parts) {
+          const d = await net.fetch(SERVICE + "/" + String(p).replace(/^\/+/, ""));
+          if (!d.ok) throw new Error("download: HTTP " + d.status);
+          const b = Buffer.from(await d.arrayBuffer());
+          hash.update(b); fs.writeSync(fd, b);
+        }
+      } finally { fs.closeSync(fd); }
+      if (rel.sha256 && hash.digest("hex") !== rel.sha256) throw new Error("download corrupted (sha256)");
+      fs.chmodSync(tmp, 0o755);
+      fs.renameSync(tmp, dst); // 原子地换掉：正在跑的这个照旧
+      UPD.state = "ready";
+    } else {
+      UPD.state = "available"; UPD.version = m.version; UPD.url = /^https?:/.test(String(m.deb || "")) ? String(m.deb) : SERVICE; // deb：发行版页面（GitHub，下载 .deb 自己装）
+    }
+    UPD.err = "";
+  } catch (e) { UPD.err = String((e && e.message) || e); if (UPD.state === "downloading") UPD.state = "none"; }
+  finally { UPD.busy = false; updEmit(); }
+}
+const updater = {
+  state: (check) => { if (check || Date.now() - UPD.at > 3600e3) checkUpdate(); return Object.assign({}, UPD); },
+  // 换好的那一份重开：AppImage 用它自己那个文件（正在跑的是挂载出来的旧的那份）
+  relaunch: () => { if (UPD.state !== "ready") return; app.relaunch(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE, args: process.argv.slice(1) } : undefined); app.quit(); },
+};
+app.whenReady().then(() => { setTimeout(checkUpdate, 15000); setInterval(checkUpdate, 3600e3); });
+
 // ======== 窗口 ========
 const wins = new Map(); // webContents.id → { win, bridge }
 const statePath = () => path.join(app.getPath("userData"), "window.json");
@@ -173,6 +222,7 @@ function attach(win) {
     openRemote: (mac, mname) => openRemote(mac, mname),
     saveBoot: (b0) => saveState({ boot: Object.assign({}, loadState().boot || {}, b0) }),
     uiStamp: () => ({ stamp: uiStamp(), dir: UI_DIR || "", local: LOCAL_UI }),
+    update: updater,
   });
   const id = win.webContents.id;
   wins.set(id, { win: win, bridge: bridge });

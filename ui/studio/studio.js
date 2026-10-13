@@ -1167,7 +1167,7 @@
       // agent 的上下文、模型不放这里：在 agent 底部、输入框下面（状态栏只放工作区的东西）
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
-      if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+      if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();
       if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
@@ -1434,7 +1434,21 @@
     try { (A && A.liveRuntimes ? A.liveRuntimes() : []).forEach(function (rt) { if (rt && rt.stream && rt.agent && out.indexOf(rt.agent.name) < 0) out.push(rt.agent.name); }); } catch (e) { /* 没有就算了 */ }
     return out;
   }
+  // Linux 版（linux/main.js 的 updater）：AppImage 装的已经把新版换上了（重开就是新的），deb 装的只给下载地址
+  var linuxUpdT = 0;
+  function checkLinuxUpdate(force) {
+    var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
+    if (!N || !N.call || N.remote || !appInfo || appInfo.platform !== "linux" || cmds.indexOf("app.update") < 0) return;
+    N.call("app.update", force ? { check: true } : {}).then(function (u) {
+      var nu = u && (u.state === "ready" || u.state === "available") ? { build: +(String(u.version).split(".")[3] || 0), ver: u.version, kind: "native", linux: true, deb: u.state === "available", url: u.url || "" } : null;
+      if (JSON.stringify(nu) !== JSON.stringify(appUpd)) { appUpd = nu; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); }
+    }, function () {});
+  }
+  if (window.nadosNative && nadosNative.on) nadosNative.on("app.update", function () { checkLinuxUpdate(); });
+  setTimeout(function () { nativeInfo().then(function () { checkLinuxUpdate(); }); }, 8000);
+  linuxUpdT = setInterval(function () { checkLinuxUpdate(); }, 30 * 60000);
   function appUpdateNow() {
+    if (appUpd && appUpd.linux) { var NL = window.nadosNative; if (appUpd.deb) return NL.call("openExternal", { url: appUpd.url }).catch(function () {}); return NL.call("app.restartToUpdate").catch(function () {}); }
     if (!appUpd || !UPD_DIR() || !LOC() || !LOC().exec) return;
     var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
     if (!N || !N.call || cmds.indexOf("app.running") < 0) return doAppUpdate(false);
