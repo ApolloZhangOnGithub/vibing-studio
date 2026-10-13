@@ -109,7 +109,7 @@
     var nClip = list().filter(function (r) { return r.type !== "flag"; }).length, nFlag = list().length - nClip;
     var seg = function (v, label, n) { return '<button type="button" class="cl-seg' + (Q.only === v ? " on" : "") + '" data-only="' + v + '">' + esc(label) + (n != null ? " <em>" + n + "</em>" : "") + "</button>"; };
     var body = !list().length ? '<div class="cl-empty"><div class="cl-eic">' + LOGO + "</div><h2>" + esc(t("还没有摘录", "No Clippings Yet")) + "</h2><p>" +
-      esc(t("在对话里选一段字，右键「收藏到摘录本」；或者在某一处右键「标记这里」。记下原文和它从哪来，以后在这里找得到、点一下回到原处。", "Select text in a conversation and right-click Save to Clippings, or right-click anywhere and choose Flag Here. The text and where it came from are kept here, and one click takes you back.")) + "</p></div>" :
+      esc(t("在对话里选中文字，右键「收藏到摘录本」", "Select text in a conversation and right-click Save to Clippings")) + "</p></div>" :
       !groups.length ? '<div class="cl-empty"><p>' + esc(t("没有符合的", "Nothing matches")) + "</p></div>" :
       groups.map(function (g) { var s = g.r0.src || {}; return '<section class="cl-grp"><header><b>' + esc(s.title || t("一段对话", "A conversation")) + "</b><span>" + esc([KIND[s.kind] || "", s.cwd || ""].filter(Boolean).join(" · ")) + "</span><em>" + g.items.length + "</em></header>" + g.items.map(itemHtml).join("") + "</section>"; }).join("");
     var html = '<div class="cl"><div class="cl-head"><h1>' + esc(t("摘录本", "Clippings")) + '</h1><div class="cl-segs">' + seg("", t("全部", "All"), list().length) + seg("clip", t("摘录", "Clips"), nClip) + seg("flag", t("标记", "Flags"), nFlag) + "</div>" +

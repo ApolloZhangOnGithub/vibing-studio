@@ -250,7 +250,7 @@
     return l[0] || null;
   }
   // 照着那个连接改这台的：地址、用户名（连上过的那条路）。已经一样的不算
-  var differs = function (h, x) { return !!(h && x && (h.user !== x.user || h.host !== x.host || (+h.port || 3389) !== (+x.port || 3389))); };
+  var differs = function (h, x) { return !!x && (!h || h.user !== x.user || h.host !== x.host || (+h.port || 3389) !== (+x.port || 3389)); };
   function adopt(V, x) {
     V.route = { host: x.host, port: x.port || 3389 };
     return saveDevHost(V, { host: (/:/.test(x.host) ? "[" + x.host + "]" : x.host) + ":" + (x.port || 3389), via: "", user: x.user });

@@ -4004,10 +4004,10 @@
     var en = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"), tz = function (c, e) { return en ? e : c; };
     var when = function (ms) { var d = new Date(ms); return isNaN(d.getTime()) ? "" : d.toLocaleDateString(en ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }); };
     return [{ head: "其他设备" },
-      { key: "remoteOn", label: "其他设备使用这台 Mac", desc: "允许登录同一个 GitHub 账号的其他 Mac、iPhone、iPad 和网页端连接这台 Mac；终端、文件和会话都在这台 Mac 上运行", must: true, kind: "toggle", value: on, def: false },
-      on && pol ? { key: "remotePolicy", label: "其他设备连接时", desc: "每台设备用自己的密钥识别，只知道设备号无法冒充。「直接允许」：登录同一个 GitHub 账号的设备不再确认", must: true, kind: "seg", options: REMOTE_POLICIES, value: pol, def: "first" } : null,
+      { key: "remoteOn", label: "其他设备使用这台 Mac", must: true, kind: "toggle", value: on, def: false },
+      on && pol ? { key: "remotePolicy", label: "其他设备连接时", must: true, kind: "seg", options: REMOTE_POLICIES, value: pol, def: "first" } : null,
       on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? tz("已连接 · ", "Connected · ") + now.map(function (c) { return c.name; }).join(tz("、", ", ")) : tz("已连接，等待其他设备", "Connected, waiting for other devices")) : tz("正在连接…", "Connecting…") } : null,
-      { key: "remoteDevices", label: "设备与权限", desc: ok.length ? tz("允许过 " + ok.length + " 台设备。谁能使用这台 Mac、它们上次什么时候连的、这台 Mac 又能用哪几台，在「设备」里看和管理", ok.length + (ok.length === 1 ? " device is" : " devices are") + " allowed. See who can use this Mac, when they last connected and which devices this Mac can use in Devices") : "谁能使用这台 Mac、这台 Mac 又能用哪几台，在「设备」里看和管理", must: true, kind: "button", text: "打开「设备」", act: "openDevices" },
+      { key: "remoteDevices", label: "设备与权限", desc: ok.length ? tz("允许过 " + ok.length + " 台设备", ok.length + (ok.length === 1 ? " device allowed" : " devices allowed")) : "", must: true, kind: "button", text: "打开「设备」", act: "openDevices" },
     ].filter(Boolean);
   }
   // ---- 设置的配置文件 ----
@@ -4306,15 +4306,14 @@
     if (tidNative() && i && i.se && (i.owner || /^(touchID|faceID)$/.test(i.biometry))) {
       var finger = i.biometry === "touchID", on = tidMine();
       out.push({ key: "touchid", label: finger ? "用 Touch ID 登录" : "用这台 Mac 的密码登录", must: true, kind: "toggle", value: on, def: false,
-        desc: TID.busy ? (TID.busy === "on" ? "正在开启：请按一下指纹…" : "正在关闭…") : TID.err ? TID.err :
-          (finger ? "要登录时按一下指纹（系统的框），不用开浏览器、不用再点 GitHub。" : "这台 Mac 没有设置 Touch ID：要登录时输一下开机密码，不用开浏览器。") + "钥匙在这台 Mac 的安全芯片里，拿不出来；关掉或在别处移除后就不能再用它登录" });
+        desc: TID.busy ? (TID.busy === "on" ? "请按一下指纹…" : "正在关闭…") : TID.err ? TID.err : "" });
     }
-    if (TID.pk === true) out.push({ key: "passkeys", label: "通行密钥", desc: "在这个浏览器里用 Touch ID、Face ID 或手机登录，不用每次都经过 GitHub", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" });
-    else if (!tidNative()) out.push({ key: "passkeysNo", label: "通行密钥", desc: en ? "" : "这个浏览器、这台设备不能用通行密钥（要 Touch ID、Face ID、Windows Hello，或者能用手机的浏览器）", kind: "info", value: "不可用" });
+    if (TID.pk === true) out.push({ key: "passkeys", label: "通行密钥", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" });
+    else if (!tidNative()) out.push({ key: "passkeysNo", label: "通行密钥", kind: "info", value: "不可用" });
     var me0 = TID.info && TID.info.id, others = (TID.keys || []).filter(function (k) { return k.id !== me0; });
     others.forEach(function (k) {
       var last = k.last_used ? new Date(k.last_used).toLocaleDateString(en ? "en-US" : "zh-CN", { month: "short", day: "numeric" }) : "";
-      out.push({ key: "dk:" + k.id, label: k.name || "Mac", desc: "用 Touch ID 登录" + (last ? " · 上次使用 " + last : " · 还没用过"), must: true, kind: "button", text: "移除", act: "dkrm:" + k.id });
+      out.push({ key: "dk:" + k.id, label: k.name || "Mac", desc: last ? "上次使用 " + last : "还没用过", must: true, kind: "button", text: "移除", act: "dkrm:" + k.id });
     });
     return out;
   }

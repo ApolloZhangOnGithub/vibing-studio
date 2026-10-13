@@ -205,7 +205,7 @@
       tab === "cc" ? ccHtml(cur) : tab === "pi" ? piHtml(cur) : cxHtml(cur);
     var html = '<div class="eco"><div class="eco-head"><h1>' + esc(t("Agent 扩展", "Agent Extensions")) + '</h1><div class="eco-tabs">' + tabs + '</div><span class="eco-fill"></span>' +
       (state.err ? '<span class="eco-err">' + esc(state.err) + "</span>" : "") + '<button type="button" class="eco-ib" data-act="reload" title="' + esc(t("重新读取", "Reload")) + '">' + IC.reload + "</button></div>" +
-      '<p class="eco-intro">' + esc(t("这台电脑上各个 agent 装了什么。能开关的在这里开关；别的点右边的按钮在编辑器里改它自己的文件。", "What each agent has installed on this computer. Toggle what can be toggled here; open the rest in the editor to change its own file.")) + "</p>" + body + "</div>";
+      body + "</div>";
     if (V.host.dataset.h !== html) { V.host.dataset.h = html; V.host.innerHTML = html; }
   }
   function checkMcp() {
