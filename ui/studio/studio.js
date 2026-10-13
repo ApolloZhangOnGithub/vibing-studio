@@ -1423,9 +1423,12 @@
       .then(function (r) { remoteBusy = null; remoteDl = ""; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); return r; });
     return remoteBusy;
   }
-  // ---- 旧版本不堆着（用户 2026-10-13：「打开方式」里一长串 Vibing Studio）：每一份 .app 都会被系统记成一个能打开文件的 App——
-  //   previous/ 里只留最近换下来的一份（回退用，从系统的 App 列表里拿掉）；更早的、被换下的「待更新」（staged-）、签名不能用的（rejected-）挪进废纸篓；
-  //   「待更新」里放好的那份也从 App 列表里拿掉（换上时才在「应用程序」里登记）；下载的安装包留最近 3 个，更早的挪进废纸篓。只动这两个文件夹 ----
+  // ---- 旧版本不留成一份份 .app（用户 2026-10-13：「打开方式」里一长串；2026-10-14：iMac 上点程序坞一直打开的是 10 月 9 日那份旧的，权限开着也一直要）----
+  //   换版本改成原地换（「应用程序」里那一份的文件夹不动，里面换成新的）；旧版打成 zip 放在 previous/rollback.noindex（回退用，不是 App）。
+  //   这里收拾以前留下的：previous/ 里的一份份 .app 打成 zip、.app 挪进废纸篓；程序坞上指着它们的图标改指「应用程序」里那一份；
+  //   被换下的「待更新」（staged-）、签名不能用的（rejected-）挪进废纸篓；下载的安装包留最近 3 个。同原生的 AppUpdate.swift（INSTALL_SH、TIDY_SH 两边一样）
+  var INSTALL_SH = ["LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "mkdir -p \"$R\"", "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)", "[ -d \"$APP\" ] && /usr/bin/ditto -c -k --keepParent \"$APP\" \"$R/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).zip\"", "if [ -d \"$APP\" ]; then /usr/bin/rsync -a --delete \"$NEW/\" \"$APP/\"; else /usr/bin/ditto \"$NEW\" \"$APP\"; fi", "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then Z=$(ls -1t \"$R\"/*.zip 2>/dev/null | head -1); if [ -n \"$Z\" ]; then mv \"$APP\" \"$T/Vibing Studio broken $(date +%H%M%S).app\"; /usr/bin/ditto -x -k \"$Z\" \"$(dirname \"$APP\")\"; fi; fi", "\"$LSR\" -u \"$NEW\" >/dev/null 2>&1; [ -d \"$NEW\" ] && mv \"$NEW\" \"$T/Vibing Studio update $(date +%Y%m%d-%H%M%S).app\"", "\"$LSR\" -f \"$APP\" >/dev/null 2>&1"];
+  var TIDY_SH = ["LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "for d in \"$P\" \"$P/rollback.noindex\"; do [ -d \"$d\" ] || continue; ls -1 \"$d\" | grep -E '\\.app$' | while IFS= read -r f; do a=\"$d/$f\"; \"$LSR\" -u \"$a\" >/dev/null 2>&1; mkdir -p \"$P/rollback.noindex\"; [ -e \"$P/rollback.noindex/${f%.app}.zip\" ] || /usr/bin/ditto -c -k --keepParent \"$a\" \"$P/rollback.noindex/${f%.app}.zip\"; mv \"$a\" \"$T/${f%.app} $(date +%H%M%S)-$$.app\"; done; done", "DB=\"$P/../dock-backup\"; mkdir -p \"$DB\"; F=\"$DB/dock-$(date +%Y%m%d-%H%M%S).plist\"; W=\"${F%.plist}-fixed.plist\"", "if /usr/bin/defaults export com.apple.dock \"$F\" 2>/dev/null && cp \"$F\" \"$W\"; then", "  PB=/usr/libexec/PlistBuddy; i=0; ok=0; ch=0", "  while $PB -c \"Print :persistent-apps:$i\" \"$W\" >/dev/null 2>&1; do u=$($PB -c \"Print :persistent-apps:$i:tile-data:file-data:_CFURLString\" \"$W\" 2>/dev/null); case \"$u\" in *'/Applications/Vibing%20Studio.app'*) ok=1;; esac; i=$((i+1)); done", "  i=0; while $PB -c \"Print :persistent-apps:$i\" \"$W\" >/dev/null 2>&1; do u=$($PB -c \"Print :persistent-apps:$i:tile-data:file-data:_CFURLString\" \"$W\" 2>/dev/null)", "    case \"$u\" in *'Application%20Support/Vibing%20Studio/'*|*'/.Trash/Vibing%20Studio'*)", "      if [ $ok = 1 ]; then $PB -c \"Delete :persistent-apps:$i\" \"$W\"; ch=1; continue; fi", "      $PB -c \"Set :persistent-apps:$i:tile-data:file-data:_CFURLString file:///Applications/Vibing%20Studio.app/\" \"$W\"; $PB -c \"Delete :persistent-apps:$i:tile-data:book\" \"$W\" 2>/dev/null; ok=1; ch=1;;", "    esac; i=$((i+1)); done", "  if [ $ch = 1 ]; then /usr/bin/defaults import com.apple.dock \"$W\" && /usr/bin/killall Dock; fi", "fi"];
   function tidyAppCopies() {
     var dir = UPD_DIR();
     if (!dir || !SLOC() || !LOC().exec) return Promise.resolve();
@@ -1435,18 +1438,37 @@
       "U=" + qq(dir) + "; P=" + qq(dir.replace(/\/update$/, "/previous")) + "; T=\"$HOME/.Trash\"",
       "trash() { [ -e \"$1\" ] || return 0; \"$LSR\" -u \"$1\" >/dev/null 2>&1; b=$(basename \"$1\"); d=\"$T/$b\"; [ -e \"$d\" ] && d=\"$T/${b%.*} $(date +%H%M%S)-$$.${b##*.}\"; mv \"$1\" \"$d\"; }",
       "[ -d \"$U/Vibing Studio.app\" ] && \"$LSR\" -u \"$U/Vibing Studio.app\" >/dev/null 2>&1",
-      "if [ -d \"$P\" ]; then",
-      "  ls -1 \"$P\" | grep -E '^(staged|rejected)-.*\\.app$' | while IFS= read -r f; do trash \"$P/$f\"; done",
-      // 「Vibing Studio <版本> <日期-时间>.app」：按名字最后的时间排，最新的一份挪进 rollback.noindex（聚焦不收录，不会又被登记成 App），更早的挪进废纸篓
-      "  R=\"$P/rollback.noindex\"; mkdir -p \"$R\"",
-      "  for d in \"$P\" \"$R\"; do ls -1 \"$d\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | while IFS= read -r f; do printf '%s\\t%s\\n' \"${f##* }\" \"$d/$f\"; done; done | sort -r | cut -f2- | {",
-      "    n=0; while IFS= read -r a; do n=$((n+1)); if [ $n -gt 1 ]; then trash \"$a\"; elif [ \"${a%/*}\" != \"$R\" ]; then \"$LSR\" -u \"$a\" >/dev/null 2>&1; mv \"$a\" \"$R/\" && \"$LSR\" -u \"$R/${a##*/}\" >/dev/null 2>&1; else \"$LSR\" -u \"$a\" >/dev/null 2>&1; fi; done; }",
-      "fi",
+      "if [ -d \"$P\" ]; then ls -1 \"$P\" | grep -E '^(staged|rejected)-.*\\.app$' | while IFS= read -r f; do trash \"$P/$f\"; done; fi",
+    ].concat(TIDY_SH, [
       "ls -1 \"$U\" 2>/dev/null | grep -E '^download-[0-9]+\\.zip$' | sort -t- -k2 -n -r | tail -n +4 | while IFS= read -r f; do trash \"$U/$f\"; done",
-      "echo OK"].join("\n");
+      "echo OK"]).join("\n");
     return LOC().exec({ cmd: sh }).catch(function () {});
   }
   setTimeout(function () { tidyAppCopies(); }, 25000);
+  // 打开的是备份里、废纸篓里的那一份（老版本的 App 不会自己改去打开对的那份）：收拾好、退出这份、打开「应用程序」里那一份
+  function relocateIfStray() {
+    var dir = UPD_DIR(), N = window.nadosNative;
+    if (!dir || !SLOC() || !LOC().exec || !N || !N.call) return;
+    var check = appInfo && appInfo.bundle ? Promise.resolve({ out: appInfo.bundle }) : LOC().exec({ cmd: "ps -o comm= -p $PPID" }).catch(function () { return null; });
+    Promise.resolve(check).then(function (r) {
+      var path = String((r && (r.out || r.stdout)) || "").trim().replace(/\/Contents\/MacOS\/[^/]*$/, "");
+      if (!/\.app$/.test(path) || !/\/Library\/Application Support\/Vibing Studio\/|\/\.Trash\//.test(path)) return;
+      var qq = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
+      var sh = ["trap '' TERM HUP INT",
+        "APP=\"/Applications/Vibing Studio.app\"; P=" + qq(dir.replace(/\/update$/, "/previous")) + "; T=\"$HOME/.Trash\"",
+        "[ -d \"$APP\" ] || exit 0",
+        "i=0; while pgrep -f " + qq(path + "/Contents/MacOS/") + " >/dev/null && [ $i -lt 600 ]; do sleep 0.2; i=$((i+1)); done",
+        "pgrep -f " + qq(path + "/Contents/MacOS/") + " >/dev/null && exit 0"].concat(TIDY_SH, ["open \"$APP\""]).join("\n");
+      if (window.STUDIO && STUDIO.toast) STUDIO.toast("正在换成「应用程序」里的 Vibing Studio…");
+      LOC().write(dir + "/relocate.sh", new TextEncoder().encode(sh + "\n")).then(function () {
+        return LOC().exec({ cmd: "/usr/bin/perl -e 'use POSIX qw(setsid); exit 0 if fork; setsid(); open STDIN, \"</dev/null\"; open STDOUT, \">/dev/null\"; open STDERR, \">&STDOUT\"; exec \"/bin/sh\", $ARGV[0]' " + qq(dir + "/relocate.sh") });
+      }).then(function () {
+        try { if (window.TSU_FLUSH) TSU_FLUSH(); } catch (e) { /* 记不了就算了 */ }
+        return N.call("app.quit", { force: true }).catch(function () { return LOC().exec({ cmd: "osascript -e 'tell application id \"beer.paimon.terminal\" to quit'" }); });
+      }).catch(function () {});
+    });
+  }
+  setTimeout(function () { nativeInfo().then(relocateIfStray, function () {}); }, 6000);
   var remoteDl = ""; // 正在下载的那一版（⚙ 菜单里写「正在下载更新…」）
   setTimeout(function () { checkRemoteApp(); }, 5000);
   setInterval(function () { checkRemoteApp(); }, 60 * 60000);
@@ -1531,14 +1553,8 @@
       "[ -d \"$NEW\" ] || exit 0",
       // 换之前最后查一遍新版的签名：证书被吊销的，macOS 一打开就当恶意软件扔进废纸篓（原来的 App 已经挪走了，就一个都没有了）——不换，照旧打开原来的
       "if ! /usr/bin/codesign --verify --strict \"$NEW\" >/dev/null 2>&1 || /usr/sbin/spctl -a -t exec -vv \"$NEW\" 2>&1 | grep -q REVOKED; then mkdir -p \"$PREV\" && mv \"$NEW\" \"$PREV/rejected-$(date +%Y%m%d-%H%M%S).app\"; open \"$APP\"; exit 0; fi",
-      "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)",
-      "OLD=\"$PREV/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).app\"",
-      "mkdir -p \"$PREV\" && mv \"$APP\" \"$OLD\" && mv \"$NEW\" \"$APP\"",
-      "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u \"$OLD\" >/dev/null 2>&1", // 换下来的那份不留在「打开方式」里
-      "open \"$APP\"",
-      // 打开以后它要是被系统拿走了（不在原处了）：把原来那一份放回去、打开它（不留下一个没有 App 的「应用程序」）
-      "i=0; while [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done",
-      "if [ ! -d \"$APP\" ] && [ -d \"$OLD\" ]; then mv \"$OLD\" \"$APP\" && open \"$APP\"; fi"].join("\n");
+      // 原地换（同原生 AppUpdate.swift）：「应用程序」里那一份的文件夹不动，里面换成新的；旧版打成 zip 留着回退；以前留下的旧版 .app 收拾掉、程序坞改指这一份
+      "P=" + q(dir.replace(/\/update$/, "/previous")) + "; R=\"$P/rollback.noindex\"; T=\"$HOME/.Trash\""].concat(INSTALL_SH, TIDY_SH, ["open \"$APP\""]).join("\n");
     // 脚本单独起一个会话（setsid）：App 退了它还在
     LOC().write(dir + "/swap.sh", new TextEncoder().encode(sh + "\n")).then(function () {
       return LOC().exec({ cmd: "/usr/bin/perl -e 'use POSIX qw(setsid); exit 0 if fork; setsid(); open STDIN, \"</dev/null\"; open STDOUT, \">/dev/null\"; open STDERR, \">&STDOUT\"; exec \"/bin/sh\", $ARGV[0]' " + q(dir + "/swap.sh") });
