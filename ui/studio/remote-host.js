@@ -127,7 +127,8 @@
     ws.onclose = function (ev) { ws = null; up = false; clients = {}; tails = {}; fire(); if (ev && ev.code === 4000) return; later(); }; // 盯着的记录：那边重连后会重新要
     ws.onerror = function () { /* onclose 接着来 */ };
   }
-  function later() { if (!onNow()) return; retry = Math.min(retry + 1, 6); retryT = setTimeout(connect, 1000 * Math.pow(2, retry - 1)); }
+  // 断了很快重连（最多等 4 秒）：别的设备正连着它（窗口开着），断一会儿它们那边就是「连不上」
+  function later() { if (!onNow()) return; retry = Math.min(retry + 1, 3); retryT = setTimeout(connect, 1000 * Math.pow(2, retry - 1)); }
   function set(on) {
     localStorage.setItem(KEY_ON, on ? "1" : "0");
     if (on) connect(); else { try { if (ws) ws.close(1000, "off"); } catch (e) { /* 已经断了 */ } ws = null; up = false; clients = {}; }

@@ -22,6 +22,8 @@
     fit: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5H2.5V6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
     one: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="3" width="12.4" height="10" rx="1.6"/><path d="M4.6 6.3l1.1-.8v5M8 7.1v.01M8 9.6v.01M10.3 6.3l1.1-.8v5"/></svg>',
     opts: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/></svg>',
+    pop: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="4.4" width="9.6" height="9.6" rx="1.5"/><path d="M8.8 1.8h5.4v5.4M14.2 1.8L8.2 7.8"/></svg>',
+    full: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 2.2h4.2v4.2M13.8 2.2L9.2 6.8M6.4 13.8H2.2V9.6M2.2 13.8l4.6-4.6"/></svg>',
   };
 
   // ---- 存着的连接（原生记在 UserDefaults；密码在钥匙串里，页面拿不到）----
@@ -64,6 +66,22 @@
     paint(V);
     if (d.state === "connected" && V.shown() && document.activeElement && document.activeElement.closest && V.box && !document.activeElement.closest("input, textarea")) N.call("rdp.focus", { id: V.id }).catch(function () {});
   });
+  // 每秒的统计（助手 → 原生 rdp.stats）：分辨率、帧率、码率、编码、往返时间——状态栏右边一行，「连接选项」最上面一行
+  if (N && N.on) N.on("rdp.stats", function (d) {
+    var V = d && sessions[d.id];
+    if (!V) return;
+    V.stats = d;
+    if (S.statusSoon && V.P && V.P.win) S.statusSoon(V.P.win);
+  });
+  var mbps = function (b, ms) { var v = b * 8 / Math.max(1, ms) / 1000; return (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2)) + " Mbps"; };
+  function statsLine(V) {
+    var d = V && V.stats;
+    if (!d || !V.st || V.st.state !== "connected") return "";
+    var bits = [d.w && d.h ? d.w + "×" + d.h : "", Math.round(d.frames * 1000 / Math.max(1, d.ms)) + " fps", mbps(d.rx, d.ms)];
+    if (d.codec) bits.push(d.codec);
+    if (d.rtt) bits.push(d.rtt + " ms");
+    return bits.filter(Boolean).join(" · ");
+  }
   // 每 30 秒存一张缩略图（首页的卡片上用）：只在看得见、连着的时候
   setInterval(function () {
     Object.keys(sessions).forEach(function (id) {
@@ -96,6 +114,7 @@
       esc(V.notFound === "offline" ? t("它现在不在线", "It’s offline") : V.notFound === "nordp" ? t("它的远程桌面没有打开", "Its remote desktop is off") : t("连不上它的远程桌面", "Can’t reach its remote desktop")) + "</div>" +
       (V.tunErr ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(V.tunErr) + "</pre></details>" : "") +
       '<div class="rd-cbtns"><button type="button" data-act="refind" class="rd-primary">' + esc(t("重试", "Try Again")) + "</button></div>";
+    if (st.popped) return head + '<div class="rd-msg">' + esc(t("在单独的窗口中", "In a separate window")) + '</div><div class="rd-cbtns">' + btn("front", t("显示窗口", "Show Window")) + btn("dock", t("放回这里", "Move Back Here"), true) + "</div>";
     switch (st.state) {
       case "needpass":
       case "pass":
@@ -133,7 +152,7 @@
   }
   function paint(V) {
     if (!V.host || !V.card) return;
-    var st = (V.st && V.st.state) || "", up = st === "connected" && !V.editing;
+    var st = (V.st && V.st.state) || "", up = st === "connected" && !V.editing && !(V.st && V.st.popped);
     V.box.classList.toggle("on", up);
     var html = V.editing ? formHtml(hostOf(V.hostId), V) : up ? "" : cardHtml(V);
     if (V.card.dataset.h !== html) {
@@ -579,7 +598,7 @@
       V.card = host.querySelector(".rd-card");
       V.frameCmd = "rdp.frame";
       V.closeCmd = "rdp.close";
-      V.want = function () { return !!(V.st && V.st.state === "connected") && !V.editing; };
+      V.want = function () { return !!(V.st && V.st.state === "connected") && !V.editing && !V.st.popped; };
       V.gone = function () { return P.closed; };
       if (window.TSU_WEB && TSU_WEB.track) TSU_WEB.track(V);
       host.addEventListener("submit", function (e) {
@@ -602,6 +621,8 @@
         var a = b.dataset.act;
         if (a === "cancel") { if (V.editing) { V.editing = false; V.fill = null; paint(V); return; } N.call("rdp.close", { id: V.id }).catch(function () {}); V.st = { state: "closed", by: "app" }; paint(V); return; }
         if (a === "again") return open(V, { again: true });
+        if (a === "front") return popOut(V, "window");
+        if (a === "dock") return popOut(V, "tab");
         if (a === "refind" && V.dev) return findDevice(V);
         if (a === "pass") { V.st = { state: "pass" }; paint(V); return; }
         if (a === "edit") { V.editing = true; paint(V); return; }
@@ -660,7 +681,9 @@
       var acts = [{ icon: IC.reload, title: t("重新连接", "Reconnect"), run: function () { open(V, { again: true }); } }];
       if (up) acts.push(
         { icon: IC.keys, title: t("发送按键", "Send Keys"), run: function () { keysMenu(V); } },
-        { icon: one ? IC.fit : IC.one, title: one ? t("适应窗口", "Fit to Window") : t("原始大小", "Actual Size"), run: function () { setOpt(V, { scale: one ? "fit" : "1:1" }); } });
+        { icon: one ? IC.fit : IC.one, title: one ? t("适应窗口", "Fit to Window") : t("原始大小", "Actual Size"), run: function () { setOpt(V, { scale: one ? "fit" : "1:1" }); } },
+        { icon: IC.pop, title: t("在单独的窗口中打开", "Open in Separate Window"), run: function () { popOut(V, "window"); } },
+        { icon: IC.full, title: t("全屏", "Full Screen"), run: function () { popOut(V, "fullscreen"); } });
       acts.push({ icon: IC.opts, title: t("连接选项", "Connection Options"), run: function () { optsMenu(V); } });
       return acts;
     },
@@ -682,25 +705,46 @@
       { label: t("锁屏（Super+L）", "Lock Screen (Super+L)"), run: send("Super+L") },
     ], at());
   }
+  // 改了马上用：⌘ 键、剪贴板、缩放、分辨率、帧率原生那边直接换；画质、声音要重新连一次（连接时定的）
   function setOpt(V, o) {
     var h = hostOf(V.hostId);
     if (!h) return;
-    N.call("rdp.saveHost", Object.assign({}, h, o)).then(loadHosts).then(function () { if (V.P && V.P.win) V.P.win.syncTitles(); if (window.TSU_TERM && TSU_TERM.front) { var tw = TSU_TERM.front(); if (tw && tw.ws && tw.ws.syncTitles) tw.ws.syncTitles(); } }).catch(function () {});
-    if (o.scale || o.cmd || o.clip !== undefined) N.call("rdp.opts", Object.assign({ id: V.id }, o)).catch(function () {});
+    N.call("rdp.saveHost", Object.assign({}, h, o)).then(loadHosts).then(function () {
+      if (V.P && V.P.win) V.P.win.syncTitles();
+      if (window.TSU_TERM && TSU_TERM.front) { var tw = TSU_TERM.front(); if (tw && tw.ws && tw.ws.syncTitles) tw.ws.syncTitles(); }
+      if (o.avc444 !== undefined || o.audio !== undefined) open(V, { again: true });
+    }).catch(function () {});
+    if (o.scale || o.cmd || o.clip !== undefined || o.res !== undefined || o.fps !== undefined || o.dynres !== undefined) N.call("rdp.opts", Object.assign({ id: V.id }, o)).catch(function () {});
   }
+  function popOut(V, mode) { N.call("rdp.window", { id: V.id, mode: mode }).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); } }).catch(function () {}); }
+  var RES = [["auto", "跟随窗口", "Match Window"], ["1280x720"], ["1920x1080"], ["2560x1440"], ["3840x2160"]];
+  var FPS = [[0, "不限", "No Limit"], [60], [30], [15]];
+  var resName = function (r) { return r === "auto" ? t("跟随窗口", "Match Window") : String(r).replace("x", " × "); };
   function optsMenu(V) {
-    var h = hostOf(V.hostId) || {}, cmd = h.cmd || "ctrl", up = V.st && V.st.state === "connected";
+    var h = hostOf(V.hostId) || {}, cmd = h.cmd || "ctrl", up = V.st && V.st.state === "connected", d = V.stats || {};
+    var res = h.res || "auto", fps = +h.fps || 0, sl = statsLine(V), canRes = !!(d.disp || (V.st && V.st.disp));
     S.menu([
-      { header: true, label: t("⌘ 键", "⌘ Key") },
-      { label: t("当 Ctrl（单按是 Super）", "As Ctrl (tap for Super)"), radio: true, checked: cmd === "ctrl", run: function () { setOpt(V, { cmd: "ctrl" }); } },
-      { label: t("当 Super", "As Super"), radio: true, checked: cmd === "super", run: function () { setOpt(V, { cmd: "super" }); } },
-      { sep: true },
+      sl ? { header: true, label: sl } : null,
+      sl ? { sep: true } : null,
+      { label: t("分辨率", "Resolution"), value: resName(res), items: (canRes ? [] : [{ header: true, label: t("由那台电脑的显示器决定", "Set by that computer’s display") }]).concat(RES.map(function (r) {
+        return { label: r[1] ? t(r[1], r[2]) : resName(r[0]), checked: res === r[0], disabled: !canRes && r[0] !== "auto", run: function () { setOpt(V, { res: r[0], dynres: r[0] === "auto" ? true : h.dynres }); } };
+      })) },
+      { label: t("帧率上限", "Frame Rate Limit"), value: fps ? fps + " fps" : t("不限", "No Limit"), items: FPS.map(function (f) { return { label: f[1] ? t(f[1], f[2]) : f[0] + " fps", checked: fps === f[0], run: function () { setOpt(V, { fps: f[0] }); } }; }) },
+      { label: t("画质", "Quality"), value: h.avc444 === false ? "AVC420" : "AVC444", items: [
+        { label: t("清晰（AVC444）", "Sharp (AVC444)"), checked: h.avc444 !== false, run: function () { if (h.avc444 === false) setOpt(V, { avc444: true }); } },
+        { label: t("省流量（AVC420）", "Light (AVC420)"), checked: h.avc444 === false, run: function () { if (h.avc444 !== false) setOpt(V, { avc444: false }); } }] },
+      { label: t("显示", "Display"), value: h.scale === "1:1" ? t("原始大小", "Actual Size") : t("适应窗口", "Fit to Window"), items: [
+        { label: t("适应窗口", "Fit to Window"), checked: h.scale !== "1:1", run: function () { setOpt(V, { scale: "fit" }); } },
+        { label: t("原始大小", "Actual Size"), checked: h.scale === "1:1", run: function () { setOpt(V, { scale: "1:1" }); } }] },
+      { label: t("⌘ 键", "⌘ Key"), value: cmd === "super" ? "Super" : "Ctrl", items: [
+        { label: t("当 Ctrl（单按是 Super）", "As Ctrl (tap for Super)"), checked: cmd === "ctrl", run: function () { setOpt(V, { cmd: "ctrl" }); } },
+        { label: t("当 Super", "As Super"), checked: cmd === "super", run: function () { setOpt(V, { cmd: "super" }); } }] },
       { label: t("同步剪贴板", "Share Clipboard"), checked: h.clip !== false, run: function () { setOpt(V, { clip: h.clip === false }); } },
-      { label: t("分辨率跟随窗口", "Match Window Size"), checked: h.dynres !== false, run: function () { setOpt(V, { dynres: h.dynres === false }); } },
+      { label: t("播放远程声音", "Play Remote Audio"), checked: !!h.audio, run: function () { setOpt(V, { audio: !h.audio }); } },
       { sep: true },
+      up ? { label: t("在单独的窗口中打开", "Open in Separate Window"), run: function () { popOut(V, "window"); } } : null,
+      up ? { label: t("全屏", "Full Screen"), run: function () { popOut(V, "fullscreen"); } } : null,
       up ? { label: t("刷新画面", "Refresh Picture"), run: function () { N.call("rdp.refresh", { id: V.id }).catch(function () {}); } } : null,
-      { label: t("编辑连接…", "Edit Connection…"), run: function () { V.editing = true; paint(V); } },
-      h.hasPass ? { label: t("忘记密码", "Forget Password"), run: function () { N.call("rdp.forget", { id: V.id }).then(loadHosts).catch(function () {}); } } : null,
       up ? { label: t("断开连接", "Disconnect"), run: function () { N.call("rdp.close", { id: V.id }).catch(function () {}); V.st = { state: "closed", by: "app" }; paint(V); } } : null,
     ].filter(Boolean), at());
   }
@@ -724,5 +768,8 @@
       N.call("rdp.list").then(function (l) { (l || []).forEach(function (s) { if (!sessions[s.id]) N.call("rdp.close", { id: s.id }).catch(function () {}); }); }).catch(function () {});
     }, 15000);
   });
-  window.TSU_RDP = { open: openHost, hosts: function () { return hosts.slice(); }, reload: loadHosts, connectDevice: connectDevice, openFile: openFile, native: function () { return native(); } };
+  // 状态栏：这个标签页是连着的远程桌面时，右边一行统计；点它出「连接选项」
+  var progV = function (prog) { var V0 = prog && sessions["rdp:" + prog.arg]; return V0 && V0.P && V0.P.program === prog ? V0 : V0 || null; };
+  window.TSU_RDP = { open: openHost, hosts: function () { return hosts.slice(); }, reload: loadHosts, connectDevice: connectDevice, openFile: openFile, native: function () { return native(); },
+    statusLine: function (prog) { return statsLine(progV(prog)); }, options: function (prog) { var V0 = progV(prog); if (V0) optsMenu(V0); } };
 })();

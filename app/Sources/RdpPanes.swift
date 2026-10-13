@@ -937,7 +937,7 @@ final class RdpSession {
       if fullscreen && !w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
       return
     }
-    let scr = panes?.controller?.window?.screen ?? NSScreen.main
+    let scr = panes?.controller?.window.screen ?? NSScreen.main
     let vis = scr?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     let aspect: CGFloat = view.fbW > 0 && view.fbH > 0 ? CGFloat(view.fbH) / CGFloat(view.fbW) : 9.0 / 16.0
     var w = min(vis.width * 0.82, 1680), h = w * aspect
@@ -982,7 +982,7 @@ final class RdpSession {
     panes?.controller?.webView.addSubview(view)
     win.orderOut(nil)
     win.close()
-    panes?.controller?.window?.makeKeyAndOrderFront(nil)
+    panes?.controller?.window.makeKeyAndOrderFront(nil)
     if emit { panes?.emit(snapshotState()) }
   }
 }
