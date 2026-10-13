@@ -1414,11 +1414,34 @@
               return setAside(dir, m.build).then(function () { throw new Error("新版本（" + (m.version || m.build) + "）" + why + "，没有放进待更新"); });
             });
         });
-      }).then(function () { return checkAppUpdate(true); }).then(function () { return fin({ state: "staged", ver: m.version || String(m.build) }); });
+      }).then(function () { return checkAppUpdate(true); }).then(tidyAppCopies).then(function () { return fin({ state: "staged", ver: m.version || String(m.build) }); });
     }).catch(function (e) { console.warn("App update check:", e); return fin({ state: "error", error: String((e && e.message) || e) }); })
       .then(function (r) { remoteBusy = null; remoteDl = ""; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); return r; });
     return remoteBusy;
   }
+  // ---- 旧版本不堆着（用户 2026-10-13：「打开方式」里一长串 Vibing Studio）：每一份 .app 都会被系统记成一个能打开文件的 App——
+  //   previous/ 里只留最近换下来的一份（回退用，从系统的 App 列表里拿掉）；更早的、被换下的「待更新」（staged-）、签名不能用的（rejected-）挪进废纸篓；
+  //   「待更新」里放好的那份也从 App 列表里拿掉（换上时才在「应用程序」里登记）；下载的安装包留最近 3 个，更早的挪进废纸篓。只动这两个文件夹 ----
+  function tidyAppCopies() {
+    var dir = UPD_DIR();
+    if (!dir || !SLOC() || !LOC().exec) return Promise.resolve();
+    var qq = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
+    var sh = [
+      "LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+      "U=" + qq(dir) + "; P=" + qq(dir.replace(/\/update$/, "/previous")) + "; T=\"$HOME/.Trash\"",
+      "trash() { [ -e \"$1\" ] || return 0; \"$LSR\" -u \"$1\" >/dev/null 2>&1; b=$(basename \"$1\"); d=\"$T/$b\"; [ -e \"$d\" ] && d=\"$T/${b%.*} $(date +%H%M%S)-$$.${b##*.}\"; mv \"$1\" \"$d\"; }",
+      "[ -d \"$U/Vibing Studio.app\" ] && \"$LSR\" -u \"$U/Vibing Studio.app\" >/dev/null 2>&1",
+      "if [ -d \"$P\" ]; then",
+      "  ls -1 \"$P\" | grep -E '^(staged|rejected)-.*\\.app$' | while IFS= read -r f; do trash \"$P/$f\"; done",
+      // 「Vibing Studio <版本> <日期-时间>.app」：按名字最后的时间排，最新的留着
+      "  ls -1 \"$P\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | awk '{ print $NF \"\\t\" $0 }' | sort -r | cut -f2- | tail -n +2 | while IFS= read -r f; do trash \"$P/$f\"; done",
+      "  ls -1 \"$P\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | while IFS= read -r f; do \"$LSR\" -u \"$P/$f\" >/dev/null 2>&1; done",
+      "fi",
+      "ls -1 \"$U\" 2>/dev/null | grep -E '^download-[0-9]+\\.zip$' | sort -t- -k2 -n -r | tail -n +4 | while IFS= read -r f; do trash \"$U/$f\"; done",
+      "echo OK"].join("\n");
+    return LOC().exec({ cmd: sh }).catch(function () {});
+  }
+  setTimeout(function () { tidyAppCopies(); }, 25000);
   var remoteDl = ""; // 正在下载的那一版（⚙ 菜单里写「正在下载更新…」）
   setTimeout(function () { checkRemoteApp(); }, 5000);
   setInterval(function () { checkRemoteApp(); }, 60 * 60000);
@@ -1506,6 +1529,7 @@
       "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)",
       "OLD=\"$PREV/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).app\"",
       "mkdir -p \"$PREV\" && mv \"$APP\" \"$OLD\" && mv \"$NEW\" \"$APP\"",
+      "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u \"$OLD\" >/dev/null 2>&1", // 换下来的那份不留在「打开方式」里
       "open \"$APP\"",
       // 打开以后它要是被系统拿走了（不在原处了）：把原来那一份放回去、打开它（不留下一个没有 App 的「应用程序」）
       "i=0; while [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done",

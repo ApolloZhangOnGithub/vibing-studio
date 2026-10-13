@@ -1,7 +1,7 @@
 // AppUpdate.swift —— 退出时换上「待更新」里放好的新版（~/Library/Application Support/Vibing Studio/update/：页面下载的、tools/stage-app.sh 放的）。
 //   同 Chrome、VS Code：只改了带的小工具、界面的新版不用专门重启——哪次退出就哪次换上，下次打开就是新的；
 //   页面点了「重启以更新」（app.restartToUpdate）的换好再打开。换的是一个独立的小脚本：等这个进程退出、查过新版的签名
-//   （证书被吊销的 macOS 会当恶意软件扔掉）再换；旧版挪进 previous/（不删）。页面的老办法（swap.sh）已经在等的，交给它
+//   （证书被吊销的 macOS 会当恶意软件扔掉）再换；旧版挪进 previous/（不删，从系统的 App 列表里拿掉；页面只留最近的一份）。页面的老办法（swap.sh）已经在等的，交给它
 import AppKit
 
 @MainActor
@@ -43,6 +43,9 @@ enum AppUpdate {
       "OLD=\"$PREV/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).app\"",
       "mkdir -p \"$PREV\" && mv \"$APP\" \"$OLD\" || { [ $RELAUNCH = 1 ] && \(open); exit 0; }",
       "mv \"$NEW\" \"$APP\" || { mv \"$OLD\" \"$APP\"; [ $RELAUNCH = 1 ] && \(open); exit 0; }",
+      // 换下来的那份不留在系统的 App 列表里（不然「打开方式」里一长串旧版本）；新的这份照原处登记
+      "LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+      "\"$LSR\" -u \"$OLD\" >/dev/null 2>&1; \"$LSR\" -f \"$APP\" >/dev/null 2>&1",
       "[ $RELAUNCH = 1 ] || exit 0",
       open,
       // 打开以后它要是被系统拿走了（不在原处了）：把原来那一份放回去、打开它（不留下一个没有 App 的「应用程序」）

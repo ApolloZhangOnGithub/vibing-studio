@@ -11,7 +11,7 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-13", ver: "0.2.1.455", items: {
+    { date: "2026-10-13", ver: "0.2.1.456", items: {
       new: [
         ["活动监视器：「App」里一格，开成一个标签页，每个会话一行（在做什么、用时、CPU、内存、进程、上下文）。以前在底部面板里、或者浮在上面的那个窗口不再有了；整机的数在状态栏最右边。", "Activity Monitor: a tile in Apps that opens as a tab, one row per session (what it’s doing, time, CPU, memory, processes, context). It no longer lives in the bottom panel or a floating window; whole-machine numbers are at the right end of the status bar."],
         ["状态栏最右边显示整机的 CPU、GPU、内存和磁盘剩余（两秒一更新；右键状态栏选显示哪几个，点一下打开活动监视器）。", "The right end of the status bar shows CPU, GPU, memory and free disk space for the whole machine (updated every two seconds; right-click the status bar to choose which, click one to open Activity Monitor)."],
@@ -39,6 +39,8 @@
         ["「连接到另一台设备」不再单列在 ⚙ 菜单里：从「设备」开始（点一台在线的设备），命令面板里也有。", "Connect to Another Device is no longer a separate item in the ⚙ menu: start from Devices (click an online device), or use the Command Palette."],
       ],
       fixed: [
+        ["每次 App 更新后都要重新允许访问文件夹：Apple 的开发证书被吊销以后，新版都是临时签名，macOS 每一版都当成一个新 App。现在用一张固定的签名证书签（只在这台 Mac 上、不会被吊销），换上这一版（302）时会最后问一次，之后更新不再问。", "After every app update you had to allow folder access again: once Apple revoked the development certificate, new builds were ad-hoc signed and macOS treated each one as a new app. Builds are now signed with one fixed certificate that can’t be revoked; installing this build (302) asks one last time, and later updates won’t."],
+        ["「打开方式」里一长串旧版本的 Vibing Studio：换下来的旧版、下好待换的新版不再登记成能打开文件的 App；旧版只留最近一份（回退用），更早的和多余的安装包挪进废纸篓。", "Open With listed a long run of old Vibing Studio copies. Replaced and downloaded-but-not-installed copies are no longer registered as apps; only the most recent previous version is kept (for rollback), and older copies and extra installers go to the Trash."],
         ["「设备」里点一下电脑就直接进了远程桌面：现在点一下只是选中，连按两下才连；选中的那台是淡淡的一块底，「这台设备」的图标不再是蓝色。", "Clicking a computer in Devices jumped straight into Remote Desktop. A click now only selects it and a double-click connects; the selection is a subtle background, and This Device’s icon is no longer blue."],
         ["连 Linux 的远程桌面要你填用户名、密码：「设备」里的这台照已经连上过的连接连（用户名、钥匙串里的密码），不再出表；实在要密码时只问密码。输错一次密码后「连接」按钮变灰、点不了的问题也修好了。", "Connecting to a Linux desktop asked for a user name and password. The computer in Devices now reuses a connection that already works (its user name and the password in your Keychain), so there’s no form; when a password really is needed, only the password is asked. The Connect button no longer stays greyed out after a wrong password."],
         ["去掉了远程桌面、设置、Agent 扩展、摘录本、活动监视器里的大段说明文字。", "Removed the long explanatory text from Remote Desktop, Settings, Agent Extensions, Clippings and Activity Monitor."],
