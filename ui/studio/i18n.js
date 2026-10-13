@@ -570,7 +570,7 @@
     "允许登录同一个 GitHub 账号的其他 Mac、iPhone、iPad 和网页端连接这台 Mac；终端、文件和会话都在这台 Mac 上运行": "Let your other Macs, iPhone, iPad and the web — signed in to the same GitHub account — connect to this Mac; terminals, files and sessions run on this Mac",
     "每台设备用自己的密钥识别，只知道设备号无法冒充。「直接允许」：登录同一个 GitHub 账号的设备不再确认": "Each device is identified by its own key, so knowing a device ID isn’t enough to impersonate it. “Allow Without Asking” lets devices on the same GitHub account connect without confirmation",
     "首次连接时确认": "Ask the First Time", "每次连接都确认": "Ask Every Time", "首次连接时确认并输入验证码": "Ask and Enter a Code the First Time", "直接允许": "Allow Without Asking",
-    "连接到另一台 Mac…": "Connect to Another Mac…", "没能打开这台 Mac。": "Couldn’t open this Mac.",
+    "连接到另一台 Mac…": "Connect to Another Mac…", "连接到另一台设备…": "Connect to Another Device…", "选择要连接的设备": "Choose a device to connect to", "没有可连接的设备。": "No devices to connect to.", "远程设备": "Remote Device", "没能打开这台 Mac。": "Couldn’t open this Mac.",
     "在另一台 Mac 上的 Vibing Studio 里打开 设置 › 通用 › 「其他设备使用这台 Mac」。": "On the other Mac, open Vibing Studio and turn on Settings › General › Let Other Devices Use This Mac.",
     "这个版本的 App 还不能连接另一台 Mac：在 ⚙ 菜单里检查更新，重启以更新后再试。": "This version of the app can’t connect to another Mac yet. Check for updates in the ⚙ menu, restart to update, then try again.",
   });

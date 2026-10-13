@@ -168,9 +168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     nextWin += 1
     let base = web?.webView.url ?? Config.startURL
     var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) ?? URLComponents(url: Config.startURL, resolvingAgainstBaseURL: false)!
-    var q = (comps.queryItems ?? []).filter { !["win", "open", "fresh", "mac"].contains($0.name) }
+    var q = (comps.queryItems ?? []).filter { !["win", "open", "fresh", "mac", "mname"].contains($0.name) }
     q.append(URLQueryItem(name: "win", value: String(id)))
     if let mac { q.append(URLQueryItem(name: "mac", value: mac)) }
+    if let mac, let nm = UserDefaults.standard.string(forKey: "remote.name." + mac), !nm.isEmpty { q.append(URLQueryItem(name: "mname", value: nm)) } // 那台的名字（「设备」里看到的）：标题栏左边那枚标记直接写它，不先写一个「Mac」
     if let open, !open.isEmpty { q.append(URLQueryItem(name: "open", value: open)) } else if mac == nil { q.append(URLQueryItem(name: "fresh", value: "1")) }
     comps.queryItems = q
     let c = WebController(url: comps.url ?? Config.startURL, winId: id, remoteMac: mac)

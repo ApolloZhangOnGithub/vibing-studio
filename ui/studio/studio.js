@@ -4947,7 +4947,7 @@
       mi("显示语言…", "", function () { pickLang(tw); }, { icon: MI.web }),
       // 网页版 / iPad：借你的 Mac 用（remote.js）；连着的时候能断开。App 里：开一个窗口连另一台 Mac（连着另一台的窗口里也能再开一台）
       window.TSU_REMOTE && !TSU_REMOTE.hybrid ? mi(TSU_REMOTE.mac() ? "换一台 Mac / 断开…" : "连接到我的 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) :
-        canOpenMac() ? mi("连接到另一台 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) : null,
+        canOpenMac() ? mi("连接到另一台设备…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) : null,
       // iPad App 里（Classic 界面）：换成 iPad 原生的界面（App 自己画的列表、输入框、顶栏）
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
@@ -4970,10 +4970,10 @@
     var R = window.TSU_REMOTE, cur = R ? R.mac() : "", self = window.TSU_REMOTE_HOST && TSU_REMOTE_HOST.device ? TSU_REMOTE_HOST.device() : "";
     var pick = R ? R.pick() : fetch("/api/relay/hosts", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; });
     pick.then(function (hosts) {
-      var items = (hosts || []).filter(function (h) { return h && h.device && h.device !== self; }).map(function (h) { return { id: h.device, title: h.name || "Mac", desc: h.device === cur ? "正在用" : "在线", on: h.device === cur }; });
+      var items = (hosts || []).filter(function (h) { return h && h.device && h.device !== self; }).map(function (h) { return { id: h.device, title: h.name || h.device, desc: h.device === cur ? "正在用" : "在线", on: h.device === cur }; });
       if (cur && R && !R.hybrid) items.push({ id: "", title: "断开连接（仅使用网页版）", desc: "" });
-      if (!items.length) return TSU_DESK && TSU_DESK.alert ? TSU_DESK.alert({ title: "没有可连接的 Mac。", message: "在另一台 Mac 上的 Vibing Studio 里打开 设置 › 通用 › 「其他设备使用这台 Mac」。", icon: "none", buttons: [{ label: "好", role: "default" }] }) : null;
-      quickPick(tw, { placeholder: "选择要连接的 Mac", items: items, pick: function (it) { openMac(it.id, it.title); } });
+      if (!items.length) return TSU_DESK && TSU_DESK.alert ? TSU_DESK.alert({ title: "没有可连接的设备。", message: "在另一台 Mac 上的 Vibing Studio 里打开 设置 › 通用 › 「其他设备使用这台 Mac」。", icon: "none", buttons: [{ label: "好", role: "default" }] }) : null;
+      quickPick(tw, { placeholder: "选择要连接的设备", items: items, pick: function (it) { openMac(it.id, it.title); } });
     });
   }
   // ⚙ 菜单最后那一项（只有一项）：App 有新版、下好了（重启时界面也一起换上）→「重启以更新（v…）」；正在下载 →「正在下载更新…」；只有界面的新版 →「重新载入以更新（v…）」

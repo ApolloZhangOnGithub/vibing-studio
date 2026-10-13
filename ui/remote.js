@@ -29,8 +29,9 @@
   // iPhone 先认（App 的 UA 里带着「VibingStudioiPad」，以前 iPhone 也被当成 iPad、在 Mac 上授权列表里写成 iPad）；触屏的那些适配 iPhone 也要
   var ua = navigator.userAgent, isPhone = /iPhone/.test(ua), isPad = !isPhone && (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)), root = document.documentElement;
   var NAME_KEY = hybrid ? "vs-remote-name:" + mac : "vs-remote-mac-name";
-  var macName = localStorage.getItem(NAME_KEY) || (hybrid ? "Mac" : tr("你的 Mac", "your Mac"));
+  var macName = (hybrid && q.get("mname")) || localStorage.getItem(NAME_KEY) || (hybrid ? tr("远程设备", "Remote Device") : tr("你的 Mac", "your Mac")); // App 里开的窗口：名字跟着网址来（「设备」里的那个名字）
   var setName = function (n) { if (!n || n === macName) return; macName = n; localStorage.setItem(NAME_KEY, n); retitle(); badge(); };
+  if (hybrid && !q.get("mname") && !localStorage.getItem(NAME_KEY)) fetch("/api/relay/hosts", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : []; }).then(function (hs) { (hs || []).forEach(function (h) { if (h && h.device === mac && h.name) setName(h.name); }); }).catch(function () {}); // 老版本开的窗口没带名字：按设备号去在线的设备里找
   // 选 Mac 的入口（⚙ 菜单里「连接到我的 Mac…」、「设备」里一台 Mac 的「打开」）
   window.TSU_REMOTE = {
     mac: function () { return mac; },
@@ -380,7 +381,7 @@
     var S = window.STUDIO, items = [
       { header: true, label: state === "open" && firstOk ? tr("已连接到「" + macName + "」", "Connected to “" + macName + "”") : tr("正在连接「" + macName + "」", "Connecting to “" + macName + "”") },
       { label: tr("在「设备」中显示", "Show in Devices"), run: function () { var tw = window.TSU_TERM && TSU_TERM.front && TSU_TERM.front(); if (tw && S && S.openPage) S.openPage(tw, "devices", ""); } },
-      { label: tr("连接到另一台 Mac…", "Connect to Another Mac…"), run: function () { if (S && S.pickMac) S.pickMac(); } },
+      { label: tr("连接到另一台设备…", "Connect to Another Device…"), run: function () { if (S && S.pickMac) S.pickMac(); } },
       { sep: true },
       { label: tr("断开连接", "Disconnect"), run: function () { window.TSU_REMOTE.use(""); } },
     ];
