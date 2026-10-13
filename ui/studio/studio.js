@@ -4029,12 +4029,12 @@
     var H = window.TSU_REMOTE_HOST;
     if (!H) return [];
     if (!H.watched) { H.watched = true; H.watch(function () { redrawSettings(); }); }
-    var on = H.on(), now = H.clients(), ok = H.approved(), pol = H.policy ? H.policy() : "";
+    var on = H.on(), now = H.clients(), ok = H.approved(), pol = H.policy ? H.policy() : "", pols = H.policies && H.policies();
     var en = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"), tz = function (c, e) { return en ? e : c; };
     var when = function (ms) { var d = new Date(ms); return isNaN(d.getTime()) ? "" : d.toLocaleDateString(en ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }); };
     return [{ head: "其他设备" },
-      { key: "remoteOn", label: "其他设备使用这台 Mac", must: true, kind: "toggle", value: on, def: false },
-      on && pol ? { key: "remotePolicy", label: "其他设备连接时", must: true, kind: "seg", options: REMOTE_POLICIES, value: pol, def: "first" } : null,
+      { key: "remoteOn", label: appInfo && appInfo.platform === "linux" ? "其他设备使用这台电脑" : "其他设备使用这台 Mac", must: true, kind: "toggle", value: on, def: false },
+      on && pol ? { key: "remotePolicy", label: "其他设备连接时", must: true, kind: "seg", options: pols ? REMOTE_POLICIES.filter(function (o) { return pols.indexOf(o[0]) >= 0; }) : REMOTE_POLICIES, value: pol, def: "auto" } : null,
       on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? tz("已连接 · ", "Connected · ") + now.map(function (c) { return c.name; }).join(tz("、", ", ")) : tz("已连接，等待其他设备", "Connected, waiting for other devices")) : tz("正在连接…", "Connecting…") } : null,
       { key: "remoteDevices", label: "设备与权限", desc: ok.length ? tz("允许过 " + ok.length + " 台设备", ok.length + (ok.length === 1 ? " device allowed" : " devices allowed")) : "", must: true, kind: "button", text: "打开「设备」", act: "openDevices" },
     ].filter(Boolean);

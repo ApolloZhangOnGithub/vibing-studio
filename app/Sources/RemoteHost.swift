@@ -75,7 +75,8 @@ final class RemoteHost: NSObject {
     get { (ud.dictionary(forKey: "remoteHost.ok") as? [String: [String: Any]]) ?? [:] }
     set { ud.set(newValue, forKey: "remoteHost.ok") }
   }
-  var policy: String { let p = ud.string(forKey: "remoteHost.policy") ?? "first"; return RemoteHost.policies.contains(p) ? p : "first" }
+  // 没选过：同一账号的设备直接允许（用户 2026-10-14：同 TeamViewer 用账号连自己的电脑，不用那台前面有人点「允许」；设置里能改成要确认）
+  var policy: String { let p = ud.string(forKey: "remoteHost.policy") ?? "auto"; return RemoteHost.policies.contains(p) ? p : "auto" }
 
   // 测试用：NADOS_REMOTE_HOST=0 这一个进程不当主机（同一个测试 App 开两份时，当 iPad 的那份）；NADOS_REMOTE_AUTOALLOW=1 新设备不问直接允许
   private var disabled: Bool { ProcessInfo.processInfo.environment["NADOS_REMOTE_HOST"] == "0" }
