@@ -79,5 +79,9 @@ sign() { codesign --force --timestamp=none --options runtime --entitlements Paim
 for _ in $(seq 60); do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$PID" 2>/dev/null; then kill "$PID" 2>/dev/null || true; echo "签名等太久（钥匙串在问？），改用 ad-hoc" >&2; ID="-"; sign -; fi
 wait "$PID" 2>/dev/null || { [ "$ID" = "-" ] || { echo "用证书签名失败，改用 ad-hoc" >&2; ID="-"; sign -; }; }
+# 证书被 Apple 吊销了：这样签的 App，macOS 一打开就当恶意软件扔进废纸篓（2026-10-13 的 296 就是这样）。查一下（要联网），被吊销就改用 ad-hoc——
+#   本机、经 App 自己更新的别的 Mac 都能打开（不带隔离标记）；系统设置里给的权限（屏幕录制、辅助功能）要重新给一次。在钥匙串里换上新证书后自动用回证书
+SPCTL="$(/usr/sbin/spctl -a -t exec -vv "$APP" 2>&1 || true)" # spctl 对没公证的 App 本来就返回非 0（pipefail 下不能直接接 grep）
+if [ "$ID" != "-" ] && printf '%s\n' "$SPCTL" | grep -q REVOKED; then echo "签名证书已被 Apple 吊销（${ID}），改用 ad-hoc" >&2; ID="-"; sign -; fi
 codesign --verify --strict "$APP"
 echo "built $APP ($CONFIG, $VERSION ($BUILD), signed with ${ID/#-/ad-hoc})"

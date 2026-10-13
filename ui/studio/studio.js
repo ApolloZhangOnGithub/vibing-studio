@@ -1344,9 +1344,15 @@
       "i=0; while pgrep -f \"$APP/Contents/MacOS/Paimon\" >/dev/null && [ $i -lt 9000 ]; do sleep 0.2; i=$((i+1)); done", // 等 App 退出：最多 30 分钟（自动退不了时按 ⌘Q）
       "pgrep -f \"$APP/Contents/MacOS/Paimon\" >/dev/null && exit 0", // 还没退：不换
       "[ -d \"$NEW\" ] || exit 0",
+      // 换之前最后查一遍新版的签名：证书被吊销的，macOS 一打开就当恶意软件扔进废纸篓（原来的 App 已经挪走了，就一个都没有了）——不换，照旧打开原来的
+      "if ! /usr/bin/codesign --verify --strict \"$NEW\" >/dev/null 2>&1 || /usr/sbin/spctl -a -t exec -vv \"$NEW\" 2>&1 | grep -q REVOKED; then mkdir -p \"$PREV\" && mv \"$NEW\" \"$PREV/rejected-$(date +%Y%m%d-%H%M%S).app\"; open \"$APP\"; exit 0; fi",
       "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)",
-      "mkdir -p \"$PREV\" && mv \"$APP\" \"$PREV/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).app\" && mv \"$NEW\" \"$APP\"",
-      "open \"$APP\""].join("\n");
+      "OLD=\"$PREV/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).app\"",
+      "mkdir -p \"$PREV\" && mv \"$APP\" \"$OLD\" && mv \"$NEW\" \"$APP\"",
+      "open \"$APP\"",
+      // 打开以后它要是被系统拿走了（不在原处了）：把原来那一份放回去、打开它（不留下一个没有 App 的「应用程序」）
+      "i=0; while [ $i -lt 50 ]; do sleep 0.2; i=$((i+1)); done",
+      "if [ ! -d \"$APP\" ] && [ -d \"$OLD\" ]; then mv \"$OLD\" \"$APP\" && open \"$APP\"; fi"].join("\n");
     // 脚本单独起一个会话（setsid）：App 退了它还在
     LOC().write(dir + "/swap.sh", new TextEncoder().encode(sh + "\n")).then(function () {
       return LOC().exec({ cmd: "/usr/bin/perl -e 'use POSIX qw(setsid); exit 0 if fork; setsid(); open STDIN, \"</dev/null\"; open STDOUT, \">/dev/null\"; open STDERR, \">&STDOUT\"; exec \"/bin/sh\", $ARGV[0]' " + q(dir + "/swap.sh") });

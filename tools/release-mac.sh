@@ -16,6 +16,11 @@ for A in arm64 x86_64; do
   mkdir -p "$OUT/$A"
   APP_DIR="$OUT/$A" BUILD=$B TARGET_ARCH=$A MODE=terminal RELEASE=1 ./build.sh | tail -1
 done
+# 发出去之前再查一遍签名：证书被吊销的（macOS 会当恶意软件扔掉）、签名不完整的一律不发
+for A in arm64 x86_64; do
+  codesign --verify --strict "$OUT/$A/Vibing Studio.app" || { echo "签名不完整：$OUT/$A，不发" >&2; exit 1; }
+  if /usr/sbin/spctl -a -t exec -vv "$OUT/$A/Vibing Studio.app" 2>&1 | grep -q REVOKED; then echo "签名证书已被吊销：$OUT/$A，不发" >&2; exit 1; fi
+done
 AS="Vibing-Studio-$V-macOS-AppleSilicon.zip"; IN="Vibing-Studio-$V-macOS-Intel.zip"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/arm64/Vibing Studio.app" "$OUT/$AS"
 ditto -c -k --sequesterRsrc --keepParent "$OUT/x86_64/Vibing Studio.app" "$OUT/$IN"
