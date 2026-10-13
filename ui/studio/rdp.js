@@ -198,7 +198,12 @@
   function removeHost(id, after) {
     var h = hostOf(id);
     confirmDo(t("删除「" + (h ? h.name : "") + "」？", "Delete “" + (h ? h.name : "") + "”?"), t("连着的会断开；记在钥匙串里的密码一起删掉。", "An open connection will be closed, and its password removed from the Keychain."), t("删除", "Delete"), function () {
-      N.call("rdp.removeHost", { id: id }).then(function () { try { localStorage.removeItem(thumbKey(id)); } catch (e) { /* 没有 */ } loadHosts(); if (after) after(); }).catch(function () {});
+      N.call("rdp.removeHost", { id: id }).then(function () {
+        try { localStorage.removeItem(thumbKey(id)); } catch (e) { /* 没有 */ }
+        Object.keys(sessions).forEach(function (sid) { var V = sessions[sid]; if (V.hostId === id && V.P && !V.P.closed) { delete sessions[sid]; closeTab(V.P); } }); // 开着的那几页一起关掉（连接没了，留着也连不上）
+        loadHosts();
+        if (after) after();
+      }).catch(function () {});
     });
   }
 
