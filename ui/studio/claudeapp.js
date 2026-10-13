@@ -189,7 +189,8 @@
   }
 
   // ======== 左边一栏 ========
-  // 每个去处只有一个入口（不重复）：新建会话在这里；「更多」里只有 Agent Finder；File Finder 在标题栏右边 ···；仪表盘没有入口（只有打网址 dash.local.paimon）；
+  // 每个去处只有一个入口（不重复）：新建会话在这里；「更多」里是 Agent Finder 和「App」里的那些（访达、终端、浏览器、设备、活动监视器……，STUDIO.apps 登记的）；
+  //   File Finder 在标题栏右边 ···；仪表盘没有入口（只有打网址 dash.local.paimon）；
   // 设置、应用风格、语言、扩展、键盘快捷方式、登录 / 退出在左下角账户的菜单里（菜单栏里照样有命令）
   // ---- 「有新版本」卡片（新建上面，同 Claude App）：服务器上的页面换了（STUDIO.updateReady）才有；左边一幅手绘的小画，
   //      「有新版本」、灰字是新版本什么时候发的；点它重新载入就用上；「更新内容」打开更新记录；× 这个版本不再提（记住它的 id） ----
@@ -219,9 +220,15 @@
   function paintTop(w) {
     var p = w.ws && w.ws.active, pr = p && p.program, inFinder = !!(pr && pr.page === "explorer" && pr.arg === "agents");
     // 「更多」：收着是 ⌄ 更多，展开了是 ⌃ 收起（箭头转过去、下面那一段滑出来；元素不重建，动画才看得见）
+    // 「App」里的（同 VS Code 风格活动栏上「App」那一块）：这台设备上用得了的；开着的那一页在前面时亮
+    var apps = S.apps && S.apps.list ? S.apps.list().filter(function (a) { return !a.ok || a.ok(); }) : [], act = w.ws && w.ws.active;
+    var appIt = function (a) {
+      var nm = typeof a.name === "function" ? a.name() : a.name, lg = typeof a.logo === "function" ? a.logo() : a.logo || "", on = !!(act && a.find && a.find(w) === act && !inFinder);
+      return '<div class="ca-nav-it ca-sub ca-app' + (on ? " on" : "") + '" data-app="' + esc(a.id) + '" role="button"><i>' + lg + "</i><span>" + esc(nm) + "</span></div>";
+    };
     var h = updCard(w) + '<div class="ca-nav-it" data-go="new"><i>' + IC.plus + "</i><span>" + tr("新建", "New") + "</span></div>" +
       '<div class="ca-nav-it ca-more" data-go="more" role="button"><i class="ca-disc">' + IC.down + '</i><span class="ca-more-l"></span></div>' +
-      '<div class="ca-subs"><div class="ca-subs-in"><div class="ca-nav-it ca-sub" data-go="finder"><i>' + IC.finder + "</i><span>Agent Finder</span></div></div></div>";
+      '<div class="ca-subs"><div class="ca-subs-in"><div class="ca-nav-it ca-sub" data-go="finder"><i>' + IC.finder + "</i><span>Agent Finder</span></div>" + apps.map(appIt).join("") + "</div></div>";
     var top = w.ca.side.querySelector(".ca-top");
     if (top.dataset.h !== h) { top.dataset.h = h; top.innerHTML = h; }
     var mo = top.querySelector(".ca-more"), lab = MORE ? tr("收起", "Less") : tr("更多", "More");
@@ -1093,6 +1100,8 @@
       var nv = e.target.closest("[data-go]"), it = e.target.closest(".ca-it"), lb = e.target.closest("[data-l]"), ac = e.target.closest("[data-a]");
       var rm = e.target.closest(".ca-rowmore");
       if (rm) { e.stopPropagation(); var r0 = rm.closest(".ca-it"); return itemMenu(w, r0.dataset.kind, r0.dataset.id, { el: rm, side: "below-right" }, r0); }
+      var ap = e.target.closest("[data-app]");
+      if (ap && S.apps && S.apps.open) { S.apps.open(ap.dataset.app, w); return later(w); } // 「更多」里的 App：开着就切过去，没有就开
       // 「有新版本」卡片：× 这个版本不再提；「更新内容」；点别处重新载入
       var up = e.target.closest("[data-upd]");
       if (up) {

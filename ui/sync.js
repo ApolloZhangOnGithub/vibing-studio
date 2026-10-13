@@ -123,6 +123,8 @@
   var N0 = window.nadosNative;
   if (N0 && !N0.remote && N0.call) setTimeout(function () { if (!identified) hello(); }, 3000); else hello();
   setInterval(hello, 600000);
+  // 当主机的那一块（remote-host.js）比这里晚载入：页面载完再报一次谁能用它（之后它一变就报）
+  window.addEventListener("load", function () { setTimeout(function () { if (access()) hello(); }, 4000); });
 
   // ---- 拉：since 之后的所有记录（一页放不下自动翻页），同一条的几段拼好；还没推全的那条这次先不给（推全以后会整条再来）----
   var skew = 0; // 服务器时间 - 本机时间（租约、稍后提醒按服务器的钟算）

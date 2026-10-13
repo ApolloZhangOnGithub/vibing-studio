@@ -3960,9 +3960,14 @@
       if (k === "remotePolicy" && window.TSU_REMOTE_HOST && TSU_REMOTE_HOST.setPolicy) { Promise.resolve(TSU_REMOTE_HOST.setPolicy(v)).then(redrawSettings); return; }
       return setChange(k, v, tw);
     },
-    action: function (what, tw) { if (/^revoke:/.test(what) && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.revoke(what.slice(7)); return redrawSettings(); } profileAction(what, tw); },
+    action: function (what, tw) {
+      if (/^revoke:/.test(what) && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.revoke(what.slice(7)); return redrawSettings(); }
+      if (what === "openDevices") { var w0 = tw || (window.TSU_TERM && TSU_TERM.front ? TSU_TERM.front() : null); if (w0 && window.STUDIO && STUDIO.openPage) STUDIO.openPage(w0, "devices", ""); return; }
+      profileAction(what, tw);
+    },
   });
-  // 其他设备使用这台 Mac（remote-host.js / RemoteHost.swift）：App 里才有——开关、连入时怎么确认、现在谁连着、允许过的设备（能移除）
+  // 其他设备使用这台 Mac（remote-host.js / RemoteHost.swift）：App 里才有——开关、连入时怎么确认、现在谁连着；
+  //   允许过哪些设备、它们和这台互相能不能用、上次连接，在「设备」里画成图看、在那里移除（用户 2026-10-13：列表看不出谁是谁、双方的权限）
   var REMOTE_POLICIES = [["first", "首次连接时确认"], ["every", "每次连接都确认"], ["code", "首次连接时确认并输入验证码"], ["auto", "直接允许"]];
   function remoteFields() {
     var H = window.TSU_REMOTE_HOST;
@@ -3975,10 +3980,8 @@
       { key: "remoteOn", label: "其他设备使用这台 Mac", desc: "允许登录同一个 GitHub 账号的其他 Mac、iPhone、iPad 和网页端连接这台 Mac；终端、文件和会话都在这台 Mac 上运行", must: true, kind: "toggle", value: on, def: false },
       on && pol ? { key: "remotePolicy", label: "其他设备连接时", desc: "每台设备用自己的密钥识别，只知道设备号无法冒充。「直接允许」：登录同一个 GitHub 账号的设备不再确认", must: true, kind: "seg", options: REMOTE_POLICIES, value: pol, def: "first" } : null,
       on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? tz("已连接 · ", "Connected · ") + now.map(function (c) { return c.name; }).join(tz("、", ", ")) : tz("已连接，等待其他设备", "Connected, waiting for other devices")) : tz("正在连接…", "Connecting…") } : null,
-    ].concat(ok.length ? [{ head: "允许过的设备" }] : [], ok.map(function (d) {
-      var bits = [d.at ? tz("允许于 ", "Allowed ") + when(d.at) : "", d.last && d.last - (d.at || 0) > 60000 ? tz("上次连接 ", "Last connected ") + when(d.last) : "", d.loc || ""].filter(Boolean);
-      return { key: "rv-" + d.id, label: d.name || d.id, desc: bits.join(" · "), must: true, kind: "button", text: "移除", act: "revoke:" + d.id };
-    })).filter(Boolean);
+      { key: "remoteDevices", label: "设备与权限", desc: ok.length ? tz("允许过 " + ok.length + " 台设备。谁能使用这台 Mac、它们上次什么时候连的、这台 Mac 又能用哪几台，在「设备」里看和管理", ok.length + (ok.length === 1 ? " device is" : " devices are") + " allowed. See who can use this Mac, when they last connected and which devices this Mac can use in Devices") : "谁能使用这台 Mac、这台 Mac 又能用哪几台，在「设备」里看和管理", must: true, kind: "button", text: "打开「设备」", act: "openDevices" },
+    ].filter(Boolean);
   }
   // ---- 设置的配置文件 ----
   var PROF_DIR = function () { return home() + "/.paimon/profiles"; }, PERSONAL = ["callMe", "fullName", "avatar"];
