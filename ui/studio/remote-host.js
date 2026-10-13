@@ -167,7 +167,8 @@
   var lastInput = Date.now();
   ["keydown", "mousedown", "pointerdown", "wheel"].forEach(function (t) { document.addEventListener(t, function () { lastInput = Date.now(); }, true); });
   function maybeReload() {
-    if (native !== false || !onNow() || !window.STUDIO || !STUDIO.updateReady || !STUDIO.updateReady()) return;
+    if (native !== false || !onNow() || !window.STUDIO || !STUDIO.updateReady) return;
+    if (!STUDIO.updateReady()) { if (STUDIO.checkVersion) STUDIO.checkVersion(); return; } // 窗口挡住、最小化时页面自己不查新版本：这里每分钟查一次
     if (Date.now() - lastInput < 10 * 60000) return;
     var busy = false;
     try { (window.TSU_AGENTS && TSU_AGENTS.liveRuntimes ? TSU_AGENTS.liveRuntimes() : []).forEach(function (rt) { if (rt && rt.stream) busy = true; }); } catch (e) { /* 没有就算了 */ }
