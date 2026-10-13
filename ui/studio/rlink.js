@@ -125,5 +125,34 @@
       L.call("exec.start", { id: id, cmd: cmd }, ms || 15000).catch(function (e) { fin(); rej(e); });
     });
   }
-  window.TSU_RLINK = { open: open, exec: exec };
+  // 那台设备上的终端（「设备」里一台电脑的「打开终端」）：同 TSU_LOCAL 的那一份（live.js 的终端标签页照用），只是经这条旁路——
+  //   shell 在那台上跑，输入、输出、改大小、退出都经中转；页面刷新后按记着的编号接回去（那台上的 shell 还在的话）
+  var fromB64 = function (s) { var t = atob(s || ""), u = new Uint8Array(t.length); for (var i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u; };
+  function ptyApi(dev, name) {
+    var L = open(dev);
+    return {
+      remote: true, dev: dev, name: name || "",
+      info: function () { return { home: "" }; }, want: function () {}, drop: function () {},
+      pty: function (o) {
+        var ws = { id: o.attach || "rp" + rnd(10), attached: false, readyState: 0, binaryType: "arraybuffer", onopen: null, onmessage: null, onclose: null }, hold = !!o.attach;
+        var offD = L.on("pty.data", function (d) { if (d && d.id === ws.id && !hold && ws.onmessage) ws.onmessage({ data: fromB64(d.b64).buffer }); });
+        var offX = L.on("pty.exit", function (d) { if (!d || d.id !== ws.id) return; ws.readyState = 3; offD(); offX(); if (ws.onclose) ws.onclose({ code: 1000, reason: "" }); });
+        var fail = function (e) { ws.readyState = 3; offD(); offX(); if (ws.onclose) ws.onclose({ code: 1011, reason: String((e && e.message) || e) }); };
+        var open1 = function () { L.call("pty.open", { id: ws.id, cols: o.cols || 80, rows: o.rows || 24, cwd: o.cwd || "" }, 30000).then(function () { ws.readyState = 1; if (ws.onopen) ws.onopen({}); }, fail); };
+        if (o.attach) L.call("pty.attach", { id: ws.id, cols: o.cols || 80, rows: o.rows || 24 }, 30000).then(function (r) {
+          hold = false; ws.attached = true; ws.readyState = 1;
+          if (ws.onopen) ws.onopen({});
+          if (r && r.b64 && ws.onmessage) ws.onmessage({ data: fromB64(r.b64).buffer });
+        }, function () { hold = false; ws.id = "rp" + rnd(10); open1(); }); // 那台上的 shell 没了：开个新的
+        else open1();
+        ws.send = function (data) { if (ws.readyState === 1) L.call("pty.write", { id: ws.id, data: String(data) }, 30000).catch(function () {}); };
+        ws.resize = function (c, r) { if (ws.readyState === 1) L.call("pty.resize", { id: ws.id, cols: c, rows: r }, 30000).catch(function () {}); };
+        ws.pause = function () {}; ws.resume = function () {}; // 流控：中转这条路上不做（输出照来）
+        ws.close = function () { if (ws.readyState <= 1) L.call("pty.close", { id: ws.id }, 10000).catch(function () {}); ws.readyState = 3; offD(); offX(); };
+        ws.cwd = function () { return ws.readyState === 1 ? L.call("pty.cwd", { id: ws.id }, 10000).then(function (r) { return r && r.cwd; }, function () { return null; }) : Promise.resolve(null); };
+        return ws;
+      },
+    };
+  }
+  window.TSU_RLINK = { open: open, exec: exec, ptyApi: ptyApi };
 })();

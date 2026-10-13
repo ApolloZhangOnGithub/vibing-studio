@@ -4229,8 +4229,7 @@
         { key: "callMe", label: "Agent 对你的称呼", desc: "将写入每个 Agent 的系统提示词", kind: "text", placeholder: login, value: getv("callMe") || "", def: "" },
         { key: "login", label: "GitHub 账号", kind: "info", value: login + (me.admin ? " · 管理员" : "") },
         { key: "usageLink", label: "余额与用量", desc: "在「用量」中查看", must: true, kind: "button", text: "查看用量", act: "usage" },
-        { key: "passkeys", label: "通行密钥", desc: "用 Touch ID、Face ID 或手机登录，不用每次都经过 GitHub；在浏览器里添加和管理", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" },
-      ];
+      ].concat(signinFields());
       if (SY) {
         // 名字、型号都由设备自己认出来（不让改）：这台电脑自己的名字 +「MacBook Air (M2, 2022)」这样的型号，方便分清是哪一台；
         //   同一台机器并成一台、以前版本留下的旧记录不列（TSU_SYNC.deviceList，同「设备」App）
@@ -4242,6 +4241,7 @@
       return out;
     },
     change: function (k, v) {
+      if (k === "touchid") return v ? tidOn() : tidOff();
       if (k === "callMe") { delete AV_LIVE.callMe; setv("callMe", String(v || "").trim().slice(0, 40)); }
       else if (k === "fullName") { delete AV_LIVE.fullName; setv("fullName", String(v || "").trim().slice(0, 60)); }
       else if (k === "avatar") setv("avatar", /^(github|initials:\d)$/.test(String(v)) ? String(v) : "github");
@@ -4251,8 +4251,76 @@
       else if (what === "login") location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search);
       else if (what === "usage") settings(tw, "usage");
       else if (what === "passkeys") openPasskeys();
+      else if (/^dkrm:/.test(what)) tidRemoveOther(what.slice(5));
     },
   });
+  // ---- 登录方式（设置 › 账号）：用 Touch ID 登录这台 Mac（AuthKey.swift：钥匙在 Secure Enclave 里，登录时按一下指纹，不开浏览器）；
+  //      通行密钥（浏览器里用：只在这个浏览器、这台设备真能用时才出现）；别的 Mac 上开着的 Touch ID 登录（能移除）。
+  //      能力按实际的来：没有 Secure Enclave 的 Mac 不出 Touch ID 那一项，没设指纹的写「按开机密码」 ----
+  var TID = { info: null, keys: null, at: 0, busy: "", err: "", pk: undefined };
+  var tidNative = function () { var N = window.nadosNative, c = (appInfo && appInfo.commands) || []; return !!(N && N.call && !N.remote && c.indexOf("auth.key.info") >= 0); };
+  function tidLoad(force) {
+    if (!force && Date.now() - TID.at < 30000) return;
+    TID.at = Date.now();
+    if (!appInfo && window.nadosNative) nativeInfo().then(function () { if (tidNative()) tidLoad(true); });
+    var keys = fetch("/api/devicekeys", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.devicekeys || []; }, function () { return []; });
+    Promise.all([tidNative() ? window.nadosNative.call("auth.key.info").catch(function () { return null; }) : Promise.resolve(null), keys]).then(function (r) { TID.info = r[0]; TID.keys = r[1]; redrawSettings(); });
+    // 通行密钥：这个浏览器、这台设备能不能用（App 里的网页不能；WebKit 给的是 false）
+    if (TID.pk === undefined) {
+      TID.pk = false;
+      var PKC = window.PublicKeyCredential;
+      if (PKC && !window.nadosNative) (PKC.getClientCapabilities ? PKC.getClientCapabilities().then(function (c) { return !!(c && (c.passkeyPlatformAuthenticator || c.userVerifyingPlatformAuthenticator || c.hybridTransport)); }) : PKC.isUserVerifyingPlatformAuthenticatorAvailable ? PKC.isUserVerifyingPlatformAuthenticatorAvailable() : Promise.resolve(false)).then(function (ok) { TID.pk = !!ok; redrawSettings(); }, function () {});
+    }
+  }
+  var tidMine = function () { var i = TID.info; return !!(i && i.enrolled && i.origin === location.origin && (!TID.keys || TID.keys.some(function (k) { return k.id === i.id; }))); };
+  function signinFields() {
+    tidLoad();
+    var out = [{ head: "登录方式" }], i = TID.info, en = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en");
+    if (tidNative() && i && i.se && (i.owner || /^(touchID|faceID)$/.test(i.biometry))) {
+      var finger = i.biometry === "touchID", on = tidMine();
+      out.push({ key: "touchid", label: finger ? "用 Touch ID 登录" : "用这台 Mac 的密码登录", must: true, kind: "toggle", value: on, def: false,
+        desc: TID.busy ? (TID.busy === "on" ? "正在开启：请按一下指纹…" : "正在关闭…") : TID.err ? TID.err :
+          (finger ? "要登录时按一下指纹（系统的框），不用开浏览器、不用再点 GitHub。" : "这台 Mac 没有设置 Touch ID：要登录时输一下开机密码，不用开浏览器。") + "钥匙在这台 Mac 的安全芯片里，拿不出来；关掉或在别处移除后就不能再用它登录" });
+    }
+    if (TID.pk === true) out.push({ key: "passkeys", label: "通行密钥", desc: "在这个浏览器里用 Touch ID、Face ID 或手机登录，不用每次都经过 GitHub", must: true, kind: "button", text: "管理通行密钥…", act: "passkeys" });
+    else if (!tidNative()) out.push({ key: "passkeysNo", label: "通行密钥", desc: en ? "" : "这个浏览器、这台设备不能用通行密钥（要 Touch ID、Face ID、Windows Hello，或者能用手机的浏览器）", kind: "info", value: "不可用" });
+    var me0 = TID.info && TID.info.id, others = (TID.keys || []).filter(function (k) { return k.id !== me0; });
+    others.forEach(function (k) {
+      var last = k.last_used ? new Date(k.last_used).toLocaleDateString(en ? "en-US" : "zh-CN", { month: "short", day: "numeric" }) : "";
+      out.push({ key: "dk:" + k.id, label: k.name || "Mac", desc: "用 Touch ID 登录" + (last ? " · 上次使用 " + last : " · 还没用过"), must: true, kind: "button", text: "移除", act: "dkrm:" + k.id });
+    });
+    return out;
+  }
+  var post0 = function (p, b) { return fetch(p, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(b || {}) }).then(function (r) { return r.json(); }); };
+  // 开：Secure Enclave 里生成一把 → 按一下指纹确认 → 公钥登记到账号 → 记下编号；中间哪一步不成：那把挪开（不删）、写明为什么
+  function tidOn() {
+    var N = window.nadosNative;
+    if (!tidNative() || TID.busy) return;
+    TID.busy = "on"; TID.err = ""; redrawSettings();
+    var SY = window.TSU_SYNC, nm = (SY && SY.name && SY.name()) || "Mac";
+    N.call("auth.key.create").then(function (r) {
+      return N.call("auth.key.verify", { reason: "开启用 Touch ID 登录 Vibing Studio" }).then(function (v) { if (!v || !v.ok) { var e = new Error("cancel"); e.cancel = true; throw e; } return r.pub; });
+    }).then(function (pub) { return post0("/api/devicekey/register", { pub: pub, name: nm }); }).then(function (j) {
+      if (!j || !j.ok) throw new Error((j && j.error) || "登记没有成功");
+      return N.call("auth.key.setId", { id: j.id, origin: location.origin });
+    }).then(function (inf) { TID.info = inf; }, function (e) {
+      N.call("auth.key.forget").then(function (inf) { TID.info = inf; }, function () {});
+      TID.err = e && e.cancel ? "" : "没能开启：" + String((e && e.message) || e);
+    }).then(function () { TID.busy = ""; tidLoad(true); });
+  }
+  // 关：账号里移除这把、这台 Mac 上的挪开
+  function tidOff() {
+    var N = window.nadosNative, id = TID.info && TID.info.id;
+    if (!tidNative() || TID.busy) return;
+    TID.busy = "off"; TID.err = ""; redrawSettings();
+    (id ? post0("/api/devicekey/remove", { id: id }).catch(function () {}) : Promise.resolve()).then(function () { return N.call("auth.key.forget"); }).then(function (inf) { TID.info = inf; }, function () {}).then(function () { TID.busy = ""; tidLoad(true); });
+  }
+  // 别的 Mac 上的（丢了、不用了）：从账号里移除，那台就不能再用 Touch ID 登录
+  function tidRemoveOther(id) {
+    var k = (TID.keys || []).filter(function (x) { return x.id === id; })[0], go = function () { post0("/api/devicekey/remove", { id: id }).then(function () { tidLoad(true); }, function () {}); };
+    if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "移除「" + ((k && k.name) || "Mac") + "」的 Touch ID 登录？", message: "那台 Mac 之后要登录时会改走浏览器（GitHub）。", icon: "caution", buttons: [{ label: "取消", role: "cancel" }, { label: "移除", role: "default", run: go }] });
+    else go();
+  }
 
   // ---- 用量（同 Claude 的 Settings › Usage）：一段一段分开——Paimon 自己的额度（服务器上的账，¥）；每个连接器自己的限额只看这台 Mac 上已经有的：
   //      Codex 最近一次会话记下的 rate_limits（~/.codex/sessions/**/rollout-*.jsonl）；Claude Code 的 5 小时 / 每周限额是它状态行拿到的那份

@@ -956,14 +956,17 @@
       buttons: [{ label: "取消", role: "cancel" }, { label: "终止", role: "default", run: go }] });
   }
   function PtyView(P, spec) {
-    var LOC = window.TSU_LOCAL, V = this, host = document.createElement("div"), term = null, fit = null, glh = null, ws = null, cwd = spec.cwd || "", alive = false, ended = false, shown = false;
-    var title = LOC ? macTitle(cwd) : "user@code: ~";
+    // spec.dev：另一台设备上的终端（「设备」里点「打开终端」；rlink.js 经中转），标题写那台的名字；别的同这台的
+    var RDEV = spec.dev && window.TSU_RLINK ? String(spec.dev) : "", RNAME = String(spec.devName || "");
+    var LOC = RDEV ? TSU_RLINK.ptyApi(RDEV, RNAME) : window.TSU_LOCAL, V = this, host = document.createElement("div"), term = null, fit = null, glh = null, ws = null, cwd = spec.cwd || "", alive = false, ended = false, shown = false;
+    var remoteTitle = function (d) { var b = String(d || "").replace(/\/+$/, "").split("/").pop(); return (RNAME || "Remote") + (b ? " — " + b : ""); };
+    var title = RDEV ? remoteTitle(cwd) : LOC ? macTitle(cwd) : "user@code: ~";
     // Paimon Terminal：页面刷新前开着的那个 shell（原生那边还在跑）——显示出来时接回去；接不上（App 重开过）才写回留着的字、开新的
     var reattach = LOC && spec.pid ? spec.pid : null, osc = "", fgTitle = "";
     // 标题：程序自己设的（OSC 0 / 2）优先，没有就是「目录 — shell」；程序退了、它设的标题没被别人换掉，就回到「目录 — shell」
     // 有名字的终端（terms.js，同 tmux 的会话）：标题就是它的名字——不再是「~ — -zsh」
-    var TERMS = function () { return LOC && window.TSU_TERMS; }, termName = function () { var t = V.termId && TERMS() ? TERMS().get(V.termId) : null; return t ? t.name : ""; };
-    var retitle = function () { title = termName() || osc || (LOC ? macTitle(cwd) : title); P.win.syncTitles(); };
+    var TERMS = function () { return LOC && !RDEV && window.TSU_TERMS; }, termName = function () { var t = V.termId && TERMS() ? TERMS().get(V.termId) : null; return t ? t.name : ""; };
+    var retitle = function () { title = termName() || osc || (RDEV ? remoteTitle(cwd) : LOC ? macTitle(cwd) : title); P.win.syncTitles(); };
     var offTerms = TERMS() ? TERMS().on(function () { if (V.termId && termName() !== title) retitle(); }) : null;
     if (reattach) LOC.want(reattach);
     V.shell = true; V.pty = true;
@@ -973,6 +976,7 @@
     V.busy = function () { return false; };
     V.spec = function () {
       var bk = backLines(), sh = { cwd: cwd, pty: true }, id = ws && ws.id && ws.readyState <= 1 ? ws.id : reattach;
+      if (RDEV) { sh.dev = RDEV; sh.devName = RNAME; }
       if (bk) sh.back = bk;
       if (id) sh.pid = id;
       return { sh: sh };
@@ -1024,7 +1028,7 @@
       if (window.WebLinksAddon) try { term.loadAddon(new WebLinksAddon.WebLinksAddon(function (e, uri) { if (e.metaKey || e.ctrlKey) openUrl(uri); })); } catch (e) { /* 照旧 */ }
       term.options.linkHandler = { activate: function (e, uri) { if (e.metaKey || e.ctrlKey) openUrl(uri); }, allowNonHttpProtocols: false };
       // 文件路径：⌘ 点一下在右侧打开（Studio）；程序交的元素（OSC 7700，见 studio.js）
-      if (window.STUDIO && LOC) STUDIO.fileLinks(term, P);
+      if (window.STUDIO && LOC && !RDEV) STUDIO.fileLinks(term, P); // 那台设备上的路径：这台上打不开
       term.parser.registerOscHandler(7700, function (d) { if (window.STUDIO) STUDIO.fromOSC(P, d); return true; });
       // 响铃：面板闪一下；不在眼前（别的标签页、窗口在后台）就在标签页上挂个铃，App 在后台时 Dock 图标跳一下（同「终端」）
       term.onBell(function () { ring(P); });

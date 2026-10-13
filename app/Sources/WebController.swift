@@ -270,8 +270,19 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
       return
     }
     if url.path == "/auth/login", !(url.query ?? "").contains("dev="), let o = Config.origin(url), o == Config.origin(Config.startURL) || Config.bridgeAllowed(o) { // ?dev=：本地开发的测试登录，照常在页面里
-      trace("login in the browser: " + o)
-      auth.start(origin: o, next: Config.startURL.path.isEmpty ? "/" : Config.startURL.path) { [weak self] back in self?.webView.load(URLRequest(url: back)) }
+      let next = Config.startURL.path.isEmpty ? "/" : Config.startURL.path
+      let browser = { [weak self] in
+        guard let self else { return }
+        self.trace("login in the browser: " + o)
+        self.auth.start(origin: o, next: next) { [weak self] back in self?.webView.load(URLRequest(url: back)) }
+      }
+      // 这台 Mac 开了「用 Touch ID 登录」：先按指纹（系统的框），不开浏览器；取消了、不成再走浏览器
+      if AuthKey.enrolled(origin: o) {
+        trace("login with Touch ID: " + o)
+        Task { @MainActor [weak self] in
+          if let back = await AuthKey.login(origin: o, next: next) { self?.webView.load(URLRequest(url: back)) } else { browser() }
+        }
+      } else { browser() }
       return decisionHandler(.cancel)
     }
     if ["about", "blob", "data"].contains(scheme) || Config.inApp(url) { return decisionHandler(.allow) }

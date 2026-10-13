@@ -295,7 +295,7 @@
   };
   function acctCard(m) {
     var rows = m.login ? [[t("设备", "Devices"), t(m.count + " 台", String(m.count))]] : [];
-    var acts = m.login ? [["signout", t("退出登录…", "Sign Out…")], ["passkeys", t("通行密钥…", "Passkeys…"), "primary"]] : [["signin", t("使用 GitHub 登录", "Sign In with GitHub"), "primary"]];
+    var acts = m.login ? [["signout", t("退出登录…", "Sign Out…")], ["passkeys", t("登录方式…", "Sign-In Methods…"), "primary"]] : [["signin", t("使用 GitHub 登录", "Sign In with GitHub"), "primary"]];
     var icon = S.avatarHtml && m.login ? S.avatarHtml(40, "dv-cav") : ICON.cloud;
     return { icon: icon, title: m.login || t("未登录", "Not Signed In"), sub: m.login ? t("GitHub 账户", "GitHub Account") : "Vibing Studio", rows: rows, acts: acts };
   }
@@ -311,6 +311,8 @@
     // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
     var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
     if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), "primary"]);
+    // 那台上的终端：这个窗口里开一个标签页，shell 在那台上跑（经中转；同 remote-terminal-web 那样的远程终端，不用开整个窗口）
+    if (!n.self && n.host && n.online && !n.web && inApp && window.TSU_LOCAL && window.TSU_RLINK) acts.splice(acts.length - (acts.length && acts[acts.length - 1][0] === "open" ? 1 : 0), 0, ["term", t("打开终端", "Open Terminal")]);
     if (!n.self && n.ids && n.ids.length && SY()) acts.unshift(["remove", t("从账户中移除…", "Remove from Account…")]);
     return { icon: ICON[iconOf(n)], title: n.label, sub: subOf(n) + (n.self ? " · " + t("这台设备", "This Device") : ""), rows: rows, acts: acts };
   }
@@ -380,11 +382,13 @@
       if (a === "signin") { location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
       if (a === "passkeys") {
         closeCard();
+        if (S.settings) return S.settings(P.win, "account"); // 登录方式（Touch ID、通行密钥）在 设置 › 账号
         var u = location.origin + "/account/passkeys", N = window.nadosNative;
         if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); }); else window.open(u, "_blank", "noopener");
         return;
       }
       if (a === "desk" && window.TSU_RDP) { closeCard(); return TSU_RDP.connectDevice({ id: nn.id, name: nn.label, host: nn.host || "" }, P.win); }
+      if (a === "term" && nn.host) { closeCard(); return P.win.ws.newTab({ sh: { pty: true, dev: nn.host, devName: nn.label } }); }
       if (a === "open" && nn.host) {
         closeCard();
         // App：开一个窗口连那台 Mac（已经开着就叫到前面）；网页、iPad：这一页换成用那台 Mac
