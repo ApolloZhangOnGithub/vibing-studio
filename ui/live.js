@@ -1988,6 +1988,7 @@
       if (/^cc:/.test(id) && window.TSU_CLAUDE && TSU_CLAUDE.ensure) TSU_CLAUDE.ensure(id.slice(3));
       else if (/^cx:/.test(id) && window.TSU_CODEX && TSU_CODEX.ensure) TSU_CODEX.ensure(id.slice(3));
       else if (/^pi:/.test(id) && window.TSU_PI && TSU_PI.ensure) TSU_PI.ensure(id.slice(3));
+      else if (/^ty:/.test(id) && window.TSU_TEYVAT && TSU_TEYVAT.ensure) TSU_TEYVAT.ensure(id.slice(3));
     } catch (e) { /* 还建不了：等一会儿再试 */ }
     return A.get(id);
   }
@@ -2604,6 +2605,11 @@
         }
         return done();
       }
+      if (turn.tySep !== undefined) { // Teyvat：它又开了一份新的记录（重启了）——一行淡的分隔
+        var sd = new Date(turn.tySep), sdl = isNaN(sd.getTime()) ? "" : sd.toLocaleString(enLang() ? "en-US" : "zh-CN", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        r.text(["", D + "── " + (enLang() ? "New session" : "新会话") + (sdl ? " · " + sdl : "") + " ──" + RESET]);
+        return done();
+      }
       if (turn.recap !== undefined) { // 回来时的回顾（同 Claude Code）：※ recap: 在做什么、下一步是什么（灰）
         if (!vmode("recaps")) return [];
         // 同 Claude Code：上一问做完那一行（✻ … for …）在上，空一行，下面「※ recap: …」——recap: 粗体，正文淡色斜体。
@@ -2823,6 +2829,7 @@
         flushGroup();
         // 按列数 - 10 折行（同 Claude Code 这两种的宽度），原文里的换行照留
         var wrapN = function (s, w) { return [].concat.apply([], String(s).split("\n").map(function (x) { return wrap(x, w); })); };
+        if (p.kind === "ty") { tyBlock(r, p, ti + ":ty" + i, mark); return; } // Teyvat 自己的一块（teyvat.js）
         if (p.kind === "info") { // Claude Code 的提示（system / informational）：同 2.1.281（wg）——「⏺ 内容」，点和字同色：warning 黄、notice 灰（inactive）、别的默认色
           var icol = p.level === "warning" ? AMBER : p.level === "notice" ? (P.light ? rgb("102;102;102") : rgb("153;153;153")) : "";
           r.text([""]);
@@ -3277,6 +3284,67 @@
       return a.file_path || "";
     }
     // 一条工具调用（同 Claude Code）：⏺ Name(参数) / ⎿ 结果；进行中是灰点，失败是红点。lvl：full 完整（全部参数与结果）/ preview 结果的前几行 / call 只看调用（一行摘要）
+    // ---- Teyvat 自己的工具（teyvat.js 给好了调用那一行 tyHead / tyArg、结果 tyOut）：同它终端里的画法——
+    //   ⏺ Execute "标题"、⎿ done in 1.2s（输出淡的、带行号）、⎿ Created 1 bash process (3 in total), id …；Wait 标题 60s → Waited 7s (user message)；
+    //   ✻ 休眠时写的说明 → Slept 3h 2m；Social send an interrupt message to 名字、⎿ Sent and interrupt 名字 (sid) 12:00:01 + 正文 ----
+    function tyRows(p, lvl, dot) {
+      var D = P.DIM, full = lvl === "full" || verbose, sub = "  " + D + "⎿" + RESET + "  ", pad5 = "     ", rows = [], o = p.tyOut, arg = String(p.tyArg || "");
+      if (p.ty === "hibernate") {
+        var ht = p.status === "running" ? D + " · hibernating…" + RESET : p.slept > 60000 ? D + " → Slept " + F.dur(p.slept) + RESET : "", hl = full ? wrap(arg, P.cols - 4) : [clip(arg.replace(/\n/g, " "), P.cols - 4 - (ht ? 18 : 0))];
+        rows = hl.map(function (l, i) { return (i ? "  " : (p.status === "running" ? D + "✻" + RESET : "✻") + " ") + l + (i === hl.length - 1 ? ht : ""); });
+        if (p.status === "error" && o && o.sum) rows.push(sub + RED + o.sum + RESET);
+        return rows;
+      }
+      var tail = p.ty === "wait" ? (p.waited != null ? D + " → Waited " + p.waited + "s" + (p.waitWhy ? " (" + p.waitWhy + ")" : "") + RESET : p.status === "running" ? D + " · waiting…" + RESET : "") : "";
+      var room = P.cols - W(p.tyHead) - 6 - (tail ? W(tail) : 0);
+      if (full && W(arg) > room) {
+        var al = wrap(arg, P.cols - W(p.tyHead) - 4);
+        al.forEach(function (l, i) { rows.push(i ? pad(" ", W(p.tyHead) + 3) + (p.tyArgDim ? D : "") + l + RESET + (i === al.length - 1 ? tail : "") : dot + " " + BOLD + p.tyHead + RESET + " " + (p.tyArgDim ? D : "") + l + RESET + (al.length === 1 ? tail : "")); });
+      } else rows.push(dot + " " + BOLD + p.tyHead + RESET + (arg ? " " + (p.tyArgDim ? D : "") + clip(arg.replace(/\n/g, " ↵ "), Math.max(8, room)) + RESET : "") + tail);
+      if (full && p.ty === "execute" && p.tyCmd && !p.tyArgDim) wrap(p.tyCmd.replace(/\s+$/, ""), P.cols - 4).slice(0, 40).forEach(function (l) { rows.push("  " + D + l + RESET); }); // 展开的：跑的是什么命令（同它「摘要显示」）
+      if (!o || (lvl === "call" && p.status !== "error" && !verbose)) return rows;
+      if (o.sum) rows.push(sub + (o.tone === "err" ? RED : "") + o.sum + RESET);
+      var body = o.md ? trim(mdLines(o.md, { width: P.cols - 5, theme: P.theme })) : (o.lines || []), nw = String(body.length).length, lim = full ? body.length : 5;
+      body.slice(0, lim).forEach(function (l, i) {
+        var no = o.num ? D + String(i + 1).padStart(nw) + "  " + RESET : "", wl = full ? wrap(String(l), P.cols - 7 - (o.num ? nw + 2 : 0)) : [clip(String(l), P.cols - 7 - (o.num ? nw + 2 : 0))];
+        wl.forEach(function (x, k) { rows.push(pad5 + (k ? (o.num ? " ".repeat(nw + 2) : "") : no) + (o.dim ? D : "") + x + RESET); });
+      });
+      if (body.length > lim) rows.push(pad5 + D + "… +" + (body.length - lim) + " lines (ctrl+o to expand)" + RESET);
+      return rows;
+    }
+    // Teyvat 自己的一块（不是工具）：✤ Life Restarted / Hidden / Shown（青绿）、◆ Date / Resumed From Sleep、▸ 系统消息（淡 / 黄 / 红）、
+    //   转到后台的命令跑完：⏺ Result "标题" done in 16s + 输出（同「命令」的档位：完整 / 前几行 / 只看调用 / 隐藏）
+    function tyBlock(r, b, key, mark) {
+      var D = P.DIM, TEAL = P.light ? rgb("0;135;120") : rgb("38;198;178");
+      if (b.ty === "result") {
+        var m = A.toolMode ? A.toolMode({ name: "execute", status: b.err ? "error" : "done" }) : "preview";
+        if (m === "hidden" && !b.err) return;
+        r.text([""]); mark(b.at);
+        var dt = (b.err ? RED : GREEN) + DOT + RESET, head = dt + " " + BOLD + "Result" + RESET + " " + (b.title ? '"' + b.title + '" ' : "") + (b.err ? RED : "") + b.sum + RESET;
+        var body = (b.lines || []).filter(function (l, i, all) { return i < all.length - 1 || String(l).trim(); }), isOpen = key in open ? !!open[key] : m === "full" || verbose;
+        var lim = isOpen ? body.length : m === "call" && !b.err ? 0 : 5, nw = String(body.length).length;
+        var rows = [head];
+        body.slice(0, lim).forEach(function (l, i) { rows.push("     " + D + String(i + 1).padStart(nw) + "  " + RESET + (isOpen ? String(l) : clip(String(l), P.cols - 9 - nw))); });
+        if (body.length > lim) { r.text(rows); r.block('<span class="grp" data-key="' + key + '">' + hotHtml(["     " + D + HOT + "… +" + (body.length - lim) + " lines (ctrl+o to expand)" + HOT_END + RESET]) + "</span>"); return; }
+        return r.text(rows);
+      }
+      if (b.ty === "sys") { // ▸ 一行（同它：淡的；重试、语法错误黄；系统错误红）
+        if (vmode("sysErrors") === "hidden" && b.tone) return;
+        var c = b.tone === "err" ? RED : b.tone === "warn" ? AMBER : D;
+        r.text([""]); mark(b.at);
+        r.text(wrap(String(b.text || "").replace(/\s+$/, ""), P.cols - 2).map(function (l, k) { return (k ? "  " : c + "▸" + RESET + " ") + c + l + RESET; }));
+        return;
+      }
+      if (!vmode("notices")) return;
+      var ev = b.ty === "event", col = ev ? TEAL : GREEN, sym = ev ? "✤" : "◆";
+      r.text([""]); mark(b.at);
+      r.text([col + sym + " " + BOLD + b.label + RESET + (b.sub ? " " + D + b.sub + RESET : "")]);
+      var tl = String(b.text || "").replace(/\s+$/, "");
+      if (!tl) return;
+      var ls = [].concat.apply([], tl.split("\n").map(function (x) { return wrap(x, P.cols - 4); })), op = key in open ? !!open[key] : verbose, lim2 = op ? ls.length : 3;
+      r.text(ls.slice(0, lim2).map(function (l) { return "  " + D + l + RESET; }));
+      if (ls.length > lim2) r.block('<span class="grp" data-key="' + key + '">' + hotHtml(["  " + D + HOT + "… +" + (ls.length - lim2) + " lines" + HOT_END + RESET]) + "</span>");
+    }
     function toolRows(p, lvl) {
       if (lvl === true) lvl = "full"; else if (!lvl) lvl = "call";
       // 改了文件的命令（同 Claude Code）：命令、输出照常，后面每个文件「⎿ Updated overview.js (+41 -5)」+ 改动（行号、红绿底）
@@ -3290,6 +3358,7 @@
         return base0;
       }
       var full = lvl === "full", peek = lvl === "preview", D = P.DIM, dot = p.status === "error" ? RED + DOT + RESET : p.status === "running" ? D + DOT_RUN + RESET : GREEN + DOT + RESET;
+      if (p.ty) return tyRows(p, lvl, dot); // Teyvat 自己的工具（teyvat.js）
       if (p.name === "Bash" && V.style !== "teyvat" && !sysTitle(p)) return bashRows(p, lvl, dot); // 同 Claude Code 2.x 的 Bash
       var cc = V.style !== "teyvat", head = sysTitle(p) || (cc && CC_NAMES[p.name]) || TOOL_NAMES[p.name] || p.name, argRaw = toolArg(p), rows, sub = "  " + D + "⎿" + RESET + "  ", pad5 = "     ";
       // 任务清单（同 Claude Code）：● Update Todos，下面每一项 ☐ 没做 / 粗体 ☐ 在做 / 灰的划掉 ☒ 做完；只看调用：只有这一行
@@ -3882,7 +3951,8 @@
       // 附的图就在字里：粘贴、拖进来时在光标处插一个「[Image #N]」（同 Claude Code），跟着字一起折行、能在任何位置——不再另外排在最前面
       var chips = "", preRows = [];
       var fresh = !rt.session().turns.some(function (t) { return t.ask !== undefined || t.bash !== undefined; });
-      var placeholder = agent.claude && rt.localQueued && rt.localQueued() ? "Press up to edit queued messages" : uiT(!me ? "" : !me.loggedIn ? "按 Enter 使用 GitHub 登录" : !me.allowed ? "账号尚未获得邀请" : fresh ? "向 " + agent.name + " 发送消息" + (cfg.tips ? "，输入 ! 执行命令，输入 / 查看命令" : "") : "");
+      var rtHint = rt.inputHint ? rt.inputHint() : "";
+      var placeholder = rtHint ? rtHint : agent.claude && rt.localQueued && rt.localQueued() ? "Press up to edit queued messages" : uiT(!me ? "" : !me.loggedIn ? "按 Enter 使用 GitHub 登录" : !me.allowed ? "账号尚未获得邀请" : fresh ? "向 " + agent.name + " 发送消息" + (cfg.tips ? "，输入 ! 执行命令，输入 / 查看命令" : "") : "");
       if (!v) { lines = preRows.concat([chips + D + placeholder + RESET]); caretRow += preRows.length; caretCol += W(chips); }
       else {
         // 光标在选区「动的那一头」（shift+← 往左选：在左边；拖着往右选：在右边）
@@ -4287,6 +4357,14 @@
     function connFoot(indent, fcols) {
       var D = P.DIM, out = [], L = rt.limits ? rt.limits() : null, c = rt.ctx ? rt.ctx() : null;
       var pcs = function (v) { return v === null || v === undefined ? "n/a" : v + "%"; };
+      if (agent.connector === "teyvat") { // Teyvat：它在哪儿跑（前台 / 后台 / 没在跑）、在做什么（同它状态栏的 Working… / Waiting… / Hibernating… / Paused）、模型
+        var ti0 = rt.info || {}, en0 = enLang(), wk = ti0.wakeAt ? new Date(ti0.wakeAt).toLocaleTimeString(en0 ? "en-US" : "zh-CN", { hour: "numeric", minute: "2-digit" }) : "";
+        var whereT = ti0.mode === "fg" ? (en0 ? "In a terminal (foreground)" : "在终端里运行（前台）") : ti0.mode === "bg" ? (en0 ? "Running in background" : "后台运行") : (en0 ? "Not running" : "没有在运行");
+        var stT = { working: "Working…", waiting: "Waiting…", hibernating: "Hibernating…" + (wk ? (en0 ? " until " : " · 醒来 ") + wk : ""), paused: "Paused" }[ti0.state] || "";
+        var stC = ti0.state === "paused" ? LAV : ti0.state === "offline" ? D : AMBER;
+        out.push(indent + "  " + D + whereT + RESET + (stT ? D + " · " + RESET + stC + stT + RESET : "") + (rt.model && rt.model().id ? D + " · " + rt.model().id + RESET : ""));
+        return out;
+      }
       out.push(indent + "  " + D + (agent.connector === "pi" ? "" : "5h: " + pcs(L && L.five) + " | 7d: " + pcs(L && L.week) + " | ") + "Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a") + RESET); // pi 没有 5 小时、7 天的限额：只写上下文
       var mode = rt.permMode ? rt.permMode() : "", look = MODE_LOOK[mode], bits = [];
       var sh = (rt.tasks || []).filter(function (x) { return x.kind === "shell" && x.status === "running"; }).length, wh = connWhere();
@@ -6215,6 +6293,24 @@
           }
         }
       }
+      // ---- Teyvat（teyvat.js）：这台电脑上的 Teyvat agent——在跑的在上面，右边写它在做什么（工作中 / 等待中 / 休眠中 / 已暂停）和在哪儿跑（前台 / 后台）；
+      //   没在跑的写最近一次的时间。点开看它的记录（后台的能直接说；前台的只能看；没在跑的说一句会先在后台启动它）----
+      if (window.TSU_LOCAL && window.TSU_TEYVAT && window.TSU_CONNECTORS && TSU_CONNECTORS.on("teyvat")) {
+        var TYc = TSU_TEYVAT, tyAll = TYc.list().filter(function (x) { return qHit(x.name, x.id); }), seeT = {};
+        tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^ty:/.test(ag)) seeT[ag.slice(3)] = p; });
+        var tyLogoIn = function (html, busy) { var L0 = window.TSU_LOGOS && TSU_LOGOS.teyvat; return L0 ? String(html).replace(/\uE039/g, '<i class="ts-ccl ts-cxl ts-tyl' + (busy ? " busy" : "") + '">' + L0 + "</i>") : String(html).replace(/\uE039/g, "T"); };
+        out += "\n" + row("ts-fold ts-head", foldAt("ty", false), [[chev("ty"), ""], ["Teyvat", BOLD]], [["only-ty", only("ty") ? "\uE023" : "\uE022", only("ty") ? "显示全部" : "仅显示运行中"], ["fold-ty", "\uE024", "全部折叠"]]);
+        if (!folded("ty")) {
+          var tyShow = tyAll.filter(function (x) { return !only("ty") || x.running; });
+          if (!tyAll.length) out += H("  " + DIMC + "暂无 Agent" + RESET) + "\n";
+          else if (!tyShow.length) out += H("  " + DIMC + "无运行中的 Agent" + RESET) + "\n";
+          tyShow.forEach(function (x) {
+            var pv = seeT[x.id], isCur = !!pv && pv === tw.ws.active, busy = x.state === "working";
+            var st = !x.running ? agoCN(x.mtime) : ({ working: "工作中", waiting: "等待中", hibernating: "休眠中", paused: "已暂停" }[x.state] || "") + (x.mode === "fg" ? " · 前台" : " · 后台");
+            out += '<span class="ts-it' + (isCur ? " cur" : "") + '" data-ty="' + escHtml(x.id) + '" title="' + escHtml(x.name + " · " + x.id) + '">' + tyLogoIn(HR([["  ", ""], ["\uE039 ", x.running ? "" : DIMC]].concat(marks(x.name, pv ? BOLD : x.running ? "" : DIMC)), (busy ? "" : DIMC) + st + RESET), busy) + "</span>\n";
+          });
+        }
+      }
       // ---- 终端（terms.js：有名字的终端，同 tmux 的会话）：关掉标签页它照跑，这里找回来；前面是终端的图标，右边是前台在跑的程序或者多久前有过输出 ----
       //   不属于哪个 Agent 的终端（叫「独立终端」）：有了才列；没有时不占地方（新建在上面 ··· 菜单里）
       var TMS = window.TSU_TERMS, tmAll = TMS ? TMS.list().filter(function (x) { return !qToks.length || qHit(x.name, x.id); }) : [];
@@ -6525,6 +6621,19 @@
       return p;
     };
     document.addEventListener("tsu-pi", function () { if (S.shown()) S.render(); });
+    // Teyvat 的 agent：开着的标签页跳过去，没有就新开一个（同 viewPI）
+    S.viewTY = function (id) {
+      var TY = window.TSU_TEYVAT;
+      if (!TY) return null;
+      var x = TY.get(id) || {}, aid = TY.id(id), hit = null;
+      TY.ensure(id, TY.get(id) || undefined);
+      tw.ws.tabs.forEach(function (t, ti) { ws0(t).forEach(function (p) { var ag = p.program && p.program.agentId; if (!hit && ag === aid) hit = { ti: ti, p: p }; }); });
+      if (hit) { if (tw.ws.cur !== hit.ti) tw.ws.select(hit.ti); tw.ws.activate(hit.p); hit.p.focus(); return hit.p; }
+      var p = tw.ws.newTab({ sh: { cwd: x.cwd || "" }, agent: aid });
+      S.render();
+      return p;
+    };
+    document.addEventListener("tsu-teyvat", function () { if (S.shown()) S.render(); });
 
     // 一行近况：去掉换行，同 paimon ls 的尾巴
     function plainTail(r) { var t = r.tail ? r.tail() : ""; return String(t || "").replace(/\s+/g, " ").trim(); }
@@ -6533,7 +6642,7 @@
     // ---- 键盘（同 VS Code 资源管理器）：↑↓ 在看得见的每一行里走（展开了的也走进去），→ 展开、← 收起，回车 / 空格打开 ----
     list.tabIndex = 0;
     var kKey = null;
-    var rowKey = function (el) { return el.dataset.fold ? "f:" + el.dataset.fold : el.dataset.cc ? "c:" + el.dataset.cc : el.dataset.cx ? "k:" + el.dataset.cx : el.dataset.pi ? "p:" + el.dataset.pi : el.dataset.sess ? "s:" + el.dataset.sess : el.dataset.id ? "a:" + el.dataset.id : el.dataset.act ? "x:" + el.dataset.act : null; };
+    var rowKey = function (el) { return el.dataset.fold ? "f:" + el.dataset.fold : el.dataset.cc ? "c:" + el.dataset.cc : el.dataset.cx ? "k:" + el.dataset.cx : el.dataset.pi ? "p:" + el.dataset.pi : el.dataset.ty ? "t:" + el.dataset.ty : el.dataset.sess ? "s:" + el.dataset.sess : el.dataset.id ? "a:" + el.dataset.id : el.dataset.act ? "x:" + el.dataset.act : null; };
     var rowsNow = function () { return Array.prototype.filter.call(list.querySelectorAll(".ts-row, .ts-it"), function (r) { return rowKey(r); }); };
     function paintFocus() { rowsNow().forEach(function (r) { r.classList.toggle("kfocus", !!kKey && rowKey(r) === kKey); }); }
     S.paintFocus = paintFocus;
@@ -6550,6 +6659,7 @@
       if (r.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(r.dataset.cc) : S.openCC(r.dataset.cc);
       if (r.dataset.cx) return S.viewCX(r.dataset.cx);
       if (r.dataset.pi) return S.viewPI(r.dataset.pi);
+      if (r.dataset.ty) return S.viewTY(r.dataset.ty);
       if (r.dataset.term) return S.openTerm(r.dataset.term);
       if (r.dataset.sess) { var ps = r.dataset.sess.split(":"), rt3 = A.runtime(ps[0]); if (rt3.session().id !== ps[1]) rt3.resume(ps[1]); return S.open(ps[0]); }
       if (r.dataset.id) return S.open(r.dataset.id);
@@ -6632,6 +6742,7 @@
       if (it.dataset.cc) { var x = ccById(it.dataset.cc); return x ? { kind: "cc", id: x.id, info: x, name: x.title } : null; }
       if (it.dataset.cx) { var xx = window.TSU_CODEX && TSU_CODEX.get(it.dataset.cx); if (xx) TSU_CODEX.ensure(xx.id, xx); return xx ? { kind: "agent", id: "cx:" + xx.id, name: "◎ " + xx.title } : null; } // Codex：当成一个 agent 拖（cx:<会话>）
       if (it.dataset.pi) { var xp = window.TSU_PI && TSU_PI.get(it.dataset.pi); if (xp) TSU_PI.ensure(xp.id, xp); return xp ? { kind: "agent", id: "pi:" + xp.id, name: xp.title } : null; } // pi：同上（pi:<会话>）
+      if (it.dataset.ty) { var xt = window.TSU_TEYVAT && TSU_TEYVAT.get(it.dataset.ty); if (xt) TSU_TEYVAT.ensure(xt.id, xt); return xt ? { kind: "agent", id: "ty:" + xt.id, name: xt.name } : null; } // Teyvat：同上（ty:<agent>）
       var id = it.dataset.id || (it.dataset.sess || "").split(":")[0], a = id && A.get(id);
       if (it.dataset.sess && a) { var ps = it.dataset.sess.split(":"), rt3 = A.runtime(ps[0]); return { kind: "agent", id: a.id, name: a.name, sess: ps[1], rt: rt3 }; }
       return a ? { kind: "agent", id: a.id, name: "✦ " + a.name } : null;
@@ -6660,6 +6771,7 @@
       if (it && it.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(it.dataset.cc) : S.openCC(it.dataset.cc);
       if (it && it.dataset.cx) return S.viewCX(it.dataset.cx);
       if (it && it.dataset.pi) return S.viewPI(it.dataset.pi);
+      if (it && it.dataset.ty) return S.viewTY(it.dataset.ty);
       if (it && it.dataset.term) return S.openTerm(it.dataset.term);
       if (it) return S.open(it.dataset.id);
       if (!act) return;
@@ -6776,6 +6888,21 @@
           { sep: true },
           { label: tt("结束", "End"), danger: true, run: function () { S.endTerm(tid); } },
         ], { x: e.clientX, y: e.clientY });
+        return;
+      }
+      if (it.dataset.ty) { // Teyvat 的 agent：打开、拆分视图；没在跑的「在后台启动」；在终端里打开它自己的界面（genshin <名字>：后台的会被接回前台）；在访达里显示它的记录
+        e.preventDefault();
+        var tid0 = it.dataset.ty, TYm = window.TSU_TEYVAT, xt0 = (TYm && TYm.get(tid0)) || {}, MIt = window.STUDIO && STUDIO.menuIcons ? STUDIO.menuIcons() : {}, LCt = window.TSU_LOCAL;
+        TSU_DESK.popup([
+          { label: tt("打开", "Open"), run: function () { S.viewTY(tid0); } },
+          { label: tt("在拆分视图中打开", "Open to the Side"), icon: MIt.splitR, run: function () { if (TYm && tw.ws.active && tw.ws.drop) { TYm.ensure(tid0, xt0); tw.ws.drop({ kind: "agent", id: "ty:" + tid0 }, tw.ws.active, "right"); } } },
+          { sep: true },
+          !xt0.running && TYm ? { label: tt("在后台启动", "Start in Background"), run: function () { TYm.startBg(tid0).then(function () { S.render(true); }, function (er) { if (TSU_DESK.alert) TSU_DESK.alert({ title: tt("没有启动起来。", "Couldn't start it."), message: String((er && er.message) || er), icon: "none", buttons: [{ label: tt("好", "OK"), role: "default" }] }); }); } } : null,
+          TYm && window.STUDIO && STUDIO.newTerm ? { label: xt0.mode === "bg" ? tt("在终端中打开（转到前台）", "Open in Terminal (bring to foreground)") : tt("在终端中打开", "Open in Terminal"), icon: MIt.term, disabled: xt0.mode === "fg", run: function () { TYm.openTui(tid0); } } : null,
+          xt0.path && LCt && LCt.exec ? { label: tt("在访达中显示记录", "Reveal Transcript in Finder"), run: function () { LCt.exec({ cmd: "open -R " + shq(xt0.path) }); } } : null,
+          { sep: true },
+          { label: tt("复制 ID", "Copy ID"), run: function () { navigator.clipboard.writeText(tid0); } },
+        ].filter(Boolean), { x: e.clientX, y: e.clientY });
         return;
       }
       if (it.dataset.pi) {

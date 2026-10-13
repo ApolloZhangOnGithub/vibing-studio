@@ -64,11 +64,11 @@
   function toolCat(name) {
     name = String(name || "");
     if (/^(Read|Glob|Grep|LS|NotebookRead)$/.test(name)) return "toolRead";
-    if (/^(Bash|BashOutput|KillShell|KillBash|TaskOutput|TaskStop)$/.test(name)) return "toolBash";
-    if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) return "toolEdit";
-    if (/^(web_search|WebSearch|WebFetch)$/.test(name)) return "toolWeb";
-    if (/^(Agent|Task|SendMessage|ListAgents)$/.test(name)) return "toolAgent";
-    if (/^(TodoWrite|TaskCreate|TaskUpdate|TaskList|TaskGet)$/.test(name)) return "toolTodo";
+    if (/^(Bash|BashOutput|KillShell|KillBash|TaskOutput|TaskStop|execute)$/.test(name)) return "toolBash"; // execute：Teyvat 的命令
+    if (/^(Edit|Write|MultiEdit|NotebookEdit|remove)$/.test(name)) return "toolEdit";
+    if (/^(web_search|WebSearch|WebFetch|web)$/.test(name)) return "toolWeb";
+    if (/^(Agent|Task|SendMessage|ListAgents|social)$/.test(name)) return "toolAgent"; // social：Teyvat 的 agent 之间发消息
+    if (/^(TodoWrite|TaskCreate|TaskUpdate|TaskList|TaskGet|intentions)$/.test(name)) return "toolTodo"; // intentions：Teyvat 的意图栈（接下来要做什么）
     return "toolOther";
   }
   var CFG_DEFAULT = { thinking: "collapsed", tips: true, autoscroll: true, copyOnSelect: true, time: "12h", webSearch: true, webFetch: true, sandbox: true, wrap: "wrap", recap: true, taskList: true, bgList: true, subList: true, infoList: false, footInfo: true, translateTasks: "off", translateReplies: "off", translateShow: "swap",
