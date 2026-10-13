@@ -157,13 +157,19 @@ enum RdpKeychain {
   }
 }
 
-// MARK: - 连接（UserDefaults 里的 rdp.hosts）：{ id, name, host, port, user, domain, clip, audio, avc444, cmd, scale, dynres, pin }
+// MARK: - 连接（UserDefaults 里的 rdp.hosts）：{ id, name, host, port, user, domain, clip, audio, avc444, cmd, scale, dynres, pin }；
+//   「设备」里的电脑另有 device（账户里的设备号）、relay（它在中转里的编号）、rport（它本机远程桌面的端口）
 @MainActor
 enum RdpStore {
   static let key = "rdp.hosts"
   static func all() -> [[String: Any]] { UserDefaults.standard.array(forKey: key) as? [[String: Any]] ?? [] }
   static func get(_ id: String) -> [String: Any]? { all().first { $0["id"] as? String == id } }
-  static func account(_ h: [String: Any]) -> String { "\(h["user"] as? String ?? "")@\(h["host"] as? String ?? ""):\(h["port"] as? Int ?? 3389)" }
+  // 钥匙串里按什么分：「设备」里的电脑按它的设备号（通到它的路——隧道的端口、中转——会变，密码不跟着丢）；别的按「用户名@地址:端口」
+  static func account(_ h: [String: Any]) -> String {
+    let dev = h["device"] as? String ?? ""
+    return dev.isEmpty ? legacyAccount(h) : "\(h["user"] as? String ?? "")@device:\(dev)"
+  }
+  static func legacyAccount(_ h: [String: Any]) -> String { "\(h["user"] as? String ?? "")@\(h["host"] as? String ?? ""):\(h["port"] as? Int ?? 3389)" }
   static func clean(_ s: Any?, _ max: Int = 200) -> String { String((s as? String ?? "").filter { $0 != "\"" && !$0.isNewline && $0 != "\\" }.prefix(max)).trimmingCharacters(in: .whitespaces) }
   // 页面给的：只收认识的项，地址、用户名里不许有引号、换行（它们要放进钥匙串的命令里）
   static func save(_ a: [String: Any]) throws -> [String: Any] {
@@ -185,8 +191,14 @@ enum RdpStore {
                             "avc444": a["avc444"] as? Bool ?? old["avc444"] as? Bool ?? true, "dynres": a["dynres"] as? Bool ?? old["dynres"] as? Bool ?? true,
                             "cmd": ["ctrl", "super"].contains(a["cmd"] as? String ?? "") ? a["cmd"] as! String : old["cmd"] as? String ?? "ctrl",
                             "scale": ["fit", "1:1"].contains(a["scale"] as? String ?? "") ? a["scale"] as! String : old["scale"] as? String ?? "fit"]
-    // 证书指纹：地址没变就留着（换了地址就是另一台，重新认）
-    if let pin = old["pin"] as? String, old["host"] as? String == host, old["port"] as? Int == port { h["pin"] = pin }
+    for k in ["device", "relay"] {
+      let v = a[k] != nil ? clean(a[k], 80) : old[k] as? String ?? ""
+      if !v.isEmpty { h[k] = v }
+    }
+    if let rp = (a["rport"] as? NSNumber)?.intValue ?? old["rport"] as? Int, (1...65535).contains(rp) { h["rport"] = rp }
+    // 证书指纹：地址没变就留着（换了地址就是另一台，重新认）；「设备」里的电脑认的是那台本身，换了路（隧道、中转）也留着
+    let sameDevice = !(h["device"] as? String ?? "").isEmpty && old["device"] as? String == h["device"] as? String
+    if let pin = old["pin"] as? String, sameDevice || old["host"] as? String == host && old["port"] as? Int == port { h["pin"] = pin }
     if let t = old["created"] { h["created"] = t } else { h["created"] = Date().timeIntervalSince1970 }
     if let t = old["lastAt"] { h["lastAt"] = t }
     put(h)
@@ -232,7 +244,7 @@ enum RdpStore {
 @MainActor
 enum RdpDiscover {
   // X.224 连接请求（要 TLS / NLA）：远程桌面会回一个 TPKT（03 00 …）带 X.224 连接确认（0xD0）
-  private static let x224: [UInt8] = [0x03, 0x00, 0x00, 0x13, 0x0e, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00]
+  nonisolated private static let x224: [UInt8] = [0x03, 0x00, 0x00, 0x13, 0x0e, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00]
   static func find(name: String) async -> [String: Any] {
     let want = name.lowercased().trimmingCharacters(in: .whitespaces)
     let ls = await RdpProc.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"], timeout: 8)
@@ -329,7 +341,7 @@ enum RdpDiscover {
 @MainActor
 final class RdpPanes: NSObject {
   static let commands = ["rdp.available", "rdp.hosts", "rdp.saveHost", "rdp.removeHost", "rdp.import", "rdp.open", "rdp.frame", "rdp.close", "rdp.list",
-                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh", "rdp.discover", "rdp.readFile"]
+                         "rdp.focus", "rdp.opts", "rdp.keys", "rdp.trust", "rdp.forget", "rdp.snapshot", "rdp.refresh", "rdp.discover", "rdp.readFile", "rdp.tunWrite", "rdp.tunEnd"]
   weak var controller: WebController?
   private var sessions: [String: RdpSession] = [:]
 
@@ -352,8 +364,9 @@ final class RdpPanes: NSObject {
       return h
     case "rdp.removeHost":
       guard let id = a["id"] as? String, let h = RdpStore.get(id) else { return nil }
-      for (k, s) in sessions where s.hostId == id { s.close(); sessions[k] = nil }
+      for (k, s) in sessions where s.hostId == id { s.close(remove: true); sessions[k] = nil }
       await RdpKeychain.remove(RdpStore.account(h))
+      if RdpStore.account(h) != RdpStore.legacyAccount(h) { await RdpKeychain.remove(RdpStore.legacyAccount(h)) }
       RdpStore.remove(id)
       return nil
     case "rdp.import":
@@ -384,11 +397,12 @@ final class RdpPanes: NSObject {
     switch cmd {
     case "rdp.open":
       // 开（已经开着、连着的：接着用——页面重新载入后认回来）；没有密码 → { needPass: true }，页面让人输
-      guard let hid = a["host"] as? String, let h = RdpStore.get(hid) else { throw BridgeError.args("rdp.open { id, host: <rdp.hosts 里的 id>, password?, remember? }") }
+      // route：这一次走哪条路——{ tunnel: true } 经中转（rdp.tun）；{ host, port } 连别的地址（「设备」里的电脑新找到的路）；不给 = 连接里记着的地址
+      guard let hid = a["host"] as? String, let h = RdpStore.get(hid) else { throw BridgeError.args("rdp.open { id, host: <rdp.hosts 里的 id>, password?, remember?, route? }") }
       if let s = sessions[id], s.hostId == hid, s.alive, a["password"] == nil, a["again"] as? Bool != true { return s.snapshotState() }
       let s = sessions[id] ?? RdpSession(id: id, panes: self) // 已经有的（换密码、重连）：connect 里先停掉旧的助手，不发「已断开」
       sessions[id] = s
-      return await s.connect(h, password: a["password"] as? String, remember: a["remember"] as? Bool ?? true)
+      return await s.connect(h, password: a["password"] as? String, remember: a["remember"] as? Bool ?? true, route: a["route"] as? [String: Any] ?? [:])
     case "rdp.frame":
       sessions[id]?.place(a)
       return nil
@@ -413,7 +427,22 @@ final class RdpPanes: NSObject {
       RdpStore.update(s.hostId) { $0["pin"] = fp }
       return await s.connect(RdpStore.get(s.hostId) ?? h, password: nil, remember: true)
     case "rdp.forget":
-      if let h = RdpStore.get(sessions[id]?.hostId ?? id) { await RdpKeychain.remove(RdpStore.account(h)) }
+      if let h = RdpStore.get(sessions[id]?.hostId ?? id) {
+        await RdpKeychain.remove(RdpStore.account(h))
+        if RdpStore.account(h) != RdpStore.legacyAccount(h) { await RdpKeychain.remove(RdpStore.legacyAccount(h)) }
+      }
+      return nil
+    case "rdp.tunWrite":
+      // 中转通道：那台电脑回来的字节（页面经中转收到的，base64；一次可以几段）写给助手
+      guard let t = sessions[id]?.tunnel, let c = (a["c"] as? NSNumber)?.intValue else { return nil }
+      let parts = (a["b64"] as? [String]) ?? [(a["b64"] as? String) ?? ""]
+      var d = Data()
+      for p in parts where !p.isEmpty { if let x = Data(base64Encoded: p) { d.append(x) } }
+      if !d.isEmpty { t.write(c, d) }
+      return nil
+    case "rdp.tunEnd":
+      // 那台电脑那头断了：这一条也关掉（助手看到断开，自己重连）
+      if let t = sessions[id]?.tunnel, let c = (a["c"] as? NSNumber)?.intValue { t.end(c) }
       return nil
     case "rdp.snapshot":
       if a["view"] as? Bool == true { return sessions[id]?.view.viewSnapshot() } // 视图现在显示的样子（自动测试用：画面放在哪、正不正）
@@ -439,6 +468,106 @@ final class LineBuffer: @unchecked Sendable {
       if let j = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { evs.append(j) }
     }
     return evs
+  }
+}
+
+// MARK: - 中转通道：经 Vibing Studio 自己的连接通到那台电脑（rdp.js 的 tunnel）——这边在本机开一个只给助手连的端口（127.0.0.1，随机），
+//   助手连上来的每一条连接读到的字节交给页面（rdp.tun），页面经中转送到那台电脑上的 App，它在那边起一个小程序接到它本机的远程桌面端口；
+//   回来的字节页面交回这里（rdp.tunWrite）写给助手。不用隧道、不在一个网络里也连得上（每个字节都绕服务器一圈，比直连慢）
+final class RdpTunnel: @unchecked Sendable {
+  private let q = DispatchQueue(label: "beer.paimon.rdp.tunnel")
+  private var listener: NWListener?
+  private var port = 0
+  private var waiters: [CheckedContinuation<Int?, Never>] = []
+  private var conns: [Int: NWConnection] = [:]
+  private var pending: [Int: Data] = [:]
+  private var flushQueued = false
+  private var seq = 0
+  private let out: @Sendable (Int, String, Data?) -> Void
+
+  init(out: @escaping @Sendable (Int, String, Data?) -> Void) { self.out = out }
+
+  // 开端口（开着就用原来的：自己重连时端口不变）；回端口号，开不了回 nil
+  func start() async -> Int? {
+    await withCheckedContinuation { (cont: CheckedContinuation<Int?, Never>) in q.async { self.startOnQ(cont) } }
+  }
+  private func startOnQ(_ cont: CheckedContinuation<Int?, Never>) {
+    if listener != nil, port > 0 { cont.resume(returning: port); return }
+    waiters.append(cont)
+    if listener != nil { return } // 正在开
+    let p = NWParameters.tcp
+    p.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+    guard let l = try? NWListener(using: p) else { resumeAll(nil); return }
+    listener = l
+    l.stateUpdateHandler = { [weak self] st in self?.listenerState(st) }
+    l.newConnectionHandler = { [weak self] c in self?.accept(c) }
+    l.start(queue: q)
+  }
+  private func listenerState(_ st: NWListener.State) {
+    switch st {
+    case .ready: port = Int(listener?.port?.rawValue ?? 0); resumeAll(port > 0 ? port : nil)
+    case .failed, .cancelled: listener = nil; port = 0; resumeAll(nil)
+    default: break
+    }
+  }
+  private func resumeAll(_ v: Int?) { let w = waiters; waiters = []; w.forEach { $0.resume(returning: v) } }
+
+  private func accept(_ c: NWConnection) {
+    seq += 1
+    let n = seq
+    conns[n] = c
+    c.stateUpdateHandler = { [weak self] st in
+      switch st {
+      case .failed, .cancelled: self?.gone(n)
+      default: break
+      }
+    }
+    c.start(queue: q)
+    out(n, "open", nil)
+    pump(c, n)
+  }
+  private func pump(_ c: NWConnection, _ n: Int) {
+    c.receive(minimumIncompleteLength: 1, maximumLength: 1 << 18) { [weak self] data, _, done, err in
+      guard let self else { return }
+      if let data, !data.isEmpty { self.queueOut(n, data) }
+      if done || err != nil { self.gone(n); return }
+      self.pump(c, n)
+    }
+  }
+  // 读到的攒 3 毫秒再交（助手一次写好几小段：少过几趟中转）
+  private func queueOut(_ n: Int, _ d: Data) {
+    pending[n, default: Data()].append(d)
+    if (pending[n]?.count ?? 0) >= 1 << 18 { flush(); return }
+    if !flushQueued { flushQueued = true; q.asyncAfter(deadline: .now() + .milliseconds(3)) { [weak self] in self?.flush() } }
+  }
+  private func flush() {
+    flushQueued = false
+    let p = pending
+    pending = [:]
+    for (n, d) in p where !d.isEmpty { out(n, "data", d) }
+  }
+  private func gone(_ n: Int) {
+    guard let c = conns.removeValue(forKey: n) else { return }
+    flush()
+    c.cancel()
+    out(n, "end", nil)
+  }
+
+  func write(_ n: Int, _ d: Data) { q.async { self.conns[n]?.send(content: d, completion: .contentProcessed { _ in }) } }
+  // 那台电脑那头断了：写完已经交来的再关（不再回报 end）
+  func end(_ n: Int) {
+    q.async {
+      guard let c = self.conns.removeValue(forKey: n) else { return }
+      c.send(content: nil, contentContext: .finalMessage, isComplete: true, completion: .contentProcessed { _ in c.cancel() })
+    }
+  }
+  func close() {
+    q.async {
+      self.listener?.cancel(); self.listener = nil; self.port = 0
+      self.conns.values.forEach { $0.cancel() }
+      self.conns.removeAll(); self.pending.removeAll()
+      self.resumeAll(nil)
+    }
   }
 }
 
@@ -468,6 +597,8 @@ final class RdpSession {
   private var retryItem: DispatchWorkItem?
   private var closing = false
   private let writeQ = DispatchQueue(label: "beer.paimon.rdp.write")
+  private var route: [String: Any] = [:] // 这一次走哪条路（rdp.open 的 route）：自己重连时照旧
+  private(set) var tunnel: RdpTunnel?
   var alive: Bool { pid > 0 }
 
   init(id: String, panes: RdpPanes) {
@@ -489,17 +620,33 @@ final class RdpSession {
 
   func apply(_ h: [String: Any]) { view.setOptions(["cmd": h["cmd"] as Any, "scale": h["scale"] as Any, "dynres": h["dynres"] as Any, "clip": h["clip"] as Any]) }
 
-  // 连：密码（给了的、钥匙串里的）→ 起助手 → 把参数写进去
-  func connect(_ h: [String: Any], password given: String?, remember: Bool) async -> [String: Any] {
+  // 连：密码（给了的、钥匙串里的）→ 起助手 → 把参数写进去。route：nil = 照上一次的路（自己重连、换了证书再连）
+  func connect(_ h: [String: Any], password given: String?, remember: Bool, route r: [String: Any]? = nil) async -> [String: Any] {
     stop()
     retryItem?.cancel()
     hostId = h["id"] as? String ?? ""
+    if let r { route = r }
     apply(h)
     let account = RdpStore.account(h)
     var pw = given
     if pw == nil { pw = await RdpKeychain.get(account) }
-    if pw == nil, !(await RdpProbe.reachable(h["host"] as? String ?? "", h["port"] as? Int ?? 3389)) {
-      setState("error", ["kind": "net", "name": "VS_UNREACHABLE", "msg": "\(h["host"] as? String ?? ""):\(h["port"] as? Int ?? 3389) 没有回应"])
+    // 以前按「用户名@地址:端口」存的（「设备」里的电脑改按设备号存之前）：拿来用，并存一份到新的名下
+    if pw == nil, account != RdpStore.legacyAccount(h), let old = await RdpKeychain.get(RdpStore.legacyAccount(h)) { pw = old; _ = await RdpKeychain.set(account, old) }
+    // 连到哪：中转通道（本机开一个端口给助手连）/ 这一次给的地址 / 连接里记着的
+    var host = h["host"] as? String ?? "", port = h["port"] as? Int ?? 3389
+    if route["tunnel"] as? Bool == true {
+      if tunnel == nil { tunnel = makeTunnel() }
+      guard let p = await tunnel?.start() else {
+        setState("error", ["kind": "net", "name": "VS_TUNNEL", "msg": "无法在本机打开端口"])
+        return snapshotState()
+      }
+      host = "127.0.0.1"; port = p
+    } else {
+      if let rh = route["host"] as? String, !rh.isEmpty { host = rh; port = (route["port"] as? NSNumber)?.intValue ?? 3389 }
+      tunnel?.close(); tunnel = nil
+    }
+    if pw == nil, route["tunnel"] as? Bool != true, !(await RdpProbe.reachable(host, port)) {
+      setState("error", ["kind": "net", "name": "VS_UNREACHABLE", "msg": "\(host):\(port) 没有回应"])
       return snapshotState()
     }
     guard let pw, !pw.isEmpty || (h["user"] as? String ?? "").isEmpty else {
@@ -515,8 +662,8 @@ final class RdpSession {
     let px = view.wantedPixels()
     var cfg = ""
     func line(_ k: String, _ v: String) { cfg += k + " " + RdpSession.pct(v) + "\n" }
-    line("host", h["host"] as? String ?? "")
-    line("port", String(h["port"] as? Int ?? 3389))
+    line("host", host)
+    line("port", String(port))
     line("user", h["user"] as? String ?? "")
     line("pass", pw)
     line("domain", h["domain"] as? String ?? "")
@@ -728,8 +875,19 @@ final class RdpSession {
   func close(remove: Bool = false) {
     retryItem?.cancel()
     stop()
-    if remove { view.removeFromSuperview(); view.session = nil }
+    if remove { view.removeFromSuperview(); view.session = nil; tunnel?.close(); tunnel = nil }
     if state != "idle" { setState("closed", ["by": "app"]) }
+  }
+
+  // 中转通道的那一头交给页面：助手连上来（open）、读到的字节（b64）、断开（end）
+  private func makeTunnel() -> RdpTunnel {
+    let sid = id
+    return RdpTunnel { [weak self] c, kind, data in
+      var d: [String: Any] = ["id": sid, "c": c]
+      if kind == "open" { d["open"] = true } else if kind == "end" { d["end"] = true } else { d["b64"] = data?.base64EncodedString() ?? "" }
+      nonisolated(unsafe) let dd = d
+      DispatchQueue.main.async { MainActor.assumeIsolated { self?.panes?.controller?.emit("rdp.tun", dd) } }
+    }
   }
 
   func place(_ a: [String: Any]) {

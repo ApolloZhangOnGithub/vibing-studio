@@ -56,9 +56,11 @@
     var V = d && sessions[d.id];
     if (!V) return;
     var was = V.st && V.st.state;
+    if (V.dev && devState(V, d)) return; // 「设备」里的电脑：要密码时问那台要、路断了换一条（devState 接着连）
     V.st = d;
     if (d.state === "connected" && was !== "connected") { V.lastFrame = ""; V.err = null; V.pwBusy = false; loadHosts(); }
     if (d.state === "error" && d.kind === "auth") V.err = t("用户名或密码不对。", "The user name or password is incorrect.");
+    if (d.state === "closed" && d.by === "app") tunStop(V);
     paint(V);
     if (d.state === "connected" && V.shown() && document.activeElement && document.activeElement.closest && V.box && !document.activeElement.closest("input, textarea")) N.call("rdp.focus", { id: V.id }).catch(function () {});
   });
@@ -75,7 +77,9 @@
     if (!native() || !V.hostId) return;
     V.st = V.st && V.st.state === "connected" ? V.st : { state: "connecting" };
     paint(V);
-    N.call("rdp.open", Object.assign({ id: V.id, host: V.hostId }, extra || {})).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); } }, function (e) {
+    var a = Object.assign({ id: V.id, host: V.hostId }, V.dev && V.route ? { route: V.route } : {}, extra || {});
+    if (V.route && V.route.tunnel) tunFor(V);
+    N.call("rdp.open", a).then(function (d) { if (d && sessions[V.id] && !(V.dev && devState(V, d))) { V.st = d; paint(V); } }, function (e) {
       V.st = { state: "error", kind: "other", msg: String((e && e.message) || e) };
       paint(V);
     });
@@ -83,13 +87,16 @@
 
   // 卡片：连上以前、断了以后显示在那一块的中间（连着时原生的画面盖住整块，卡片藏起来）
   function cardHtml(V) {
-    var st = V.st || { state: "connecting" }, h = hostOf(V.hostId), name = esc(h ? h.name : t("远程桌面", "Remote Desktop")), addr = esc(addrOf(h));
+    var st = V.st || { state: "connecting" }, h = hostOf(V.hostId), name = esc(h ? h.name : t("远程桌面", "Remote Desktop")), addr = esc(V.dev ? devAddr(V, h) : addrOf(h));
     var head = '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + name + '</h2><div class="rd-csub">' + addr + "</div>";
     var btn = function (act, label, primary) { return '<button type="button" data-act="' + act + '"' + (primary ? ' class="rd-primary"' : "") + ">" + esc(label) + "</button>"; };
     var detail = function (s) { return s ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(s) + "</pre></details>" : ""; };
     if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在找到它的远程桌面…", "Finding its remote desktop…")) + "</div>";
-    if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' + esc(t("没找到它的远程桌面", "Couldn’t find its remote desktop")) + '</div><div class="rd-msg">' +
-      esc(t("要那台电脑的远程桌面开着（GNOME：设置 › 系统 › 远程桌面），而且这台 Mac 能通到它（同一个网络，或者一条转到本机端口的隧道）。", "Its remote desktop must be on (GNOME: Settings › System › Remote Desktop) and reachable from this Mac (same network, or a tunnel to a local port).")) +
+    if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' + esc(V.notFound === "offline" ? t("它现在不在线", "It’s offline") : t("没找到它的远程桌面", "Couldn’t find its remote desktop")) + '</div><div class="rd-msg">' +
+      esc(V.notFound === "offline" ? t("那台电脑上的 Vibing Studio 没在运行，或者没打开「设置 › 通用 › 其他设备使用这台电脑」。开着时这台 Mac 经它连它的桌面，不用隧道、不用密码。", "Vibing Studio isn’t running on that computer, or Settings › General › Allow Other Devices to Use This Computer is off there. With it on, this Mac reaches its desktop through it — no tunnel, no password.") :
+        V.notFound === "nordp" ? t("那台电脑的远程桌面没有打开（GNOME：设置 › 系统 › 远程桌面 › 桌面共享）。", "Remote Desktop is off on that computer (GNOME: Settings › System › Remote Desktop › Desktop Sharing).") :
+        t("要那台电脑的远程桌面开着（GNOME：设置 › 系统 › 远程桌面），并且那台电脑上的 Vibing Studio 打开了「其他设备使用这台电脑」，或者这台 Mac 能直接通到它（同一个网络、一条转到本机端口的隧道）。", "Its remote desktop must be on (GNOME: Settings › System › Remote Desktop), and either Vibing Studio on it allows other devices to use it, or this Mac can reach it directly (same network, or a tunnel to a local port).")) +
+      (V.tunErr ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(V.tunErr) + "</pre></details>" : "") +
       '</div><div class="rd-cbtns"><button type="button" data-act="refind" class="rd-primary">' + esc(t("再找一次", "Try Again")) + "</button></div>";
     switch (st.state) {
       case "needpass":
