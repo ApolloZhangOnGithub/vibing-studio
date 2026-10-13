@@ -1509,7 +1509,7 @@
   // Claude Code 里不画的工具（同 ~/Desktop/src：renderToolUseMessage 返回 null、或 userFacingName 是空的）：
   //   ABSORB——任务清单那几个，并进前后那一组、不打断（Claude Code 的 isAbsorbedSilently）；SILENT——不画，但前后的组到这里断开
   var CC_ABSORB = /^(TodoWrite|TaskCreate|TaskGet|TaskList|TaskUpdate)$/, CC_SILENT = /^(ToolSearch|AskUserQuestion|EnterPlanMode|SendUserMessage)$/;
-  // 别的 agent 发来的消息（同 teyvat 的 social-message）：青蓝色的 ➤ 一行（谁 [mode] · 时间），正文带淡行号
+  // 别的 agent 发来的消息（同 teyvat 的 social-message）：青蓝色的 ➤ 一行（谁 [mode] · 时间），正文按 Markdown 画（缩进四格；不再带行号——表格、粗体、标题照原样漏出来，用户 2026-10-13：乱七八糟）
   var SOCIAL_C = { dark: rgb("61;187;255"), light: rgb("0;119;204") };
   var hms = function (t) { var d = new Date(t), z = function (n) { return (n < 10 ? "0" : "") + n; }; return z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds()); };
   var clockHms = hms; // 几点几分几秒（agent 里另有一个同名的 hms 是「用了多久」，会盖掉这个）
@@ -2718,10 +2718,7 @@
           mark(m.ts || turn.at);
           r.text([sc + "➤ " + BOLD + (m.chan ? m.chan + " · " : "") + (m.from_name || m.from) + (m.at && m.at.length ? " @" + m.at.join(",") : "") + " [" + (m.mode_used || m.mode) + "]" + (m.ts ? " · " + clockHms(m.ts) : "") + RESET]);
           if (amode("agentIn") === "line" && !verbose) { var l0 = String(m.text || "").replace(/\s+/g, " ").trim(); if (l0) r.text(["    " + D + clip(l0, P.cols - 6) + RESET]); return; } // 一行：只留开头
-          var ls = String(m.text || "").replace(/\r/g, "").split("\n"), gw = String(ls.length).length;
-          ls.forEach(function (l, li) {
-            wrap(l, P.cols - 6 - gw).forEach(function (x, xi) { r.text(["    " + D + (xi ? " ".repeat(gw) : String(li + 1).padStart(gw)) + "  " + RESET + x]); });
-          });
+          trim(mdLines(String(m.text || "").replace(/\r/g, ""), { width: P.cols - 6, theme: P.theme })).forEach(function (l) { r.text(["    " + l]); });
         });
       } else if (turn.system) {
         // 后台命令跑完、叫醒：按「后台任务通知」；子 agent 跑完的：按「Agent 消息 › 子 Agent 报告」。关掉的只是这一行，它接着的回答照常画
@@ -3406,7 +3403,9 @@
       }
       var bl0 = o.md ? 1 : (o.lines || []).filter(function (l, i, all) { return i < all.length - 1 || String(l).trim(); }).length;
       if (o.sum) rows.push(sub + (o.tone === "err" ? RED : "") + o.sum + RESET + (p.ty === "execute" && !o.md ? tyLines(bl0) : ""));
-      return rows.concat(tyBody(o, lvl, full || (p.status === "error" && vflag("errorsFull") !== false), pad5, D)); // 出错的结果：同别处「出错的结果总是完整显示」
+      // 发给别的 agent 的话（social send）：「Agent 消息 › 发出的」是完整（Teyvat 的预设就是）就整段显示（有意义的信息，不折叠——用户定的）
+      var msgFull = o.msg && amode("agentOut") === "full";
+      return rows.concat(tyBody(o, lvl, full || msgFull || (p.status === "error" && vflag("errorsFull") !== false), pad5, D)); // 出错的结果：同别处「出错的结果总是完整显示」
     }
     // Teyvat 自己的一块（不是工具）：✤ Life Restarted / Hidden / Shown（青绿）、◆ Date / Resumed From Sleep、▸ 系统消息（淡 / 黄 / 红）、
     //   转到后台的命令跑完：⏺ Result "标题" done in 16s + 输出（同「命令」的档位：完整 / 前几行 / 只看调用 / 隐藏）
@@ -3578,7 +3577,7 @@
         if (lvl === "call") return rows;
         var mrows = [];
         (so.lines || []).forEach(function (l) { mrows.push(pad5 + D + clip(l, P.cols - 6) + RESET); });
-        String(sa.message || "").split("\n").forEach(function (l) { wrap(l, P.cols - 6).forEach(function (x) { mrows.push(pad5 + x); }); });
+        trim(mdLines(String(sa.message || "").replace(/\r/g, ""), { width: P.cols - 6, theme: P.theme })).forEach(function (l) { mrows.push(pad5 + l); }); // 发出去的正文：同收到的，按 Markdown 画
         if (peek && mrows.length > 3) mrows = mrows.slice(0, 3).concat([pad5 + D + HOT + "… +" + (mrows.length - 3) + " lines" + HOT_END + RESET]);
         return rows.concat(mrows);
       }

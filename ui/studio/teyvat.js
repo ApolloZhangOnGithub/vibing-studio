@@ -245,11 +245,11 @@
         else if (a === "focus") sum = "focus " + (d.mode || "");
         else if (a === "check-message") sum = (d.unread !== undefined ? d.unread + " new / " : "") + (d.count || 0) + " msg";
         else if (a === "group") sum = "Group " + (d.gop || "") + (d.count ? " · " + d.count + " receivers" : "");
-        var bl = [];
-        if ((a === "send" || (a === "public" && d.gop === "send")) && d.text) bl = String(d.text).split("\n");
+        var bl = [], md = "";
+        if ((a === "send" || (a === "public" && d.gop === "send")) && d.text) md = String(d.text); // 发出去的正文：按 Markdown 画（同收到的消息；不再一行行原样漏出 ** ## ```）
         else if (Array.isArray(d.lines) && d.lines.length) bl = d.lines.map(String);
         else if (a === "list" || a === "global") bl = lines;
-        out(sum + (d.ts ? "  " + clock(d.ts) : ""), bl, { sumDimTail: d.ts ? 2 + clock(d.ts).length : 0 });
+        out(sum + (d.ts ? "  " + clock(d.ts) : ""), bl, md ? { sumDimTail: d.ts ? 2 + clock(d.ts).length : 0, md: md, msg: true } : { sumDimTail: d.ts ? 2 + clock(d.ts).length : 0 });
         break;
       case "intentions":
         if (d.action === "read") { if (!txt || txt === "(empty)") break; out(lines.filter(function (l) { return l.trim(); }).length + " lines", lines, { num: true }); break; }
@@ -715,13 +715,18 @@
     return p;
   }
   // ---- 拉成后台：genshin bg <名字>（它自己的命令；已经在跑的它会说一声、不动）----
+  //   不往它的对话里塞东西（用户 2026-10-13：「不应该使用注入方法」）：它的 heart 在内核启动时会注入「[系统] 用户回来了」（当成你从离线回来），
+  //   attach 时注入「用户已以前台模式进入」。照它自己的 attach 协议（web-tui 同款）：先写 RuntimeCache/<id>/attached-back（heart 见到就不发「用户回来了」），
+  //   再 --silent 启动（不发 attach 的那句）。已经在后台跑着的不写标记——写了它下一回合会说「用户进了前台」
   var genshin = function () { return window.__TY_GENSHIN || '"$HOME/.local/bin/genshin"'; };
   function startBg(id) {
     var x = byId[id];
     if (!x) return Promise.reject(new Error(tr("找不到这个 Agent")));
     if (x.running) return x.mode === "bg" ? Promise.resolve() : Promise.reject(new Error(tr("它在终端里运行（前台）")));
-    var g = genshin();
-    return execT("G=" + g + '; [ -x "$G" ] || G=$(command -v genshin); [ -n "$G" ] || { echo NOGENSHIN; exit 0; }; "$G" bg ' + shq(x.name) + " </dev/null 2>&1 | tail -3", 30000).then(function (r) {
+    var g = genshin(), mark = PH() + "/RuntimeCache/" + id + "/attached-back";
+    return LOC.write(mark, JSON.stringify({ ts: new Date().toISOString().replace(/\.\d+Z$/, "Z"), from: "vibing-studio" })).catch(function () {}).then(function () {
+      return execT("G=" + g + '; [ -x "$G" ] || G=$(command -v genshin); [ -n "$G" ] || { echo NOGENSHIN; exit 0; }; "$G" --silent bg ' + shq(x.name) + " </dev/null 2>&1 | tail -3", 30000);
+    }).then(function (r) {
       var o = String(r && r.out || "");
       if (/NOGENSHIN/.test(o)) throw new Error(tr("这台电脑上没有找到 genshin 命令"));
       return scan(true);
