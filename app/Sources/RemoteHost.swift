@@ -79,6 +79,22 @@ final class RemoteHost: NSObject {
   // 测试用：NADOS_REMOTE_HOST=0 这一个进程不当主机（同一个测试 App 开两份时，当 iPad 的那份）；NADOS_REMOTE_AUTOALLOW=1 新设备不问直接允许
   private var disabled: Bool { ProcessInfo.processInfo.environment["NADOS_REMOTE_HOST"] == "0" }
   private var autoAllow: Bool { ProcessInfo.processInfo.environment["NADOS_REMOTE_AUTOALLOW"] == "1" }
+  // 自动测试：NADOS_REMOTE_TEST_ANSWER=allow|deny 不弹窗、替人答；NADOS_REMOTE_TEST_LOG=<文件> 记下问了什么、验证码、允许 / 拒绝；
+  //   NADOS_REMOTE_TEST_SNAP=<目录> 把弹窗画成图存下来（看样子，不上屏幕）
+  private let testEnv = ProcessInfo.processInfo.environment
+  private func testLog(_ o: [String: Any]) {
+    guard let p = testEnv["NADOS_REMOTE_TEST_LOG"], let d = try? JSONSerialization.data(withJSONObject: o), let h = FileHandle(forWritingAtPath: p) ?? { FileManager.default.createFile(atPath: p, contents: nil); return FileHandle(forWritingAtPath: p) }() else { return }
+    h.seekToEndOfFile(); h.write(d); h.write(Data("\n".utf8)); try? h.close()
+  }
+  private func testSnap(_ w: NSWindow, _ name: String) {
+    guard let dir = testEnv["NADOS_REMOTE_TEST_SNAP"], let v = w.contentView else { return }
+    v.layoutSubtreeIfNeeded()
+    let size = v.fittingSize.width > 10 ? v.fittingSize : v.bounds.size
+    v.setFrameSize(size)
+    guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+    v.cacheDisplay(in: v.bounds, to: rep)
+    if let png = rep.representation(using: .png, properties: [:]) { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png")) }
+  }
 
   func start() { if isOn && !disabled { connect() } }
 
@@ -324,11 +340,13 @@ final class RemoteHost: NSObject {
     guard let pubS = a["pub"] as? String, let sigS = a["sig"] as? String, let pub = Data(base64Encoded: pubS), let sig = Data(base64Encoded: sigS),
           let pk = try? P256.Signing.PublicKey(x963Representation: pub), let es = try? P256.Signing.ECDSASignature(rawRepresentation: sig),
           pk.isValidSignature(es, for: Data("vs-remote-v1\n\(device)\n\(from)\n\(n)".utf8)) else {
+      testLog(["ev": "badsig", "cid": from])
       return reply(from, id, false, err("E_AUTH", "设备签名不对"))
     }
     nonces[from] = nil
     challenged[from] = nil
     proven[from] = pubS
+    testLog(["ev": "proven", "cid": from, "key": pubS])
     reply(from, id, true, ["policy": policy])
     release(from)
   }
@@ -411,6 +429,14 @@ final class RemoteHost: NSObject {
     stack.widthAnchor.constraint(equalToConstant: 420).isActive = true
     panelDone[key] = done
     askWins[key] = w
+    if let ans = testEnv["NADOS_REMOTE_TEST_ANSWER"] { // 自动测试：不上屏幕，画一张图、替人答
+      testSnap(w, "ask")
+      testLog(["ev": "ask", "key": key, "title": title, "lines": lines])
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        MainActor.assumeIsolated { guard let self, let f = self.panelDone.removeValue(forKey: key) else { return }; self.askWins[key] = nil; f(ans == "allow") }
+      }
+      return
+    }
     w.center()
     NSApp.activate()
     w.makeKeyAndOrderFront(nil)
@@ -455,11 +481,10 @@ final class RemoteHost: NSObject {
     stack.spacing = 10
     stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20)
     w.contentView = stack
-    w.center()
-    NSApp.activate()
-    w.makeKeyAndOrderFront(nil)
     codeWins[cid]?.close()
     codeWins[cid] = w
+    if testEnv["NADOS_REMOTE_TEST_ANSWER"] != nil { testSnap(w, "code"); testLog(["ev": "code", "cid": cid, "code": code]) } // 自动测试：不上屏幕
+    else { w.center(); NSApp.activate(); w.makeKeyAndOrderFront(nil) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 301) { [weak self] in
       MainActor.assumeIsolated { guard let self, self.codes[cid]?.code == code else { return }; self.codes[cid] = nil; self.closeCode(cid); self.authState(cid, "expired") }
     }
@@ -495,6 +520,7 @@ final class RemoteHost: NSObject {
     var o = approved; o[cid] = e; approved = o
     if policy == "every" { okSess.insert(cid + "|" + sess) }
     seenAt[cid] = Date()
+    testLog(["ev": "approve", "cid": cid, "name": nm, "policy": policy, "key": key ?? ""])
     notify()
     authState(cid, "ok")
     release(cid)
@@ -503,6 +529,7 @@ final class RemoteHost: NSObject {
   private func deny(_ cid: String) {
     closeAsks(cid)
     denied.insert(cid)
+    testLog(["ev": "deny", "cid": cid])
     let l = waiting[cid] ?? []
     waiting[cid] = nil
     l.forEach { reply(cid, $0["id"], false, err("E_DENIED", "这台 Mac 未授权此设备")) }

@@ -15,6 +15,8 @@
   var seen = function (ms) { return ms ? t(ago(ms) + "在线", "Seen " + ago(ms)) : t("离线", "Offline"); };
   var day = function (ms) { if (!ms) return ""; var d = new Date(ms); return t(d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日", d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })); };
   var ONLINE_MS = 15 * 60000;
+  // 其他设备连进来时怎么确认（RemoteHost.swift 的 remote.policy）
+  var POLICIES = [["first", "首次连接时确认", "Ask the First Time"], ["every", "每次连接都确认", "Ask Every Time"], ["code", "首次连接时确认并输入验证码", "Ask and Enter a Code the First Time"], ["auto", "直接允许", "Allow Without Asking"]];
 
   // ---- 图标（48 格细线，同活动栏的线条图标）；TOP：图形本身的上沿在 48 格里的位置（连线接到图形上，不悬在图标的空白里）----
   var SV = function (b) { return '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
@@ -189,7 +191,9 @@
     if (n.via) rows.push([t("正在使用", "Using"), n.via.label]);
     if (n.ids && n.ids.length) rows.push([t("设备 ID", "Device ID"), n.ids[0], "id"]);
     var acts = [];
-    if (!n.self && n.host && n.online && !n.web) acts.push(["open", t("在这里使用", "Use Here"), "primary"]);
+    // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
+    var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
+    if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), "primary"]);
     if (!n.self && n.ids && n.ids.length && SY()) acts.unshift(["remove", t("从账户中移除…", "Remove from Account…")]);
     return { icon: ICON[iconOf(n)], title: n.label, sub: n.self ? kindLabel(n) + " · " + t("这台设备", "This Device") : kindLabel(n), rows: rows, acts: acts };
   }
@@ -202,10 +206,12 @@
         return "<dt>" + esc(r[0]) + "</dt><dd" + (r[2] === "id" ? ' class="dv-id"' : "") + ">" + (r[2] === "on" ? '<i class="dv-sdot"></i>' : "") + (r[2] === "id" ? "<code>" + esc(r[1]) + '</code><button type="button" class="dv-copy" data-copy="' + esc(r[1]) + '" title="' + esc(t("拷贝", "Copy")) + '">' + COPY + "</button>" : esc(r[1])) + "</dd>";
       }).join("") + "</dl>" : "");
     if (hosting) {
-      var on = !!rh.on(), users = n.kids || [], appr = rh.approved() || [];
+      var on = !!rh.on(), users = n.kids || [], appr = rh.approved() || [], pol = rh.policy ? rh.policy() : "";
       html += '<div class="dv-sw"><span>' + esc(t("允许其他设备使用这台 Mac", "Allow Other Devices to Use This Mac")) + '</span><button type="button" class="dv-switch' + (on ? " on" : "") + '" role="switch" aria-checked="' + on + '" data-act="share"></button></div>';
+      // 其他设备连进来时怎么确认（同 设置 › 通用）
+      if (on && pol) html += '<div class="dv-sw dv-pol"><span>' + esc(t("连接时", "When a Device Connects")) + '</span><select class="dv-sel" data-act="policy">' + POLICIES.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === pol ? " selected" : "") + ">" + esc(t(o[1], o[2])) + "</option>"; }).join("") + "</select></div>";
       if (users.length) html += '<div class="dv-sec">' + esc(t("正在使用这台 Mac", "Using This Mac")) + '</div><ul class="dv-list">' + users.map(function (u) { return "<li><span>" + esc(u.label) + "</span></li>"; }).join("") + "</ul>";
-      if (appr.length) html += '<div class="dv-sec">' + esc(t("允许过的设备", "Allowed Devices")) + '</div><ul class="dv-list">' + appr.map(function (a) { return "<li><span>" + esc(a.name || a.id) + '</span><button type="button" data-revoke="' + esc(a.id) + '">' + esc(t("撤销", "Revoke")) + "</button></li>"; }).join("") + "</ul>";
+      if (appr.length) html += '<div class="dv-sec">' + esc(t("允许过的设备", "Allowed Devices")) + '</div><ul class="dv-list">' + appr.map(function (a) { return "<li><span>" + esc(a.name || a.id) + '</span><button type="button" data-revoke="' + esc(a.id) + '">' + esc(t("移除", "Remove")) + "</button></li>"; }).join("") + "</ul>";
     } else if (n.kids && n.kids.length) html += '<div class="dv-sec">' + esc(t("正在使用这台 Mac", "Using This Mac")) + '</div><ul class="dv-list">' + n.kids.map(function (u) { return "<li><span>" + esc(u.label) + "</span></li>"; }).join("") + "</ul>";
     if (c.acts.length) html += '<div class="dv-acts">' + c.acts.map(function (a) { return '<button type="button" data-act="' + a[0] + '"' + (a[2] ? ' class="dv-' + a[2] + '"' : "") + ">" + esc(a[1]) + "</button>"; }).join("") + "</div>";
     card = document.createElement("div");
@@ -219,6 +225,10 @@
     var below = r.bottom - hr.top + host.scrollTop + 6, above = r.top - hr.top + host.scrollTop - ch - 6;
     card.style.left = Math.round(left) + "px";
     card.style.top = Math.round(below + ch > host.scrollTop + host.clientHeight - 8 && above >= host.scrollTop + 8 ? above : below) + "px";
+    card.addEventListener("change", function (e) {
+      var sel = e.target.closest("select[data-act=policy]");
+      if (sel && RH() && RH().setPolicy) Promise.resolve(RH().setPolicy(sel.value)).then(function () { host._dvHtml = ""; if (V.shown()) render(host, P, V.arg, V); });
+    });
     card.addEventListener("click", function (e) {
       var b = e.target.closest("button");
       if (!b) return;
@@ -240,11 +250,10 @@
       }
       if (a === "open" && nn.host) {
         closeCard();
+        // App：开一个窗口连那台 Mac（已经开着就叫到前面）；网页、iPad：这一页换成用那台 Mac
+        if (S.openMac) return S.openMac(nn.host, nn.label);
         var rc = RC();
-        if (rc && rc.use) return rc.use(nn.host, nn.label); // 网页、iPad：这一页换成用那台 Mac
-        // Mac / Linux 的 App：在内置浏览器里开一页网页版，连那台 Mac（同在 iPad 上用它）
-        var url = location.origin + "/terminal.html?mac=" + encodeURIComponent(nn.host);
-        if (window.TSU_WEB && TSU_WEB.open) TSU_WEB.open(P.win, url);
+        if (rc && rc.use) return rc.use(nn.host, nn.label);
       }
     });
   }

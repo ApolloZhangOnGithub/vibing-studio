@@ -105,7 +105,9 @@
   var mdLines = function (md, o) { return TTU.markdownLines(cjkEm(md), o); };
   window.TSU_MD = { lines: mdLines, cjkEm: cjkEm }; // 别的文件（翻译、GUI）要同样的修正时用
   // 这是 App 的第几个窗口（原生开的新窗口带 ?win=2…）：各窗口的布局各记各的；?open=<标签页的 spec（JSON）> 开一个只有这一页的窗口（拖出去的标签页）
-  var WIN_Q = new URLSearchParams(location.search), WIN_ID = Math.max(1, parseInt(WIN_Q.get("win") || "1", 10) || 1), WSUF = WIN_ID > 1 ? ":" + WIN_ID : "";
+  //   App 里连着另一台 Mac 的窗口（remote.js 的 hybrid）：按那台 Mac 记（关了再打开它，还是上次那几个标签页）
+  var WIN_Q = new URLSearchParams(location.search), WIN_ID = Math.max(1, parseInt(WIN_Q.get("win") || "1", 10) || 1), RWIN = window.nadosNative && nadosNative.hybrid ? String(nadosNative.mac || "") : "";
+  var WSUF = RWIN ? ":mac:" + RWIN : WIN_ID > 1 ? ":" + WIN_ID : "";
   window.TSU_WIN = { id: WIN_ID, suffix: WSUF, open: WIN_Q.get("open"), fresh: !!WIN_Q.get("fresh") };
   // open / fresh 只管这个窗口刚开出来的那一次：用过就从地址里拿掉——不然这个窗口以后每次重新载入（更新、刷新）都当成新开的，
   //   记下的标签页全不恢复、只剩一个空白页（历史记录）（用户：重启丢了窗口）。win=N 留着：它说的是这个窗口记的是哪一份

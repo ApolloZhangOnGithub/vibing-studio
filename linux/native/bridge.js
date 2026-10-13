@@ -11,7 +11,7 @@ const { Local, BridgeError, COMMANDS: LOCAL_COMMANDS } = require("./local");
 
 const PROTOCOL = 1;
 const COMMANDS = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "badge", "attention", "window.fullscreen",
-  "window.title", "window.new", "window.appearance", "window.titlebar", "menu.set", "page.snapshot", "pdf.render", "app.activate", "app.quit", "open.pending", "ui.stamp"];
+  "window.title", "window.new", "window.appearance", "window.titlebar", "menu.set", "page.snapshot", "pdf.render", "app.activate", "app.quit", "open.pending", "ui.stamp", "remote.open", "window.close"];
 
 // 菜单：页面给的 [{ title, place, items: [{ id, title, key?, mods?, enabled?, checked?, sep?, items? }] }] → Electron 的菜单栏；点了 → menu.action { id }
 //   mods 里的 cmd 在 Linux 上是 Ctrl（同 VS Code 的 Linux 版）
@@ -90,6 +90,12 @@ class Bridge {
       case "window.fullscreen": { if (!w || w.isDestroyed()) throw BridgeError.failed("no window"); const on = w.isFullScreen(), want = typeof a.on === "boolean" ? a.on : !on; if (want !== on) w.setFullScreen(want); return { on: want }; }
       case "window.title": if (w && !w.isDestroyed()) w.setTitle(String(a.title || "Vibing Studio").slice(0, 200)); return null;
       case "window.new": return { id: this.opts.newWindow ? this.opts.newWindow(a.open) : null };
+      // 用另一台 Mac：开一个窗口连它（已经开着就叫到前面；同 macOS 版的 AppDelegate.openRemote）
+      case "remote.open": {
+        if (!/^[\w-]{4,64}$/.test(String(a.mac || ""))) throw BridgeError.args("remote.open { mac, name? }");
+        return { id: this.opts.openRemote ? this.opts.openRemote(String(a.mac), String(a.name || "")) : null };
+      }
+      case "window.close": if (w && !w.isDestroyed()) w.close(); return null;
       case "window.appearance": {
         // 窗口跟着页面的深浅色：标题栏、滚动条、系统对话框一起变；bg：页面的底色（拉大窗口、页面还没画到的地方）
         const mode = a.mode === "dark" || a.mode === "light" ? a.mode : "system";

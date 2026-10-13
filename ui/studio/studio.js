@@ -15,6 +15,9 @@
   var LOC = function () { return window.TSU_LOCAL; };
   // 设置文件（~/.paimon/studio.json）用哪一份：iPad 借 Mac 用时（remote.js）不读写 Mac 上那份——iPad 的字号、配色、布局记在 iPad 自己这里（同网页版），不去改 Mac 的
   var SLOC = function () { var N = window.nadosNative; return N && N.remote ? null : LOC(); };
+  // App 里连着另一台 Mac 的窗口（remote.js 的 hybrid）：设置是这台的（字号、配色、风格跟着人走），~/.paimon/studio.json 经这台 App 的桥读写（TSU_HOSTLOCAL）
+  var HYB = function () { var N = window.nadosNative; return !!(N && N.hybrid); };
+  var FLOC = function () { return HYB() ? window.TSU_HOSTLOCAL || null : SLOC(); };
   var T = function () { return window.TSU_TERM; };
   // Claude Code 的支持是扩展（ext.js）：默认不装；没装时这里跟它有关的（设置那一区、搜索它的会话、终端里 claude 的状态）都不出现
   var ccOn = function () { return !!(window.TSU_EXT && TSU_EXT.on("claude-code")); };
@@ -478,7 +481,7 @@
   }
 
   // ======== 窗口的部件：右侧栏、下面板、状态栏——都能拖动调整、能关 ========
-  var WSUF = (function () { var n = parseInt(new URLSearchParams(location.search).get("win") || "1", 10) || 1; return n > 1 ? ":" + n : ""; })(); // App 的第几个窗口：各记各的布局
+  var WSUF = (function () { var N0 = window.nadosNative; if (N0 && N0.hybrid) return ":mac:" + N0.mac; var n = parseInt(new URLSearchParams(location.search).get("win") || "1", 10) || 1; return n > 1 ? ":" + n : ""; })(); // App 的第几个窗口：各记各的布局（连着另一台 Mac 的窗口按那台记，同 live.js）
   var L = store("st-layout" + WSUF, { side: false, panel: false, panelH: 240, status: true, fold: {} }); // 右侧栏默认关着（同 VS Code 的辅助侧栏）
   if (!(L.sideR > 0)) L.sideR = 0.5; // 右侧栏的宽度：占编辑区加右侧栏的几成（默认一半）
   // 右侧栏显示哪些内容（它右上角的 ··· 勾选）：输入框，以及对话里的哪几种（默认只有输入框：输入与管理）
@@ -2091,7 +2094,7 @@
     },
     // 面板要焦点（点了面板任何地方都会来这里）：焦点已经在设置页里（点的控件、开着的下拉框）就不动；不然给整页（不是搜索框——只有 ⌘F、直接打字才去搜索框）
     focus: function (host) { var ae = document.activeElement; if (ae && host.contains(ae)) return; var ss = host.querySelector(".ss"); if (ss) ss.focus({ preventScroll: true }); },
-    tabActions: function (host, P) { return LOC() ? [{ icon: ICO.json, title: "打开设置 (JSON)", run: function () { openFile(P.win, setState.sec === "claude" ? ccFile() : setFile()); } }] : []; },
+    tabActions: function (host, P) { return LOC() && !HYB() ? [{ icon: ICO.json, title: "打开设置 (JSON)", run: function () { openFile(P.win, setState.sec === "claude" ? ccFile() : setFile()); } }] : []; },
   };
   // ---- 两级：一个分区是一页（第一级）；有的项分到它的第二级（S.pages：{ id: { title, nav?, desc? } }，项上标 page: id——比如「通用 › 高级」）。
   //      levels: 2 的分区（连接器）：每个 { head } 一组是一页，第一级是它们的目录（一行一个：名字、现在的样子、›）；标了 top 的项留在第一级 ----
@@ -3261,9 +3264,9 @@
     return ch;
   };
   if (migrateMini(SET)) keep("st-settings", SET);
-  if (!SLOC()) { localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); }
+  if (!FLOC()) { localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); }
   // 设置文件：测试用的（本地开发服务器 :8787 上的页面）用另一份——以前测试和你的 App 共用这一份，测试一跑就可能把你调好的字号这些冲掉
-  var setFile = function () { return home() + "/.paimon/studio" + (location.port === "8787" ? "-dev" : "") + ".json"; };
+  var setFile = function () { var F = FLOC(), i = F && F.info ? F.info() : null; return ((i && i.home) || home()) + "/.paimon/studio" + (location.port === "8787" ? "-dev" : "") + ".json"; };
   var setMtime = 0;
   var SETP = {}; // 预览：菜单里指着的那一种（缩略图的样子）临时用上
   var OS_UI = { claude: "gui", terminal: "tui" }; // 应用风格定了 Agent 显示风格的：Claude App 只有 GUI，Pure Terminal 只有 TUI
@@ -3287,7 +3290,7 @@
     applySettings();
     if (k === "appLauncher") { allWins().forEach(function (w) { syncAct(w); }); if (STUDIO.apps && STUDIO.apps.dock) STUDIO.apps.dock(); }
     if (k === "claudeTheme" || k === "colorScheme" || k === "os") document.dispatchEvent(new Event("st-theme-mode")); // 深浅色跟不跟系统变了：窗口那边（native.js）跟上
-    if (SLOC()) writeKey(k);
+    if (FLOC()) writeKey(k);
   }
   // 写设置文件：只改这一项——先读文件里现在的，把这一项改上再写回去。以前整份写这个页面记着的那一套：另一个窗口（藏着的不读文件）、
   //   测试用的 App（同一个文件，它自己记着旧的）随便改一项，就把别处刚改的冲掉了（⌘+ 调大的字号，重启后又回去了）。
@@ -3295,14 +3298,14 @@
   var wq = Promise.resolve();
   function writeKey(k) {
     wq = wq.then(function () {
-      return LOC().read(setFile()).then(function (b) { try { var j = JSON.parse(new TextDecoder().decode(b)); return j && typeof j === "object" && !Array.isArray(j) ? j : null; } catch (e) { return null; } }, function () { return null; }).then(function (cur) {
-        if (!cur) return LOC().write(setFile(), settingsText());
+      return FLOC().read(setFile()).then(function (b) { try { var j = JSON.parse(new TextDecoder().decode(b)); return j && typeof j === "object" && !Array.isArray(j) ? j : null; } catch (e) { return null; } }, function () { return null; }).then(function (cur) {
+        if (!cur) return FLOC().write(setFile(), settingsText());
         var v = k === "ui" ? (SET.ui !== undefined ? SET.ui : SET_DEF.ui) : getv(k, true), moved = false;
         Object.keys(cur).forEach(function (x) { if (x !== k && JSON.stringify(cur[x]) !== JSON.stringify(SET[x])) { SET[x] = cur[x]; moved = true; } });
         if (v === undefined) delete cur[k]; else cur[k] = v;
         if (moved) { keep("st-settings", SET); applySettings(); }
-        return LOC().write(setFile(), JSON.stringify(cur, null, 2) + "\n");
-      }).then(function () { return LOC().stat(setFile()); }).then(function (st) { if (st) setMtime = st.mtime; }).catch(function () {});
+        return FLOC().write(setFile(), JSON.stringify(cur, null, 2) + "\n");
+      }).then(function () { return FLOC().stat(setFile()); }).then(function (st) { if (st) setMtime = st.mtime; }).catch(function () {});
     });
   }
   function settingsText() {
@@ -3336,12 +3339,13 @@
     return Promise.race([job, new Promise(function (r) { setTimeout(r, 4000); })]);
   }
   function loadSettingsFile() {
-    if (!SLOC()) { if (!setReadyRes) return; return cloneFromMac().then(markReady, markReady); }
-    LOC().stat(setFile()).then(function (st) {
-      if (!st) return LOC().write(setFile(), settingsText()).then(function () { return LOC().stat(setFile()); }).then(function (s2) { if (s2) setMtime = s2.mtime; });
+    var F = FLOC();
+    if (!F) { if (!setReadyRes) return; return cloneFromMac().then(markReady, markReady); }
+    (F.ready || Promise.resolve()).then(function () { return F.stat(setFile()); }).then(function (st) {
+      if (!st) return F.write(setFile(), settingsText()).then(function () { return F.stat(setFile()); }).then(function (s2) { if (s2) setMtime = s2.mtime; });
       if (st.mtime === setMtime) return;
       setMtime = st.mtime;
-      return LOC().read(setFile()).then(function (b) {
+      return F.read(setFile()).then(function (b) {
         try { var j = JSON.parse(new TextDecoder().decode(b)); if (j && typeof j === "object" && !Array.isArray(j)) { var mig = migrateMini(j); localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); var fzAt = +localStorage.getItem("tsu-font-at") || 0, fzNow = +localStorage.getItem("tsu-font"); if (fzAt > st.mtime && fzNow && j.fontSize !== fzNow) { j.fontSize = fzNow; setTimeout(function () { writeKey("fontSize"); }, 0); } /* ⌘+ ⌘- 刚调过、文件比它旧：用调的那个（localStorage，几个窗口共用；不是这个窗口记着的，它可能是旧的），写回文件 */ SET = Object.assign({}, SET_DEF, j); fontAt = Math.max(fzAt, st.mtime); var fz = fzNow; if (fz && !localStorage.getItem("tsu-font-mig1")) { localStorage.setItem("tsu-font-mig1", "1"); if (+(j.fontSize || SET_DEF.fontSize) === SET_DEF.fontSize && fz !== SET_DEF.fontSize) { SET.fontSize = fz; setTimeout(function () { setv("fontSize", fz); }, 0); } } /* 以前 ⌘+ / ⌘- 只记在这台设备上、没写进设置：文件里还是默认的 13 时，一次性补进去 */ keep("st-settings", SET); applySettings(); if (mig) { setv("minimap", j.minimap); setv("panelAlign", j.panelAlign); } if (window.TSU_EXT) TSU_EXT.refresh(); document.dispatchEvent(new Event("st-settings-changed")); } } catch (e) { /* 写坏了：保留上一次好的 */ }
       });
     }).catch(function () {}).then(markReady); // 文件没变 / 读不到：也算读过了
@@ -3711,19 +3715,30 @@
         { key: "profReset", label: "恢复默认设置", desc: "名称和头像将保留", must: true, page: "advanced", kind: "button", text: "恢复…", act: "profReset" },
       ].filter(Boolean), remoteFields());
     },
-    change: function (k, v, tw) { if (k === "remoteOn" && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.set(!!v); return redrawSettings(); } return setChange(k, v, tw); },
+    change: function (k, v, tw) {
+      if (k === "remoteOn" && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.set(!!v); return redrawSettings(); }
+      if (k === "remotePolicy" && window.TSU_REMOTE_HOST && TSU_REMOTE_HOST.setPolicy) { Promise.resolve(TSU_REMOTE_HOST.setPolicy(v)).then(redrawSettings); return; }
+      return setChange(k, v, tw);
+    },
     action: function (what, tw) { if (/^revoke:/.test(what) && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.revoke(what.slice(7)); return redrawSettings(); } profileAction(what, tw); },
   });
-  // iPad 端（remote-host.js）：App 里才有——开关、连上没有、允许过的设备（能撤销）
+  // 其他设备使用这台 Mac（remote-host.js / RemoteHost.swift）：App 里才有——开关、连入时怎么确认、现在谁连着、允许过的设备（能移除）
+  var REMOTE_POLICIES = [["first", "首次连接时确认"], ["every", "每次连接都确认"], ["code", "首次连接时确认并输入验证码"], ["auto", "直接允许"]];
   function remoteFields() {
     var H = window.TSU_REMOTE_HOST;
     if (!H) return [];
     if (!H.watched) { H.watched = true; H.watch(function () { redrawSettings(); }); }
-    var on = H.on(), now = H.clients(), ok = H.approved();
-    return [{ head: "iPad" },
-      { key: "remoteOn", label: "其他设备使用这台 Mac", desc: "允许 iPhone、iPad 和网页端连接并使用这台 Mac；终端、文件和会话均在这台 Mac 上运行", must: true, kind: "toggle", value: on, def: false },
-      on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? "已连接 · " + now.map(function (c) { return c.name; }).join("、") : "已连接，等待 iPad 连接") : "正在连接…" } : null,
-    ].concat(ok.map(function (d) { return { key: "rv-" + d.id, label: d.name + "（已授权）", desc: d.at ? "授权于 " + new Date(d.at).toLocaleString() : "", must: true, kind: "button", text: "撤销", act: "revoke:" + d.id }; })).filter(Boolean);
+    var on = H.on(), now = H.clients(), ok = H.approved(), pol = H.policy ? H.policy() : "";
+    var en = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"), tz = function (c, e) { return en ? e : c; };
+    var when = function (ms) { var d = new Date(ms); return isNaN(d.getTime()) ? "" : d.toLocaleDateString(en ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }); };
+    return [{ head: "其他设备" },
+      { key: "remoteOn", label: "其他设备使用这台 Mac", desc: "允许登录同一个 GitHub 账号的其他 Mac、iPhone、iPad 和网页端连接这台 Mac；终端、文件和会话都在这台 Mac 上运行", must: true, kind: "toggle", value: on, def: false },
+      on && pol ? { key: "remotePolicy", label: "其他设备连接时", desc: "每台设备用自己的密钥识别，只知道设备号无法冒充。「直接允许」：登录同一个 GitHub 账号的设备不再确认", must: true, kind: "seg", options: REMOTE_POLICIES, value: pol, def: "first" } : null,
+      on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? tz("已连接 · ", "Connected · ") + now.map(function (c) { return c.name; }).join(tz("、", ", ")) : tz("已连接，等待其他设备", "Connected, waiting for other devices")) : tz("正在连接…", "Connecting…") } : null,
+    ].concat(ok.length ? [{ head: "允许过的设备" }] : [], ok.map(function (d) {
+      var bits = [d.at ? tz("允许于 ", "Allowed ") + when(d.at) : "", d.last && d.last - (d.at || 0) > 60000 ? tz("上次连接 ", "Last connected ") + when(d.last) : "", d.loc || ""].filter(Boolean);
+      return { key: "rv-" + d.id, label: d.name || d.id, desc: bits.join(" · "), must: true, kind: "button", text: "移除", act: "revoke:" + d.id };
+    })).filter(Boolean);
   }
   // ---- 设置的配置文件 ----
   var PROF_DIR = function () { return home() + "/.paimon/profiles"; }, PERSONAL = ["callMe", "fullName", "avatar"];
@@ -3734,7 +3749,7 @@
     keep("st-settings", SET);
     applySettings();
     document.dispatchEvent(new Event("st-theme-mode"));
-    if (SLOC()) LOC().write(setFile(), settingsText()).then(function () { return LOC().stat(setFile()); }).then(function (st) { if (st) setMtime = st.mtime; }).catch(function () {});
+    if (FLOC()) FLOC().write(setFile(), settingsText()).then(function () { return FLOC().stat(setFile()); }).then(function (st) { if (st) setMtime = st.mtime; }).catch(function () {});
     redrawSettings();
   }
   function profileAction(what, tw) {
@@ -3833,11 +3848,11 @@
     fields: function () {
       return [
         { key: "file", label: "设置文件", kind: "info", value: LOC() ? setFile() : "只有在 App 里才有" },
-        LOC() ? { key: "json", label: "在编辑器中打开设置文件", kind: "button", text: "打开", act: "json" } : null,
+        LOC() && !HYB() ? { key: "json", label: "在编辑器中打开设置文件", kind: "button", text: "打开", act: "json" } : null,
         { key: "paused", label: "暂停开发的应用风格", desc: "可在「通用 › 应用风格」中选择 macOS 和 Pure Terminal", must: true, kind: "info", value: "已显示" },
       ].filter(Boolean);
     },
-    action: function (what, tw) { if (what === "json" && LOC()) openFile(tw, setFile()); },
+    action: function (what, tw) { if (what === "json" && LOC() && !HYB()) openFile(tw, setFile()); },
   });
   // ---- 各个应用风格自己的：只在那个风格下出现 ----
   var onOS = function (os) { return function () { return (getv("os") || "vscode") === os; }; };
@@ -4829,8 +4844,9 @@
       mi("主题", "", null, { icon: MI.scheme, items: [mi("配色方案…", "⌘K ⌘T", function () { pickScheme(tw); }, { icon: MI.scheme }), mi("高亮配色…", "", function () { pickHighlight(tw); }, { icon: MI.highlight })] }),
       mi("自定义布局…", "", function () { layoutPick(tw); }, { icon: MI.layout }),
       mi("显示语言…", "", function () { pickLang(tw); }, { icon: MI.web }),
-      // 网页版 / iPad：借你的 Mac 用（remote.js）；连着的时候能断开
-      window.TSU_REMOTE ? mi(TSU_REMOTE.mac() ? "换一台 Mac / 断开…" : "连接到我的 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) : null,
+      // 网页版 / iPad：借你的 Mac 用（remote.js）；连着的时候能断开。App 里：开一个窗口连另一台 Mac（连着另一台的窗口里也能再开一台）
+      window.TSU_REMOTE && !TSU_REMOTE.hybrid ? mi(TSU_REMOTE.mac() ? "换一台 Mac / 断开…" : "连接到我的 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) :
+        canOpenMac() ? mi("连接到另一台 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) : null,
       // iPad App 里（Classic 界面）：换成 iPad 原生的界面（App 自己画的列表、输入框、顶栏）
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
@@ -4838,15 +4854,25 @@
       mi("关于 Vibing Studio", "", function () { settings(tw, "about"); }, { icon: MI.about, sym: "info.circle" }),
     ].filter(Boolean).concat(updItem(mi)), { el: anchor, side: side || "right-up" }); // 有新版本：⚙ 上一个点，菜单最后一项（同 VS Code 的「重启以更新」），带新版本号；图标是升级（不是「重新载入」的转圈）
   }
-  // 选连哪台 Mac（网页版 / iPad）：这个账号现在在线的 Mac；连着的时候多一项「断开」
+  // 选连哪台 Mac：这个账号现在在线的 Mac（这台自己不算）。网页版 / iPad：这一页换成用它（连着的时候多一项「断开」）；
+  //   App 里：开一个窗口连它（已经开着就叫到前面，同 VS Code 的远程窗口）
+  var canOpenMac = function () { var N = window.nadosNative; if (!N || !N.call) return false; if (!appInfo) { nativeInfo(); return false; } return (appInfo.commands || []).indexOf("remote.open") >= 0; };
+  function openMac(id, name) {
+    var R = window.TSU_REMOTE, N = window.nadosNative;
+    if (R) return R.use(id, name);
+    if (N && N.call) return N.call("remote.open", { mac: id, name: name || "" }).catch(function (e) {
+      if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "没能打开这台 Mac。", message: e && e.code === "E_UNKNOWN_CMD" ? "这个版本的 App 还不能连接另一台 Mac：在 ⚙ 菜单里检查更新，重启以更新后再试。" : String((e && e.message) || e), icon: "none", buttons: [{ label: "好", role: "default" }] });
+    });
+  }
   function pickMac(tw) {
-    var R = window.TSU_REMOTE;
-    if (!R) return;
-    R.pick().then(function (hosts) {
-      var items = (hosts || []).map(function (h) { return { id: h.device, title: h.name || "Mac", desc: h.device === R.mac() ? "正在用" : "在线", on: h.device === R.mac() }; });
-      if (R.mac()) items.push({ id: "", title: "断开连接（仅使用网页版）", desc: "" });
-      if (!items.length) return TSU_DESK && TSU_DESK.alert ? TSU_DESK.alert({ title: "没有可连接的 Mac。", message: "在 Mac 上的 Vibing Studio 里打开 设置 › 通用 › 「其他设备使用这台 Mac」。", icon: "none", buttons: [{ label: "好", role: "default" }] }) : null;
-      quickPick(tw, { placeholder: "选择要连接的 Mac", items: items, pick: function (it) { R.use(it.id); } });
+    tw = tw || (T() && T().front ? T().front() : null);
+    var R = window.TSU_REMOTE, cur = R ? R.mac() : "", self = window.TSU_REMOTE_HOST && TSU_REMOTE_HOST.device ? TSU_REMOTE_HOST.device() : "";
+    var pick = R ? R.pick() : fetch("/api/relay/hosts", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; });
+    pick.then(function (hosts) {
+      var items = (hosts || []).filter(function (h) { return h && h.device && h.device !== self; }).map(function (h) { return { id: h.device, title: h.name || "Mac", desc: h.device === cur ? "正在用" : "在线", on: h.device === cur }; });
+      if (cur && R && !R.hybrid) items.push({ id: "", title: "断开连接（仅使用网页版）", desc: "" });
+      if (!items.length) return TSU_DESK && TSU_DESK.alert ? TSU_DESK.alert({ title: "没有可连接的 Mac。", message: "在另一台 Mac 上的 Vibing Studio 里打开 设置 › 通用 › 「其他设备使用这台 Mac」。", icon: "none", buttons: [{ label: "好", role: "default" }] }) : null;
+      quickPick(tw, { placeholder: "选择要连接的 Mac", items: items, pick: function (it) { openMac(it.id, it.title); } });
     });
   }
   // ⚙ 菜单最后那一项（只有一项）：App 有新版、下好了（重启时界面也一起换上）→「重启以更新（v…）」；正在下载 →「正在下载更新…」；只有界面的新版 →「重新载入以更新（v…）」
@@ -5625,7 +5651,7 @@
   command("settings", { title: "设置", keys: "⌘,", run: function (tw) { settings(tw, sectionFor(tw)); } });
   command("settings.claude", { title: "设置：Claude Code", when: ccOn, run: function (tw) { settings(tw, "claude"); } });
   command("settings.json", { title: "打开 Claude Code 的 settings.json", when: ccOn, run: function (tw) { openFile(tw, ccFile()); } });
-  command("studio.json", { title: "打开设置 (JSON)", run: function (tw) { if (LOC()) openFile(tw, setFile()); } });
+  command("studio.json", { title: "打开设置 (JSON)", run: function (tw) { if (LOC() && !HYB()) openFile(tw, setFile()); } });
   command("scheme", { title: "配色方案…", keys: "⌘K ⌘T", run: function (tw) { pickScheme(tw); } });
   command("view.minimap", { title: "切换缩略图", run: function () { setv("minimap", getv("minimap") === "hide" ? SET_DEF.minimap : "hide"); } });
   command("highlight", { title: "高亮配色…", run: function (tw) { pickHighlight(tw); } });
@@ -5698,7 +5724,7 @@
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
     modal: { open: modalOpen, close: modalClose, top: function () { return MODALS[MODALS.length - 1] || null; } }, // 模态层：open(窗口元素, { cls, onBackdrop, onClose }) → M；close(M)
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
-    command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
+    command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; },
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）

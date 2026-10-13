@@ -100,7 +100,8 @@ const inApp = (u) => {
   catch (e) { return false; }
 };
 let creating = false;
-function createWindow(open) {
+// mac：连另一台 Mac 的窗口（页面上 ?mac=：preload 把这台的桥交给 remote.js，它把终端、文件、会话那些转到那台 Mac 去）
+function createWindow(open, mac) {
   const st = loadState(), b = st.bounds || {};
   const boot = st.boot || {}, dark = boot.mode !== "light";
   creating = true;
@@ -115,9 +116,16 @@ function createWindow(open) {
   attach(win);
   if (!HEADLESS) win.once("ready-to-show", () => win.show());
   let url = START;
-  if (open) { try { const u = new URL(START); u.searchParams.set("open", String(open)); url = u.toString(); } catch (e) { /* 照旧 */ } }
+  if (open || mac) { try { const u = new URL(START); if (open) u.searchParams.set("open", String(open)); if (mac) { u.searchParams.set("mac", String(mac)); u.searchParams.set("win", String(win.webContents.id)); } url = u.toString(); } catch (e) { /* 照旧 */ } }
+  if (mac) win.__mac = String(mac);
   win.loadURL(url);
   return win;
+}
+// 用另一台 Mac：它已经开着窗口就叫到前面（一台 Mac 一个窗口）；没有就开一个
+function openRemote(mac) {
+  const hit = Array.from(wins.values()).find((x) => x.win && !x.win.isDestroyed() && x.win.__mac === mac);
+  if (hit) { if (hit.win.isMinimized()) hit.win.restore(); hit.win.show(); hit.win.focus(); return hit.win.webContents.id; }
+  return createWindow(null, mac).webContents.id;
 }
 // ======== 登录：交给系统浏览器（同 macOS 版的 BrowserAuth.swift）——用浏览器里已经登录着的 GitHub（通行密钥、两步验证都在浏览器里），做完回到 App ========
 //   同 PKCE：App 生成随机的 verifier，只把它的 sha256（challenge）交给网站；网站做完把一次性的 code 交回这台电脑上 App 临时开的一个本机端口（127.0.0.1，RFC 8252），
@@ -162,6 +170,7 @@ function attach(win) {
     version: VS_VER, build: process.env.VS_BUILD || "", binDir: app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked", "bin") : path.join(__dirname, "bin"),
     openPending: () => { const l = pendingOpen; pendingOpen = []; return l; },
     newWindow: (o) => createWindow(o).webContents.id,
+    openRemote: (mac) => openRemote(mac),
     saveBoot: (b0) => saveState({ boot: Object.assign({}, loadState().boot || {}, b0) }),
     uiStamp: () => ({ stamp: uiStamp(), dir: UI_DIR || "", local: LOCAL_UI }),
   });

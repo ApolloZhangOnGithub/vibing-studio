@@ -107,7 +107,24 @@ enum SelfTest {
 
   // NADOS_TESTJS=<文件>：页面起来（有 TSU_AGENTS）以后把这个文件当成 async 函数体在页面里跑一遍，返回值写到 NADOS_TESTJS_OUT（默认同名 .json），
   // 旁边一张截图（.png），然后退出（NADOS_SELFTEST_STAY=1 不退）。自动测试用（Paimon Terminal 这种没有桌面的页面也行）
-  static func armScript(_ web: WebController, _ file: String) {
+  static var remoteOpened = false
+  static func armScript(_ web0: WebController, _ file: String) {
+    // NADOS_TESTJS_REMOTE=<另一台 Mac 的设备号>：主窗口好了以后开一个连它的窗口，脚本在那个窗口里跑、截那个窗口
+    if let mac = env["NADOS_TESTJS_REMOTE"], !mac.isEmpty, !remoteOpened {
+      func waitMain(_ n: Int) {
+        web0.webView.evaluateJavaScript("[document.readyState, !!window.TSU_AGENTS]") { r, _ in
+          MainActor.assumeIsolated {
+            if let a = r as? [Any], a.count == 2, a[0] as? String == "complete", a[1] as? Bool == true, let app = NSApp.delegate as? AppDelegate {
+              let id = app.openRemote(mac: mac, name: env["NADOS_TESTJS_REMOTE_NAME"] ?? "")
+              if let c = app.extra.first(where: { $0.winId == id }) { remoteOpened = true; armScript(c, file) }
+            } else if n < 90 { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { waitMain(n + 1) } } }
+          }
+        }
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { waitMain(0) } }
+      return
+    }
+    let web = web0
     let started = Date(), wait = Double(env["NADOS_SELFTEST_WAIT"] ?? "") ?? 3
     let out = URL(fileURLWithPath: env["NADOS_TESTJS_OUT"] ?? (file as NSString).deletingPathExtension + ".json")
     func done(_ v: [String: Any]) {

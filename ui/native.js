@@ -6,7 +6,7 @@
 (function () {
   "use strict";
   var N = window.nadosNative;
-  if (!N || N.remote) return; // iPad 端（remote.js 经中转连到 Mac 的那份）：窗口、红黄绿按钮这些是 Mac 自己的，这里不管
+  if (!N || (N.remote && !N.hybrid)) return; // iPad 端（remote.js 经中转连到 Mac 的那份）：窗口、红黄绿按钮这些是 Mac 自己的，这里不管；App 里连着另一台 Mac 的窗口照常（窗口是这台的）
   var root = document.documentElement;
   root.classList.add("native-app");
 

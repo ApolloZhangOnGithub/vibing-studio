@@ -18,7 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     if selfTest { SelfTest.arm(web) }
     if let js = ProcessInfo.processInfo.environment["NADOS_TESTJS"] { SelfTest.armScript(web, js) }
     web.load()
-    if selfTest || testJS { web.window.orderFront(nil) } else { web.window.makeKeyAndOrderFront(nil); NSApp.activate() } // 自测：不抢前台
+    if ProcessInfo.processInfo.environment["NADOS_HIDDEN"] == "1" { /* 自动测试（当主机）：窗口不出来 */ }
+    else if selfTest || testJS { web.window.orderFront(nil) } else { web.window.makeKeyAndOrderFront(nil); NSApp.activate() } // 自测：不抢前台
     // iPad 使用这台 Mac：开着的话一启动就连上中转（不等窗口、页面）；状态变了告诉每个窗口的设置页
     if Config.terminal {
       RemoteHost.shared.changed = { [weak self] st in guard let self else { return }; (([self.web] as [WebController?]).compactMap { $0 } + self.extra).forEach { $0.emit("remote.changed", st) } }

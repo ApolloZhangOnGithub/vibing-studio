@@ -14,7 +14,7 @@ final class Local {
   // 事件送到哪：没设就给这个窗口的页面；替 iPad 干活的那一份（RemoteHost.swift）设成送回中转
   var sink: ((String, [String: Any]) -> Void)?
   private func out(_ type: String, _ detail: [String: Any]) { if let sink { sink(type, detail) } else { controller?.emit(type, detail) } }
-  let home = NSHomeDirectory()
+  let home = ProcessInfo.processInfo.environment["NADOS_HOME"] ?? NSHomeDirectory() // NADOS_HOME：自动测试用一个假的家目录（不碰你的文件、会话）
   let user = NSUserName()
   let shell: String
   let binDir: String
@@ -359,7 +359,7 @@ final class Local {
   }
   // 常装在登录 shell 的 PATH 之外的几个位置（Claude Code 的原生版在 ~/.local/bin，写在 ~/.zshrc 里——这里读 PATH 用的非交互登录 shell 读不到它）：有就补在后面
   static func withCommonDirs(_ path: String) -> String {
-    let home = NSHomeDirectory(), have = Set(path.split(separator: ":").map(String.init))
+    let home = ProcessInfo.processInfo.environment["NADOS_HOME"] ?? NSHomeDirectory(), have = Set(path.split(separator: ":").map(String.init))
     let extra = [home + "/.local/bin", home + "/.claude/local", home + "/.npm-global/bin", home + "/.bun/bin", home + "/.cargo/bin", home + "/.volta/bin", "/opt/homebrew/bin", "/usr/local/bin"]
       .filter { !have.contains($0) && FileManager.default.fileExists(atPath: $0) }
     return extra.isEmpty ? path : path + ":" + extra.joined(separator: ":")

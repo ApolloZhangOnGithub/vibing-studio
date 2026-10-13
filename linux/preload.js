@@ -14,7 +14,8 @@ if (BOOT && Array.isArray(BOOT.allowed) && BOOT.allowed.indexOf(location.origin)
   contextBridge.executeInMainWorld({
     func: function () {
       var B = window.__vsNative;
-      if (!B || window.nadosNative) return;
+      if (!B || window.nadosNative || window.__nadosLocal) return;
+      var mac = new URLSearchParams(location.search).get("mac"), hybrid = !!(mac && mac !== "off"); // 连着另一台 Mac 的窗口：这台的桥换个名字交给 remote.js（同 app/Resources/bridge.js）
       var INFO = B.info, subs = {};
       var api = {
         platform: INFO.platform, app: INFO.app, version: INFO.version, protocol: INFO.protocol, local: !!INFO.local,
@@ -33,8 +34,9 @@ if (BOOT && Array.isArray(BOOT.allowed) && BOOT.allowed.indexOf(location.origin)
           window.dispatchEvent(new CustomEvent("nados-native", { detail: { type: type, detail: detail } }));
         },
       };
-      B.listen(function (type, detail) { api._emit(type, detail); });
-      Object.defineProperty(window, "nadosNative", { value: Object.freeze(api), enumerable: false, configurable: false, writable: false });
+      // 原生这边的事件：交给 window.nadosNative（连着另一台 Mac 的窗口里是 remote.js 搭的那个，它再发给页面）
+      B.listen(function (type, detail) { var n = window.nadosNative; if (hybrid && n && n !== api && n._emit) n._emit(type, detail); else api._emit(type, detail); });
+      Object.defineProperty(window, hybrid ? "__nadosLocal" : "nadosNative", { value: Object.freeze(api), enumerable: false, configurable: false, writable: false });
       var mark = function () { if (document.documentElement) document.documentElement.classList.add("linux-app"); }; // 页面的 <html class="termapp"> 还没解析出来时加上的会被换掉：解析完再加一次
       mark(); document.addEventListener("DOMContentLoaded", mark);
       // 右上角的窗口按钮（Electron 画的）：颜色、高度同页面最上面那一条（换配色、换应用风格都跟上；量一下没变就不发）

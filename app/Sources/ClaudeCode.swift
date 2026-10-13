@@ -18,7 +18,7 @@ final class ClaudeCodeIndex: @unchecked Sendable {
   private var cache: [String: Session] = [:]
   private var dirs: [String: String] = [:] // 项目名 → 按名字在磁盘上找到的目录（"" = 找不到）
   private let lock = NSLock()
-  let base = NSHomeDirectory() + "/.claude"
+  let base = (ProcessInfo.processInfo.environment["NADOS_HOME"] ?? NSHomeDirectory()) + "/.claude"
 
   // 最近动过的会话（新的在前），最多 limit 个：没说过话的、只敲了个 / 命令的不要；同一个项目里标题一样的（续过、分叉过）只留最新的
   func sessions(limit: Int) -> [[String: Any]] {

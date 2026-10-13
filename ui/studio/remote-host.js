@@ -149,6 +149,9 @@
     clients: function () { return native ? nst.clients || [] : Object.keys(clients).map(function (k) { return { id: k, name: clients[k] }; }); },
     approved: function () { if (native) return nst.approved || []; var o = okMap(); return Object.keys(o).map(function (k) { return { id: k, name: o[k].name, at: o[k].at }; }); },
     revoke: function (id) { if (native) return N.call("remote.revoke", { id: id }).then(apply, function () {}); var o = okMap(); delete o[id]; setOk(o); denied[id] = true; },
+    // 其他设备连进来时怎么确认（新版的原生那边才有）：first 首次确认 · every 每次确认 · code 首次确认并输入验证码 · auto 直接允许
+    policy: function () { return native ? nst.policy || "" : ""; },
+    setPolicy: function (p) { if (native) return N.call("remote.policy", { policy: p }).then(apply, function () {}); },
     watch: function (f) { listeners.push(f); },
   };
   N.call("info").then(function (i) {
