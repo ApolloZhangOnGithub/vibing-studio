@@ -3,7 +3,7 @@
 #   ./build.sh                 发布版，装在 ~/Applications/Paimon.app（启动台、聚焦搜索里能找到）
 #   CONFIG=debug ./build.sh    调试版：Safari 的「开发」菜单能连上页面（WKWebView 的 isInspectable）
 #   APP_DIR=<目录> ./build.sh  放到别处。别放进 iCloud 同步的文件夹（「文稿」「桌面」）：那里的文件会被加上 FinderInfo 等属性，codesign 不肯签
-#   SIGN_ID=<证书的 SHA-1 或名字> ./build.sh   指定签名证书；默认找钥匙串里第一个 Apple Development / Developer ID Application，找不到就 ad-hoc
+#   SIGN_ID=<证书的 SHA-1 或名字> ./build.sh   指定签名证书；默认用本机的签名身份（tools/signing-identity.sh），没有再找 Apple Development / Developer ID Application，都没有就 ad-hoc
 #   MODE=terminal ./build.sh   编 Vibing Studio.app（原名 Paimon Terminal；同一套代码：没有网页桌面，shell 和 agent 的工具跑在这台 Mac 上；bundle id 仍是 beer.paimon.terminal）
 # 中间产物（图标）在 build/ 里
 set -euo pipefail
@@ -76,7 +76,16 @@ if [ ! -f "build/$ICON.icns" ] || [ Icon/make-icon.swift -nt "build/$ICON.icns" 
 fi
 cp "build/$ICON.icns" "$APP/Contents/Resources/$ICON.icns"
 
-# ---- 签名：稳定的证书签，系统设置里给的权限（屏幕录制、辅助功能）重新编译后还在；ad-hoc 每次编译都算一个新 App ----
+# ---- 签名：稳定的证书签，系统设置里给的权限（文件夹访问、屏幕录制、辅助功能）更新后还在；ad-hoc 每次编译都算一个新 App，权限要重新给 ----
+#   先用本机的签名身份（tools/signing-identity.sh 建的「Vibing Studio Local Signing」，单独的钥匙串）：自签的，一直是这一张、没人能吊销；
+#   没有它才找钥匙串里的 Apple Development / Developer ID（会被吊销：2026-10-13 的 296），再没有就 ad-hoc
+SKC="$HOME/Library/Keychains/vibing-studio-signing.keychain-db"; KCARG=()
+if [ -z "${SIGN_ID:-}" ] && [ -f "$SKC" ]; then
+  SKP="$(security find-generic-password -s "Vibing Studio signing keychain" -w 2>/dev/null || true)"
+  if [ -n "$SKP" ]; then security unlock-keychain -p "$SKP" "$SKC" 2>/dev/null || true; fi
+  LID="$(security find-identity -p codesigning "$SKC" 2>/dev/null | awk '/"Vibing Studio Local Signing"/ { print $2; exit }')"
+  if [ -n "$LID" ]; then SIGN_ID="$LID"; KCARG=(--keychain "$SKC"); fi
+fi
 ID="${SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/"(Apple Development|Developer ID Application)/ { print $2; exit }')}"
 ID="${ID:--}"
 xattr -cr "$APP"
@@ -85,7 +94,7 @@ sign() { codesign --force --timestamp=none --options runtime --entitlements Paim
 SRC=0
 python3 -c 'import subprocess, sys
 try: sys.exit(subprocess.run(sys.argv[1:], timeout=60).returncode)
-except subprocess.TimeoutExpired: sys.exit(124)' codesign --force --timestamp=none --options runtime --entitlements Paimon.entitlements --sign "$ID" "$APP" || SRC=$?
+except subprocess.TimeoutExpired: sys.exit(124)' codesign --force --timestamp=none --options runtime --entitlements Paimon.entitlements --sign "$ID" ${KCARG[@]+"${KCARG[@]}"} "$APP" || SRC=$?
 if [ "$SRC" = 124 ]; then echo "签名等太久（钥匙串在问？），改用 ad-hoc" >&2; ID="-"; sign -
 elif [ "$SRC" != 0 ] && [ "$ID" != "-" ]; then echo "用证书签名失败，改用 ad-hoc" >&2; ID="-"; sign -; fi
 # 证书被 Apple 吊销了：这样签的 App，macOS 一打开就当恶意软件扔进废纸篓（2026-10-13 的 296 就是这样）。查一下（要联网），被吊销就改用 ad-hoc——
