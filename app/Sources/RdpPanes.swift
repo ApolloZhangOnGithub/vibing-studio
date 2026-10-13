@@ -5,6 +5,7 @@
 //   证书按指纹认：第一次连上时记下，以后变了先不连，问过人（rdp.trust）再连
 import AppKit
 import IOSurface
+import Network
 import QuartzCore
 
 // MARK: - 助手（vs-rdp）：App 里带的那个；在这台 Mac 上跑不起来（FreeRDP 的版本不同、Intel 芯片）就用这台 Mac 上的 FreeRDP 现编一个
@@ -65,6 +66,33 @@ enum RdpHelper {
     guard r.status == 0, let d = r.out.data(using: .utf8), let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
           j["protocol"] as? Int == protocolVersion else { return nil }
     return j["freerdp"] as? String ?? "?"
+  }
+}
+
+// 那台电脑的端口通不通（问密码之前先看一眼：关着的电脑不该先让人输密码）；本机的 unix socket（路径）看文件在不在
+final class RdpProbe: @unchecked Sendable {
+  private let q = DispatchQueue(label: "beer.paimon.rdp.probe")
+  private var done = false
+  static func reachable(_ host: String, _ port: Int) async -> Bool {
+    if host.hasPrefix("/") { return FileManager.default.fileExists(atPath: host) }
+    guard let p = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return false }
+    return await RdpProbe().run(NWConnection(host: NWEndpoint.Host(host), port: p, using: .tcp))
+  }
+  private func run(_ c: NWConnection) async -> Bool {
+    await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+      let finish: @Sendable (Bool) -> Void = { [self] ok in
+        q.async { if self.done { return }; self.done = true; c.cancel(); cont.resume(returning: ok) }
+      }
+      c.stateUpdateHandler = { st in
+        switch st {
+        case .ready: finish(true)
+        case .failed, .waiting, .cancelled: finish(false) // 被拒绝时 NWConnection 进的是 waiting
+        default: break
+        }
+      }
+      c.start(queue: q)
+      q.asyncAfter(deadline: .now() + 4) { finish(false) }
+    }
   }
 }
 
@@ -365,6 +393,10 @@ final class RdpSession {
     let account = RdpStore.account(h)
     var pw = given
     if pw == nil { pw = await RdpKeychain.get(account) }
+    if pw == nil, !(await RdpProbe.reachable(h["host"] as? String ?? "", h["port"] as? Int ?? 3389)) {
+      setState("error", ["kind": "net", "name": "VS_UNREACHABLE", "msg": "\(h["host"] as? String ?? ""):\(h["port"] as? Int ?? 3389) 没有回应"])
+      return snapshotState()
+    }
     guard let pw, !pw.isEmpty || (h["user"] as? String ?? "").isEmpty else {
       setState("needpass", ["user": h["user"] as? String ?? "", "account": account])
       return snapshotState()
