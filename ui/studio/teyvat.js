@@ -377,7 +377,9 @@
       switch (ct) {
         case "social-message": {
           // 别的 agent 发来的（收件箱里读进来的）：一问「别的 agent 发来的话」（同 Paimon 的 social：外壳按自己的样子画），它接着的回答接在这一问里
-          var sm2 = { from: d.from || "", from_name: d.from_name || d.from || "agent", mode: d.mode || "", mode_used: d.mode_used || d.mode || "", ts: d.ts || at, text: txt, chan: d.chan || "", at: d.at || [] };
+          // 正文：它给模型看的那份开头带「[interrupt] 10-13 13:34 名字: 」——谁、几点、怎么送的上面 ➤ 那一行已经写了，去掉（不然第一行的 ## 标题也画不出来）
+          var body2 = String(d.text != null ? d.text : txt).replace(/^\s*\[[\w-]+\]\s+\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}(:\d{2})?\s+[^:\n]{1,80}?:\s*/, "");
+          var sm2 = { from: d.from || "", from_name: d.from_name || d.from || "agent", mode: d.mode || "", mode_used: d.mode_used || d.mode || "", ts: d.ts || at, text: body2, chan: d.chan || "", at: d.at || [] };
           wake(at, { kind: "social", from: sm2.from_name });
           if (P.runEnded) work(at);
           finish(); P.runEnded = false;
@@ -591,7 +593,7 @@
         var nf = x.files[x.files.length - 1];
         if (nf.name !== cur.name && !loading) { files = x.files.slice(); nextFile(nf); }
         else files = x.files.slice();
-      }
+      } else if (!cur.name && !loading && x.files && x.files.length) load(); // 第一次读的时候还没扫到它的记录（App 刚起来、标签页先于连接器恢复）：扫到了就读，不一直停在「还没有记录」
       if (was !== x.state || wasMode !== x.mode) { setBusy(x.state === "working"); emit("status"); emit("state"); panelChanged(); }
     };
     // 没在干活、但有在走的时间（等着、休眠、后台的命令在跑）：一秒一下（状态栏、那几块的计时）

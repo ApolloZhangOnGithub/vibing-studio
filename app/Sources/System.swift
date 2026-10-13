@@ -1,7 +1,9 @@
 // System.swift —— 给页面的几样这台 Mac 上的真实情况（macOS 风格的菜单栏、访达用）：
 //   fs.thumb { path, size } → 缩略图（Quick Look 生成：图片、PDF、视频、文稿；App、文件夹是它们自己的图标）的 PNG data URL
 //   system.status → { battery: { level 0–100, charging, plugged } | null, wifi: { on, ssid? } | null, input: 输入法的短名字 }
+//   system.load → { cpu %, gpu %, memUsed, memTotal, diskFree, diskTotal }（状态栏右边那几个；很便宜：不起进程，同活动监视器的算法）
 import AppKit
+import IOKit
 import CoreWLAN
 import IOKit.ps
 import QuickLookThumbnailing
@@ -10,7 +12,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 enum SystemInfo {
-  static let commands = ["fs.thumb", "system.status", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp"]
+  static let commands = ["fs.thumb", "system.status", "system.load", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp"]
   private static var thumbs: [String: String] = [:] // path|size|mtime → data URL
   private static var sharing: NSSharingServicePicker?
 
@@ -57,6 +59,8 @@ enum SystemInfo {
         out["wifi"] = w
       }
       return out
+    case "system.load":
+      return SystemLoad.sample()
     case "fs.apps":
       // 能打开这个文件的 App（「打开方式」）：默认的在前；[{ name, path, default }]
       guard let p = a["path"] as? String else { throw BridgeError.args("fs.apps { path }") }
@@ -140,5 +144,57 @@ enum SystemInfo {
     if id.contains("Korean") { return "한" }
     if id.contains("ABC") || id.contains("US") || id.hasSuffix(".US") { return "A" }
     return String(name.prefix(1))
+  }
+}
+
+// 整机的负载（状态栏右边：CPU、GPU、内存、磁盘）：都从内核 / IOKit 直接读，不起进程
+//   CPU：两次之间的 tick 差（user + system + nice）/ 总；内存：同活动监视器的「已使用内存」= App 内存 + 联动 + 被压缩；
+//   GPU：IOAccelerator 的「Device Utilization %」；磁盘：启动盘「重要用途」可用的空间（同访达显示的）
+@MainActor
+enum SystemLoad {
+  private static var prev: [UInt64]?
+  static func sample() -> [String: Any] {
+    var out: [String: Any] = [:]
+    var info = host_cpu_load_info()
+    var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) { p in p.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count) } }
+    if kr == KERN_SUCCESS {
+      let t = [UInt64(info.cpu_ticks.0), UInt64(info.cpu_ticks.1), UInt64(info.cpu_ticks.2), UInt64(info.cpu_ticks.3)] // user, system, idle, nice
+      if let p = prev, t[2] >= p[2] {
+        let du = t[0] &- p[0], ds = t[1] &- p[1], di = t[2] &- p[2], dn = t[3] &- p[3], tot = du &+ ds &+ di &+ dn
+        if tot > 0 { out["cpu"] = (Double(du + ds + dn) / Double(tot) * 1000).rounded() / 10 }
+      }
+      prev = t
+    }
+    var vm = vm_statistics64()
+    var vc = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr2 = withUnsafeMutablePointer(to: &vm) { p in p.withMemoryRebound(to: integer_t.self, capacity: Int(vc)) { host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &vc) } }
+    if kr2 == KERN_SUCCESS {
+      let page = UInt64(vm_kernel_page_size)
+      let app = UInt64(vm.internal_page_count) > UInt64(vm.purgeable_count) ? UInt64(vm.internal_page_count) - UInt64(vm.purgeable_count) : 0
+      out["memUsed"] = (app + UInt64(vm.wire_count) + UInt64(vm.compressor_page_count)) * page
+    }
+    out["memTotal"] = ProcessInfo.processInfo.physicalMemory
+    if let v = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]) {
+      if let f = v.volumeAvailableCapacityForImportantUsage { out["diskFree"] = f }
+      if let t = v.volumeTotalCapacity { out["diskTotal"] = t }
+    }
+    if let g = gpu() { out["gpu"] = g }
+    return out
+  }
+  private static func gpu() -> Int? {
+    var it: io_iterator_t = 0
+    guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return nil }
+    defer { IOObjectRelease(it) }
+    var best: Int?
+    while true {
+      let svc = IOIteratorNext(it)
+      if svc == 0 { break }
+      var props: Unmanaged<CFMutableDictionary>?
+      if IORegistryEntryCreateCFProperties(svc, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS, let d = props?.takeRetainedValue() as? [String: Any],
+         let ps = d["PerformanceStatistics"] as? [String: Any], let u = (ps["Device Utilization %"] as? NSNumber)?.intValue { best = max(best ?? 0, u) }
+      IOObjectRelease(svc)
+    }
+    return best
   }
 }
