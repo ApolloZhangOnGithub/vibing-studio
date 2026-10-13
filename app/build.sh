@@ -27,7 +27,7 @@ fi
 mkdir -p build "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # ---- 编译 ----
-FLAGS=(-swift-version 5 -target "$ARCH-apple-macos14.0" -module-name Paimon)
+FLAGS=(-swift-version 5 -target "$ARCH-apple-macos14.0" -module-name Paimon -import-objc-header Sources/Shim.h) # Shim.h：Swift 调不了的变参 C 函数（shm_open）
 if [ "$CONFIG" = debug ]; then FLAGS+=(-Onone -g -D DEBUG); else FLAGS+=(-O); fi
 if [ "${UNIVERSAL:-}" = 1 ]; then
   for A in arm64 x86_64; do
@@ -53,6 +53,15 @@ if [ "$MODE" = terminal ]; then
   mkdir -p "$APP/Contents/Resources/bin"
   cp Resources/bin/paimon Resources/bin/tcb "$APP/Contents/Resources/bin/"
   chmod 755 "$APP/Contents/Resources/bin/paimon" "$APP/Contents/Resources/bin/tcb"
+  # 远程桌面的助手（Helpers/vs-rdp.c，FreeRDP 3）：这台 Mac 上有 Homebrew 的 FreeRDP、芯片对得上就编一个带上；源码也带上——
+  #   别的 Mac 上带的这个跑不起来（没装 FreeRDP、版本不同、Intel）时，App 用那台 Mac 上的 FreeRDP 现编（RdpPanes.swift 的 RdpHelper）
+  cp Helpers/vs-rdp.c "$APP/Contents/Resources/vs-rdp.c"
+  FRDP=""; for p in /opt/homebrew/opt/freerdp /usr/local/opt/freerdp; do [ -f "$p/lib/libfreerdp3.dylib" ] && { FRDP="$p"; break; }; done
+  if [ -n "$FRDP" ] && lipo -archs "$FRDP/lib/libfreerdp3.dylib" 2>/dev/null | grep -qw "$ARCH"; then
+    xcrun clang -O2 -w -target "$ARCH-apple-macos14.0" Helpers/vs-rdp.c -I"$FRDP/include/freerdp3" -I"$FRDP/include/winpr3" -L"$FRDP/lib" -lfreerdp3 -lfreerdp-client3 -lwinpr3 -o "$APP/Contents/Resources/bin/vs-rdp"
+  else
+    rm -f "$APP/Contents/Resources/bin/vs-rdp" 2>/dev/null || true
+  fi
 fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cp Resources/bridge.js "$APP/Contents/Resources/bridge.js"

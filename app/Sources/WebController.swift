@@ -244,7 +244,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
 
   // ---- 窗口 ----
   func windowDidBecomeKey(_ notification: Notification) { emitActive(); menus.reapply() } // 菜单栏跟着前面那个窗口
-  func windowWillClose(_ notification: Notification) { if winId > 1 { (NSApp.delegate as? AppDelegate)?.closed(self) } }
+  func windowWillClose(_ notification: Notification) { bridge.rdp?.closeAll(); if winId > 1 { (NSApp.delegate as? AppDelegate)?.closed(self) } } // 关窗口：这个窗口里的远程桌面都断开
   func windowDidResignKey(_ notification: Notification) { emitActive() }
   func windowDidEnterFullScreen(_ notification: Notification) { emit("fullscreen", ["on": true, "inset": 0]) }
   func windowDidExitFullScreen(_ notification: Notification) { emit("fullscreen", ["on": false, "inset": buttonsInset]) }

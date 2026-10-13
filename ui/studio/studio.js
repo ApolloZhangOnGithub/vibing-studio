@@ -459,13 +459,19 @@
 
   // ======== 元素：记在面板上（P.els = { id: 元素 }）========
   var same = function (a, b) { try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; } };
+  // 只在真的变了、而且显示在窗口的部件上时才重画：以前对话每更新一次（转圈的字、「几秒」、对话的设置那一组每次都是新的数组）都整窗重画一遍——
+  //   开着大会话时一次三百多毫秒、一秒一两次，整台电脑都跟着卡（2026-10-13 用户报的）。藏起来的、行内的（页面自己画）不用重画；只在状态栏的只重画状态栏那一行
   function set(P, el) {
     if (!P || !el || !el.id || !el.type) return;
     P.els = P.els || {};
     var old = P.els[el.id];
-    if (old && old.type === el.type && old.title === el.title && old.site === el.site && same(old.data, el.data) && old.fields === el.fields) return;
-    P.els[el.id] = el;
-    if (P.win) renderSoon(P.win);
+    var unchanged = old && old.type === el.type && old.title === el.title && old.site === el.site && !!old.left === !!el.left && same(old.data, el.data) && (old.fields === el.fields || same(old.fields, el.fields));
+    P.els[el.id] = el; // 回调（change、click）用新的
+    if (unchanged || !P.win) return;
+    var slot = slotOf(el.site || "paimon", el.id);
+    if (el.id !== "tasks" && (slot === "hidden" || slot === "inline")) return;
+    if (el.id !== "tasks" && slot === "status" && old) return statusSoon(P.win);
+    renderSoon(P.win);
   }
   function remove(P, id) { if (P && P.els && P.els[id]) { delete P.els[id]; if (P.win) renderSoon(P.win); } }
   function clear(P, site) {
@@ -971,6 +977,8 @@
   // ---- 画 ----
   var rq = new Map();
   function renderSoon(tw) { if (!tw || rq.has(tw)) return; rq.set(tw, requestAnimationFrame(function () { rq.delete(tw); render(tw); })); }
+  var sq = new Map(); // 只重画状态栏那一行（整窗重画排着的话就不用了）
+  function statusSoon(tw) { if (!tw || rq.has(tw) || sq.has(tw)) return; sq.set(tw, requestAnimationFrame(function () { sq.delete(tw); if (!rq.has(tw) && tw.open) statusBar(tw); })); }
   // agent 这一级（辅助侧栏的 Agent 那一层、Claude App 的「后台任务」卡片）跟着哪个 agent：编辑区当前的是 agent（Paimon 的、Claude Code / Codex 的会话，终端界面、图形界面）就是它；
   // 不是（设置、文件、别的页面）就是这个窗口里最近用过的那个 agent 标签页，它关了就是随便一个还开着的——不留一块没意义的空白
   function agentPaneFor(tw) {
