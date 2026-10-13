@@ -3891,6 +3891,13 @@
       if (st.state === "paused") return ACC + TY_SNOW + " Paused" + RESET;
       return "";
     }
+    // 目标（/goal）那一行：◎ Goal: 条件 · active 1d（Claude Code 的会话写定下它多久了）/ checking…；Paimon 的还写 /goal clear
+    function goalHere() { return !(window.STUDIO && STUDIO.goalShown && STUDIO.goalShown(P)); }
+    function goalLine(g, cols) {
+      var D = P.DIM, age = g.at ? Date.now() - g.at : 0, ag = age >= 864e5 ? " " + Math.floor(age / 864e5) + "d" : age >= 36e5 ? " " + Math.floor(age / 36e5) + "h" : age >= 6e4 ? " " + Math.floor(age / 6e4) + "m" : "";
+      var tail = g.checking ? " · checking…" : g.paused ? " · paused" : agent.claude ? " · active" + ag : g.iterations ? " · check " + g.iterations : "";
+      return CYAN + "◎ " + RESET + D + "Goal: " + clip(g.text, Math.max(10, cols - 40)) + tail + (agent.claude ? "" : " · /goal clear") + RESET;
+    }
     function workRows(fcols, indent) {
       var out = [], s = rt.stream, D = P.DIM, w = Math.max(20, fcols - indent.length - 4), spinHere = !window.STUDIO || STUDIO.inline(P, "status");
       if (TY) { if (spinHere && vmode("workLine") !== "hidden") { var tyl = tyStatus(); if (tyl) out.push(indent + tyl); } return out; } // Teyvat：它自己的状态栏（没有 Worked for、没有转圈的动词）
@@ -3932,8 +3939,9 @@
       // （rt.queued 也画在对话最后）
       var aq = agent.claude && rt.question ? rt.question() : null; // 它在问你、问答面板收起着：一行提示（↑ 或点它打开）
       if (aq && !(panel && panel.kind === "ask")) out.push(indent + LAV + "? " + RESET + "Claude is asking: " + clip(String(aq.questions[0].question || ""), Math.max(10, fcols - 40)) + D + " · press ↑ to answer" + RESET);
-      var g = agent.claude ? null : agent.goal; // Claude Code 的会话：/goal 在右侧栏最上面
-      if (g) out.push(indent + CYAN + "◎ " + RESET + D + "Goal: " + clip(g.text, Math.max(10, fcols - 40)) + (g.checking ? " · checking…" : g.paused ? " · paused" : g.iterations ? " · check " + g.iterations : "") + " · /goal clear" + RESET);
+      var g = agent.goal;
+      if (g && agent.claude) { if (!goalHere()) g = null; } // Claude Code 的会话：/goal 在右侧栏最上面；右侧栏关着（看不见）时画在这里（同 Claude Code 输入框上面那句）
+      if (g) out.push(indent + goalLine(g, fcols));
       return out; // 下面紧接着状态行，不另空一行（底部不留一大块空）
     }
     function renderStatus() {
@@ -3985,7 +3993,8 @@
       if (s && !spinHere && rt.queued) r.text([""]).block(sendNowRow(D, " · esc to edit"));
       if (!window.STUDIO || STUDIO.inline(P, "tasks")) todoRows(r, D);
       var g = agent.goal;
-      if (g) r.text(["", CYAN + "◎ " + RESET + D + "Goal: " + clip(g.text, P.cols - 36) + (g.checking ? " · checking…" : g.paused ? " · paused" : g.iterations ? " · check " + g.iterations : "") + " · /goal clear" + RESET]);
+      if (g && agent.claude && !goalHere()) g = null;
+      if (g) r.text(["", goalLine(g, P.cols + 4)]);
       var live = r.flush().rows.length > 0; // 有在跑的那一行、排着的、后台任务、目标：钉在输入框上面（往上翻看记录时也看得见，同 agent 底部；tdrawer.css）
       r.text([""]);
       statusEl.innerHTML = P.join(r.flush().rows);

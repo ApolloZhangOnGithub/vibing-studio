@@ -5966,7 +5966,9 @@
     agentPaneFor: agentPaneFor, // agent 这一级跟着哪个标签页（编辑区当前的不是 agent 时，是最近用的那个）
     todoShown: todoShown, toggleTodo: toggleTodo, toggleTodoDone: toggleTodoDone, tasksOf: tasksOf, todoHead: todoHead, todoRowsHtml: todoRowsHtml, agentMenuItems: agentMenuItems,
     inline: inlineOn, place: place, render: render, renderSoon: renderSoon, types: TYPES, composerAway: composerAway, focusSide: focusSide,
-    toggle: toggleSide, isOpen: function () { return !!L.side; }, togglePanel: panelOrStatus, panelOpen: function () { return !noPanel() && !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
+    toggle: toggleSide, isOpen: function () { return !!L.side; },
+    // 这一页的目标（/goal）现在看得见吗：右侧栏开着（VS Code 风格）、或者在卡片 / 抽屉里（另两种风格）——看不见时 live.js 把它画在输入框上面
+    goalShown: function (P) { var h = familyHost(); if (h !== "side") return true; var tw = P && (P.win || (P.side && P.side.win)); return !!(tw ? sideVis(tw) : L.side) && L.sideLevel !== "global"; }, togglePanel: panelOrStatus, panelOpen: function () { return !noPanel() && !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
     openFile: openFile, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
     askUnsaved: askUnsaved, // 关标签页 / 窗格 / 窗口之前：里面有改了没存的文件就问保存 / 不保存 / 取消（live.js 的 askClose 先走这里）
     renderPanelAll: function () { allWins().forEach(function (w) { try { renderPanel(w); } catch (e) { /* 下一次再画 */ } }); },
