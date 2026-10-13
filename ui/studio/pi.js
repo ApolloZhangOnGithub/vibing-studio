@@ -210,6 +210,18 @@
     if (mapped === "LS") return { name: mapped, input: { path: p } };
     return { name: mapped, input: a };
   }
+  // pi 的 edit 结果里那份 diff（details.diff，pi 的 generateDiffString）：一行「+12 内容」「-12 内容」「 12 内容」（行号按最宽的补空格），省掉的是「     ...」
+  //   → live.js diffRows 认的 { t: "+" / "-" / " " / "…", n: 行号, l: 内容 }；没有这份时照 edits 拼（没有行号）
+  function piDiff(s) {
+    var out = [];
+    String(s || "").split("\n").forEach(function (ln) {
+      var m = /^([+\- ])(\s*)(\d*) (.*)$/.exec(ln);
+      if (!m) return;
+      if (!m[3]) { if (/^\.\.\.$/.test(m[4].trim())) out.push({ t: "…" }); return; }
+      out.push({ t: m[1], n: +m[3], l: m[4] });
+    });
+    return out;
+  }
   // 工具的结果：字（图不画）；出错的记一句
   function result(p, m) {
     var txt = textOf(m.content), lines = txt.replace(/\r/g, "").split("\n");
@@ -218,13 +230,14 @@
     p.status = m.isError ? "error" : "done";
     if (m.isError) { p.error = (lines.filter(Boolean).slice(-1)[0] || "error").slice(0, 300); p.detail = lines.slice(0, 200); return; }
     if (p.name === "Edit") {
-      var d = [], add = 0, del = 0;
-      (p.input.edits || []).forEach(function (ed, i) {
+      var dt = m.details && typeof m.details === "object" ? m.details : {}, d = dt.diff ? piDiff(dt.diff) : [], add = 0, del = 0;
+      if (!d.length) (p.input.edits || []).forEach(function (ed, i) {
         if (i) d.push({ t: "…" });
-        String(ed.oldText || "").split("\n").forEach(function (l) { if (ed.oldText) { d.push({ t: "-", l: l }); del++; } });
-        String(ed.newText || "").split("\n").forEach(function (l) { if (ed.newText) { d.push({ t: "+", l: l }); add++; } });
+        String(ed.oldText || "").split("\n").forEach(function (l) { if (ed.oldText) d.push({ t: "-", l: l }); });
+        String(ed.newText || "").split("\n").forEach(function (l) { if (ed.newText) d.push({ t: "+", l: l }); });
       });
-      p.diff = d.slice(0, 400);
+      d.forEach(function (x) { if (x.t === "+") add++; else if (x.t === "-") del++; });
+      p.diff = d.slice(0, 2000);
       p.summary = "Updated " + String(p.input.file_path || "file").split("/").pop() + " with " + add + " addition" + (add === 1 ? "" : "s") + " and " + del + " removal" + (del === 1 ? "" : "s");
       return;
     }

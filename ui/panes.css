@@ -259,9 +259,9 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .tab.st-dragsrc { opacity: .35; }
 /* 侧栏树里 Claude Code 会话前面的标志（Claude 自己的，TSU_LOGOS.claude）：等宽的树里占一格；比例字的树里在图标那一格。在答的一明一暗 */
 .ts-ccl { display: inline-block; width: 1ch; height: 1em; vertical-align: -0.14em; font-style: normal; line-height: 0; }
-.ts-ccl > svg { display: block; width: 100%; height: 100%; }
+.ts-ccl > svg, .ts-ccl > img { display: block; width: 100%; height: 100%; } /* 记号是图的（Teyvat 的星球）：同 SVG 一样填满那一格 */
 .ts-list.ts-dom .ts-dic > .ts-ccl { width: 13px; height: 13px; }
-.ts-list.ts-dom .ts-dic > .ts-ccl > svg { width: 100%; height: 100%; }
+.ts-list.ts-dom .ts-dic > .ts-ccl > svg, .ts-list.ts-dom .ts-dic > .ts-ccl > img { width: 100%; height: 100%; }
 .ts-ccl.busy { animation: ts-ccl-pulse 1.4s ease-in-out infinite; }
 .tpane .foot .vs-cclo { color: #d97757; } /* ← 那一块里「current session」前面的 Claude 标志：它的橙 */
 html.light .tpane .foot .vs-cclo { color: #c96442; }

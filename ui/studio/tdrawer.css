@@ -246,3 +246,12 @@ html.termapp .st-pagent .tpane .term .blk.status.live, html.termapp .st-pagent .
 .st-sa2.wrap .st-saline .st-cut { white-space: normal; overflow: visible; }
 .st-sa2 .st-satime { flex: none; font-variant-numeric: tabular-nums; }
 .st-sa2 .st-sasub { font-size: 11px; line-height: 15px; margin: -1px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+
+/* Teyvat 的会话（右侧栏）：状态、意图、后台命令 */
+.st-tyfam .st-todoi.st-tyhead { font-weight: 600; color: var(--st-hi, var(--st-fg)); }
+.st-tyfam .st-todoi.st-tyst .st-tg { color: var(--st-dim); }
+.st-tyfam .st-todoi.st-tyst.doing .st-tg { color: #e8c547; animation: ts-ccl-pulse 1.4s ease-in-out infinite; }
+html.light .st-tyfam .st-todoi.st-tyst.doing .st-tg { color: #a87a00; }
+.st-tyfam .st-tgerr { color: var(--st-red, #f85149); }
+.st-tyfam .st-tyid { padding: 2px 0 4px; font: 11px var(--st-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.st-tyfam .st-tyout { max-height: 220px; overflow: auto; }

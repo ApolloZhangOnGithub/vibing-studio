@@ -682,6 +682,19 @@
     "估算": "est.", "文字": "Text", "还没有真实用量：按字数估算": "No usage yet: estimated from text length", "按上一轮的真实用量换算": "Scaled to the last request's actual usage",
     "按会话记录估算：系统提示与工具 = 总数 − 对话": "Estimated from the session file: system prompt & tools = total − messages",
     "按会话文件估算：每轮都带着的几块按第一次请求的真实用量分，其余算对话": "Estimated from the session file: fixed parts split from the first request's real usage; the rest is messages"}); // ctxmap.js 的卡片（英文时它自己就画英文；这里是切换语言时开着的那张）
+  // Teyvat 的会话：预设、··· 里它的那几项、右侧栏（状态、意图、后台命令）
+  words({
+    "Teyvat 原样": "Teyvat Original", "与 Teyvat 终端界面一致": "Matches the Teyvat terminal UI", "回复": "Replies", "读取": "Reads", "命令（Execute）": "Commands (Execute)",
+    "通讯（Social）": "Messaging (Social)", "意图（Intentions）": "Intentions", "等待、休眠和其他": "Wait, Hibernate and Others", "合并连续的读取": "Merge Consecutive Reads",
+    "系统消息": "System Messages", "事件（重启、转后台、日期）": "Events (restarts, background, date)", "意图": "Intentions", "后台命令": "Background Commands",
+    "没有在运行": "Not Running", "在终端里运行（前台）": "In a Terminal (Foreground)", "没有结果": "No result", "（沿用上一次休眠时的说明）": "(reused the previous hibernate message)",
+    "它重启了，这个命令没有等到结果": "It restarted before this command finished",
+  });
+  PATTERNS.push([/^醒来后：([\s\S]+)$/, "After waking: $1"]);
+  PATTERNS.push([/^到 (.+) 醒来$/, "Wakes at $1"]);
+  PATTERNS.push([/^(\d+) 待办 · (\d+) 完成$/, "$1 to do · $2 done"], [/^(\d+) 待办$/, "$1 to do"], [/^(\d+) 完成$/, "$1 done"]);
+  PATTERNS.push([/^后台命令 · (\d+) 运行中 · (\d+) 已结束$/, "Background Commands · $1 running · $2 finished"]);
+  PATTERNS.push([/^(后台运行|在终端里运行（前台）|没有在运行) · (.+)$/, function (m) { return ({ "后台运行": "Running in background", "在终端里运行（前台）": "In a terminal (foreground)", "没有在运行": "Not running" })[m[1]] + " · " + m[2]; }]);
   PATTERNS.push([/^图片 × (\d+)$/, "Images × $1"]);
   // 任务翻译（translate.js；设置 › 对话 › 任务翻译、用量里那一行）
   words({"翻译回复": "Translate Replies", "回复翻译": "Reply Translation", "原文": "Original", "译文": "Translation",

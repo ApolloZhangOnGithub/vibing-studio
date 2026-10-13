@@ -297,7 +297,7 @@
   function presetItems(S, i) {
     var TT = T(), c = S.cells[i], cur = c.real, curId = cur ? cur.preset || null : "default", MI = menuIcons();
     var item = function (p) { return { label: p.name, value: p.desc || "", radio: true, checked: curId === p.id, run: function () { setView(S, i, TT.presets.view(p.id) || DEF()); }, preview: function (on) { preview(S, i, on ? TT.presets.view(p.id) || (i === 0 && !S.on() ? null : DEF()) : undefined); } }; };
-    var user = TT.presets.user(), fol = TT.presets.follow, out = (fol ? [item(fol), { sep: true }] : []).concat(TT.presets.builtin.map(item)); // 跟随设置（这一格没有自己的）；几套预设
+    var user = TT.presets.user(), fol = TT.presets.follow, fits = TT.presets.fits || function () { return true; }, out = (fol ? [item(fol), { sep: true }] : []).concat(TT.presets.builtin.filter(function (p) { return fits(p, S.agentId); }).map(item)); // 跟随设置（这一格没有自己的）；几套预设（Teyvat 原样只给 Teyvat 的会话，Claude Code 风格不给它）
     if (user.length) out = out.concat([{ sep: true }], user.map(function (p) { return item({ id: p.id, name: p.name, desc: "" }); }));
     out = out.concat([{ sep: true },
       { label: "反选当前筛选", icon: MI.invert || MI.swap, run: function () { invert(S, i); } },

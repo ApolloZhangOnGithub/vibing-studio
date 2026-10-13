@@ -211,7 +211,71 @@
   }
   // 画出来：一块一块（标题行 + 内容）；没有东西可画就是空字符串。收起没收起不在字符串里（放进去以后 applyFold 按记下的加 class）
   // only：只画哪几块（["todo", "bg"]：辅助侧栏在面板的 Agent 那一层开着时；["sub"]：面板的 Agent 那一层）；不给就是全部
+  // ---- Teyvat 的会话：右侧栏是它自己的东西（不是 Claude Code 那一套任务清单 / 后台任务）——
+  //   状态：同它的状态栏（Working / Waiting / Hibernating / Paused）、在哪儿跑；等着的写等什么、醒来要做什么（next_steps）；休眠的写几点醒、休眠时的说明
+  //   意图：它给自己写的打算（MemoryData/<id>/intentions.txt，它的 intentions 工具）——编号的是待办、✓ 开头的是做完的，别的行照原样（小标题、说明）
+  //   后台命令：Execute 转到后台的（Created 的那些）——在跑的走时间；跑完的收成「n 个已结束」，点一行看命令和输出 ----
+  function tyFamilyHtml(P) {
+    var aid = P.program.agentId, rt = null;
+    try { rt = TSU_AGENTS.runtime(aid); } catch (e) { rt = null; }
+    if (!rt || !rt.tyPanel) return "";
+    var d = rt.tyPanel(), st = d.state || {}, now = Date.now();
+    var sec = function (k, title, extra, body) {
+      return '<div class="st-fsec' + (famFolded(aid, k) ? " folded" : "") + '" data-aid="' + esc(aid) + '" data-sec="' + k + '"><div class="st-fh" data-st="fam-fold" title="收起 / 展开"><i class="st-fchev"></i><span class="st-ft">' + esc(title) + "</span>" + (extra || "") +
+        '</div><div class="st-fb"><div class="st-fbi">' + body + "</div></div></div>";
+    };
+    var fe = function (ms) { var s0 = Math.floor(Math.max(0, ms) / 1000); if (s0 < 60) return s0 + "s"; if (s0 < 3600) { var m0 = Math.floor(s0 / 60), r0 = s0 % 60; return r0 ? m0 + "m " + r0 + "s" : m0 + "m"; } return Math.floor(s0 / 3600) + "h " + Math.floor(s0 % 3600 / 60) + "m"; };
+    var wrapK = function (k) { return !!TWRAP[aid + ":" + k]; };
+    // 状态
+    var stRows = "", where = st.mode === "bg" ? "后台运行" : st.mode === "fg" ? "在终端里运行（前台）" : "没有在运行", model = rt.model ? rt.model().id : "";
+    var line = function (cls, ico, label, tail) { return '<div class="st-todoi st-tyst ' + cls + '"><i class="st-tg">' + ico + '</i><span class="st-cut">' + esc(label) + "</span>" + (tail || "") + "</div>"; };
+    var note = function (k, text) { var op = wrapK(k); return '<div class="st-todoi st-tynote' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg"></i><span class="st-cut st-dim">' + esc(text) + "</span></div>"; };
+    if (st.state === "working") {
+      stRows += line("doing", "●", "Working", '<span class="st-tick st-dim" data-t0="' + ((st.work && st.work.t0) || 0) + '"></span>');
+      if (st.work && st.work.act) stRows += note("act", st.work.act.verb + (st.work.tokens ? " · " + kfmt(st.work.tokens) + " tokens" : ""));
+    } else if (st.state === "waiting") {
+      var w = st.wait || {};
+      stRows += line("open", "❄︎", w.forUser ? "Waiting for user" : "Waiting", '<span class="st-dim">' + esc(w.secs ? fe(now - (w.t0 || now)) + " / " + fe(w.secs * 1000) : "") + "</span>");
+      if (w.title) stRows += note("wtitle", w.title);
+      if (w.next) stRows += note("wnext", "醒来后：" + w.next);
+    } else if (st.state === "hibernating") {
+      var h = st.hib || {};
+      stRows += line("open", "❄︎", "Hibernating", '<span class="st-tick st-dim" data-t0="' + (h.t0 || 0) + '"></span>');
+      if (h.until) stRows += note("hwake", "到 " + h.until + " 醒来");
+      if (h.summary) stRows += note("hsum", h.summary);
+    } else if (st.state === "paused") stRows += line("open", "❄︎", "Paused", "");
+    else stRows += line("open", "○", "没有在运行", "");
+    stRows += '<div class="st-todoi st-tynote"><i class="st-tg"></i><span class="st-cut st-dim">' + esc(where + (model ? " · " + model : "")) + "</span></div>";
+    // 意图
+    var il = String(d.intentions || "").split("\n").filter(function (l) { return l.trim(); }), nDone = 0, nTodo = 0;
+    var intHtml = il.map(function (l, i) {
+      var t = l.trim(), done = /^[✓✅☑]\s?/.test(t), todo = /^\d+[.)]\s/.test(t), k = "int:" + i, op = wrapK(k);
+      if (done) { nDone++; return '<div class="st-todoi done' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg st-tgok">✔</i><s class="st-cut">' + esc(t.replace(/^[✓✅☑]\s?/, "")) + "</s></div>"; }
+      if (todo) { nTodo++; var m = /^(\d+)[.)]\s+([\s\S]*)$/.exec(t); return '<div class="st-todoi open' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg st-dim">' + esc(m[1]) + '</i><span class="st-cut">' + esc(m[2]) + "</span></div>"; }
+      return '<div class="st-todoi st-tyhead' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg"></i><span class="st-cut">' + esc(t.replace(/^#+\s*/, "")) + "</span></div>";
+    }).join("");
+    // 后台命令
+    var bg = (d.bg || []).map(function (q) { var dn = q.done, run = !dn && !q.lost; return { q: q, status: run ? "running" : q.lost ? "lost" : dn.err ? "error" : "done", t0: q.t0 || 0 }; });
+    var bgRow = function (x) {
+      var q = x.q, dn = q.done, k = "bg:" + q.recId, op = wrapK(k), title = String((q.input && q.input.title) || "").trim() || String((q.input && q.input.command) || "").split("\n")[0];
+      var ico = x.status === "running" ? '<i class="st-tg st-fgdot">●</i>' : x.status === "error" ? '<i class="st-tg st-tgerr">✗</i>' : x.status === "lost" ? '<i class="st-tg st-dim">○</i>' : '<i class="st-tg st-tgok">✔</i>';
+      var tail = x.status === "running" ? '<span class="st-tick st-dim" data-t0="' + x.t0 + '"></span>' : '<span class="st-dim">' + esc(x.status === "lost" ? "没有结果" : dn.sum) + "</span>";
+      var det = "";
+      if (op) {
+        var outL = dn ? (dn.lines || []).filter(function (l, i, all) { return i < all.length - 1 || String(l).trim(); }) : [];
+        det = '<div class="st-fgdet"><pre>' + esc("$ " + String((q.input && q.input.command) || "").slice(0, 4000)) + "</pre>" + '<div class="st-dim st-tyid">' + esc(q.recId) + "</div>" +
+          (outL.length ? '<pre class="st-tyout">' + esc(outL.slice(-60).join("\n")) + "</pre>" : "") + "</div>";
+      }
+      return '<div class="st-prw st-frow' + (x.status === "running" ? " run" : " fin") + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '">' + ico + ' <span class="st-cut">' + esc(title) + '</span><span class="st-fill"></span>' + tail + "</div>" + det;
+    };
+    var live = bg.filter(function (x) { return x.status === "running"; }), fin = bg.filter(function (x) { return x.status !== "running"; }), fOpen = !!FDONE[aid + ":bg"];
+    var bgHtml = live.map(bgRow).join("") + (fin.length ? '<div class="st-todoi st-tdone" data-st="fam-done-bg"><i class="st-dchev' + (fOpen ? " open" : "") + '"></i>' + esc(fin.length + " 个已结束") + "</div>" + (fOpen ? fin.slice().reverse().map(bgRow).join("") : "") : "");
+    return '<div class="st-fam st-tyfam" data-aid="' + esc(aid) + '">' + sec("tystate", "状态", "", stRows) +
+      (il.length && acfg().taskList !== false ? sec("tyint", "意图", '<span class="st-fill"></span><span class="st-dim st-fhtime">' + esc((nTodo ? nTodo + " 待办" : "") + (nTodo && nDone ? " · " : "") + (nDone ? nDone + " 完成" : "")) + "</span>", intHtml) : "") +
+      (bg.length && acfg().bgList !== false ? sec("tybg", "后台命令 · " + live.length + " 运行中 · " + fin.length + " 已结束", "", bgHtml) : "") + "</div>";
+  }
   function familyHtml(P, only) {
+    if (P && P.program && /^ty:/.test(String(P.program.agentId || ""))) return only && only.indexOf("todo") < 0 && only.indexOf("bg") < 0 ? "" : tyFamilyHtml(P);
     var d = famData(P);
     if (d && only) { if (only.indexOf("todo") < 0) { d.todo = []; d.fg = []; d.fgOn = false; } if (only.indexOf("bg") < 0) d.sh = []; if (only.indexOf("sub") < 0) d.sa = []; }
     // 「详情」那一块（辅助侧栏 ··· 里勾上才有；只在 Claude Code 的会话里）：几项要紧的（创建、工作时长、Token、子 Agent）+「全部详情…」（ccinfo.js）
@@ -381,6 +445,7 @@
     MI0 = MI0 || MI;
     if (!A || !A.setCfg) return [];
     var chk = function (k, label, icon) { var on = acfg()[k] !== false; return { label: label, icon: icon, checked: on, run: function () { A.setCfg(k, !on); familyChanged(); } }; };
+    if (/^ty:/.test(String(aid || ""))) return [chk("taskList", "意图", MI0.checklist || MI0.status), chk("bgList", "后台命令", MI0.term || MI0.status)]; // Teyvat：右侧栏是它的意图、转到后台的命令（没有任务清单、子 Agent）
     var on = todoShown(aid);
     // 任务翻译（translate.js）：就在任务这一家子的菜单里开——选一种语言，任务清单、后台任务、子 Agent、运行状态那一句都翻过去（翻过的缓存着，不重复花钱）
     var TRL = [["off", "关"], ["display", "跟随显示语言"], ["zh", "简体中文"], ["en", "English"], ["ja", "日本語"], ["ko", "한국어"], ["fr", "Français"], ["de", "Deutsch"], ["es", "Español"]];
@@ -5724,7 +5789,7 @@
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
     modal: { open: modalOpen, close: modalClose, top: function () { return MODALS[MODALS.length - 1] || null; } }, // 模态层：open(窗口元素, { cls, onBackdrop, onClose }) → M；close(M)
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
-    command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
+    command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; },
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）

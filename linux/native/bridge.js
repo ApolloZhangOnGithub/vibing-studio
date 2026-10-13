@@ -95,7 +95,8 @@ class Bridge {
         if (!/^[\w-]{4,64}$/.test(String(a.mac || ""))) throw BridgeError.args("remote.open { mac, name? }");
         return { id: this.opts.openRemote ? this.opts.openRemote(String(a.mac), String(a.name || "")) : null };
       }
-      case "window.close": if (w && !w.isDestroyed()) w.close(); return null;
+      // 连着另一台 Mac 的窗口「断开连接」：直接关（页面的 beforeunload 会把 close 拦下；这台的终端、程序都不在这个窗口里）
+      case "window.close": if (w && !w.isDestroyed()) { if (w.__mac) w.destroy(); else w.close(); } return null;
       case "window.appearance": {
         // 窗口跟着页面的深浅色：标题栏、滚动条、系统对话框一起变；bg：页面的底色（拉大窗口、页面还没画到的地方）
         const mode = a.mode === "dark" || a.mode === "light" ? a.mode : "system";

@@ -47,8 +47,8 @@
   var CLG = function () { return (window.TSU_LOGOS && TSU_LOGOS.claude) || ""; }; // Claude 自己的标志（ext.js）
   var CXL = function () { return (window.TSU_LOGOS && TSU_LOGOS.codex) || "◎"; }; // Codex：ChatGPT / OpenAI 的结（ext.js）
   var PMAV = function () { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || "✦"; }; // Paimon：派蒙的头像（ext.js）
-  var PIL = function () { return (window.TSU_LOGOS && TSU_LOGOS.pi) || ""; }; // pi：画出来的 π（ext.js）
-  var TYL = function () { return (window.TSU_LOGOS && TSU_LOGOS.teyvat) || ""; }; // Teyvat：画出来的四角星（ext.js）
+  var PIL = function () { return (window.TSU_LOGOS && TSU_LOGOS.pi) || ""; }; // pi：它自己的标志（ext.js）
+  var TYL = function () { return (window.TSU_LOGOS && TSU_LOGOS.teyvat) || ""; }; // Teyvat：提瓦特这颗星球的图（ext.js）
   var CLOCK = '<svg class="bf-clock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/></svg>'; // 历史记录：画的钟（不用 ◷ 这种字符当图标）
   var FAV = { claude: '<span class="bfav bf-claude">' + CLG() + '</span>', paimon: '<span class="bfav bf-paimon">' + PMAV() + '</span>', shell: '<span class="bfav bf-shell">›_</span>', history: '<span class="bfav bf-hist">' + CLOCK + '</span>', codex: '<span class="bfav bf-codex">' + CXL() + '</span>', pi: '<span class="bfav bf-pi">' + PIL() + '</span>', teyvat: '<span class="bfav bf-pi bf-ty">' + TYL() + '</span>', web: '<span class="bfav bf-web">◍</span>' };
   // 主页里每行前面：状态点（在干活绿、开着闲着灰圈、没在跑不画），同一页里不用每行都挂同一个图标

@@ -16,21 +16,22 @@
   var PM_PATH = "img/paimon.png", PM_SRC = PM_PATH; // 派蒙（用户给的那一只：闭着眼、头上光环；192×192，透明底，不裁）
   // 连接器的图标：同 macOS App 图标的形状（超椭圆 n=5 的「连续圆角」，不是普通圆角矩形），记号的比例照各自 App 图标量出来的
   var SQ_D = "M64.0 32.0 L63.97 42.75 L63.89 46.17 L63.75 48.64 L63.56 50.64 L63.31 52.32 L63.0 53.79 L62.64 55.09 L62.21 56.25 L61.72 57.3 L61.17 58.24 L60.55 59.09 L59.86 59.86 L59.09 60.55 L58.24 61.17 L57.3 61.72 L56.25 62.21 L55.09 62.64 L53.79 63.0 L52.32 63.31 L50.64 63.56 L48.64 63.75 L46.17 63.89 L42.75 63.97 L32.0 64.0 L21.25 63.97 L17.83 63.89 L15.36 63.75 L13.36 63.56 L11.68 63.31 L10.21 63.0 L8.91 62.64 L7.75 62.21 L6.7 61.72 L5.76 61.17 L4.91 60.55 L4.14 59.86 L3.45 59.09 L2.83 58.24 L2.28 57.3 L1.79 56.25 L1.36 55.09 L1.0 53.79 L0.69 52.32 L0.44 50.64 L0.25 48.64 L0.11 46.17 L0.03 42.75 L0.0 32.0 L0.03 21.25 L0.11 17.83 L0.25 15.36 L0.44 13.36 L0.69 11.68 L1.0 10.21 L1.36 8.91 L1.79 7.75 L2.28 6.7 L2.83 5.76 L3.45 4.91 L4.14 4.14 L4.91 3.45 L5.76 2.83 L6.7 2.28 L7.75 1.79 L8.91 1.36 L10.21 1.0 L11.68 0.69 L13.36 0.44 L15.36 0.25 L17.83 0.11 L21.25 0.03 L32.0 0.0 L42.75 0.03 L46.17 0.11 L48.64 0.25 L50.64 0.44 L52.32 0.69 L53.79 1.0 L55.09 1.36 L56.25 1.79 L57.3 2.28 L58.24 2.83 L59.09 3.45 L59.86 4.14 L60.55 4.91 L61.17 5.76 L61.72 6.7 L62.21 7.75 L62.64 8.91 L63.0 10.21 L63.31 11.68 L63.56 13.36 L63.75 15.36 L63.89 17.83 L63.97 21.25Z";
-  var PI_D = "M4.6 7.4h14.8M9.3 7.6c0 4.4-.6 8.2-2.5 11.1M15.3 7.6v8.3c0 1.9 1 2.8 2.9 2.5";
-  var TY_D = "M12 2.5C12.7 8.1 15.9 11.3 21.5 12 15.9 12.7 12.7 15.9 12 21.5 11.3 15.9 8.1 12.7 2.5 12 8.1 11.3 11.3 8.1 12 2.5Z"; // Teyvat：一颗四角星（画出来的，不是字）
+  // pi（pi coding agent，pi.dev）：它自己的标志——粉、蓝、黄三块拼成（用户给的原图，470×470；彩色，不跟字色）。不是圆周率的 π
+  var PI_MARK = '<path fill="#F09082" d="M0 0H352.07V234.71H234.71V117.36H0Z"/><path fill="#4D9ABF" d="M0 117.36H117.36V234.71H234.71V352.07H117.36V469.43H0Z"/><path fill="#F1BE58" d="M352.07 234.71H469.43V469.43H352.07V234.71Z"/>';
+  // Teyvat：提瓦特这颗星球（用户给的图，裁成圆、透明底，256×256；暂用）——同派蒙的头像一样是图（class 同 pm-av：各处给派蒙头像定的大小、灰掉照样适用）
+  var TY_PATH = "img/teyvat.png", TY_SRC = TY_PATH;
   var OAI_D = "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z";
   window.TSU_LOGOS = { claudePath: CLAUDE_D, claude: '<svg class="cc-logo-svg" viewBox="0 0 100 101" aria-hidden="true"><path fill="currentColor" d="' + CLAUDE_D + '"/></svg>',
     paimonSrc: PM_SRC, paimon: '<img class="pm-av" src="' + PM_SRC + '" alt="" draggable="false">',
     // Codex：ChatGPT / OpenAI 的结（Codex 自己那朵紫蓝的云不好看；用户定的），单色跟着字色；oaiPath 给别处画大图标用
     oaiPath: OAI_D,
     codex: '<svg class="cx-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + OAI_D + '"/></svg>',
-    // pi（pi coding agent）：画出来的 π——一横、左边一条带弯的腿、右边一条收尾往右勾的腿；单色跟着字色
-    piPath: PI_D,
-    pi: '<svg class="cx-logo-svg pi-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="' + PI_D + '"/></svg>',
-    teyvat: '<svg class="cx-logo-svg ty-logo-svg" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="' + TY_D + '"/></svg>' };
+    // pi：它自己的标志（彩色的三块，见上面 PI_MARK）
+    pi: '<svg class="cx-logo-svg pi-logo-svg" viewBox="0 0 470 470" aria-hidden="true">' + PI_MARK + "</svg>",
+    teyvatSrc: TY_SRC, teyvat: '<img class="pm-av ty-av" src="' + TY_SRC + '" alt="" draggable="false">' };
   // 派蒙的图只要一次：读进内存变成 blob: 地址，到处用这一个（左边的树、标签页、连接器的方块、设置）——
   //   以前每画一次都按路径重新要（App 里本地界面文件一律不缓存），连接器页面的派蒙一闪一闪、要等一下才出来。keep：留一张解码好的，别被回收
-  var pmKeep = null;
+  var pmKeep = null, tyKeep = null;
   try {
     fetch(PM_PATH).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) {
       if (!b) return;
@@ -39,6 +40,15 @@
       var swap = function (h) { return String(h).split('href="' + PM_SRC + '"').join('href="' + u + '"').split('src="' + PM_SRC + '"').join('src="' + u + '"'); };
       CONN.forEach(function (c) { if (c.logo) c.logo = swap(c.logo); });
       PM_SRC = u; window.TSU_LOGOS.paimonSrc = u; window.TSU_LOGOS.paimon = '<img class="pm-av" src="' + u + '" alt="" draggable="false">';
+      document.dispatchEvent(new Event("tsu-logos"));
+    }, function () {});
+    fetch(TY_PATH).then(function (r) { return r.ok ? r.blob() : null; }).then(function (b) {
+      if (!b) return;
+      var u = URL.createObjectURL(b);
+      tyKeep = new Image(); tyKeep.decoding = "async"; tyKeep.src = u;
+      var swap = function (h) { return String(h).split('href="' + TY_SRC + '"').join('href="' + u + '"').split('src="' + TY_SRC + '"').join('src="' + u + '"'); };
+      CONN.forEach(function (c) { if (c.logo) c.logo = swap(c.logo); });
+      TY_SRC = u; window.TSU_LOGOS.teyvatSrc = u; window.TSU_LOGOS.teyvat = '<img class="pm-av ty-av" src="' + u + '" alt="" draggable="false">';
       document.dispatchEvent(new Event("tsu-logos"));
     }, function () {});
   } catch (e) { /* 读不到就照旧按路径 */ }
@@ -103,7 +113,7 @@
         en: "# Codex\n\nRead and continue the Codex sessions on this Mac (`~/.codex/sessions`) inside Vibing Studio, shown with the wrapper you choose — for example the Claude Code style TUI.\n\n## Features\n\n- **Sessions**: the side bar and Agent Finder list the Codex sessions on this Mac.\n- **Transcripts**: `local.codex:<session>` opens a session; while it runs elsewhere, new output streams in.\n- **Keep talking**: `codex exec resume <session>`; when it's open in Codex, messages are queued with `codex queue`.\n\n## Requirements\n\n- Codex installed on this Mac (the `codex` command).\n" } },
     { id: "pi", name: "pi", icon: "", cmd: "pi", third: true, desc: "在 Vibing Studio 中使用 pi：这台电脑上的 pi 会话都能接着说", descEn: "Work with pi in Vibing Studio: pick up any pi session on this computer and keep going",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "pi.dev", homepage: "https://github.com/earendil-works/pi", version: "0.1.0", updated: "2026-10-07", builtin: false, files: ["studio/pi.js"],
-      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#141414"/><g transform="translate(12 12) scale(1.667)"><path fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="' + PI_D + '"/></g></svg>', // 黑底白色的 π
+      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#141414"/><g transform="translate(17 17) scale(0.0639)">' + PI_MARK + "</g></svg>", // 黑底上 pi 自己的彩色标志
       categories: [{ zh: "AI", en: "AI" }, { zh: "聊天", en: "Chat" }],
       links: [{ zh: "pi 的源代码", en: "pi on GitHub", url: "https://github.com/earendil-works/pi" }, { zh: "设置文件", en: "Settings File", file: "~/.pi/agent/settings.json" }],
       readme: {
@@ -116,7 +126,7 @@
       } },
     { id: "teyvat", name: "Teyvat", icon: "", cmd: "genshin", third: true, desc: "在 Vibing Studio 中使用 Teyvat：这台电脑上的 Teyvat agent 都能看，后台运行的能直接对话", descEn: "Work with Teyvat in Vibing Studio: see every Teyvat agent on this computer and talk to the ones running in the background",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "paimon.beer", homepage: "https://paimon.beer", version: "0.1.0", updated: "2026-10-13", builtin: false, files: ["studio/teyvat.js"],
-      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#10302e"/><g transform="translate(12 12) scale(1.667)"><path fill="#86e3d3" d="' + TY_D + '"/></g></svg>',
+      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#0a1424"/><image href="' + TY_SRC + '" x="7" y="7" width="50" height="50"/></svg>', // 深蓝底上一颗提瓦特
       categories: [{ zh: "AI", en: "AI" }, { zh: "聊天", en: "Chat" }],
       links: [{ zh: "数据目录", en: "Data Folder", file: "~/.teyvat" }, { zh: "设置文件", en: "Settings File", file: "~/.teyvat/config/settings.json" }],
       readme: {

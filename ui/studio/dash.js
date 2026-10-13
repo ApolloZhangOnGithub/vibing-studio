@@ -43,7 +43,7 @@
     get paimon() { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || '<img class="pm-av" src="img/paimon.png" alt="" draggable="false">'; }, // Paimon：派蒙的头像（读进内存的那一份，ext.js）
     claude: (window.TSU_LOGOS && TSU_LOGOS.claude) || '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor">' + [0, 45, 90, 135, 180, 225, 270, 315].map(function (r) { return '<path transform="rotate(' + r + ' 12 12)" d="M12 12c-.85-2.3-1.15-5.2-.66-7.9.13-.72 1.19-.72 1.32 0 .49 2.7.19 5.6-.66 7.9z"/>'; }).join("") + "</g></svg>",
     codex: (window.TSU_LOGOS && TSU_LOGOS.codex) || '<svg viewBox="0 0 24 24"></svg>', // Codex：ChatGPT / OpenAI 的结（ext.js）
-    pi: (window.TSU_LOGOS && TSU_LOGOS.pi) || '<svg viewBox="0 0 24 24"></svg>', // pi：画出来的 π（ext.js）
+    pi: (window.TSU_LOGOS && TSU_LOGOS.pi) || '<svg viewBox="0 0 24 24"></svg>', // pi：它自己的标志（ext.js）
   };
   var connOf = function (a) { var id = String((a && a.id) || ""); return /^cc:/.test(id) ? "claude" : /^cx:/.test(id) ? "codex" : /^pi:/.test(id) ? "pi" : "paimon"; };
   var bellOf = function (id) { var t = T(); try { return !!(t && t.panes && t.panes().some(function (p) { return p.bell && p.program && p.program.agentId === id; })); } catch (e) { return false; } }; // 在后台答完了、还没看（标签页上的铃）

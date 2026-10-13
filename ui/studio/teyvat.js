@@ -42,6 +42,13 @@
     if (s < 3600) { var m = Math.floor(s / 60), sec = Math.round(s % 60); return sec ? m + "m " + sec + "s" : m + "m"; }
     return Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m";
   }
+  // 你说的话：它（bioclock）在最后加了一个时刻「 [2026-10-06 23:13:41.729]」给模型看——画的时候拿掉，时刻记在这一问上（时间戳那一列显示）
+  var BIO_RE = /\s*\[(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.(\d{1,3}))?\]\s*$/;
+  function bioStrip(txt) {
+    var m = BIO_RE.exec(String(txt || ""));
+    if (!m) return { text: String(txt || ""), at: 0 };
+    return { text: String(txt).slice(0, m.index), at: new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +(m[7] || 0)).getTime() };
+  }
   var clock = function (t) { var d = new Date(t); if (isNaN(d.getTime())) return ""; var p = function (n) { return (n < 10 ? "0" : "") + n; }; return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()); };
 
   // ======== agent 列表 ========
@@ -161,28 +168,41 @@
     }
     return p;
   }
+  // pi 的 edit 结果里那份 diff（details.diff，pi 的 generateDiffString）：一行「+12 内容」「-12 内容」「 12 内容」（行号按最宽的补空格），省掉的是「     ...」
+  //   → live.js diffRows 认的 { t: "+" / "-" / " " / "…", n: 行号, l: 内容 }；没有这份时照 edits 拼（没有行号）
+  function piDiff(s) {
+    var out = [];
+    String(s || "").split("\n").forEach(function (ln) {
+      var m = /^([+\- ])(\s*)(\d*) (.*)$/.exec(ln);
+      if (!m) return;
+      if (!m[3]) { if (/^\.\.\.$/.test(m[4].trim())) out.push({ t: "…" }); return; }
+      out.push({ t: m[1], n: +m[3], l: m[4] });
+    });
+    return out;
+  }
   // 工具的结果：read / edit / write 同 pi.js（Claude Code 的样子）；它自己的工具按它的画法（execute 的 Result、Created，social 的 Sent，……）
   function toolResult(p, m) {
     var at = ts(m.timestamp), d = m.details && typeof m.details === "object" ? m.details : {};
     var raw = textOf(m.content), txt = stripTags(raw), lines = txt.replace(/\r/g, "").split("\n");
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
     p.secs = Math.max(0, Math.round((at - (p.t0 || at)) / 1000));
-    var err = !!m.isError || (!!p.ty && /^ERR:/m.test(txt));
+    var err = !!m.isError || (!!p.ty && /^ERR:/m.test(txt)) || (p.ty === "hibernate" && /^(还有|禁止|请先)/.test(txt)); // 休眠被拦下（还有后台命令在跑……）同它：算出错
     p.status = err ? "error" : "done";
     if (!p.ty) {
       if (err) { p.error = (lines.filter(Boolean).slice(-1)[0] || "error").slice(0, 300); p.detail = lines.slice(0, 200); return; }
       if (p.name === "Edit") {
-        var dd = [], add = 0, del = 0;
-        (p.input.edits || []).forEach(function (ed, i) {
+        var dd = d.diff ? piDiff(d.diff) : [], add = 0, del = 0;
+        if (!dd.length) (p.input.edits || []).forEach(function (ed, i) {
           if (i) dd.push({ t: "…" });
-          if (ed.oldText) String(ed.oldText).split("\n").forEach(function (l) { dd.push({ t: "-", l: l }); del++; });
-          if (ed.newText) String(ed.newText).split("\n").forEach(function (l) { dd.push({ t: "+", l: l }); add++; });
+          if (ed.oldText) String(ed.oldText).split("\n").forEach(function (l) { dd.push({ t: "-", l: l }); });
+          if (ed.newText) String(ed.newText).split("\n").forEach(function (l) { dd.push({ t: "+", l: l }); });
         });
-        p.diff = dd.slice(0, 400);
+        dd.forEach(function (x) { if (x.t === "+") add++; else if (x.t === "-") del++; });
+        p.diff = dd.slice(0, 2000);
         p.summary = "Updated " + String(p.input.file_path || "file").split("/").pop() + " with " + add + " addition" + (add === 1 ? "" : "s") + " and " + del + " removal" + (del === 1 ? "" : "s");
         return;
       }
-      if (p.name === "Write") { p.summary = "Wrote " + String(p.input.content || "").split("\n").length + " lines to " + String(p.input.file_path || "file").split("/").pop(); return; }
+      if (p.name === "Write") { var wl = String(p.input.content || "").replace(/\n$/, "").split("\n"); p.summary = "Wrote " + wl.length + " lines to " + String(p.input.file_path || "file").split("/").pop(); p.detail = wl; return; } // 点开看写了什么
       if (p.name === "Read") { p.summary = "Read " + lines.length + " line" + (lines.length === 1 ? "" : "s"); return; }
       p.detail = lines.slice(0, 400);
       return;
@@ -250,8 +270,18 @@
 
   // 一份记录的解析器：条目一条条喂进来，变成 Paimon 的一问一问（turns）。一份记录一个（换了下一份记录 / 往上翻更早的一份时各自一个）
   function Parser(sink) {
-    var P = { turns: [], cur: null, byCall: {}, byRec: {}, lastWait: null, lastHib: null, runEnded: true, model: "", provider: "", effort: "", ctx: 0, cost: 0, cwd: "", sent: null };
-    var finish = function () { var c = P.cur; if (c && c.last && !c.stats && c.at && !(c.parts || []).some(function (q) { return q.kind === "tool" && q.status === "running"; })) c.stats = { secs: Math.max(1, Math.round((c.last - c.at) / 1000)), verb: "Worked", at: c.last, auto: true }; };
+    var P = { turns: [], cur: null, byCall: {}, byRec: {}, lastWait: null, lastHib: null, runEnded: true, model: "", provider: "", effort: "", ctx: 0, cost: 0, cwd: "", sent: null,
+      workAt: 0, workTok: 0, segAt: 0, accMs: 0, bgs: [] }; // workAt：这一段开始干活（同它状态栏的 Working 计时）；workTok：这一段写了多少 token；segAt / accMs：这次启动以来干活的累计（休眠那一行写）；bgs：转到后台的命令
+    // 开始干活（你说了话、它醒了、续命）：Working 从这里算
+    var work = function (at) { P.workAt = at; P.workTok = 0; if (!P.segAt) P.segAt = at; };
+    // 等着的 / 休眠的被叫醒：记下等了多久、谁叫醒的
+    var wake = function (at, why) {
+      var w = P.lastWait;
+      if (w && w.status === "running" && w.resulted) { w.status = "done"; if (w.waited == null) w.waited = Math.max(0, Math.round((at - (w.waitAt || w.t0 || at)) / 1000)); if (!w.waitWhy && why) w.waitWhy = why.kind === "user" ? "user message" : why.kind === "social" ? "message from " + why.from : why.kind === "cmd" ? "task completed" : ""; w.wokeAt = at; touch(w.turn); }
+      var h = P.lastHib;
+      if (h && h.status === "running" && h.resulted) { h.status = "done"; h.slept = at - (h.hibAt || h.t0 || at); h.wokeBy = why || null; h.wokeAt = at; touch(h.turn); P.segAt = at; work(at); }
+    };
+    var finish = function () {}; // 它没有「Worked for … · done …」这种一问做完的那一行（它一直在跑：Working / Waiting / Hibernating 写在底部的状态栏）
     var push = function (t) { P.turns.push(t); if (sink && sink.onTurn) sink.onTurn(t); return t; };
     var newTurn = function (o) { finish(); P.cur = Object.assign({ parts: [] }, o); push(P.cur); return P.cur; };
     var turnFor = function (at) { if (!P.cur || P.runEnded) newTurn({ ask: "", cont: true, at: at }); return P.cur; };
@@ -264,7 +294,7 @@
     };
     P.feed = function (e) {
       var at = ts(e.timestamp);
-      if (e.type === "session") { if (e.cwd) P.cwd = e.cwd; return null; }
+      if (e.type === "session") { if (e.cwd) P.cwd = e.cwd; if (at) { P.segAt = at; work(at); } return null; }
       if (e.type === "model_change") { if (e.modelId) P.model = e.modelId; if (e.provider) P.provider = e.provider; return null; }
       if (e.type === "thinking_level_change") { P.effort = e.thinkingLevel || ""; return null; }
       if (e.type === "session_info" || e.type === "label") return null;
@@ -273,8 +303,11 @@
       if (e.type !== "message" || !e.message) return null;
       var m = e.message, mat = m.timestamp ? ts(m.timestamp) : at;
       if (m.role === "user") {
-        var txt = textOf(m.content), imgs = imagesOf(m.content);
+        var bs = bioStrip(textOf(m.content)), txt = bs.text, imgs = imagesOf(m.content);
+        if (bs.at && !m.timestamp) mat = bs.at; // 它记的时刻（同一个时刻）：记录里没有 timestamp 时才用
         if (!txt.trim() && !imgs.length) return null;
+        wake(mat, { kind: "user" });
+        if (P.runEnded) work(mat);
         P.runEnded = false;
         var t0 = newTurn({ ask: txt, images: imgs, at: mat });
         if (sink && sink.onAsk) sink.onAsk(txt, mat);
@@ -286,6 +319,7 @@
         var u = m.usage || {};
         if (u.input || u.cacheRead || u.output) P.ctx = (u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0) + (u.output || 0);
         if (u.cost && u.cost.total) P.cost += u.cost.total;
+        if (u.output) P.workTok += u.output;
         var t = turnFor(mat);
         P.runEnded = false;
         [P.lastWait, P.lastHib].forEach(function (w) { if (w && w.status === "running" && w.resulted) { w.status = "done"; touch(w.turn); } }); // wait / hibernate 回来以后它又说话了：等完了
@@ -296,8 +330,9 @@
           else if (bl.type === "toolCall") {
             var part = toolPart(bl, mat, t);
             if (bl.id) P.byCall[bl.id] = part;
-            if (part.ty === "wait") P.lastWait = part;
-            if (part.ty === "hibernate") P.lastHib = part;
+            if (part.ty === "wait") { P.lastWait = part; part.waitAt = mat; }
+            if (part.ty === "hibernate") { P.lastHib = part; part.hibAt = mat; P.accMs += Math.max(0, mat - (P.segAt || mat)); part.accMs = P.accMs; P.segAt = 0; }
+            if (part.ty === "execute") P.bgs.push(part);
             t.parts.push(part);
           }
         });
@@ -322,36 +357,53 @@
     // 它自己的消息（custom_message）：display 的照它的画法画；不显示的（给模型看的续命提示、wait 被打断、记忆快照……）不画，只取有用的（wait 等了多久、换了模型）
     function custom(e, at) {
       var ct = String(e.customType || ""), txt = textOf(e.content), d = e.details && typeof e.details === "object" ? e.details : {};
-      if (ct === "wait-interrupted") { var wm = /\[wait (\d+)s (?:被打断|interrupted) \(([^)]*)\)\]/.exec(txt), w = P.lastWait; if (wm && w) { w.waited = +wm[1]; w.waitWhy = wm[2]; w.status = "done"; return w.turn; } return null; }
-      if (ct === "continuous-resume" && (d.resumeType === "wait" || d.resumeType === "hibernate")) {
-        var rw = d.resumeType === "wait" ? P.lastWait : P.lastHib, sm = /(\d+)s/.exec(txt);
-        if (rw) { if (rw.waited == null && sm) rw.waited = +sm[1]; rw.status = "done"; if (d.resumeType === "hibernate") rw.slept = at - (rw.t0 || at); return rw.turn; }
-        return null;
+      if (ct === "wait-interrupted") { var wm = /\[wait (\d+)s (?:被打断|interrupted) \(([^)]*)\)\]/.exec(txt), w = P.lastWait; if (wm && w) { w.waited = +wm[1]; w.waitWhy = wm[2]; w.interrupted = true; w.status = "done"; w.wokeAt = at; return w.turn; } return null; }
+      if (ct === "continuous-resume" && (d.resumeType === "wait" || d.resumeType === "hibernate" || d.resumeType === "hibernate-until")) {
+        var isW = d.resumeType === "wait", rw = isW ? P.lastWait : P.lastHib, sm = /(\d+)s/.exec(txt), nx = /\(next:\s*([\s\S]*)\)\s*$/.exec(txt);
+        if (rw) {
+          if (isW) { if (rw.waited == null && sm) rw.waited = +sm[1]; rw.status = "done"; rw.wokeAt = at; }
+          else { rw.status = "done"; rw.slept = at - (rw.hibAt || rw.t0 || at); rw.wokeBy = { kind: d.resumeType === "hibernate-until" ? "until" : "timer" }; rw.wokeAt = at; P.segAt = at; }
+          touch(rw.turn);
+        }
+        work(at);
+        return rw ? rw.turn : null;
       }
       if (ct === "model-switch") { var mm = /(?:模型切换到|switched to)\s*([^\s(]+)/i.exec(txt); if (mm) P.model = mm[1]; return null; }
       if (!e.display) {
         // 不显示的续命 / 叫醒：它又开始跑了——新的一段（没有问的那一行）
-        if (P.runEnded && /^(continuous-next|continuous-|sleep-|memory-reboot)/.test(ct)) { newTurn({ ask: "", cont: true, at: at, auto: ct }); P.runEnded = false; return P.cur; }
+        if (P.runEnded && /^(continuous-next|continuous-|sleep-|memory-reboot)/.test(ct)) { work(at); newTurn({ ask: "", cont: true, at: at, auto: ct }); P.runEnded = false; return P.cur; }
         return null;
       }
       switch (ct) {
         case "social-message": {
           // 别的 agent 发来的（收件箱里读进来的）：一问「别的 agent 发来的话」（同 Paimon 的 social：外壳按自己的样子画），它接着的回答接在这一问里
           var sm2 = { from: d.from || "", from_name: d.from_name || d.from || "agent", mode: d.mode || "", mode_used: d.mode_used || d.mode || "", ts: d.ts || at, text: txt, chan: d.chan || "", at: d.at || [] };
+          wake(at, { kind: "social", from: sm2.from_name });
+          if (P.runEnded) work(at);
           finish(); P.runEnded = false;
           return newTurn({ system: true, social: [sm2], ask: "", at: at });
         }
         case "continuous-cmd-done": {
           // 转到后台的命令跑完（它推的 cmd-done）：⏺ Result "标题" done in 16s + 输出；原来那一条 Execute 改成做完了
           var st = d.status || "done", src = d.recId && P.byRec[d.recId], ec = typeof d.exitCode === "number" ? d.exitCode : null;
-          if (src) { src.status = st === "done" && !ec ? "done" : "error"; src.doneBy = at; if (src.turn) touch(src.turn); }
           var head = st === "failed" ? "failed after " : st === "timeout" ? "timed out after " : st === "terminated" ? "terminated after " : (d.elapsedSec > 0 ? "done in " : "");
           var body = String(d.output != null ? d.output : txt).replace(/\s+$/, "");
+          var res = { ty: "result", title: d.title || (src && src.input && src.input.title) || "", sum: (head ? head + (d.elapsedSec > 0 || st !== "done" ? elapsed((d.elapsedSec || 0) * 1000) : "") : "done instantly") + (ec ? ", exit " + ec : ""), remaining: d.remaining > 0 ? d.remaining : 0,
+            err: st !== "done" || !!ec, lines: d.status ? (body ? body.split("\n") : []) : stripTags(txt).split("\n"), recId: d.recId || "", src: src || null, endTs: d.endTs || at };
+          if (src) { src.status = res.err ? "error" : "done"; src.doneBy = at; src.done = res; if (src.turn) touch(src.turn); }
+          wake(at, { kind: "cmd" });
           finish(); P.runEnded = false;
-          return block({ ty: "result", title: d.title || (src && src.input && src.input.title) || "", sum: (head ? head + (d.elapsedSec > 0 || st !== "done" ? elapsed((d.elapsedSec || 0) * 1000) : "") : "done instantly") + (ec ? ", exit " + ec : "") + (d.remaining > 0 ? " (" + d.remaining + " remaining)" : ""), err: st !== "done" || !!ec, lines: d.status ? (body ? body.split("\n") : []) : stripTags(txt).split("\n"), recId: d.recId || "" }, at, true);
+          work(at);
+          return block(res, at, true);
         }
         case "continuous-resume":
-          if (d.resumeType === "restart") { var self0 = /自己触发了重启|you triggered|self[- ]?reboot/i.test(txt); return block({ ty: "event", label: "Life Restarted", sub: self0 ? "自己重启" : "用户重启", text: txt.replace(/^\[系统\]\s*/, "") }, at, true); }
+          if (d.resumeType === "restart") {
+            var self0 = /自己触发了重启|you triggered|self[- ]?reboot/i.test(txt);
+            wake(at, { kind: "restart" });
+            P.bgs.forEach(function (q) { if (q.status === "background" && !q.done) { q.lost = true; touch(q.turn); } }); // 重启了：转到后台的那些跟着没了（它不会再推 cmd-done）
+            work(at);
+            return block({ ty: "event", label: "Life Restarted", sub: self0 ? "自己重启" : "用户重启", text: txt.replace(/^\[系统\]\s*/, "") }, at, true);
+          }
           return block({ ty: "notice", label: "Resumed From History Sessions", text: txt.replace(/^\[系统\]\s*/, "") }, at, true);
         case "sleep-wake-resume": return block({ ty: "notice", label: "Resumed From Sleep", text: txt }, at, true);
         case "continuous-date": return block({ ty: "notice", label: "Date", text: txt.replace(/^Current date: /, "") }, at, true);
@@ -501,6 +553,7 @@
           touched.forEach(function (t) { emit("turn", t); });
           settle();
           emit("status");
+          panelChanged();
         });
       }).catch(function () {}).then(function () { pollBusy = false; if (pollAgain) { pollAgain = false; setTimeout(poll, 0); } });
     }
@@ -517,7 +570,7 @@
       readFile(path, f.size || 0).then(function (r) {
         if (g !== gen) return;
         // 上一份里停在半截的（它重启了）：都算完了
-        if (cur.parser) cur.parser.turns.forEach(function (t) { (t.parts || []).forEach(function (q) { if (q.kind === "tool" && q.status === "running") { q.status = "done"; emit("turn", t); } }); });
+        if (cur.parser) cur.parser.turns.forEach(function (t) { (t.parts || []).forEach(function (q) { if (q.kind === "tool" && q.status === "running") { q.status = "done"; emit("turn", t); } if (q.kind === "tool" && q.status === "background" && !q.done && !q.lost) { q.lost = true; emit("turn", t); } }); });
         cur = { path: path, offset: r.end, all: r.all, byEntry: r.byEntry, leaf: r.leaf, parser: null, name: f.name };
         var p = build(branchOf(r.all, r.byEntry, r.leaf), true);
         cur.parser = p; absorb(p);
@@ -539,10 +592,49 @@
         if (nf.name !== cur.name && !loading) { files = x.files.slice(); nextFile(nf); }
         else files = x.files.slice();
       }
-      if (was !== x.state || wasMode !== x.mode) { setBusy(x.state === "working"); emit("status"); emit("state"); }
+      if (was !== x.state || wasMode !== x.mode) { setBusy(x.state === "working"); emit("status"); emit("state"); panelChanged(); }
     };
-    function start() { if (!loading && !cur.path) load(); clearInterval(pollT); pollT = setInterval(poll, 700); scan(true); }
-    function stop() { clearInterval(pollT); pollT = 0; }
+    // 没在干活、但有在走的时间（等着、休眠、后台的命令在跑）：一秒一下（状态栏、那几块的计时）
+    var slowT = 0;
+    var liveBg = function () { return bgList().some(function (q) { return q.status === "background" && !q.done && !q.lost; }); };
+    function start() { if (!loading && !cur.path) load(); clearInterval(pollT); pollT = setInterval(poll, 700); scan(true); clearInterval(slowT); slowT = setInterval(function () { if (rt.stream || document.hidden) return; if (info.state === "waiting" || info.state === "hibernating" || liveBg()) emit("tick"); }, 1000); }
+    function stop() { clearInterval(pollT); pollT = 0; clearInterval(slowT); slowT = 0; }
+
+    // ---- 它底部那一行（同它自己的状态栏 StatusBar）要的：在做什么、从什么时候、写了多少、在读 / 写 / 改哪个、后台还有几个命令；等着的：等多久、等谁；休眠的：睡了多久、几点醒 ----
+    var ACT = { Read: "reading", Write: "writing", Edit: "editing" }; // 同它：只有这三样写在 Working 后面
+    function bgList() {
+      var p = cur.parser;
+      return p ? p.bgs.filter(function (q) { return q.recId && (q.status === "background" || q.done || q.lost); }) : [];
+    }
+    rt.tyState = function () {
+      var p = cur.parser || {}, o = { state: info.state, mode: info.mode, at: info.stateAt || 0 }, last = turns[turns.length - 1];
+      o.work = { t0: p.workAt || info.stateAt || 0, tokens: p.workTok || 0 };
+      var runP = null;
+      (last && last.parts || []).forEach(function (q) { if (q.kind === "tool" && q.status === "running" && q.ty !== "wait" && q.ty !== "hibernate") runP = q; });
+      if (runP && ACT[runP.name]) o.work.act = { verb: ACT[runP.name], t0: runP.t0 || 0 };
+      o.bg = bgList().filter(function (q) { return q.status === "background" && !q.lost; }).map(function (q) { return q.t0 || 0; });
+      var w = p.lastWait;
+      if (w && info.state === "waiting") o.wait = { secs: +(w.waitPlanned || (w.input && w.input.seconds) || 0), t0: w.waitAt || w.t0 || 0, forUser: !!(w.input && w.input.wait_for_user), title: String((w.input && w.input.title) || ""), next: String((w.input && w.input.next_steps) || "").trim() };
+      var h = p.lastHib;
+      if (h && info.state === "hibernating") o.hib = { t0: h.hibAt || h.t0 || info.stateAt || 0, until: String((h.input && h.input.until) || "").trim(), untilTs: info.wakeAt || 0, accMs: h.accMs || 0, summary: String((h.input && h.input.summary) || "").trim() };
+      return o;
+    };
+    // 右侧栏：意图（它的 intentions.txt）、转到后台的命令（Created 的那些，跑完的带结果）
+    var intent = { text: "", mtime: -1, at: 0 };
+    function readIntent() {
+      var f = PH() + "/MemoryData/" + id + "/intentions.txt";
+      return LOC.stat(f).then(function (st) {
+        var mt = st ? st.mtime : 0;
+        if (mt === intent.mtime) return;
+        if (!st) { intent = { text: "", mtime: 0, at: Date.now() }; emit("status"); panelChanged(); return; }
+        return LOC.read(f).then(function (b) { intent = { text: dec(b).trim(), mtime: mt, at: Date.now() }; emit("status"); panelChanged(); });
+      }).catch(function () {});
+    }
+    var panelChanged = function () { if (window.STUDIO && STUDIO.familyChanged) STUDIO.familyChanged(); };
+    rt.tyPanel = function () {
+      if (Date.now() - intent.at > 3000) { intent.at = Date.now(); readIntent(); } // 看的时候隔几秒看一眼改了没有
+      return { intentions: intent.text, intentAt: intent.mtime, bg: bgList(), state: rt.tyState() };
+    };
 
     // ---- 在跑吗：它自己的状态（Working / Waiting / Hibernating / Paused），不是这边猜的 ----
     var ticker = 0;

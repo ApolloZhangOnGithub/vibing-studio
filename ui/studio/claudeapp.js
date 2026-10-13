@@ -76,8 +76,8 @@
   var CONN = {
     cc: { id: "claude-code", name: "Claude Code", glyph: STAR },
     cx: { id: "codex", name: "Codex", glyph: (window.TSU_LOGOS && TSU_LOGOS.codex) || "◎" }, // ChatGPT / OpenAI 的结（ext.js）
-    pi: { id: "pi", name: "pi", glyph: (window.TSU_LOGOS && TSU_LOGOS.pi) || "" }, // pi：画出来的 π（ext.js）
-    ty: { id: "teyvat", name: "Teyvat", glyph: (window.TSU_LOGOS && TSU_LOGOS.teyvat) || "" }, // Teyvat：画出来的四角星（ext.js）
+    pi: { id: "pi", name: "pi", glyph: (window.TSU_LOGOS && TSU_LOGOS.pi) || "" }, // pi：它自己的标志（ext.js）
+    ty: { id: "teyvat", name: "Teyvat", get glyph() { return (window.TSU_LOGOS && TSU_LOGOS.teyvat) || ""; } }, // Teyvat：提瓦特这颗星球的图（ext.js）
     pm: { id: "paimon", name: "Paimon", get glyph() { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || '<img class="pm-av" src="img/paimon.png" alt="" draggable="false">'; } }, // Paimon：派蒙的头像（读进内存的那一份，ext.js）
   };
   var CONN_ORDER = ["cc", "cx", "pi", "ty", "pm"]; // 按连接器分段时的先后
