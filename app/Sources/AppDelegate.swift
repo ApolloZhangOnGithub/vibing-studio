@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   private var nextWin = 2
   let selfTest = ProcessInfo.processInfo.environment["NADOS_SELFTEST"] == "1"
   let testJS = ProcessInfo.processInfo.environment["NADOS_TESTJS"] != nil // 自动测试：不抢前台、退出不问
+  let testFloat = ProcessInfo.processInfo.environment["NADOS_TEST_FLOAT"] == "1"
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.mainMenu = makeMenu()
@@ -19,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     if let js = ProcessInfo.processInfo.environment["NADOS_TESTJS"] { SelfTest.armScript(web, js) }
     web.load()
     if ProcessInfo.processInfo.environment["NADOS_HIDDEN"] == "1" { /* 自动测试（当主机）：窗口不出来 */ }
-    else if selfTest || testJS { web.window.orderFront(nil) } else { web.window.makeKeyAndOrderFront(nil); NSApp.activate() } // 自测：不抢前台
+    else if selfTest || testJS { if testFloat { web.window.level = .floating }; web.window.orderFront(nil) } else { web.window.makeKeyAndOrderFront(nil); NSApp.activate() } // 自测：不抢前台（NADOS_TEST_FLOAT=1：浮在别的窗口上面——被挡住的窗口 WebKit 不画，截不了图）
     // iPad 使用这台 Mac：开着的话一启动就连上中转（不等窗口、页面）；状态变了告诉每个窗口的设置页
     if Config.terminal {
       RemoteHost.shared.changed = { [weak self] st in guard let self else { return }; (([self.web] as [WebController?]).compactMap { $0 } + self.extra).forEach { $0.emit("remote.changed", st) } }
@@ -179,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     c.load()
     if let topLeft { c.window.setFrameTopLeftPoint(topLeft) }
     else if mac == nil || UserDefaults.standard.string(forKey: "NSWindow Frame PaimonRemote-" + (mac ?? "")) == nil, let key = NSApp.keyWindow { c.window.setFrameTopLeftPoint(NSPoint(x: key.frame.minX + 30, y: key.frame.maxY - 30)) } // 连另一台 Mac 的窗口：开过的回到上次的位置
-    if testJS { c.window.orderFront(nil); return id } // 自动测试：不抢前台
+    if testJS { if testFloat { c.window.level = .floating }; c.window.orderFront(nil); return id } // 自动测试：不抢前台
     c.window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     return id

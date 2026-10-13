@@ -243,7 +243,7 @@ final class RdpPanes: NSObject {
       let text = String(data: d, encoding: .utf16) ?? String(decoding: d, as: UTF8.self) // Windows 存的常是 UTF-16
       return RdpStore.parseRdpFile(text.contains("full address") ? text : String(decoding: d, as: UTF8.self), name: u.deletingPathExtension().lastPathComponent)
     case "rdp.list":
-      return sessions.map { ["id": $0.key, "host": $0.value.hostId, "state": $0.value.state] }
+      return sessions.map { ["id": $0.key, "host": $0.value.hostId, "state": $0.value.state, "view": $0.value.view.debugInfo] as [String: Any] }
     default:
       break
     }
@@ -253,8 +253,7 @@ final class RdpPanes: NSObject {
       // 开（已经开着、连着的：接着用——页面重新载入后认回来）；没有密码 → { needPass: true }，页面让人输
       guard let hid = a["host"] as? String, let h = RdpStore.get(hid) else { throw BridgeError.args("rdp.open { id, host: <rdp.hosts 里的 id>, password?, remember? }") }
       if let s = sessions[id], s.hostId == hid, s.alive, a["password"] == nil, a["again"] as? Bool != true { return s.snapshotState() }
-      sessions[id]?.close()
-      let s = sessions[id] ?? RdpSession(id: id, panes: self)
+      let s = sessions[id] ?? RdpSession(id: id, panes: self) // 已经有的（换密码、重连）：connect 里先停掉旧的助手，不发「已断开」
       sessions[id] = s
       return await s.connect(h, password: a["password"] as? String, remember: a["remember"] as? Bool ?? true)
     case "rdp.frame":
@@ -530,11 +529,13 @@ final class RdpSession {
   private func failed(_ e: [String: Any]) {
     let name = e["name"] as? String ?? "", msg = e["msg"] as? String ?? ""
     let wasUp = state == "connected"
+    // 要密码、证书变了：那张卡片留着（助手随后报的「连接被取消」是它自己停下的，不是出错）
+    if state == "cert" || state == "needpass" || name.contains("CONNECT_CANCELLED") && !wasUp { return }
     var kind = "other"
+    // 密码不对：GNOME 远程桌面报 ERRCONNECT_LOGON_FAILURE（2026-10-13 实测）
     if ["AUTHENTICATION_FAILED", "LOGON_FAILURE", "WRONG_PASSWORD", "NO_OR_MISSING_CREDENTIALS", "ACCESS_DENIED", "ACCOUNT_", "PASSWORD_"].contains(where: { name.contains($0) }) { kind = "auth" }
-    else if ["CONNECT_FAILED", "DNS_NAME_NOT_FOUND", "TRANSPORT_FAILED", "CONNECT_CANCELLED", "TLS_CONNECT_FAILED", "MCS_", "INSUFFICIENT_PRIVILEGES"].contains(where: { name.contains($0) }) || name.hasPrefix("ERRCONNECT") { kind = "net" }
-    if name.contains("LOGOFF") || name.contains("DISCONNECTED_BY_OTHER") || name.contains("RPC_INITIATED_DISCONNECT") || name.contains("REPLACED") { kind = "ended" }
-    if state == "cert" { return }
+    else if name.contains("LOGOFF") || name.contains("DISCONNECTED_BY_OTHER") || name.contains("RPC_INITIATED_DISCONNECT") || name.contains("REPLACED") || name.hasPrefix("ERRINFO") { kind = "ended" }
+    else if ["CONNECT_FAILED", "DNS_NAME_NOT_FOUND", "TRANSPORT_FAILED", "TLS_CONNECT_FAILED", "MCS_", "CONNECT_CANCELLED"].contains(where: { name.contains($0) }) || name.hasPrefix("ERRCONNECT") { kind = "net" }
     if kind == "net", wasUp || retries > 0, retries < 8 { reconnectLater(); return }
     setState("error", ["kind": kind, "name": name, "msg": msg, "code": e["code"] ?? 0, "log": tail.suffix(12).joined(separator: "\n")])
   }
@@ -661,6 +662,7 @@ final class RdpView: NSView {
   private var buttons: UInt16 = 0
   private var xbuttons: UInt16 = 0
   private var cmdHeld = Set<UInt16>()
+  private var cmdKeys = Set<UInt32>() // 按着 ⌘ 时按下的键：⌘ 松开时还没松开的补发松开（按着 ⌘ 时 macOS 有时不给那个键的 keyUp，远端会以为一直按着、连发）
   private var cmdCommitted = false, cmdUsed = false
   private var cmdDownAt = Date.distantPast
   private var monitor: Any?
@@ -701,7 +703,7 @@ final class RdpView: NSView {
 
   func setOptions(_ a: [String: Any]) {
     if let c = a["cmd"] as? String { cmdAsCtrl = c != "super" }
-    if let s = a["scale"] as? String { oneToOne = s == "1:1"; needsLayout = true }
+    if let s = a["scale"] as? String { oneToOne = s == "1:1"; placeImage() }
     if let d = a["dynres"] as? Bool { dynres = d; if d { requestResize(force: true) } }
     if let c = a["clip"] as? Bool { clipOn = c }
   }
@@ -717,10 +719,12 @@ final class RdpView: NSView {
     }
     for s in surfaces { IOSurfaceSetValue(s, kIOSurfaceColorSpace, CGColorSpace(name: CGColorSpace.sRGB)!.copyPropertyList()!) }
     dirty = Array(repeating: CGRect(x: 0, y: 0, width: w, height: h), count: surfaces.count)
-    needsLayout = true
+    placeImage()
     schedulePresent()
   }
+  private(set) var frames = 0
   func damage(_ r: CGRect) {
+    frames += 1
     for i in dirty.indices { dirty[i] = dirty[i].union(r) }
     schedulePresent()
   }
@@ -747,6 +751,7 @@ final class RdpView: NSView {
     img.contents = s
     CATransaction.commit()
     cur = i
+    presents += 1
   }
 
   // 画面放在哪：适应窗口（等比缩放、居中）/ 1:1（一个远端像素一个屏幕像素；比视图大时跟着鼠标平移）
@@ -762,15 +767,19 @@ final class RdpView: NSView {
     return CGRect(x: ((bounds.width - w) / 2).rounded(), y: ((bounds.height - h) / 2).rounded(), width: w, height: h)
   }
   private var panX: CGFloat = 0.5, panY: CGFloat = 0.5
-  override func layout() {
-    super.layout()
+  // 画面那一层放到位：大小变了、远端分辨率变了、换了缩放就马上放（不等 layout()——窗口被挡住时 AppKit 不排版）
+  private func placeImage() {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     img.frame = imgRect
     img.contentsScale = window?.backingScaleFactor ?? 2
     CATransaction.commit()
-    requestResize()
   }
+  override func layout() { super.layout(); placeImage(); requestResize() }
+  override func setFrameSize(_ newSize: NSSize) { super.setFrameSize(newSize); placeImage(); requestResize() }
+  private(set) var presents = 0
+  var debugInfo: [String: Any] { ["hidden": isHidden, "frame": [frame.minX, frame.minY, frame.width, frame.height], "img": [img.frame.minX, img.frame.minY, img.frame.width, img.frame.height],
+                                  "fb": [fbW, fbH, stride], "surfaces": surfaces.count, "presents": presents, "frames": frames, "first": window?.firstResponder === self] }
   override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); needsLayout = true }
 
   // 远端要多大（连上时、视图大小变了时；远端支持「显示控制」才改得了）：视图的像素大小，缩放跟着屏幕（视网膜屏 200%）
@@ -801,7 +810,7 @@ final class RdpView: NSView {
   func setVisible(_ v: Bool) {
     let was = !isHidden
     isHidden = !v
-    if v && !was { schedulePresent(); needsLayout = true }
+    if v && !was { schedulePresent(); placeImage() }
     if !v, window?.firstResponder === self { window?.makeFirstResponder(superview) }
     suppressItem?.cancel()
     if v != visibleNow {
@@ -878,7 +887,7 @@ final class RdpView: NSView {
     let p = convert(e.locationInWindow, from: nil), r = imgRect
     if oneToOne && (r.width > bounds.width || r.height > bounds.height) {
       panX = min(1, max(0, p.x / max(1, bounds.width))); panY = min(1, max(0, p.y / max(1, bounds.height)))
-      needsLayout = true
+      placeImage()
     }
     guard r.width > 0, r.height > 0, fbW > 0 else { return (0, 0) }
     let x = Int(((p.x - r.minX) / r.width * CGFloat(fbW)).rounded(.down)), y = Int(((p.y - r.minY) / r.height * CGFloat(fbH)).rounded(.down))
@@ -969,6 +978,7 @@ final class RdpView: NSView {
     case .keyDown:
       guard let sc = RdpKeys.map[e.keyCode] else { return }
       beforeInput()
+      if e.modifierFlags.contains(.command) { cmdKeys.insert(sc) }
       pressed.insert(sc)
       session?.send(String(format: "k %d %x", e.isARepeat ? 2 : 1, sc))
     case .keyUp:
@@ -987,6 +997,10 @@ final class RdpView: NSView {
     if k == 0x39 { sendKey(RdpKeys.caps, true); sendKey(RdpKeys.caps, false); return } // 大写锁定：按一下切一下
     guard let (sc, bit) = RdpKeys.mods[k] else { return }
     let down = raw & bit != 0
+    if (k == 0x37 || k == 0x36) && !down && raw & 0x18 == 0 { // 两个 ⌘ 都松开了：按着它时按下、还没松开的键先松开
+      for c in cmdKeys where pressed.contains(c) { sendKey(c, false) }
+      cmdKeys.removeAll()
+    }
     if k == 0x37 || k == 0x36, cmdAsCtrl {
       // ⌘ 当 Ctrl：按下先不发；接着按了别的键 / 点了鼠标才算 Ctrl；单按一下松开 = Super（GNOME 的「活动」）
       if down {
@@ -1014,7 +1028,7 @@ final class RdpView: NSView {
   private func releaseAll() {
     for sc in pressed { session?.send(String(format: "k 0 %x", sc)) }
     pressed.removeAll()
-    cmdHeld.removeAll(); cmdCommitted = false
+    cmdHeld.removeAll(); cmdCommitted = false; cmdKeys.removeAll()
     for b in [RdpView.B1, RdpView.B2, RdpView.B3] where buttons & b != 0 { session?.send("m \(b) \(lastPos.x) \(lastPos.y)") }
     buttons = 0
     for b: UInt16 in [1, 2] where xbuttons & b != 0 { session?.send("x \(b) \(lastPos.x) \(lastPos.y)") }
