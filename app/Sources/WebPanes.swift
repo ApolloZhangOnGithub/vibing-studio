@@ -6,6 +6,9 @@ import WebKit
 
 @MainActor
 final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
+  // 网页里存起来的密钥（WebCrypto）用的主密钥：App 自己给（WebCryptoKey.swift）——不让 WebKit 放进钥匙串（那一项每次更新都要输开机密码）
+  @objc(_webCryptoMasterKeyForWebView:completionHandler:)
+  func webCryptoMasterKey(_ webView: WKWebView, completionHandler: @escaping (Data?) -> Void) { WebCryptoKey.get(completionHandler) }
   static let commands = ["web.open", "web.frame", "web.nav", "web.close", "web.snapshot"]
   weak var controller: WebController?
   private var views: [String: WKWebView] = [:]

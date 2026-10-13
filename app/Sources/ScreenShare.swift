@@ -371,6 +371,7 @@ final class ScreenView: NSView {
   private let video = AVSampleBufferDisplayLayer()
   private let hud = CATextLayer()
   private var fmt: CMVideoFormatDescription?
+  private var lastKey: CMSampleBuffer? // 最近的关键帧：截图（标签页概览、测试）时自己解一帧
   private(set) var vw = 0, vh = 0
   private var paused = false
   private var hudOn = false
@@ -451,6 +452,7 @@ final class ScreenView: NSView {
       let d = unsafeBitCast(CFArrayGetValueAtIndex(atts, 0), to: CFMutableDictionary.self)
       CFDictionarySetValue(d, Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(), Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
     }
+    if a["k"] as? Bool == true { lastKey = sb }
     let r = video.sampleBufferRenderer
     if r.status == .failed { r.flush(); panes?.emit("scr.needkey", ["id": sid]) } // 解坏了：清掉，请那边来一个关键帧
     r.enqueue(sb)
@@ -505,12 +507,18 @@ final class ScreenView: NSView {
     removeFromSuperview()
   }
   func snapshot() -> String? {
-    guard let layer, bounds.width > 0, bounds.height > 0 else { return nil }
-    let sc = window?.backingScaleFactor ?? 2, W = Int(bounds.width * sc), H = Int(bounds.height * sc)
-    guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-    ctx.scaleBy(x: sc, y: sc); ctx.translateBy(x: 0, y: bounds.height); ctx.scaleBy(x: 1, y: -1)
-    layer.render(in: ctx)
-    guard let img = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return nil }
+    // 视频层画不进 CALayer.render：把最近的关键帧自己解一帧
+    guard let sb = lastKey, let fd = CMSampleBufferGetFormatDescription(sb) else { return nil }
+    var dec: VTDecompressionSession?
+    guard VTDecompressionSessionCreate(allocator: nil, formatDescription: fd, decoderSpecification: nil, imageBufferAttributes: [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA] as CFDictionary,
+                                       outputCallback: nil, decompressionSessionOut: &dec) == noErr, let dec else { return nil }
+    defer { VTDecompressionSessionInvalidate(dec) }
+    nonisolated(unsafe) var img: CVImageBuffer?
+    VTDecompressionSessionDecodeFrame(dec, sampleBuffer: sb, flags: [], infoFlagsOut: nil) { _, _, ib, _, _ in img = ib }
+    VTDecompressionSessionWaitForAsynchronousFrames(dec)
+    guard let img else { return nil }
+    let ci = CIImage(cvPixelBuffer: img)
+    guard let cg = CIContext().createCGImage(ci, from: ci.extent), let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return nil }
     return "data:image/png;base64," + png.base64EncodedString()
   }
 

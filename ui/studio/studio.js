@@ -676,7 +676,7 @@
     famPress = false; // 点完了（click 在 pointerup 之后）：这一下要的重画马上做——以前按着的标记要等 pointerup 的下一拍才清，这一下的重画被跳过，等下一秒的定时重画才展开（「n 个已结束」点了要等一两秒）
     if (what === "reload") return location.reload();
     if (what === "app-update") return appUpdateNow();
-    if (what === "rdp-opts" && window.TSU_RDP && TSU_RDP.options) { var rp = tw && tw.ws ? tw.ws.active : null; return TSU_RDP.options(rp && rp.program); }
+    if (what === "rdp-opts" && window.TSU_RDP && TSU_RDP.options) { var rp = tw && tw.ws ? tw.ws.active : null; if (rp && rp.program && rp.program.page === "macdesk" && window.TSU_MACDESK) return TSU_MACDESK.options(rp.program); return TSU_RDP.options(rp && rp.program); }
     if (what === "preview-close") { parts(tw).previewImg = null; return render(tw); }
     if (what === "side-close") return toggleSide(tw, false);
     if (/^side-lv-/.test(what)) return; // 以前辅助侧栏的「Agent / 全局」：没有了
@@ -1169,6 +1169,7 @@
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
       // 连着的远程桌面：分辨率、帧率、码率、编码、往返时间（每秒更新）；点一下出「连接选项」
       if (prog && prog.page === "rdp" && window.TSU_RDP && TSU_RDP.statusLine) { var rdl = TSU_RDP.statusLine(prog); if (rdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(rdl) + "</span>"); }
+      if (prog && prog.page === "macdesk" && window.TSU_MACDESK) { var mdl = TSU_MACDESK.statusLine(prog); if (mdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(mdl) + "</span>"); }
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
       if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();

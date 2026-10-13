@@ -307,6 +307,10 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     if webView.url?.scheme != "about" { committed = true; retries = 0 }
   }
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { trace("finish " + (webView.url?.absoluteString ?? "")) }
+  // 网页里存起来的密钥（WebCrypto）用的主密钥：App 自己给（WebCryptoKey.swift）——不让 WebKit 放进钥匙串（那一项每次更新都要输开机密码）
+  @objc(_webCryptoMasterKeyForWebView:completionHandler:)
+  func webCryptoMasterKey(_ webView: WKWebView, completionHandler: @escaping (Data?) -> Void) { WebCryptoKey.get(completionHandler) }
+
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     let e = error as NSError
     trace("fail provisional: \(e.domain) \(e.code) " + e.localizedDescription)

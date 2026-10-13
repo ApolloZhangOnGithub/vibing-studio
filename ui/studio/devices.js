@@ -67,6 +67,8 @@
 
   // 能连它桌面的：别的 Linux / Windows 电脑（它们的远程桌面是 RDP；Mac 的以后由 Vibing Studio 自己来）——App 里才有
   var canDesk = function (n) { return !!(n && !n.self && !n.web && n.family === "computer" && /^(Linux|Windows)$/.test(kindLabel(n)) && window.TSU_RDP && TSU_RDP.native()); };
+  // 另一台 Mac：它的 Vibing Studio 开着、让别的设备用——经 Vibing Studio 自己的连接用它的屏幕（macdesk.js）
+  var canMacDesk = function (n) { return !!(n && !n.self && !n.web && n.family === "computer" && kindLabel(n) === "Mac" && n.host && n.online && window.TSU_MACDESK && TSU_MACDESK.native()); };
   // ---- 数据 ----
   var hostsCache = { at: 0, list: [] };
   function loadHosts(done) {
@@ -323,10 +325,10 @@
   // 它能做的事：[动作, 名字, 样式]——卡片底下的按钮、右键菜单、连按两下（第一件）都用这一份
   function actsOf(n) {
     var acts = [];
-    if (canDesk(n)) acts.push(["desk", t("远程桌面", "Remote Desktop"), "primary"]);
+    if (canDesk(n) || canMacDesk(n)) acts.push(["desk", t("远程桌面", "Remote Desktop"), "primary"]);
     // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
     var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
-    if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), canDesk(n) ? "" : "primary"]);
+    if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), canDesk(n) || canMacDesk(n) ? "" : "primary"]);
     // 那台上的终端：这个窗口里开一个标签页，shell 在那台上跑（经中转）
     if (!n.self && n.host && n.online && !n.web && inApp && window.TSU_LOCAL && window.TSU_RLINK) acts.push(["term", t("打开终端", "Open Terminal")]);
     if (!n.self && n.ids && n.ids.length && SY()) acts.push(["remove", t("从账户中移除…", "Remove from Account…")]);
@@ -334,6 +336,7 @@
   }
   var mainAct = function (n) { var a = actsOf(n).filter(function (x) { return x[0] === "desk" || x[0] === "open"; })[0]; return a ? a[0] : ""; };
   function run(a, n, P, host, V) {
+    if (a === "desk" && canMacDesk(n)) return TSU_MACDESK.open(n.host, n.label, P.win);
     if (a === "desk" && window.TSU_RDP) return TSU_RDP.connectDevice({ id: n.id, name: n.label, host: n.host || "" }, P.win);
     if (a === "term" && n.host) return P.win.ws.newTab({ sh: { pty: true, dev: n.host, devName: n.label } });
     if (a === "open" && n.host) {
