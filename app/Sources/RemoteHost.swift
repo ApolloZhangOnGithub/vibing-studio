@@ -18,7 +18,8 @@ final class RemoteHost: NSObject {
   static let policies = ["auto", "first", "every", "code"]
   private static let allow: Set<String> = ["local.info", "pty.open", "pty.attach", "pty.list", "pty.write", "pty.resize", "pty.pause", "pty.resume", "pty.close", "pty.cwd",
                                            "exec.start", "exec.kill", "proc.start", "proc.write", "proc.close", "proc.kill", "fs.read", "fs.write", "fs.stat", "fs.glob", "fs.list",
-                                           "cc.sessions", "cc.find", "cc.search", "fs.thumb", "fs.trash", "fs.tags"]
+                                           "cc.sessions", "cc.find", "cc.search", "fs.thumb", "fs.trash", "fs.tags",
+                                           "screen.start", "screen.stop", "screen.input", "screen.pause", "screen.opts", "screen.key"] // screen.*：用这台的屏幕（ScreenShare.swift）
   private static let sysCmds: Set<String> = ["fs.thumb", "fs.trash", "fs.tags"] // 这几条在 SystemInfo（缩略图、移到废纸篓、标签）：文件管理器里用
   private static let owns: Set<String> = ["exec.start", "pty.open", "pty.attach", "proc.start"] // 这几条开出来的（终端、命令）：输出只送回开它的那台
   private static let events: Set<String> = ["exec.data", "exec.exit", "proc.data", "proc.exit", "pty.data", "pty.exit"]
@@ -258,6 +259,7 @@ final class RemoteHost: NSObject {
         clients[from] = nil
         owner = owner.filter { $0.value != from }
         tails.filter { $0.value.from == from }.forEach { $0.value.stop(); tails[$0.key] = nil }
+        ScreenHost.shared.stopAll(for: from) // 它开的截屏都停
         proven[from] = nil; nonces[from] = nil; challenged[from] = nil
         notify()
       }
@@ -560,6 +562,16 @@ final class RemoteHost: NSObject {
       break
     }
     guard RemoteHost.allow.contains(cmd) else { return reply(from, id, false, err("E_DENIED", "这台 Mac 不允许其他设备使用「\(cmd)」")) }
+    // 用这台的屏幕：截屏、编码、送画面、收键盘鼠标（ScreenShare.swift）
+    if ScreenHost.commands.contains(cmd) {
+      if ScreenHost.shared.send == nil { ScreenHost.shared.send = { [weak self] to, msg, done in var m = msg; m["to"] = to; self?.sendJSON(m, done: done) } }
+      Task { @MainActor in
+        do { self.reply(from, id, true, try await ScreenHost.shared.run(cmd, a, from: from) ?? NSNull()) }
+        catch let e as BridgeError { self.reply(from, id, false, self.err(e.code, e.message)) }
+        catch { self.reply(from, id, false, self.err("E_FAILED", error.localizedDescription)) }
+      }
+      return
+    }
     if RemoteHost.owns.contains(cmd), let eid = a["id"] as? String { owner[eid] = from }
     let l = local
     // 读文件（会话记录动辄几 MB）：那边说能解压（z）就压一下再送——文字压完只剩一成多，经中转送到浏览器、iPhone 快得多
@@ -600,9 +612,10 @@ final class RemoteHost: NSObject {
     if t.hasSuffix(".exit") { owner[eid] = nil }
   }
 
-  fileprivate func sendJSON(_ o: [String: Any]) {
-    guard let t = task, up, JSONSerialization.isValidJSONObject(o), let d = try? JSONSerialization.data(withJSONObject: o), let s = String(data: d, encoding: .utf8) else { return }
-    t.send(.string(s)) { _ in }
+  // done：送出去了（或送不了）——截屏那边数在路上的帧
+  fileprivate func sendJSON(_ o: [String: Any], done: (@Sendable () -> Void)? = nil) {
+    guard let t = task, up, JSONSerialization.isValidJSONObject(o), let d = try? JSONSerialization.data(withJSONObject: o), let s = String(data: d, encoding: .utf8) else { done?(); return }
+    t.send(.string(s)) { _ in done?() }
   }
 
   // ---- 盯着的会话记录（tail.watch）：本机读很快——每 0.2 秒看一眼长了没有，长了就把新写的整行直接推给那台设备（tail.data）----

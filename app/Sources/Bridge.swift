@@ -18,10 +18,11 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
                          "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "ui.source", "open.pending",
                          "window.tabDrop", "app.activate", "app.quit", "app.restartToUpdate", "app.running", "statusItem.set", "remote.open", "window.close",
                          "auth.key.info", "auth.key.create", "auth.key.verify", "auth.key.setId", "auth.key.forget"]
-  weak var controller: WebController? { didSet { local?.controller = controller; web?.controller = controller; rdp?.controller = controller } }
+  weak var controller: WebController? { didSet { local?.controller = controller; web?.controller = controller; rdp?.controller = controller; scr?.controller = controller } }
   let local: Local? = Config.terminal ? Local() : nil // Paimon Terminal：这台 Mac 本身（真终端、命令、文件）
   let web: WebPanes? = Config.terminal ? WebPanes() : nil // Vibing Studio：内嵌的浏览器（页面给位置，这边叠一个真的 WKWebView）
   let rdp: RdpPanes? = Config.terminal ? RdpPanes() : nil // Vibing Studio：远程桌面（同上：页面给位置，这边叠一个画远端画面的视图）
+  let scr: ScreenPanes? = Config.terminal ? ScreenPanes() : nil // Vibing Studio：另一台 Mac 的屏幕（ScreenShare.swift；画面经中转来，页面转给这里）
 
   func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void) {
     let origin = Config.origin(message.frameInfo.securityOrigin)
@@ -56,6 +57,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       if local != nil { cmds += Local.commands + RemoteHost.commands }
       if web != nil { cmds += WebPanes.commands }
       if rdp != nil { cmds += RdpPanes.commands }
+      if scr != nil { cmds += ScreenPanes.commands }
       return [
         "platform": "macos", "app": Config.appName, "version": Config.version, "build": Config.build, "protocol": Bridge.protocolVersion, "local": Config.terminal,
         "os": "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", "arch": arch, "commands": cmds,
@@ -218,6 +220,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       if let web, cmd == "web.snapshot" { return try await web.snapshot(a) }
       if let web, WebPanes.commands.contains(cmd) { return try web.run(cmd, a) }
       if let rdp, RdpPanes.commands.contains(cmd) { return try await rdp.run(cmd, a) }
+      if let scr, ScreenPanes.commands.contains(cmd) { return try await scr.run(cmd, a) }
       throw BridgeError(code: "E_UNKNOWN_CMD", message: "unknown command \"\(cmd)\" (known: \(Bridge.commands.joined(separator: ", ")))")
     }
   }
