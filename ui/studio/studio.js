@@ -1167,7 +1167,7 @@
       // agent 的上下文、模型不放这里：在 agent 底部、输入框下面（状态栏只放工作区的东西）
       if (prog && prog.page === "file") { var lang = window.TSU_HL ? TSU_HL.langName(prog.arg || "") : ""; if (lang) rightI.push('<span class="st-item st-dim">' + esc(lang) + "</span>"); rightI.push('<span class="st-item st-dim">UTF-8</span>'); }
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
-      if (appUpd) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+      if (appUpd) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();
       if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
@@ -1408,13 +1408,43 @@
   // 点了更新：独立的小脚本等 App 退出再换（同一时间只有一个在等——两个一起换会把刚换上的新版也挪走）；
   //   请 App 退出：新版 App 有 app.quit（同 ⌘Q：有程序在跑会先问）；老版本没有就用 AppleScript。2.5 秒后还开着：状态栏改成「按 ⌘Q 退出后自动换上」，脚本等 30 分钟
   var updT = 0, updWait = false;
+  // 「重启以更新」点一下就重启（用户 2026-10-13：以前要点两次——退出时系统那个「要终止正在运行的进程吗」）：
+  //   没有会话在工作、终端里没有别的程序在跑：直接重启（闲着的 Claude Code 之类重开后接着用）；
+  //   有的话页面问一次——现在重启 / 等它们停下来自动重启 / 取消。老版本的 App（没有 app.running）照旧
+  var waitIdleT = 0;
+  function busyAgents() {
+    var A = window.TSU_AGENTS, out = [];
+    try { (A && A.liveRuntimes ? A.liveRuntimes() : []).forEach(function (rt) { if (rt && rt.stream && rt.agent && out.indexOf(rt.agent.name) < 0) out.push(rt.agent.name); }); } catch (e) { /* 没有就算了 */ }
+    return out;
+  }
   function appUpdateNow() {
+    if (!appUpd || !UPD_DIR() || !LOC() || !LOC().exec) return;
+    var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
+    if (!N || !N.call || cmds.indexOf("app.running") < 0) return doAppUpdate(false);
+    N.call("app.running").then(function (r) {
+      var busy = busyAgents(), progs = ((r && r.names) || []).filter(function (n, i, a) { return a.indexOf(n) === i && !/^(claude|codex|pi|genshin|node|zsh|bash|sh|fish|login|tmux|-zsh|-bash)$/.test(n); });
+      if (!busy.length && !progs.length) return doAppUpdate(true);
+      var lines = [];
+      if (busy.length) lines.push("正在工作的会话：" + busy.join("、") + "（重启会打断这一问，重开后接着用）");
+      if (progs.length) lines.push("终端里在跑的程序：" + progs.join("、") + "（会被结束）");
+      var go = function () { clearInterval(waitIdleT); waitIdleT = 0; doAppUpdate(true); };
+      var wait = function () {
+        clearInterval(waitIdleT);
+        updWait = "idle"; allWins().forEach(function (w) { renderSoon(w); });
+        waitIdleT = setInterval(function () { if (!busyAgents().length) go(); }, 3000);
+      };
+      if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "重启以更新到 " + (appUpd.ver || ""), message: lines.join("\n"), icon: "caution",
+        buttons: [{ label: "取消", role: "cancel" }, { label: "等它们停下来再重启", run: wait }, { label: "现在重启", role: "default", run: go }] });
+      else if (window.confirm(lines.join("\n") + "\n\n现在重启？")) go();
+    }, function () { doAppUpdate(false); });
+  }
+  function doAppUpdate(force) {
     var dir = UPD_DIR();
     if (!appUpd || !dir || !LOC() || !LOC().exec) return;
     try { if (window.TSU_FLUSH) TSU_FLUSH(); } catch (e) { /* 记不了就算了 */ }
     var q = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
     var N = window.nadosNative;
-    var quit = function () { var osa = function () { return LOC().exec({ cmd: "osascript -e 'tell application id \"beer.paimon.terminal\" to quit'" }); }; return N && N.call ? N.call("app.quit").catch(osa) : osa(); };
+    var quit = function () { var osa = function () { return LOC().exec({ cmd: "osascript -e 'tell application id \"beer.paimon.terminal\" to quit'" }); }; return N && N.call ? N.call("app.quit", force ? { force: true } : {}).catch(osa) : osa(); };
     var still = function () { setTimeout(function () { updWait = true; allWins().forEach(function (w) { renderSoon(w); }); }, 2500); }; // 还在跑（没退成、或在「要终止正在运行的进程吗」里点了取消）
     if (updT && Date.now() - updT < 30 * 60000) { quit().then(still, still); return; } // 脚本已经在等：只再请一次退出
     updT = Date.now();
@@ -3108,6 +3138,7 @@
   setTimeout(openPending, 2500); // 刚启动（从访达里打开文件把 App 叫起来的）：窗口恢复完再来取
   function openFile(tw, path, o) {
     if (!path) return;
+    if (/\.rdp$/i.test(path) && window.TSU_RDP && TSU_RDP.native()) return TSU_RDP.openFile(path, tw); // 远程桌面的连接文件（拖进来、用它打开）：直接连
     if (!termapp() || !LOC()) { if (window.TSU_IDE && TSU_IDE.open) TSU_IDE.open(path); return; } // 网页桌面：交给编辑器
     var f = FILES[path];
     if (f && o && o.line) { f.line = o.line; f.scrolled = false; }

@@ -793,6 +793,9 @@
       img.src = url;
     }
     fileIn.addEventListener("change", function () { Array.prototype.forEach.call(fileIn.files || [], addImage); fileIn.value = ""; });
+    // 从访达、截图缩略图拖进来的（原生给的是路径，live.js 读成文件再交过来）：同 TUI 的 V.attachFile——当附图；不是图的插路径
+    V.attachFile = function (file, fail) { if (!file || !/^image\//.test(file.type)) { if (fail) fail(); return; } addImage(file); };
+    V.insertText = function (t) { ta.focus(); document.execCommand("insertText", false, t); };
     // 「+」（同 Claude App）：马上出一个小菜单——添加文件或照片…（系统的选文件窗口）、截取屏幕（有屏幕录制权限时，不拍 Vibing Studio 自己）。
     //   以前一点就直接开选文件的窗口：要等它从窗口顶上滑下来，看着像卡住了
     var screenOK = false;

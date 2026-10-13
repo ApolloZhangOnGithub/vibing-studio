@@ -236,7 +236,10 @@
     if (!native()) return null;
     return N.call("rdp.readFile", { path: path }).then(function (h) {
       if (!h || !h.host) throw new Error("no address");
-      var hit = hosts.filter(function (x) { return (x.host + ":" + x.port) === String(h.host).replace(/^localhost/, x.host === "localhost" ? "localhost" : "localhost") && x.user === (h.user || ""); })[0];
+      // 已经有同一个地址、同一个用户名的连接：用那个（不重复建）
+      var norm = function (host, port) { var x = String(host || "").toLowerCase().replace(/^\[|\]$/g, ""); if (x === "localhost" || x === "::1") x = "127.0.0.1"; return x + ":" + (port || 3389); };
+      var m0 = /^(.*?)(?::(\d+))?$/.exec(String(h.host).replace(/^\[([^\]]+)\]/, "$1")), want = norm(m0[1], +(m0[2] || h.port || 3389));
+      var hit = hosts.filter(function (x) { return norm(x.host, x.port) === want && (x.user || "") === (h.user || ""); })[0];
       return (hit ? Promise.resolve(hit) : N.call("rdp.saveHost", Object.assign({ id: "" }, h))).then(function (x) { return loadHosts().then(function () { return openHost(x.id, tw); }); });
     }).catch(function (e) { alertMsg(t("打不开这个 .rdp 文件", "Couldn’t open this .rdp file"), String((e && e.message) || e)); });
   }

@@ -8307,20 +8307,23 @@
   // ---- Paimon Terminal：从访达拖文件进来 = 把路径贴进鼠标下面那个终端（转义好、后面带个空格，同「终端」）；agent 的输入框里就插进去 ----
   if (window.nadosNative && nadosNative.local) nadosNative.on("drop.paths", function (d) {
     if (!d || !d.paths || !d.paths.length) return;
+    // 远程桌面的连接文件（.rdp）：拖到哪里都是直接连它
+    var rdps = d.paths.filter(function (x) { return /\.rdp$/i.test(x); });
+    if (rdps.length && window.TSU_RDP && TSU_RDP.native()) { rdps.forEach(function (x) { TSU_RDP.openFile(x, frontTerm()); }); d = Object.assign({}, d, { paths: d.paths.filter(function (x) { return rdps.indexOf(x) < 0; }) }); if (!d.paths.length) return; }
     var el = document.elementFromPoint(d.x, d.y), p = el && allPanes().filter(function (x) { return x.el.contains(el); })[0], tw = frontTerm();
     if (!p && tw) p = tw.ws.active;
     if (!p) return;
     p.win.ws.activate(p);
     p.focus();
     if (p.program === p.shell && p.shell.paste) p.shell.paste(d.paths.map(shellEscape).join(" ") + " ");
-    else if (p.ta) {
+    else if (p.ta || (p.program && p.program.attachFile)) { // 图形界面（GUI）的输入框不是 p.ta：它自己的 attachFile / insertText
       // 图片：现在就读进来当附图（同粘贴的截图）——截图缩略图拖进来的是系统临时目录（TemporaryItems）里的文件，只有接住这次拖的 App 读得到、
       //   过一会儿还会被删：只贴路径的话 agent 读不到（Operation not permitted）。读不了的、别的文件照旧插路径
       var IMGX = /\.(png|jpe?g|gif|webp|heic|heif|tiff?|bmp)$/i, prog = p.program, LX = window.TSU_LOCAL;
       var imgs = prog && prog.attachFile && LX && LX.read ? d.paths.filter(function (x) { return IMGX.test(x); }) : [];
       var rest = d.paths.filter(function (x) { return imgs.indexOf(x) < 0; });
-      var ins = function (t) { p.ta.focus(); document.execCommand("insertText", false, t + " "); };
-      p.ta.focus();
+      var ins = function (t) { if (prog && prog.insertText) return prog.insertText(t + " "); p.ta.focus(); document.execCommand("insertText", false, t + " "); };
+      if (p.ta && !(prog && prog.insertText)) p.ta.focus();
       imgs.forEach(function (path) {
         LX.read(path, { access: "user" }).then(function (buf) {
           var ext = ((/\.(\w+)$/.exec(path) || [])[1] || "png").toLowerCase(), type = ext === "jpg" ? "image/jpeg" : /^tiff?$/.test(ext) ? "image/tiff" : "image/" + ext;
