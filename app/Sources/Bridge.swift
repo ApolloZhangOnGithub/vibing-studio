@@ -51,9 +51,13 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       #else
       let arch = "x86_64"
       #endif
+      var cmds: [String] = Bridge.commands + SystemInfo.commands
+      if local != nil { cmds += Local.commands + RemoteHost.commands }
+      if web != nil { cmds += WebPanes.commands }
+      if rdp != nil { cmds += RdpPanes.commands }
       return [
         "platform": "macos", "app": Config.appName, "version": Config.version, "build": Config.build, "protocol": Bridge.protocolVersion, "local": Config.terminal,
-        "os": "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", "arch": arch, "commands": Bridge.commands + SystemInfo.commands + (local == nil ? [] : Local.commands + RemoteHost.commands) + (web == nil ? [] : WebPanes.commands) + (rdp == nil ? [] : RdpPanes.commands),
+        "os": "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", "arch": arch, "commands": cmds,
         "active": controller?.isActive ?? false, "fullscreen": controller?.isFullScreen ?? false, "inset": controller?.buttonsInset ?? 0,
       ] as [String: Any]
     case "permissions":

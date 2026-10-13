@@ -294,6 +294,21 @@ final class RdpPanes: NSObject {
   func closeAll() { sessions.values.forEach { $0.close(remove: true) }; sessions.removeAll() }
 }
 
+// 助手的标准输出：攒够一行解析一行（读的回调一次一个，在后台队列上）
+final class LineBuffer: @unchecked Sendable {
+  private var buf = Data()
+  func events(_ d: Data) -> [[String: Any]] {
+    buf.append(d)
+    var evs: [[String: Any]] = []
+    while let nl = buf.firstIndex(of: 0x0A) {
+      let line = buf[buf.startIndex..<nl]
+      buf.removeSubrange(buf.startIndex...nl)
+      if let j = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { evs.append(j) }
+    }
+    return evs
+  }
+}
+
 // MARK: - 一个连接：助手进程、共享内存、状态
 @MainActor
 final class RdpSession {
@@ -396,9 +411,9 @@ final class RdpSession {
     let fd = vs_shm_open(name, O_RDWR | O_CREAT | O_EXCL, 0o600)
     guard fd >= 0 else { return false }
     shm_unlink(name) // 名字马上去掉：两边都开着就一直在，都关了系统自己收回（App、助手崩了也不留下）
-    guard ftruncate(fd, off_t(RdpSession.fbMax)) == 0, let p = mmap(nil, RdpSession.fbMax, PROT_READ, MAP_SHARED, fd, 0), p != MAP_FAILED else { close(fd); return false }
+    guard ftruncate(fd, off_t(RdpSession.fbMax)) == 0, let p = mmap(nil, RdpSession.fbMax, PROT_READ, MAP_SHARED, fd, 0), p != MAP_FAILED else { Darwin.close(fd); return false }
     var inP: [Int32] = [0, 0], outP: [Int32] = [0, 0], errP: [Int32] = [0, 0]
-    guard pipe(&inP) == 0, pipe(&outP) == 0, pipe(&errP) == 0 else { munmap(p, RdpSession.fbMax); close(fd); return false }
+    guard pipe(&inP) == 0, pipe(&outP) == 0, pipe(&errP) == 0 else { munmap(p, RdpSession.fbMax); Darwin.close(fd); return false }
     var fa: posix_spawn_file_actions_t?
     posix_spawn_file_actions_init(&fa)
     posix_spawn_file_actions_adddup2(&fa, inP[0], 0)
@@ -415,27 +430,21 @@ final class RdpSession {
     let rc = posix_spawn(&child, helper, &fa, &attr, argv, envp)
     argv.forEach { free($0) }; envp.forEach { free($0) }
     posix_spawn_file_actions_destroy(&fa); posix_spawnattr_destroy(&attr)
-    close(inP[0]); close(outP[1]); close(errP[1])
-    guard rc == 0 else { close(inP[1]); close(outP[0]); close(errP[0]); munmap(p, RdpSession.fbMax); close(fd); return false }
+    Darwin.close(inP[0]); Darwin.close(outP[1]); Darwin.close(errP[1])
+    guard rc == 0 else { Darwin.close(inP[1]); Darwin.close(outP[0]); Darwin.close(errP[0]); munmap(p, RdpSession.fbMax); Darwin.close(fd); return false }
     pid = child
     stdinFD = inP[1]
     shmFD = fd
     fb = p
     view.attach(UnsafeRawPointer(p))
     let myGen = gen + 1
-    var buf = Data()
+    let buf = LineBuffer()
     let out = FileHandle(fileDescriptor: outP[0], closeOnDealloc: true)
     out.readabilityHandler = { [weak self] fh in
       let d = fh.availableData
       if d.isEmpty { fh.readabilityHandler = nil; return }
-      buf.append(d)
-      var evs: [[String: Any]] = []
-      while let nl = buf.firstIndex(of: 0x0A) {
-        let line = buf[buf.startIndex..<nl]
-        buf.removeSubrange(buf.startIndex...nl)
-        if let j = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { evs.append(j) }
-      }
-      if !evs.isEmpty { DispatchQueue.main.async { MainActor.assumeIsolated { self?.handle(evs, gen: myGen) } } }
+      let evs = buf.events(d)
+      if !evs.isEmpty { nonisolated(unsafe) let list = evs; DispatchQueue.main.async { MainActor.assumeIsolated { self?.handle(list, gen: myGen) } } }
     }
     outFH = out
     let err = FileHandle(fileDescriptor: errP[0], closeOnDealloc: true)
@@ -560,11 +569,11 @@ final class RdpSession {
     exitSrc?.cancel(); exitSrc = nil
     outFH?.readabilityHandler = nil; errFH?.readabilityHandler = nil
     outFH = nil; errFH = nil
-    if stdinFD >= 0 { let fd = stdinFD; writeQ.async { close(fd) }; stdinFD = -1 }
+    if stdinFD >= 0 { let fd = stdinFD; writeQ.async { Darwin.close(fd) }; stdinFD = -1 }
     view.detachFramebuffer()
     if let fb { munmap(fb, RdpSession.fbMax) }
     fb = nil
-    if shmFD >= 0 { close(shmFD); shmFD = -1 }
+    if shmFD >= 0 { Darwin.close(shmFD); shmFD = -1 }
     pid = 0
   }
   // 断开助手（换密码重连、关标签页）：先请它体面地断开，3 秒不走就结束它
@@ -574,7 +583,7 @@ final class RdpSession {
     gen += 1
     let p = pid
     send("q")
-    if stdinFD >= 0 { let fd = stdinFD; writeQ.async { close(fd) }; stdinFD = -1 }
+    if stdinFD >= 0 { let fd = stdinFD; writeQ.async { Darwin.close(fd) }; stdinFD = -1 }
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { if kill(p, 0) == 0 { kill(p, SIGTERM) } }
   }
   func close(remove: Bool = false) {
@@ -905,13 +914,15 @@ final class RdpView: NSView {
   //   留给 Mac 的：⌘Q、⌘H、⌘M、⌘`、⌃⌘F（全屏）、⌘⌥Esc
   override func becomeFirstResponder() -> Bool {
     if monitor == nil {
-      monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] e in
-        MainActor.assumeIsolated {
-          guard let self, e.window === self.window, self.window?.firstResponder === self else { return e }
-          if self.keepForMac(e) { return e }
+      monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] ev in
+        nonisolated(unsafe) let e = ev
+        let eat: Bool = MainActor.assumeIsolated {
+          guard let self, e.window === self.window, self.window?.firstResponder === self else { return false }
+          if self.keepForMac(e) { return false }
           self.key(e)
-          return nil
+          return true
         }
+        return eat ? nil : ev
       }
     }
     syncLocks()
