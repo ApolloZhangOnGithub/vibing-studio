@@ -8,6 +8,7 @@
 //   printf 'host 127.0.0.1\nport 3389\nuser u\npass p\nconnect\n' | ./vs-rdp
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -20,11 +21,15 @@
 #include <unistd.h>
 
 #include <freerdp/freerdp.h>
+#include <freerdp/autodetect.h>
 #include <freerdp/client.h>
 #include <freerdp/client/cliprdr.h>
 #include <freerdp/client/disp.h>
+#include <freerdp/client/rdpgfx.h>
 #include <freerdp/channels/cliprdr.h>
 #include <freerdp/channels/disp.h>
+#include <freerdp/channels/rdpgfx.h>
+#include <freerdp/transport_io.h>
 #include <freerdp/codec/color.h>
 #include <freerdp/constants.h>
 #include <freerdp/error.h>
@@ -36,9 +41,10 @@
 #include <winpr/input.h>
 #include <winpr/string.h>
 #include <winpr/synch.h>
+#include <winpr/sysinfo.h>
 #include <winpr/user.h>
 
-#define VS_RDP_PROTOCOL 1 // App 和助手之间的协议版本（--version 里报给 App；改了不兼容的地方 +1，App 就知道要重新编）
+#define VS_RDP_PROTOCOL 2 // App 和助手之间的协议版本（--version 里报给 App；改了不兼容的地方 +1，App 就知道要重新编）。2：stats 事件、f（帧率上限）
 
 // ---------------------------------------------------------------- 事件（JSON 一行一个）
 static FILE* EV;
@@ -153,6 +159,75 @@ static BOOL WANT_AUDIO;
 static BOOL QUIT;      // App 叫断开的（q）：不算出错
 static BOOL PROBE;     // 只看证书（rdp.discover 找路）：不登录——证书一到就停
 
+// ---------------------------------------------------------------- 统计（每秒报给 App 一次：收了多少字节、几帧、画面用的什么编码、往返时间）
+static UINT64 statRx;              // 从远端收到的字节（解密后的，按传输层读到的算）
+static UINT64 statFrames;          // 远端发来的帧（GFX 的 EndFrame；不走 GFX 时按画完的次数）
+static UINT64 statVBytes;          // 其中画面编码的数据
+static UINT32 statCodec[RDPGFX_CODECID_MAX]; // 这一秒里每种编码用了几次
+static BOOL statGfx;               // 走图形管线（帧按 EndFrame 数）
+static UINT64 statAt;
+static UINT32 FPS_CAP;             // 帧率上限（0 = 不限）：晚一点回「这一帧收到了」，远端就少发几帧（省流量）
+static UINT64 lastFrameAt;
+static pTransportRead origReadBytes;
+static pcRdpgfxSurfaceCommand origSurfaceCommand;
+static pcRdpgfxEndFrame origEndFrame;
+static vsContext* VS;              // 等帧的时候照样处理 App 发来的键盘鼠标
+static BOOL read_input(vsContext* vs);
+
+static SSIZE_T vs_read_bytes(rdpTransport* t, BYTE* data, size_t bytes) {
+  SSIZE_T r = origReadBytes ? origReadBytes(t, data, bytes) : -1;
+  if (r > 0) statRx += (UINT64)r;
+  return r;
+}
+static UINT vs_surface_command(RdpgfxClientContext* c, const RDPGFX_SURFACE_COMMAND* cmd) {
+  if (cmd) { statVBytes += cmd->length; if (cmd->codecId < RDPGFX_CODECID_MAX) statCodec[cmd->codecId]++; }
+  return origSurfaceCommand ? origSurfaceCommand(c, cmd) : CHANNEL_RC_OK;
+}
+// 一帧画完：数一下；有帧率上限时等到下一帧该来的时候再返回（返回后 FreeRDP 才回「收到了」）——等的时候 App 发来的键盘鼠标照常送出去
+static UINT vs_end_frame(RdpgfxClientContext* c, const RDPGFX_END_FRAME_PDU* p) {
+  UINT r = origEndFrame ? origEndFrame(c, p) : CHANNEL_RC_OK;
+  statFrames++;
+  UINT64 now = GetTickCount64();
+  if (FPS_CAP && lastFrameAt) {
+    UINT64 due = lastFrameAt + 1000 / FPS_CAP;
+    while (now < due) {
+      struct pollfd pf = { STDIN_FILENO, POLLIN, 0 };
+      if (poll(&pf, 1, (int)(due - now)) > 0 && VS && !read_input(VS)) break;
+      now = GetTickCount64();
+    }
+  }
+  lastFrameAt = now;
+  return r;
+}
+static const char* codec_name(UINT32 id) {
+  switch (id) {
+    case RDPGFX_CODECID_AVC444: return "AVC444";
+    case RDPGFX_CODECID_AVC444v2: return "AVC444v2";
+    case RDPGFX_CODECID_AVC420: return "AVC420";
+    case RDPGFX_CODECID_CAPROGRESSIVE: case RDPGFX_CODECID_CAPROGRESSIVE_V2: return "Progressive";
+    case RDPGFX_CODECID_CAVIDEO: return "RemoteFX";
+    case RDPGFX_CODECID_CLEARCODEC: return "ClearCodec";
+    case RDPGFX_CODECID_PLANAR: return "Planar";
+    case RDPGFX_CODECID_UNCOMPRESSED: return "Uncompressed";
+    default: return "";
+  }
+}
+// 一秒一次：{ ev: stats, ms, rx, tx, frames, vbytes, codec, rtt, bw, cap }——码率、帧率 App 按 ms 算
+static void stats_tick(rdpContext* ctx) {
+  UINT64 now = GetTickCount64();
+  if (!statAt) { statAt = now; return; }
+  if (now - statAt < 1000) return;
+  UINT32 best = 0, bestN = 0;
+  for (UINT32 i = 0; i < RDPGFX_CODECID_MAX; i++) if (statCodec[i] > bestN) { bestN = statCodec[i]; best = i; }
+  rdpAutoDetect* ad = ctx->autodetect;
+  ev("{\"ev\":\"stats\",\"ms\":%llu,\"rx\":%llu,\"tx\":%lu,\"frames\":%llu,\"vbytes\":%llu,\"codec\":\"%s\",\"gfx\":%s,\"rtt\":%u,\"bw\":%u,\"cap\":%u}",
+     (unsigned long long)(now - statAt), (unsigned long long)statRx, (unsigned long)freerdp_get_transport_sent(ctx, TRUE), (unsigned long long)statFrames,
+     (unsigned long long)statVBytes, bestN ? codec_name(best) : "", statGfx ? "true" : "false", ad ? ad->netCharAverageRTT : 0, ad ? ad->netCharBandwidth : 0, FPS_CAP);
+  statRx = statFrames = statVBytes = 0;
+  memset(statCodec, 0, sizeof statCodec);
+  statAt = now;
+}
+
 // 剪贴板：这台 Mac 上现在复制的文字（UTF-16，带结尾的 0）；远端要的时候给
 static pthread_mutex_t clipLock = PTHREAD_MUTEX_INITIALIZER;
 static WCHAR* clipW;
@@ -179,7 +254,7 @@ static BOOL vs_end_paint(rdpContext* context) {
   if (y < 0) { h += y; y = 0; }
   if (x + w > gdi->width) w = gdi->width - x;
   if (y + h > gdi->height) h = gdi->height - y;
-  if (w > 0 && h > 0) ev("{\"ev\":\"frame\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}", x, y, w, h);
+  if (w > 0 && h > 0) { ev("{\"ev\":\"frame\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}", x, y, w, h); if (!statGfx) statFrames++; }
   hwnd->invalid->null = TRUE;
   hwnd->ninvalid = 0;
   return TRUE;
@@ -394,7 +469,16 @@ static void vs_channel_connected(void* context, const ChannelConnectedEventArgs*
     vs->disp = (DispClientContext*)e->pInterface;
     vs->disp->custom = vs;
     vs->disp->DisplayControlCaps = vs_disp_caps;
-  } else freerdp_client_OnChannelConnectedEventHandler(context, e);
+  } else {
+    freerdp_client_OnChannelConnectedEventHandler(context, e);
+    // 图形管线：FreeRDP 自己接好以后，在外面再包一层（数帧、看编码、帧率上限）
+    if (strcmp(e->name, RDPGFX_DVC_CHANNEL_NAME) == 0 && e->pInterface) {
+      RdpgfxClientContext* gfx = (RdpgfxClientContext*)e->pInterface;
+      origSurfaceCommand = gfx->SurfaceCommand; gfx->SurfaceCommand = vs_surface_command;
+      origEndFrame = gfx->EndFrame; gfx->EndFrame = vs_end_frame;
+      statGfx = TRUE;
+    }
+  }
 }
 static void vs_channel_disconnected(void* context, const ChannelDisconnectedEventArgs* e) {
   vsContext* vs = (vsContext*)context;
@@ -411,6 +495,14 @@ static BOOL vs_pre_connect(freerdp* instance) {
   if (!freerdp_settings_set_uint32(s, FreeRDP_OsMinorType, OSMINORTYPE_MACINTOSH)) return FALSE;
   PubSub_SubscribeChannelConnected(ctx->pubSub, vs_channel_connected);
   PubSub_SubscribeChannelDisconnected(ctx->pubSub, vs_channel_disconnected);
+  // 收到的字节：在传输层读的地方数（码率）
+  const rdpTransportIo* io = freerdp_get_io_callbacks(ctx);
+  if (io && io->ReadBytes != vs_read_bytes) {
+    rdpTransportIo cp = *io;
+    origReadBytes = cp.ReadBytes;
+    cp.ReadBytes = vs_read_bytes;
+    if (!freerdp_set_io_callbacks(ctx, &cp)) origReadBytes = NULL;
+  }
   return TRUE;
 }
 
@@ -582,6 +674,9 @@ static void handle_line(vsContext* vs, char* line) {
     case 'v': // 看不看得见：v 0 → 让远端先别发画面（省流量）；v 1 → 接着发（远端会整个重画一遍）
       if (ctx->gdi && sscanf(line + 1, "%u", &a) == 1) (void)gdi_send_suppress_output(ctx->gdi, a ? FALSE : TRUE);
       break;
+    case 'f': // 帧率上限：f <每秒几帧>（0 = 不限）
+      if (sscanf(line + 1, "%u", &a) == 1) FPS_CAP = a > 240 ? 240 : a;
+      break;
     case 'R': { // 整个重画一遍
       rdpGdi* gdi = ctx->gdi;
       if (gdi && ctx->update && ctx->update->RefreshRect) {
@@ -689,6 +784,7 @@ static BOOL read_config(vsConfig* c) {
     else if (!strcmp(l, "gfx")) c->gfx = atoi(v) != 0;
     else if (!strcmp(l, "pin")) PIN = strdup(v);
     else if (!strcmp(l, "probe")) PROBE = atoi(v) != 0;
+    else if (!strcmp(l, "fps")) { int f = atoi(v); FPS_CAP = f > 0 ? (f > 240 ? 240 : (UINT32)f) : 0; }
     else if (!strcmp(l, "cfg")) c->cfg = strdup(v);
   }
 }
@@ -773,6 +869,7 @@ int main(int argc, char** argv) {
   rdpContext* ctx = freerdp_client_context_new(&ep);
   if (!ctx) { ev("{\"ev\":\"error\",\"where\":\"start\",\"name\":\"VS_NO_CONTEXT\",\"msg\":\"freerdp_client_context_new failed\"}"); return 2; }
   vsContext* vs = (vsContext*)ctx;
+  VS = vs;
   int rc = 0;
   if (!apply_config(ctx->settings, &cfg)) { ev("{\"ev\":\"error\",\"where\":\"start\",\"name\":\"VS_BAD_SETTINGS\",\"msg\":\"settings rejected\"}"); rc = 2; goto out; }
   if (cfg.pass) { memset(cfg.pass, 0, strlen(cfg.pass)); free(cfg.pass); cfg.pass = NULL; } // FreeRDP 自己留了一份：这份抹掉
@@ -798,6 +895,7 @@ int main(int argc, char** argv) {
     if (w == WAIT_FAILED) break;
     if (!freerdp_check_event_handles(ctx)) break;
     if (!read_input(vs)) { appGone = TRUE; break; }
+    stats_tick(ctx);
   }
   UINT32 err = freerdp_get_last_error(ctx);
   BOOL byApp = appGone || QUIT;

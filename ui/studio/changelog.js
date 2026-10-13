@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-14", ver: "0.2.1.458", items: {
+      fixed: [
+        ["Linux 电脑在「设备」里只有远程桌面：那台的 Vibing Studio 默认不让别的设备用。现在登录同一个账号的电脑默认都让用，Linux 那台也有「在新窗口中打开」「打开终端」（那台的 Vibing Studio 重新载入一次后生效；每台新设备第一次连时那边问一次「允许」）。", "A Linux computer in Devices only offered Remote Desktop, because Vibing Studio there didn’t let other devices use it by default. Computers signed in to the same account now allow it by default, so the Linux one also has Open in New Window and Open Terminal (after Vibing Studio there reloads once; the first time each new device connects, that computer asks once to allow it)."],
+      ],
+    } },
     { date: "2026-10-13", ver: "0.2.1.457", items: {
       new: [
         ["活动监视器：「App」里一格，开成一个标签页，每个会话一行（在做什么、用时、CPU、内存、进程、上下文）。以前在底部面板里、或者浮在上面的那个窗口不再有了；整机的数在状态栏最右边。", "Activity Monitor: a tile in Apps that opens as a tab, one row per session (what it’s doing, time, CPU, memory, processes, context). It no longer lives in the bottom panel or a floating window; whole-machine numbers are at the right end of the status bar."],
