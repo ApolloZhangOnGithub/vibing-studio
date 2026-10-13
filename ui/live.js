@@ -1792,14 +1792,17 @@
     if (selText && (!inHere || !C)) return; // 选着别处的字：系统自己的菜单
     e.preventDefault();
     var MI = STUDIO.menuIcons ? STUDIO.menuIcons() : {};
-    // 摘录本（clips.js）：选着字——收藏到摘录本（原文 + 出处）；没选——标记这一问（再点一次取消）
-    var src = C && pr.clipSrc ? pr.clipSrc(inHere ? sel.getRangeAt(0).startContainer : e.target) : null, clipIt = [];
-    if (inHere && src) {
-      var txt = String(sel);
-      clipIt.push({ label: "收藏到摘录本", icon: MI.bookmark || MI.star, run: function () { C.add("clip", txt, src); if (STUDIO.toast) STUDIO.toast("已收藏到摘录本"); } },
-        { label: "复制", icon: MI.copy, keys: "⌘C", run: function () { if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {}); } });
+    // 收藏（clips.js）：右键的那一整条消息（同微信的收藏：不用先选字）；标记这一问（再点一次取消）；选着字时多一个「复制」
+    var node0 = inHere ? sel.getRangeAt(0).startContainer : e.target;
+    var src = C && pr.clipSrc ? pr.clipSrc(node0) : null, clipIt = [];
+    if (src) {
+      var msg = pr.clipMsg ? pr.clipMsg(node0) : null, fav = C.favOf ? C.favOf(src) : null;
+      if (fav) clipIt.push({ label: "取消收藏", icon: MI.bookmark || MI.star, run: function () { C.remove(fav.id); if (STUDIO.toast) STUDIO.toast("已取消收藏"); } });
+      else if (msg && msg.text.trim()) clipIt.push({ label: "收藏", icon: MI.bookmark || MI.star, run: function () { C.add("msg", msg.text, src, "", msg.md); if (STUDIO.toast) STUDIO.toast("已收藏"); } });
+      var fl = pr.flagOf ? pr.flagOf(src) : null;
+      clipIt.push(fl ? { label: "取消标记", icon: MI.flag, run: function () { C.remove(fl.id); } } : { label: "标记这里", icon: MI.flag, run: function () { C.add("flag", src.label || "", src); } });
     }
-    if (src) { var fl = pr.flagOf ? pr.flagOf(src) : null; clipIt.push(fl ? { label: "取消标记", icon: MI.flag, run: function () { C.remove(fl.id); } } : { label: "标记这里", icon: MI.flag, run: function () { C.add("flag", src.label || String(inHere ? sel : "").slice(0, 160), src); } }); }
+    if (inHere) { var txt = String(sel); clipIt.push({ label: "复制", icon: MI.copy, keys: "⌘C", run: function () { if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {}); } }); }
     if (clipIt.length) clipIt.push({ sep: true });
     if (inHere) return STUDIO.menu(function () { return clipIt.concat(transcriptMenu(MI, aid, P)); }, { x: e.clientX, y: e.clientY });
     // 手机、iPad：对话里不让系统自己选字（一碰就整屏选中、松手了还在选），要复制的长按这里：复制按住的那一段
@@ -2331,6 +2334,15 @@
       var kind = /^cc:/.test(agentId) ? "cc" : /^cx:/.test(agentId) ? "cx" : /^pi:/.test(agentId) ? "pi" : /^ty:/.test(agentId) ? "ty" : "pm";
       var cwd = ""; try { cwd = rt.home ? String(rt.home() || "") : ""; } catch (e) { cwd = ""; }
       return { kind: kind, agent: agentId, session: sid, title: String(agent.name || (V.title ? V.title() : "") || ""), cwd: cwd, uuid: t.uuid || "", turn: turns.indexOf(t), at: t.at || 0, role: el0.closest(".ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
+    };
+    // 收藏一整条消息（clips.js）：右键的那一条——你说的（这一问），或回答（这一问里 agent 写的字，几段连起来，按 Markdown）；回答里没有字的用屏幕上的字
+    V.clipMsg = function (node) {
+      var el0 = node && node.nodeType === 3 ? node.parentElement : node, b = el0 && el0.closest ? el0.closest(".blk") : null, t = b && b._t;
+      if (!t) return null;
+      var user = !!el0.closest(".ask");
+      var text = user ? String(t.ask || "") : (t.parts || []).filter(function (p) { return p && p.kind === "text" && p.text; }).map(function (p) { return p.text; }).join("\n\n");
+      if (!String(text).trim()) text = String(((user && el0.closest(".ask")) || b).innerText || "");
+      return { text: String(text).replace(/\s+$/, ""), md: !user, role: user ? "user" : "assistant" };
     };
     // 标记了的那一问：左边一道橙线（clips.css）。标记一变（这台、别的设备）就重看一遍
     var flagKeys = null;

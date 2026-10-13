@@ -2139,6 +2139,7 @@
   //      重画只换变了的：框架（搜索框、左边目录）留着，右边只换变了的那几行——换分区不闪、开关的动画走得完。窄的时候左边的分区变成上面一排。
   //      焦点：点控件、开下拉框都不会跑到搜索框（只有 ⌘F、或者焦点不在输入框里时直接打字才到搜索框）----
   var SECTIONS = {};
+  var EMBEDS = {}; // 设置里交给别的文件画的那几块（STUDIO.embed(名字, fn(元素, 参数, 窗口))）
   // 设置左边的分组和顺序（别的文件登记的分区也在这里排；同 Claude 的 Settings / Desktop app / Customize）：
   //   设置——通用、账号、用量；App——外观、布局（Claude App 是侧边栏与卡片）、对话、终端；Agent——连接器（Paimon Code、Claude Code、Codex 各是它的第二级）；
   //   开发者——开了开发者功能才有。under：不在左边单列，挂在别的分区的第二级那一页里
@@ -2215,6 +2216,8 @@
   var optFont = function (f, o) { var ff = f.fontOf ? f.fontOf(o[0]) : ""; return ff ? ' style="font-family:' + esc(ff).replace(/"/g, "&quot;") + '"' : ""; };
   function setRow(S, k, f, i, q) {
     var key = k + ":" + f.key, di = ' data-i="' + i + '"', ctl, sty = ssStyle(), dOn = descOn(f, key), desc = dOn ? '<div class="ss-desc">' + esc(f.desc) + "</div>" : "";
+    // 一整块交给别的文件画（连接器那一页里它装的钩子、MCP、插件……：EMBEDS[名字](元素, 参数, 窗口)，ssBody 之后挂上）
+    if (f.kind === "embed") return '<div class="ss-row ss-embedrow" data-k="' + esc(key) + '"><div class="ss-embed" data-embed="' + esc(f.embed) + '" data-arg="' + esc(f.arg || "") + '"></div></div>';
     var na = f.na || {}, os0 = f.options || [], isCards = os0.length > 1 && (f.cards || f.key === "$preset");
     // 几个短选项画成分段控件：一眼看全、点一下就换（下拉框要点开才知道有什么）。VS Code 四个以内、每个不长（中文按两格算）；Claude App 三个以内
     var wid = function (s) { return String(s).replace(/[\u2e80-\u9fff\uff00-\uffef]/g, "  ").length; };
@@ -2388,6 +2391,7 @@
       if (same && setState.sel) { anchor = B.querySelector('.ss-row[data-k="' + CSS.escape(setState.sel) + '"]'); if (anchor) ay = anchor.getBoundingClientRect().top; }
       if (!same) { host.bodySig = null; }
       ssBody(host, B, body);
+      B.querySelectorAll(".ss-embed[data-embed]").forEach(function (el) { var fn = EMBEDS[el.dataset.embed]; if (fn && el.dataset.on !== "1") { el.dataset.on = "1"; try { fn(el, el.dataset.arg || "", tw); } catch (e) { console.error(e); } } });
       if (!same) { host.bodyKey = key; B.scrollTop = 0; }
       else {
         B.scrollTop = st0;
@@ -6126,7 +6130,9 @@
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
     command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
-    updateReady: function () { return updateReady; }, checkVersion: function () { checkVersion(true); }, // 当主机的页面窗口常被挡住（不看的页面平时不查）：它自己按时来查
+    updateReady: function () { return updateReady; }, checkVersion: function () { checkVersion(true); },
+    embed: function (name, fn) { EMBEDS[name] = fn; }, // 设置页里一整块交给别的文件画（kind: "embed"）
+    settings: function (tw, sec) { settings(tw, sec); }, // 打开设置的某一页（"connectors/claude-code"、"appearance:tabBar"） // 当主机的页面窗口常被挡住（不看的页面平时不查）：它自己按时来查
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）
     needsList: needsList, // 有新版本了（页面的脚本在服务器上变了）：重新载入就用上
     crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview,

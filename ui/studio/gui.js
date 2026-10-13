@@ -952,6 +952,15 @@
       return { kind: kind, agent: agentId, session: sid, title: String(agent.name || ""), cwd: cwd, uuid: t.uuid || "", turn: rt.session().turns.indexOf(t), at: t.at || 0, role: el0.closest(".gv-user, .gv-ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
     };
     V.flagOf = function (src) { if (!src || !window.TSU_CLIPS) return null; return TSU_CLIPS.flagsFor(agentId).filter(function (f) { var s0 = f.src || {}; return src.uuid ? s0.uuid === src.uuid : s0.at === src.at; })[0] || null; };
+    // 收藏一整条消息：你说的（这一问）或回答（这一问里写的字，按 Markdown）——同终端界面（live.js 的 clipMsg）
+    V.clipMsg = function (node) {
+      var el0 = node && node.nodeType === 3 ? node.parentElement : node, b = el0 && el0.closest ? el0.closest(".gv-turn") : null, t = b && b._t;
+      if (!t) return null;
+      var u = el0.closest(".gv-user, .gv-ask"), user = !!u;
+      var text = user ? String(t.ask || "") : (t.parts || []).filter(function (p) { return p && p.kind === "text" && p.text; }).map(function (p) { return p.text; }).join("\n\n");
+      if (!String(text).trim()) text = String((u || b).innerText || "");
+      return { text: String(text).replace(/\s+$/, ""), md: !user, role: user ? "user" : "assistant" };
+    };
     function flagMark(el, t) {
       if (!window.TSU_CLIPS || !el) return;
       var on = TSU_CLIPS.flagsFor(agentId).some(function (f) { var s0 = f.src || {}; return t.uuid ? s0.uuid === t.uuid : !!t.at && s0.at === t.at; });

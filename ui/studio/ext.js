@@ -291,6 +291,9 @@
           var fd = found[c.id], home0 = ((window.TSU_LOCAL && TSU_LOCAL.info && TSU_LOCAL.info()) || {}).home || "";
           var where = c.core ? "内置" : !local() ? "只能在 App 中使用" : !fd ? "正在检测…" : !fd.found ? "未检测到" : home0 && fd.path.indexOf(home0 + "/") === 0 ? "~" + fd.path.slice(home0.length) : fd.path;
           out.push({ key: c.id + ".st", label: "安装位置", kind: "info", value: where, cls: !c.core && local() && fd && !fd.found ? "neg" : "" });
+          // 它装的钩子、MCP 服务器、插件、技能……（eco.js）：就在它自己这一页里
+          var ek = { "claude-code": "cc", codex: "cx", pi: "pi" }[c.id];
+          if (ek && local() && fd && fd.found) out.push({ key: c.id + ".eco", kind: "embed", embed: "eco", arg: ek });
         });
         // 不放「重新检测」：检测是自动的（打开 App、隔一会儿、打开这一页时都会查）
         return out;

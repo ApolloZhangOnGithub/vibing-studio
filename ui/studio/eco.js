@@ -1,4 +1,5 @@
-// eco.js —— 「Agent 扩展」App：这台电脑上 Claude Code、pi、Codex 各自装了什么——钩子、MCP 服务器、插件、技能、子 Agent、斜杠命令、pi 的包和扩展……一页看全。
+// eco.js —— 这台电脑上 Claude Code、pi、Codex 各自装了什么——钩子、MCP 服务器、插件、技能、子 Agent、斜杠命令、pi 的包和扩展……
+//   画在各自连接器的设置页里（设置 › 连接器 › Claude Code 那一页下面；用户 2026-10-14：不要单独一个 App，各自放在连接器里）：TSU_ECO.mount。
 //   能在这里开关的（Claude Code 的插件、停用所有钩子）直接开关，写回它自己的设置文件；别的点一下在编辑器里打开它所在的文件、跳到那一行
 //   （改的就是它自己的文件，Vibing Studio 不另存一份）。MCP 服务器连不连得上：点「检查连接」（claude mcp list，它自己去连一遍）。
 //   环境变量、令牌的值一律不显示（只写有几个）
@@ -149,7 +150,11 @@
       if (!state.tab || !state.data[state.tab] || !state.data[state.tab].found) state.tab = ["cc", "pi", "cx"].filter(function (k) { return state.data[k].found; })[0] || "cc";
     }, function (e) { state.err = String((e && e.message) || e); }).then(function () { state.busy = false; paintAll(); });
   }
-  function paintAll() { views = views.filter(function (V) { return V.host && V.host.isConnected; }); views.forEach(function (V) { paint(V); }); }
+  var mounts = [];
+  function paintAll() {
+    views = views.filter(function (V) { return V.host && V.host.isConnected; }); views.forEach(function (V) { paint(V); });
+    mounts = mounts.filter(function (M) { return M.host && M.host.isConnected; }); mounts.forEach(function (M) { paintMount(M); });
+  }
   var chip = function (s, cls) { return s ? '<span class="eco-chip' + (cls ? " " + cls : "") + '">' + esc(s) + "</span>" : ""; };
   var openBtn = function (file, line) { return file ? '<button type="button" class="eco-ib" data-open="' + esc(file) + '" data-line="' + (line || 0) + '" title="' + esc(t("在编辑器中打开 ", "Open in Editor: ") + tilde(file)) + '">' + IC.open + "</button>" : ""; };
   var sw = function (on, act, id, title) { return '<button type="button" class="eco-sw' + (on ? " on" : "") + '" role="switch" aria-checked="' + on + '" data-act="' + act + '" data-id="' + esc(id) + '" title="' + esc(title || "") + '"></button>'; };
@@ -208,6 +213,21 @@
       body + "</div>";
     if (V.host.dataset.h !== html) { V.host.dataset.h = html; V.host.innerHTML = html; }
   }
+  // 连接器设置页里那一块：只画这一个连接器的（cc / pi / cx）
+  function paintMount(M) {
+    var d = state.data[M.kind];
+    var body = !LOC() ? "" : !d ? '<div class="eco-empty">' + esc(state.busy ? t("正在读…", "Loading…") : t("没有找到它的配置", "No configuration found")) + "</div>" :
+      M.kind === "cc" ? ccHtml(d) : M.kind === "pi" ? piHtml(d) : cxHtml(d);
+    var html = '<div class="eco eco-embed">' + (state.err ? '<div class="eco-err">' + esc(state.err) + "</div>" : "") + body + "</div>";
+    if (M.host.dataset.h !== html) { M.host.dataset.h = html; M.host.innerHTML = html; }
+  }
+  function mount(el, kind, win) {
+    var M = { host: el, kind: kind };
+    wire(M, { win: win });
+    mounts.push(M);
+    if (!state.data.cc && !state.busy) reload();
+    paintMount(M);
+  }
   function checkMcp() {
     if (!LOC() || state.mcpBusy) return;
     state.mcpBusy = true; paintAll();
@@ -247,12 +267,6 @@
       paint(V);
     },
   };
-  if (S.apps && S.apps.add) S.apps.add({
-    id: "eco", builtin: true, name: function () { return t("Agent 扩展", "Agent Extensions"); },
-    desc: function () { return t("钩子、MCP、插件、技能", "Hooks, MCP, plugins, skills"); },
-    logo: function () { return LOGO; }, ok: function () { return !!LOC(); },
-    find: function (tw) { var hit = null; (tw && tw.ws && tw.ws.all ? tw.ws.all() : []).forEach(function (p) { if (!hit && p.program && p.program.page === "eco") hit = p; }); return hit; },
-    open: function (tw) { return S.openPage(tw, "eco", ""); },
-  });
-  window.TSU_ECO = { reload: reload, state: function () { return state; } };
+  window.TSU_ECO = { reload: reload, state: function () { return state; }, mount: mount };
+  if (S.embed) S.embed("eco", function (el, kind, win) { mount(el, kind || "cc", win); });
 })();

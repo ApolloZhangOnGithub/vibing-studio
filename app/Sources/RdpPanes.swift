@@ -609,6 +609,7 @@ final class RdpSession {
   private var shmFD: Int32 = -1
   private var fb: UnsafeMutableRawPointer?
   private var savePass: String?
+  private var sessionPass: String? // 这一次给的密码（输入的、问那台电脑要的）：自己重连时照用——没连上过的还没存进钥匙串，不然重试一次又要输密码
   private(set) var pendingCert: String?
   private var tail: [String] = []
   private var gen = 0
@@ -653,7 +654,8 @@ final class RdpSession {
     if let r { route = r }
     apply(h)
     let account = RdpStore.account(h)
-    var pw = given
+    if let given, !given.isEmpty { sessionPass = given }
+    var pw = given ?? sessionPass
     if pw == nil { pw = await RdpKeychain.get(account) }
     // 以前按「用户名@地址:端口」存的（「设备」里的电脑改按设备号存之前）：拿来用，并存一份到新的名下
     if pw == nil, account != RdpStore.legacyAccount(h), let old = await RdpKeychain.get(RdpStore.legacyAccount(h)) { pw = old; _ = await RdpKeychain.set(account, old) }

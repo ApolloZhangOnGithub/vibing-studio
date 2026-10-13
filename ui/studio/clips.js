@@ -1,8 +1,8 @@
-// clips.js —— 摘录本：对话里选一段，右键「收藏到摘录本」；或者在某一处右键「标记这里」（不选字）。
-//   记下原文（不改的一份，同书摘）和它从哪来——哪个连接器、哪段会话（id、名字、目录）、哪一问（记录里的 uuid、第几问、那句话的时间）、谁说的、哪台设备、什么时候收的——
-//   跟着账号同步到每台设备（同 agent 的记录，ns = "clip"）。「摘录本」App：按来源分组看、搜、只看标记；「跳到原处」打开那段会话、滚到那一处、亮一下；
-//   复制为引用（带出处，贴到哪儿都知道原来在哪）、插进正在用的输入框（喂回给 agent：它压缩过、你自己也忘了的那些中间结论）。
-//   标记：那一问左边一道橙色的线（对话里），摘录本里同样列着、能跳过去
+// clips.js —— 收藏：对话里右键一条消息「收藏」（整条：你说的那一问，或 agent 的回答），同微信、飞书的收藏；右键「标记这里」在那一问上打一个标记。
+//   记下那条消息原样的一份（不改）和它从哪来——哪个连接器、哪段会话（id、名字、目录）、哪一问（记录里的 uuid、第几问、那句话的时间）、谁说的、哪台设备、什么时候收的——
+//   跟着账号同步到每台设备（同 agent 的记录，ns = "clip"）。「收藏」App：左边按种类、连接器分，中间一张张卡片（回答按 Markdown 排好），右边是选中那条的全文和出处；
+//   「跳到原处」打开那段会话、滚到那一问、亮一下；复制为引用（带出处，贴到哪儿都知道原来在哪）；插进正在用的输入框（喂回给 agent：它压缩过、你自己也忘了的那些中间结论）。
+//   标记：那一问左边一道橙色的线（对话里），收藏里同样列着、能跳过去。以前「摘录本」里收的一段段字照旧在（type = "clip"）
 (function () {
   "use strict";
   if (window.TSU_CLIPS) return;
@@ -28,11 +28,15 @@
     save(); fire();
   }
   var devName = function () { var SY = window.TSU_SYNC; try { return SY && SY.name ? SY.name() : ""; } catch (e) { return ""; } };
-  // 收：type = "clip"（一段字）/ "flag"（一处标记）；src = 出处（见上）
-  function add(type, text, src, note) {
-    return put({ id: rid(), type: type === "flag" ? "flag" : "clip", text: String(text || "").replace(/\s+$/, "").slice(0, 60000), note: note || "", src: src || {}, created: Date.now(), dev: devName() });
+  // 收：type = "msg"（一整条消息）/ "flag"（一处标记）/ "clip"（以前摘录本里的一段字）；src = 出处（见上）；md = 按 Markdown 排（agent 的回答）
+  function add(type, text, src, note, md) {
+    var ty = type === "flag" ? "flag" : type === "msg" ? "msg" : "clip";
+    return put({ id: rid(), type: ty, text: String(text || "").replace(/\s+$/, "").slice(0, 200000), md: !!md, note: note || "", src: src || {}, created: Date.now(), dev: devName() });
   }
   function list() { return Object.keys(all).map(function (k) { return all[k]; }).sort(function (a, b) { return (b.created || 0) - (a.created || 0); }); }
+  var sameMsg = function (a, b) { return !!a && !!b && a.agent === b.agent && (a.uuid ? a.uuid === b.uuid : !!a.at && a.at === b.at) && (a.role || "") === (b.role || ""); };
+  // 这一条已经收藏了吗（右键菜单里写「取消收藏」）
+  function favOf(src) { return list().filter(function (r) { return r.type === "msg" && sameMsg(r.src, src); })[0] || null; }
   // 这段会话里的标记：对话里那一问左边画一道线
   function flagsFor(agentId) { return list().filter(function (r) { return r.type === "flag" && r.src && r.src.agent === agentId; }); }
   var KIND = { cc: "Claude Code", cx: "Codex", pi: "pi", ty: "Teyvat", pm: "Paimon" };
@@ -43,7 +47,7 @@
     var s = r.src || {}, q = String(r.text || "").split("\n").map(function (l) { return "> " + l; }).join("\n");
     return q + "\n> — " + [srcLine(r), s.session ? "session " + s.session : "", s.cwd || ""].filter(Boolean).join(" · ");
   }
-  // 跳到原处：打开那段会话（开着就切过去）、找到那一问（Claude Code 的不在读进来的那段里：从它前面一点重新读）、滚过去、那几个字亮一下
+  // 跳到原处：打开那段会话（开着就切过去）、找到那一问（Claude Code 的不在读进来的那段里：从它前面一点重新读）、滚过去、亮一下
   function jump(r, tw) {
     var s = r.src || {}, aid = s.agent;
     if (!aid) return;
@@ -62,7 +66,7 @@
       if (s.uuid) tn = turns.filter(function (x) { return x.uuid === s.uuid; })[0] || (rt && rt.turnOf ? rt.turnOf(s.uuid) : null);
       if (!tn && s.at) tn = turns.filter(function (x) { return x.at === s.at; })[0];
       if (!tn && s.turn != null && !s.uuid) tn = turns[s.turn];
-      if (p && tn && p.program && p.program.reveal && p.program.reveal(tn, needle, 1, String(r.text || "").slice(0, 200))) return;
+      if (p && tn && p.program && p.program.reveal && p.program.reveal(tn, r.type === "clip" ? needle : "", 1, r.type === "clip" ? String(r.text || "").slice(0, 200) : "")) return;
       if (!tn && !loaded && rt && rt.reveal && s.uuid && n > 4) { loaded = true; rt.reveal(s.uuid, s.offset || 0); } // 不在读进来的那段里
       if (++n < 60) setTimeout(go, 150);
     })();
@@ -76,86 +80,136 @@
     return false;
   }
   window.TSU_CLIPS = {
-    list: list, get: function (id) { return all[id] || null; }, add: add, remove: remove, remote: remote, flagsFor: flagsFor,
+    list: list, get: function (id) { return all[id] || null; }, add: add, remove: remove, remote: remote, flagsFor: flagsFor, favOf: favOf,
     setNote: function (id, note) { var r = all[id]; if (!r) return; r.note = String(note || ""); r.edited = Date.now(); put(r); },
     reference: reference, jump: jump, insert: insert, srcLine: srcLine, when: when,
     watch: function (f) { subs.push(f); return function () { subs = subs.filter(function (g) { return g !== f; }); }; },
   };
 
-  // ======== 「摘录本」App ========
+  // ======== 「收藏」App ========
   var S = window.STUDIO;
   if (!S || !S.pages || !S.openPage) return;
-  var LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5h10l3 3v14h-13z"/><path d="M15.5 3.5v3h3"/><path d="M8.5 10.5h7M8.5 13.5h7M8.5 16.5h4.5"/></svg>';
+  var LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68L3.75 9.6l5.7-.83z"/></svg>';
   var FLAG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14V2.5"/><path d="M3.5 3h8.2l-1.8 3 1.8 3H3.5" fill="currentColor" fill-opacity=".25"/></svg>';
-  var Q = { q: "", only: "" };
+  var IC = {
+    all: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 2.2l1.75 3.55 3.9.57-2.83 2.76.67 3.89L8 11.13l-3.49 1.84.67-3.89L2.35 6.32l3.9-.57z"/></svg>',
+    user: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>',
+    reply: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M3 4h10M3 7h10M3 10h7M3 13h4"/></svg>',
+    flag: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 14V2.5"/><path d="M3.5 3h8.2l-1.8 3 1.8 3H3.5"/></svg>',
+    jump: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L7.8 8.2M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>',
+    back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>',
+  };
+  var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : ""; };
+  var md = function (s) { try { return window.TSU_GUI && TSU_GUI.md ? TSU_GUI.md(String(s || "")) : "<p>" + esc(s) + "</p>"; } catch (e) { return "<p>" + esc(s) + "</p>"; } };
+  var roleOf = function (r) { return r.type === "flag" ? "flag" : (r.src && r.src.role) === "user" ? "user" : "reply"; };
+  var Q = { q: "", f: "", sel: "" }; // f：全部 "" / user / reply / flag / kind:cc …；sel：选中的那一条
   var hosts = [];
-  function itemHtml(r) {
-    var s = r.src || {}, isF = r.type === "flag";
-    return '<article class="cl-it' + (isF ? " flag" : "") + '" data-id="' + esc(r.id) + '">' +
-      (isF ? '<div class="cl-fl"><i>' + FLAG + "</i><span>" + esc(r.text || t("一处标记", "A flag")) + "</span></div>" : '<blockquote class="cl-q">' + esc(r.text) + "</blockquote>") +
-      '<div class="cl-meta"><span>' + esc(srcLine(r)) + "</span>" + (s.role ? "<span>" + esc(s.role === "user" ? t("你说的", "You") : t("回答", "Reply")) + "</span>" : "") + "<span>" + esc(t("收于 ", "Saved ") + when(r.created) + (r.dev ? " · " + r.dev : "")) + "</span></div>" +
-      '<div class="cl-note" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("添加备注…", "Add a note…")) + '">' + esc(r.note || "") + "</div>" +
-      '<div class="cl-acts"><button type="button" data-a="jump" class="cl-primary">' + esc(t("跳到原处", "Go to Source")) + '</button><button type="button" data-a="insert">' + esc(t("插入到输入框", "Insert into Input")) + '</button><button type="button" data-a="ref">' + esc(t("复制为引用", "Copy as Quote")) + '</button>' +
-      (isF ? "" : '<button type="button" data-a="copy">' + esc(t("复制", "Copy")) + "</button>") + '<span class="cl-fill"></span><button type="button" data-a="del" class="cl-del">' + esc(t("删除", "Delete")) + "</button></div></article>";
+  function filtered() {
+    var q = Q.q.trim().toLowerCase();
+    return list().filter(function (r) {
+      var s = r.src || {};
+      if (Q.f === "user" || Q.f === "reply" || Q.f === "flag") { if (roleOf(r) !== Q.f) return false; }
+      else if (/^kind:/.test(Q.f) && s.kind !== Q.f.slice(5)) return false;
+      return !q || [r.text, r.note, s.title, s.cwd, s.label].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+  }
+  function navHtml() {
+    var L = list(), n = function (f) { return L.filter(f).length; };
+    var row = function (f, ic, label, c) { return c || !f || /^(user|reply|flag)$/.test(f) ? '<button type="button" class="fv-nv' + (Q.f === f ? " on" : "") + '" data-f="' + f + '"><i>' + ic + "</i><span>" + esc(label) + "</span><em>" + c + "</em></button>" : ""; };
+    var kinds = ["cc", "cx", "pi", "ty", "pm"].map(function (k) { var c = n(function (r) { return (r.src || {}).kind === k; }); return c ? row("kind:" + k, logoOf(k) || IC.reply, KIND[k], c) : ""; }).join("");
+    return row("", IC.all, t("全部收藏", "All"), L.length) + row("user", IC.user, t("你说的", "Your Messages"), n(function (r) { return roleOf(r) === "user"; })) +
+      row("reply", IC.reply, t("回答", "Replies"), n(function (r) { return roleOf(r) === "reply"; })) + row("flag", IC.flag, t("标记", "Flags"), n(function (r) { return r.type === "flag"; })) +
+      (kinds ? '<div class="fv-nvh">' + esc(t("来源", "Sources")) + "</div>" + kinds : "");
+  }
+  function cardHtml(r) {
+    var s = r.src || {}, ro = roleOf(r);
+    var body = ro === "flag" ? '<div class="fv-flag"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || t("一处标记", "A flag")) + "</span></div>" :
+      r.md ? '<div class="fv-prev gv-md">' + md(r.text) + "</div>" : '<div class="fv-prev fv-plain">' + esc(r.text) + "</div>";
+    return '<article class="fv-card' + (Q.sel === r.id ? " on" : "") + '" data-id="' + esc(r.id) + '" tabindex="-1">' +
+      '<header><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><b>' + esc(s.title || KIND[s.kind] || t("一段对话", "A conversation")) + "</b><time>" + esc(when(r.created)) + "</time></header>" +
+      '<div class="fv-who">' + esc(ro === "user" ? t("你说的", "You said") : ro === "flag" ? t("标记", "Flag") : t("回答", "Reply")) + "</div>" + body +
+      (r.note ? '<div class="fv-cnote">' + esc(r.note) + "</div>" : "") + "</article>";
+  }
+  function detailHtml(r) {
+    if (!r) return '<div class="fv-none">' + esc(t("选一条收藏查看", "Select an item")) + "</div>";
+    var s = r.src || {}, ro = roleOf(r);
+    var row = function (k, v) { return v ? "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>" : ""; };
+    var body = ro === "flag" ? '<div class="fv-flag big"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || "") + "</span></div>" :
+      r.md ? '<div class="fv-full gv-md">' + md(r.text) + "</div>" : '<div class="fv-full fv-plain">' + esc(r.text) + "</div>";
+    return '<div class="fv-dt"><button type="button" class="fv-back" data-a="back">' + IC.back + "<span>" + esc(t("收藏", "Favorites")) + "</span></button>" +
+      '<div class="fv-dh"><span class="fv-lg">' + (logoOf(s.kind) || "") + "</span><div><b>" + esc(s.title || KIND[s.kind] || "") + "</b><span>" +
+      esc([ro === "user" ? t("你说的", "You said") : ro === "flag" ? t("标记", "Flag") : t("回答", "Reply"), s.at ? when(s.at) : ""].filter(Boolean).join(" · ")) + "</span></div></div>" +
+      '<div class="fv-acts"><button type="button" data-a="jump" class="fv-primary">' + IC.jump + "<span>" + esc(t("跳到原处", "Go to Source")) + '</span></button><button type="button" data-a="insert">' + esc(t("插入到输入框", "Insert into Input")) +
+      '</button><button type="button" data-a="copy">' + esc(t("复制", "Copy")) + '</button><button type="button" data-a="ref">' + esc(t("复制为引用", "Copy as Quote")) + '</button><span class="fv-fill"></span><button type="button" data-a="del" class="fv-del">' +
+      esc(ro === "flag" ? t("取消标记", "Remove Flag") : t("取消收藏", "Remove")) + "</button></div>" + body +
+      '<div class="fv-note" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("备注", "Note")) + '">' + esc(r.note || "") + "</div>" +
+      '<dl class="fv-meta">' + row(t("连接器", "Connector"), KIND[s.kind]) + row(t("会话", "Session"), s.title) + row(t("目录", "Folder"), s.cwd) + row(t("消息时间", "Message Time"), s.at ? when(s.at) : "") +
+      row(t("第几问", "Turn"), s.turn != null && s.turn >= 0 ? String(s.turn + 1) : "") + row(t("会话 ID", "Session ID"), s.session) + row(t("设备", "Device"), r.dev) + row(t("收藏于", "Saved"), when(r.created)) + "</dl></div>";
   }
   function paint(host) {
-    var q = Q.q.trim().toLowerCase(), items = list().filter(function (r) {
-      if (Q.only && r.type !== Q.only) return false;
-      return !q || [r.text, r.note, (r.src || {}).title, (r.src || {}).cwd].join(" ").toLowerCase().indexOf(q) >= 0;
-    });
-    // 按出处（同一段会话）分组；组按最近收的排
-    var groups = [], by = {};
-    items.forEach(function (r) { var k = (r.src && r.src.agent) || "?"; if (!by[k]) { by[k] = { k: k, r0: r, items: [] }; groups.push(by[k]); } by[k].items.push(r); });
-    var nClip = list().filter(function (r) { return r.type !== "flag"; }).length, nFlag = list().length - nClip;
-    var seg = function (v, label, n) { return '<button type="button" class="cl-seg' + (Q.only === v ? " on" : "") + '" data-only="' + v + '">' + esc(label) + (n != null ? " <em>" + n + "</em>" : "") + "</button>"; };
-    var body = !list().length ? '<div class="cl-empty"><div class="cl-eic">' + LOGO + "</div><h2>" + esc(t("还没有摘录", "No Clippings Yet")) + "</h2><p>" +
-      esc(t("在对话里选中文字，右键「收藏到摘录本」", "Select text in a conversation and right-click Save to Clippings")) + "</p></div>" :
-      !groups.length ? '<div class="cl-empty"><p>' + esc(t("没有符合的", "Nothing matches")) + "</p></div>" :
-      groups.map(function (g) { var s = g.r0.src || {}; return '<section class="cl-grp"><header><b>' + esc(s.title || t("一段对话", "A conversation")) + "</b><span>" + esc([KIND[s.kind] || "", s.cwd || ""].filter(Boolean).join(" · ")) + "</span><em>" + g.items.length + "</em></header>" + g.items.map(itemHtml).join("") + "</section>"; }).join("");
-    var html = '<div class="cl"><div class="cl-head"><h1>' + esc(t("摘录本", "Clippings")) + '</h1><div class="cl-segs">' + seg("", t("全部", "All"), list().length) + seg("clip", t("摘录", "Clips"), nClip) + seg("flag", t("标记", "Flags"), nFlag) + "</div>" +
-      '<span class="cl-fill"></span><input class="cl-q-in" type="search" placeholder="' + esc(t("搜索摘录、备注、会话", "Search clippings, notes, sessions")) + '" value="' + esc(Q.q) + '"></div>' + body + "</div>";
+    var items = filtered();
+    if (Q.sel && !all[Q.sel]) Q.sel = "";
+    var sel = Q.sel ? all[Q.sel] : null;
+    var empty = !list().length;
+    var html = '<div class="fv' + (sel ? " has-sel" : "") + '"><aside class="fv-nav"><h1>' + esc(t("收藏", "Favorites")) + '</h1><input class="fv-q" type="search" placeholder="' + esc(t("搜索", "Search")) + '" value="' + esc(Q.q) + '">' +
+      '<nav class="fv-nvs">' + navHtml() + "</nav></aside>" +
+      '<section class="fv-list">' + (empty ? '<div class="fv-empty"><i>' + LOGO + "</i><b>" + esc(t("还没有收藏", "No Favorites Yet")) + "</b><span>" + esc(t("在对话里右键一条消息，选「收藏」", "Right-click a message in a conversation and choose Favorite")) + "</span></div>" :
+        !items.length ? '<div class="fv-empty"><span>' + esc(t("没有符合的", "Nothing matches")) + "</span></div>" : items.map(cardHtml).join("")) + "</section>" +
+      '<section class="fv-detail">' + (empty ? "" : detailHtml(sel)) + "</section></div>";
     if (host.dataset.h === html) return;
     var focused = document.activeElement && host.contains(document.activeElement) ? document.activeElement : null;
-    if (focused && focused.matches("[data-note]")) return; // 正在写备注：不打断（写完失焦时存、再画）
-    var had = focused && focused.classList.contains("cl-q-in"), pos = had ? focused.selectionStart : 0;
+    if (focused && focused.matches("[data-note]")) return; // 正在写备注：不打断（失焦时存、再画）
+    var had = focused && focused.classList.contains("fv-q"), pos = had ? focused.selectionStart : 0;
+    var lst = host.querySelector(".fv-list"), top = lst ? lst.scrollTop : 0;
     host.dataset.h = html; host.innerHTML = html;
-    if (had) { var qi = host.querySelector(".cl-q-in"); qi.focus(); qi.setSelectionRange(pos, pos); }
+    var l2 = host.querySelector(".fv-list"); if (l2) l2.scrollTop = top;
+    if (had) { var qi = host.querySelector(".fv-q"); qi.focus(); qi.setSelectionRange(pos, pos); }
   }
   function wire(host, P) {
-    host.addEventListener("input", function (e) { if (e.target.classList.contains("cl-q-in")) { Q.q = e.target.value; paint(host); } });
+    host.addEventListener("input", function (e) { if (e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
     host.addEventListener("focusout", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n) { var r = all[n.dataset.note]; if (r && (r.note || "") !== n.textContent) window.TSU_CLIPS.setNote(r.id, n.textContent); setTimeout(function () { paint(host); }, 0); } });
-    host.addEventListener("keydown", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); n.blur(); } });
+    host.addEventListener("keydown", function (e) {
+      var n = e.target.closest && e.target.closest("[data-note]");
+      if (n) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); n.blur(); } return; }
+      if (e.target.classList && e.target.classList.contains("fv-q")) return;
+      var items = filtered(), i = items.map(function (r) { return r.id; }).indexOf(Q.sel);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); var j = Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1))); if (items[j]) { Q.sel = items[j].id; paint(host); var c = host.querySelector('.fv-card[data-id="' + Q.sel + '"]'); if (c) c.scrollIntoView({ block: "nearest" }); } }
+      else if (e.key === "Enter" && Q.sel && all[Q.sel]) jump(all[Q.sel], P.win);
+    });
     host.addEventListener("click", function (e) {
-      var sg = e.target.closest("[data-only]");
-      if (sg) { Q.only = sg.dataset.only; return paint(host); }
-      var b = e.target.closest("[data-a]"), it = e.target.closest(".cl-it"), r = it && all[it.dataset.id];
-      if (!b || !r) return;
-      var a = b.dataset.a, copy = function (s) { if (navigator.clipboard) navigator.clipboard.writeText(s).catch(function () { if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); }); b.classList.add("done"); setTimeout(function () { b.classList.remove("done"); }, 900); };
+      var nv = e.target.closest("[data-f]");
+      if (nv) { Q.f = nv.dataset.f; return paint(host); }
+      var card = e.target.closest(".fv-card");
+      if (card) { Q.sel = card.dataset.id; paint(host); host.focus({ preventScroll: true }); return; }
+      var b = e.target.closest("[data-a]");
+      if (!b) return;
+      var a = b.dataset.a, r = Q.sel ? all[Q.sel] : null;
+      if (a === "back") { Q.sel = ""; return paint(host); }
+      if (!r) return;
+      var copy = function (s) { if (navigator.clipboard) navigator.clipboard.writeText(s).catch(function () { if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); }); b.classList.add("done"); setTimeout(function () { b.classList.remove("done"); }, 900); };
       if (a === "jump") return jump(r, P.win);
       if (a === "insert") return insert(r, P.win);
       if (a === "ref") return copy(reference(r));
       if (a === "copy") return copy(r.text || "");
-      if (a === "del") {
-        var go = function () { remove(r.id); };
-        if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: t("删除这条" + (r.type === "flag" ? "标记" : "摘录") + "？", "Delete this " + (r.type === "flag" ? "flag" : "clipping") + "?"), message: t("每台设备上都会删掉；原来的对话不受影响。", "It’s removed on all your devices; the original conversation isn’t affected."), icon: "caution", buttons: [{ label: t("取消", "Cancel"), role: "cancel" }, { label: t("删除", "Delete"), role: "default", run: go }] });
-        else if (window.confirm("Delete?")) go();
-      }
+      if (a === "del") { remove(r.id); Q.sel = ""; return; }
     });
+    host.addEventListener("dblclick", function (e) { var card = e.target.closest(".fv-card"); if (card && all[card.dataset.id]) jump(all[card.dataset.id], P.win); });
   }
   S.pages.clips = {
-    title: function () { return t("摘录本", "Clippings"); },
-    address: function () { return "clippings.local.paimon"; },
+    title: function () { return t("收藏", "Favorites"); },
+    address: function () { return "favorites.local.paimon"; },
     icon: function () { return LOGO; },
     render: function (host, P, arg, V) {
       host.classList.add("st-pg-clips");
+      if (!host.hasAttribute("tabindex")) host.tabIndex = -1;
       if (!V.inited) { V.inited = true; wire(host, P); hosts.push(host); }
       paint(host);
     },
   };
   window.TSU_CLIPS.watch(function () { hosts = hosts.filter(function (h) { return h.isConnected; }); hosts.forEach(paint); });
   if (S.apps && S.apps.add) S.apps.add({
-    id: "clips", builtin: true, name: function () { return t("摘录本", "Clippings"); },
-    desc: function () { return t("对话里收藏的段落和标记", "Passages and flags saved from conversations"); },
+    id: "clips", builtin: true, name: function () { return t("收藏", "Favorites"); },
+    desc: function () { return t("对话里收藏的消息和标记", "Messages and flags saved from conversations"); },
     logo: function () { return LOGO; },
     find: function (tw) { var hit = null; (tw && tw.ws && tw.ws.all ? tw.ws.all() : []).forEach(function (p) { if (!hit && p.program && p.program.page === "clips") hit = p; }); return hit; },
     open: function (tw) { return S.openPage(tw, "clips", ""); },
