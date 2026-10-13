@@ -14,12 +14,12 @@
 .dv-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
 .dv-lines path { fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .dv-lines .dv-tree { stroke: var(--st-line); stroke-width: 1.5; }
-/* 谁能用谁：虚线是允许过、现在没连着；绿色实线是正在用；箭头指着被用的那台 */
-.dv-lines .dv-e { stroke: var(--st-dim); stroke-width: 1.3; stroke-dasharray: 4 4; opacity: .4; transition: opacity .12s; }
+/* 谁能用谁：绿色实线是正在用（一直画）；虚线是允许过、现在没连着——平时不画，指着、选中一台时才画它那几条；箭头指着被用的那台 */
+.dv-lines .dv-e { stroke: var(--st-dim); stroke-width: 1.3; stroke-dasharray: 4 4; opacity: 0; transition: opacity .12s; }
 .dv-lines .dv-e.live { stroke: #30d158; stroke-width: 1.8; stroke-dasharray: none; opacity: .9; }
 .dv-lines .dv-mk { fill: none; stroke: var(--st-dim); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .dv-lines .dv-mk.live { stroke: #30d158; stroke-width: 1.6; }
-.dv-map.dv-focus .dv-e { opacity: .12; }
+.dv-map.dv-focus .dv-e.live { opacity: .15; }
 .dv-map.dv-focus .dv-e.hl { opacity: 1; }
 .dv-map.dv-focus .dv-node:not(.hl) { opacity: .42; }
 .dv-node { transition: opacity .12s; }
@@ -28,10 +28,11 @@
 .dv-down { margin-top: 46px; }
 .dv-node { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 116px; max-width: 236px; padding: 10px 12px 9px; box-sizing: border-box; border: 0; border-radius: 12px; background: none; color: var(--st-fg); font: inherit; cursor: pointer; }
 .dv-node:hover, .dv-node:focus-visible { background: var(--st-hover); outline: 0; }
+/* 选中的那台：淡淡的一块底（同 Finder），图标不变色 */
+.dv-node.sel, .dv-node.sel:hover { background: color-mix(in srgb, var(--st-fg) 11%, transparent); }
 .dv-ic { position: relative; display: block; width: 56px; height: 56px; color: var(--st-dim); }
 .dv-ic > svg { display: block; width: 100%; height: 100%; }
 .dv-node.on .dv-ic { color: var(--st-fg); }
-.dv-node.self .dv-ic { color: var(--st-accent, #0a84ff); }
 .dv-dot { position: absolute; right: 2px; bottom: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--st-faint, #888); box-shadow: 0 0 0 2px var(--st-bg); }
 .dv-node.on .dv-dot { background: #34c759; }
 .dv-name, .dv-sub, .dv-st { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }

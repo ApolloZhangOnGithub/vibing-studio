@@ -1,7 +1,7 @@
 // devices.js —— 「设备」App：中间是账户（你的头像），手机、平板、网页从上面分出去，电脑（Mac、Linux、Windows）从下面分出去（分叉的树）；
 //   设备之间谁能用谁画成另一种线：实线是正在用，虚线是允许过、现在没连着；指着一台只亮它的那几条。每台写着名字、型号或系统、在不在线。
-//   点一台出它的卡片：型号、系统、App 版本、首次登录、上次在线、设备 ID；谁能用它（连入时怎么确认、允许过的设备、什么时候允许、上次连接；
-//   这台 Mac 自己的能开关、改确认方式、移除）；它能用哪几台。Linux、Windows 电脑点一下直接连它的桌面（远程桌面，信息在右键里）。点账户：通行密钥、退出登录。
+//   同 Finder：点一下选中它（右边一栏：型号、系统、App 版本、首次登录、上次在线、设备 ID；谁能用它、它能用哪几台；这台自己的开关、确认方式）；
+//   连按两下做它的那件事（Linux、Windows 电脑：远程桌面；另一台 Mac：在新窗口中打开）；右键是它能做的事的菜单。点账户：登录方式、退出登录。
 //   数据：TSU_SYNC.deviceList()（账户里报到过的设备：同一台机器并成一台；当主机的那几台还报了 access——开没开、怎么确认、允许过哪些设备、现在谁连着）、
 //   /api/relay/hosts（在线的电脑和现在连着它的设备，按中转里的编号对上）、TSU_REMOTE_HOST（这台 Mac 自己当主机时的，最新）
 (function () {
@@ -242,9 +242,9 @@
   // 指着一台：只亮它那几条线、和它有关系的几台
   function focus(map, key) {
     if (!map) return;
-    map.classList.toggle("dv-focus", !!key);
-    var rel = {};
-    map.querySelectorAll(".dv-e").forEach(function (p) { var on = !!key && (p.dataset.a === key || p.dataset.b === key); p.classList.toggle("hl", on); if (on) { rel[p.dataset.a] = 1; rel[p.dataset.b] = 1; } });
+    var rel = {}, any = false;
+    map.querySelectorAll(".dv-e").forEach(function (p) { var on = !!key && (p.dataset.a === key || p.dataset.b === key); p.classList.toggle("hl", on); if (on) { any = true; rel[p.dataset.a] = 1; rel[p.dataset.b] = 1; } });
+    map.classList.toggle("dv-focus", any); // 和谁都没关系的：别的不变暗
     map.querySelectorAll(".dv-node[data-node]").forEach(function (n) { n.classList.toggle("hl", !!key && (n.dataset.node === key || !!rel[n.dataset.node] || n.dataset.node === "acct")); });
   }
 
@@ -254,6 +254,7 @@
   function closeCard() {
     if (!card) return;
     var h0 = card._host;
+    if (h0) h0.querySelectorAll(".dv-node.sel").forEach(function (x) { x.classList.remove("sel"); });
     card.remove(); card = null;
     if (h0) { h0.classList.remove("dv-open"); layout(h0); focus(h0.querySelector(".dv-map"), h0._dvFocus || ""); }
   }
@@ -263,18 +264,31 @@
       var nd = e.target.closest("[data-node]");
       if (!nd) return closeCard();
       var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
-      if (card && card._key === key) return closeCard();
-      // 别的 Linux / Windows 电脑：点一下就连它的桌面（远程桌面标签页；用户 2026-10-13：「点击设备直接就可以连了」）；它的信息在右键里
-      if (n && canDesk(n)) { closeCard(); return window.TSU_RDP.connectDevice({ id: n.id, name: n.label, host: n.host || "" }, P.win); }
-      if (n) openCard(host, P, nd, n, key, V);
+      if (!n || card && card._key === key) return; // 已经选中的：不收起（同 Finder）
+      openCard(host, P, nd, n, key, V);
+    });
+    // 连按两下：做它的那件事
+    host.addEventListener("dblclick", function (e) {
+      var nd = e.target.closest && e.target.closest("[data-node]");
+      if (!nd || e.target.closest(".dv-card")) return;
+      var n = V.nodes && V.nodes[nd.dataset.node];
+      if (n && mainAct(n)) { closeCard(); run(mainAct(n), n, P); }
+    });
+    host.addEventListener("keydown", function (e) { // ⌘↓、⌘O：同连按两下
+      var nd = e.target.closest && e.target.closest(".dv-node[data-node]");
+      if (!nd || !e.metaKey || (e.key !== "ArrowDown" && e.key !== "o")) return;
+      var n = V.nodes && V.nodes[nd.dataset.node];
+      if (n && mainAct(n)) { e.preventDefault(); closeCard(); run(mainAct(n), n, P); }
     });
     host.addEventListener("contextmenu", function (e) {
       var nd = e.target.closest("[data-node]");
       if (!nd) return;
-      var key = nd.dataset.node, n = key === "acct" ? { id: "acct" } : V.nodes && V.nodes[key];
-      if (!n) return;
+      var key = nd.dataset.node, n = key === "acct" ? null : V.nodes && V.nodes[key];
       e.preventDefault();
-      openCard(host, P, nd, n, key, V);
+      if (!n) return openCard(host, P, nd, { id: "acct" }, key, V);
+      var items = actsOf(n).map(function (a) { return { label: a[1], run: function () { run(a[0], n, P, host, V); } }; });
+      items.push({ sep: true }, { label: t("显示简介", "Get Info"), run: function () { openCard(host, P, nd, n, key, V); } });
+      S.menu(items, { x: e.clientX, y: e.clientY });
     });
     host.addEventListener("mouseover", function (e) { var nd = e.target.closest && e.target.closest(".dv-node[data-node]"); var k = nd && nd.dataset.node !== "acct" ? nd.dataset.node : ""; if (k !== host._dvFocus) { host._dvFocus = k; focus(host.querySelector(".dv-map"), card ? card._key : k); } });
     host.addEventListener("mouseleave", function () { host._dvFocus = ""; focus(host.querySelector(".dv-map"), card ? card._key : ""); });
@@ -299,6 +313,32 @@
     var icon = S.avatarHtml && m.login ? S.avatarHtml(40, "dv-cav") : ICON.cloud;
     return { icon: icon, title: m.login || t("未登录", "Not Signed In"), sub: m.login ? t("GitHub 账户", "GitHub Account") : "Vibing Studio", rows: rows, acts: acts };
   }
+  // 它能做的事：[动作, 名字, 样式]——卡片底下的按钮、右键菜单、连按两下（第一件）都用这一份
+  function actsOf(n) {
+    var acts = [];
+    if (canDesk(n)) acts.push(["desk", t("远程桌面", "Remote Desktop"), "primary"]);
+    // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
+    var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
+    if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), canDesk(n) ? "" : "primary"]);
+    // 那台上的终端：这个窗口里开一个标签页，shell 在那台上跑（经中转）
+    if (!n.self && n.host && n.online && !n.web && inApp && window.TSU_LOCAL && window.TSU_RLINK) acts.push(["term", t("打开终端", "Open Terminal")]);
+    if (!n.self && n.ids && n.ids.length && SY()) acts.push(["remove", t("从账户中移除…", "Remove from Account…")]);
+    return acts;
+  }
+  var mainAct = function (n) { var a = actsOf(n).filter(function (x) { return x[0] === "desk" || x[0] === "open"; })[0]; return a ? a[0] : ""; };
+  function run(a, n, P, host, V) {
+    if (a === "desk" && window.TSU_RDP) return TSU_RDP.connectDevice({ id: n.id, name: n.label, host: n.host || "" }, P.win);
+    if (a === "term" && n.host) return P.win.ws.newTab({ sh: { pty: true, dev: n.host, devName: n.label } });
+    if (a === "open" && n.host) {
+      if (S.openMac) return S.openMac(n.host, n.label);
+      var rc = RC();
+      if (rc && rc.use) return rc.use(n.host, n.label);
+    }
+    if (a === "remove" && SY()) {
+      return confirmDo({ title: t("从账户中移除「" + n.label + "」？", "Remove “" + n.label + "” from your account?"), message: t("如果这台设备还登录着，下次打开 Vibing Studio 时会重新出现。", "If this device is still signed in, it will appear again the next time it opens Vibing Studio."), ok: t("移除", "Remove") },
+        function () { SY().removeDevices(n.ids).then(function () { closeCard(); if (host && V) { host._dvHtml = ""; if (V.shown()) render(host, P, V.arg, V); } }, function (err) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: t("没能移除", "Couldn’t Remove the Device"), message: String((err && err.message) || err), icon: "caution" }); }); });
+    }
+  }
   function devCard(n) {
     var rows = [[t("状态", "Status"), n.online ? t("在线", "Online") : seen(n.last_seen), n.online ? "on" : ""]];
     if (n.model && n.model !== n.label) rows.push([t("型号", "Model"), n.model]);
@@ -306,14 +346,9 @@
     if (n.app) rows.push(["Vibing Studio", String(n.app).replace(/^网页 /, "")]);
     if (n.created_at) rows.push([t("首次登录", "First Signed In"), day(n.created_at)]);
     if (n.ids && n.ids.length) rows.push([t("设备 ID", "Device ID"), n.ids[0], "id"]);
-    var acts = [];
-    if (canDesk(n)) acts.push(["desk", t("远程桌面", "Remote Desktop"), "primary"]); // 点那台电脑本身也是连它
-    // 另一台在线的 Mac：App 里开一个窗口连它（终端、文件、会话都在那台上；同 VS Code 的远程窗口）；网页、iPad 这一页换成用它
-    var inApp = !!(window.nadosNative && (!nadosNative.remote || nadosNative.hybrid));
-    if (!n.self && n.host && n.online && !n.web) acts.push(["open", inApp ? t("在新窗口中打开", "Open in New Window") : t("在这里使用", "Use Here"), "primary"]);
-    // 那台上的终端：这个窗口里开一个标签页，shell 在那台上跑（经中转；同 remote-terminal-web 那样的远程终端，不用开整个窗口）
-    if (!n.self && n.host && n.online && !n.web && inApp && window.TSU_LOCAL && window.TSU_RLINK) acts.splice(acts.length - (acts.length && acts[acts.length - 1][0] === "open" ? 1 : 0), 0, ["term", t("打开终端", "Open Terminal")]);
-    if (!n.self && n.ids && n.ids.length && SY()) acts.unshift(["remove", t("从账户中移除…", "Remove from Account…")]);
+    // 卡片底下：移除放最左边，主要的放最右边（同 macOS 的对话框）
+    var acts = actsOf(n), rm = acts.filter(function (a) { return a[0] === "remove"; });
+    acts = rm.concat(acts.filter(function (a) { return a[0] !== "remove"; }).reverse());
     return { icon: ICON[iconOf(n)], title: n.label, sub: subOf(n) + (n.self ? " · " + t("这台设备", "This Device") : ""), rows: rows, acts: acts };
   }
   // 一条关系写成一行：名字，正在使用 / 允许于… · 上次连接…（· 在哪）
@@ -355,6 +390,7 @@
     card.style.top = host.scrollTop + 64 + "px";
     card.style.maxHeight = Math.max(200, host.clientHeight - 78) + "px";
     host.classList.add("dv-open");
+    if (el && el.classList) el.classList.add("sel");
     layout(host);
     focus(host.querySelector(".dv-map"), key === "acct" ? "" : key);
     void el;
@@ -374,10 +410,7 @@
           function () { Promise.resolve(RH().revoke(b.dataset.revoke)).then(again); });
       }
       if (a === "share" && RH()) { Promise.resolve(RH().set(!RH().on())).then(again); return; }
-      if (a === "remove" && SY()) {
-        return confirmDo({ title: t("从账户中移除「" + nn.label + "」？", "Remove “" + nn.label + "” from your account?"), message: t("如果这台设备还登录着，下次打开 Vibing Studio 时会重新出现。", "If this device is still signed in, it will appear again the next time it opens Vibing Studio."), ok: t("移除", "Remove") },
-          function () { SY().removeDevices(nn.ids).then(function () { closeCard(); again(); }, function (err) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: t("没能移除", "Couldn’t Remove the Device"), message: String((err && err.message) || err), icon: "caution" }); }); });
-      }
+      if (a === "remove") return run("remove", nn, P, host, V);
       if (a === "signout") return confirmDo({ title: t("退出登录 " + (model().login || "") + "？", "Sign out of " + (model().login || "") + "?"), message: t("跟着账户的数据会停止同步；这台设备上的 Claude Code、Codex 会话不受影响。", "Account data stops syncing; Claude Code and Codex sessions on this device are not affected."), ok: t("退出登录", "Sign Out") }, function () { location.href = "/auth/logout"; });
       if (a === "signin") { location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
       if (a === "passkeys") {
@@ -387,15 +420,7 @@
         if (N && N.call) N.call("openExternal", { url: u }).catch(function () { window.open(u, "_blank", "noopener"); }); else window.open(u, "_blank", "noopener");
         return;
       }
-      if (a === "desk" && window.TSU_RDP) { closeCard(); return TSU_RDP.connectDevice({ id: nn.id, name: nn.label, host: nn.host || "" }, P.win); }
-      if (a === "term" && nn.host) { closeCard(); return P.win.ws.newTab({ sh: { pty: true, dev: nn.host, devName: nn.label } }); }
-      if (a === "open" && nn.host) {
-        closeCard();
-        // App：开一个窗口连那台 Mac（已经开着就叫到前面）；网页、iPad：这一页换成用那台 Mac
-        if (S.openMac) return S.openMac(nn.host, nn.label);
-        var rc = RC();
-        if (rc && rc.use) return rc.use(nn.host, nn.label);
-      }
+      if (a === "desk" || a === "term" || a === "open") { closeCard(); return run(a, nn, P, host, V); }
     });
   }
 
