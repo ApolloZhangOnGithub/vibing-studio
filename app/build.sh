@@ -59,9 +59,7 @@ if [ "$MODE" = terminal ]; then
   FRDP=""; for p in /opt/homebrew/opt/freerdp /usr/local/opt/freerdp; do [ -f "$p/lib/libfreerdp3.dylib" ] && { FRDP="$p"; break; }; done
   if [ -n "$FRDP" ] && lipo -archs "$FRDP/lib/libfreerdp3.dylib" 2>/dev/null | grep -qw "$ARCH"; then
     xcrun clang -O2 -w -target "$ARCH-apple-macos14.0" Helpers/vs-rdp.c -I"$FRDP/include/freerdp3" -I"$FRDP/include/winpr3" -L"$FRDP/lib" -lfreerdp3 -lfreerdp-client3 -lwinpr3 -o "$APP/Contents/Resources/bin/vs-rdp"
-  else
-    rm -f "$APP/Contents/Resources/bin/vs-rdp" 2>/dev/null || true
-  fi
+  fi # 编不了（没有 FreeRDP、芯片不对）：不带；App 先试着跑，跑不起来就现编
 fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cp Resources/bridge.js "$APP/Contents/Resources/bridge.js"

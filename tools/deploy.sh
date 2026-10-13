@@ -29,4 +29,12 @@ json.dump(d, open(p, "w"), ensure_ascii=False, indent=0)
 PY
 U="$HOME/Library/Application Support/Vibing Studio/ui"
 mkdir -p "$U" && rsync -a --exclude downloads "$HERE/ui/" "$U/" && touch "$U/terminal.html" && defaults write beer.paimon.terminal uiDir "$U" && echo "local ui: $U" # downloads/（发出去的 App）不拷
-cd "$WEB" && wrangler deploy 2>&1 | tail -2
+cd "$WEB"
+RC=0; OUT=$(wrangler deploy 2>&1) || RC=$?
+if [ $RC -ne 0 ] || print -r -- "$OUT" | grep -q 'fetch failed'; then
+  # 直连 Cloudflare 的 API 不通（这台 Mac 上的代理 / TUN 抢了路由时常这样，2026-10-13）：走系统设置里的 HTTPS 代理再试一次
+  PX=$(scutil --proxy | awk '/HTTPSEnable : 1/ {e=1} /HTTPSProxy :/ {h=$3} /HTTPSPort :/ {p=$3} END {if (e && h && p) print "http://" h ":" p}')
+  if [ -n "$PX" ]; then echo "wrangler: direct connection failed, retrying via $PX"; RC=0; OUT=$(HTTPS_PROXY="$PX" wrangler deploy 2>&1) || RC=$?; fi
+fi
+print -r -- "$OUT" | tail -2
+if [ $RC -ne 0 ] || print -r -- "$OUT" | grep -q 'fetch failed'; then echo "wrangler deploy failed" >&2; exit 1; fi
