@@ -438,13 +438,14 @@
     // 列哪些：开在标签页里的会话，和没开着但在跑 / 等你的（闲着、又没开着的 Paimon agent 不列——一长串空行没意义）
     var openIds = {}; try { (window.TSU_TERM && TSU_TERM.panes ? TSU_TERM.panes() : []).forEach(function (p) { var i = p && p.program && p.program.agentId; if (i) openIds[i] = 1; }); } catch (e) { /* 没有就算了 */ }
     var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; }), W = host.clientWidth, compact = W < 560;
-    // 只列会话：整机的 CPU、GPU、内存、磁盘在状态栏右边那几项（用户 2026-10-13：不要底下那一块）
+    // 同 macOS 的活动监视器：上面页签（概览、CPU、GPU、内存、磁盘、网络、能耗）、中间会话、底下整机的图（用户 2026-10-14：资源那些要留着）；窄的（右侧栏）只列会话
     var amv = !compact && !!host.closest(".st-pv, .am-float, .st-pg-activity"), open = host._open || (host._open = {});
     host.classList.toggle("am-amhost", amv);
+    if (amv) { sysSample(); batPoll(); }
     var opids = [];
     rows.forEach(function (r) { if (!open[r.id]) return; var rt = rtOf(r.id); if (rt) procsOf(rt).forEach(function (p) { opids.push(p.pid); }); });
     if (opids.length) argsPoll(opids);
-    var key = W + "|" + host.clientHeight + "|" + JSON.stringify(SORT) + "|" + PS.at + "|" + PS.aat + "|" + Object.keys(open).join(",") + "|" + rows.map(function (r) { return r.id + r.status + r.detail + r.calls + r.bg + r.ctx; }).join(",");
+    var key = W + "|" + host.clientHeight + "|" + JSON.stringify(SORT) + "|" + PS.at + "|" + PS.aat + "|" + (amv ? SYS.at + "|" + BAT.at + "|" + sysTab() + diskMode() + netMode() : "") + "|" + Object.keys(open).join(",") + "|" + rows.map(function (r) { return r.id + r.status + r.detail + r.calls + r.bg + r.ctx; }).join(",");
     if (key === L0.key && now - L0.at < 950) return;
     host._amLast = { key: key, at: now };
     var run = rows.filter(function (r) { return r.status === "run"; }).length, wait = rows.filter(function (r) { return r.status === "wait"; }).length, idleN = rows.length - run - wait;
@@ -498,7 +499,7 @@
     var sumH = '<span class="am-sum">' + esc(stTxt("run")) + " <b>" + run + "</b> · " + esc(stTxt("wait")) + " <b>" + wait + "</b> · " + esc(stTxt("idle")) + " <b>" + idleN + "</b>" +
       (any ? ' <span class="am-dim">·</span> ' + esc(tr("会话合计")) + " CPU <b>" + tc.toFixed(1) + "%</b> · " + esc(tr("内存")) + " <b>" + mb(tm) + "</b> · " + esc(tr("进程")) + " <b>" + tp + "</b>" : "") + "</span>";
     host.style.setProperty("--am-bg", bgOf(host));
-    morphInto(host, topBar(host) + (amv ? '<div class="am-amv"><div class="am-body">' + body + "</div></div>" : '<div class="am-body">' + body + "</div>" + (compact ? '<div class="am-foot c">' + sumH + "</div>" : "")));
+    morphInto(host, topBar(host) + (amv ? '<div class="am-amv">' + sysTabsHtml(sysTab()) + '<div class="am-body">' + body + '</div><div class="am-stripw">' + sysStrip(sysTab(), W - 2 * INSET) + "</div></div>" : '<div class="am-body">' + body + "</div>" + (compact ? '<div class="am-foot c">' + sumH + "</div>" : "")));
   }
   // 分隔线的位置：整机那一块占多少（左右放、上下放各记一份）
   function splitRatio(h) { var v = +localStorage.getItem("tsu-act-split-" + (h ? "h" : "v")); return v > 0.12 && v < 0.88 ? v : h ? 0.45 : 0.5; }
@@ -675,7 +676,7 @@
   }
   function rerenderAll() { document.querySelectorAll(".tr-host").forEach(function (h) { h._amLast = null; render(h); }); last.key = ""; if (window.STUDIO && STUDIO.renderPanelAll) STUDIO.renderPanelAll(); }
   window.TSU_TRACE = { render: render, renderSys: renderSys, snapshot: snapshot, sample: sample, float: openTab, unfloat: floatClose, headActs: headActs, open: openTab };
-  // ---- 活动监视器：一个标签页——每个会话一行（在做什么、用时、CPU、内存、进程、上下文）；整机的数在状态栏右边 ----
+  // ---- 活动监视器：一个标签页（同 macOS 的活动监视器：上面页签——概览、CPU、GPU、内存、磁盘、网络、能耗；中间每个会话一行；底下整机的图）----
   var AM_LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="18" height="17" rx="3"/><path d="M6.5 13h2.6l1.9-4.6 2.6 8.2 1.9-3.6h2"/></svg>';
   if (window.STUDIO && STUDIO.pages) STUDIO.pages.activity = {
     title: function () { return tr("活动监视器"); },

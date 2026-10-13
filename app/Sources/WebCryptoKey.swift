@@ -3,7 +3,7 @@
 //   不给的话 WebKit 自己把它放进登录钥匙串，那一项只认建它的那一版 App：每次更新都弹「想要访问你的钥匙串中的密钥“… WebCrypto 主密钥”」要开机密码，
 //   一次连接能弹好多个（2026-10-14 测试 App 弹了几百个）。
 //   存在钥匙串里，经 /usr/bin/security 存取（同 RdpKeychain：它是系统签名的、一直不变，更新后不再问）。
-//   第一次：把 WebKit 原来那一把拿过来（以前存的设备密钥接着能用；这一次系统可能问一下），拿不到就新生成一把。
+//   第一次：WebKit 原来那一把不用问就拿得到的话拿过来（以前存的设备密钥接着能用），拿不到就新生成一把——不弹框。
 //   自动测试（NADOS_HOME）：放在假的家目录里的一个文件，不碰钥匙串
 import Foundation
 import Security
@@ -42,11 +42,14 @@ enum WebCryptoKey {
     }
     let r = await RdpProc.run("/usr/bin/security", ["find-generic-password", "-s", service, "-a", account, "-w"], timeout: 20)
     if r.status == 0, let k = fromHex(r.out.trimmingCharacters(in: .whitespacesAndNewlines)), k.count == 16 { return k }
-    // 第一次：WebKit 原来那一把（在后台问钥匙串：系统可能弹一次框，别卡住界面）；没有、不给就新的
+    // 第一次：WebKit 原来那一把——只在不用问就拿得到时拿（不弹框：用户 2026-10-14 被这个框弹烦了）；拿不到就新的
+    //   （网页里存的设备密钥重新生成一把；同一账号的设备默认直接允许，连别的电脑不受影响）
     let acct = "com.apple.WebKit.WebCrypto.master+" + account
     let old = await Task.detached { () -> Data? in
       let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: acct, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
       var out: CFTypeRef?
+      SecKeychainSetUserInteractionAllowed(false)
+      defer { SecKeychainSetUserInteractionAllowed(true) }
       guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data, d.count == 16 else { return nil }
       return d
     }.value

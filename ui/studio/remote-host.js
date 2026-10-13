@@ -24,7 +24,7 @@
   if (!dev) { dev = "mac-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); localStorage.setItem(KEY_DEV, dev); }
   var okMap = function () { try { return JSON.parse(localStorage.getItem(KEY_OK) || "{}") || {}; } catch (e) { return {}; } };
   var setOk = function (m) { localStorage.setItem(KEY_OK, JSON.stringify(m)); fire(); };
-  var ws = null, up = false, retry = 0, retryT = 0, owner = {}, clients = {}, denied = {}, asking = {}, waiting = {}, macName = "Mac", listeners = [], tails = {};
+  var ws = null, up = false, retry = 0, retryT = 0, lastRemote = 0, owner = {}, clients = {}, denied = {}, asking = {}, waiting = {}, macName = "Mac", listeners = [], tails = {};
   var fire = function () { listeners.forEach(function (f) { try { f(); } catch (e) { /* 设置页没开 */ } }); };
   N.call("local.info").then(function (i) { if (i && (i.host || i.name)) macName = String(i.host || i.name).replace(/\.local$/, ""); }, function () {});
   var send = function (m) { if (ws && up) { try { ws.send(JSON.stringify(m)); } catch (e) { /* 断了：等重连 */ } } };
@@ -126,7 +126,7 @@
       if (m.sys === "client-join") { clients[m.from] = m.cname || "iPad"; fire(); return; }
       if (m.sys === "client-leave") { if (m.left > 0) return; delete clients[m.from]; Object.keys(owner).forEach(function (k) { if (owner[k] === m.from) delete owner[k]; }); Object.keys(tails).forEach(function (k) { if (tails[k].from === m.from) delete tails[k]; }); fire(); return; } // left：这台设备还开着几页（另一个窗口、远程桌面的旁路）——都关了才收拾它开的终端、程序
       if (m.sys) return;
-      if (m.cmd && m.from) { clients[m.from] = m.cname || clients[m.from] || "iPad"; gate(m); }
+      if (m.cmd && m.from) { lastRemote = Date.now(); clients[m.from] = m.cname || clients[m.from] || "iPad"; gate(m); }
     };
     ws.onclose = function (ev) { ws = null; up = false; clients = {}; tails = {}; fire(); if (ev && ev.code === 4000) return; later(); }; // 盯着的记录：那边重连后会重新要
     ws.onerror = function () { /* onclose 接着来 */ };
@@ -163,14 +163,14 @@
     setPolicy: function (p) { if (native) return N.call("remote.policy", { policy: p }).then(apply, function () {}); localStorage.setItem(KEY_POL, p === "auto" ? "auto" : "first"); fire(); },
     watch: function (f) { listeners.push(f); },
   };
-  // 当主机的页面（Linux 版、老版本的 Mac App）：网站上有新版本、这台 10 分钟没人碰、也没有会话在工作时，自己重新载入——
-  //   这种电脑常常没人在前面（别的设备在用它），修好的东西不用等谁去刷新；终端、会话重新载入后接回去
+  // 当主机的页面（Linux 版、老版本的 Mac App）：网站上有新版本、这台 10 分钟没人碰、别的设备 10 分钟没经它做事（远程桌面经它转发时一直在发）、
+  //   别的设备在这里开着的终端都关了、也没有会话在工作时，自己重新载入——这种电脑常常没人在前面，修好的东西不用等谁去刷新；终端、会话重新载入后接回去
   var lastInput = Date.now();
   ["keydown", "mousedown", "pointerdown", "wheel"].forEach(function (t) { document.addEventListener(t, function () { lastInput = Date.now(); }, true); });
   function maybeReload() {
     if (native !== false || !onNow() || !window.STUDIO || !STUDIO.updateReady) return;
     if (!STUDIO.updateReady()) { if (STUDIO.checkVersion) STUDIO.checkVersion(); return; } // 窗口挡住、最小化时页面自己不查新版本：这里每分钟查一次
-    if (Date.now() - lastInput < 10 * 60000) return;
+    if (Date.now() - Math.max(lastInput, lastRemote) < 10 * 60000 || Object.keys(owner).length) return;
     var busy = false;
     try { (window.TSU_AGENTS && TSU_AGENTS.liveRuntimes ? TSU_AGENTS.liveRuntimes() : []).forEach(function (rt) { if (rt && rt.stream) busy = true; }); } catch (e) { /* 没有就算了 */ }
     if (busy) return;

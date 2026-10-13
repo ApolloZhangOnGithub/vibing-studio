@@ -125,9 +125,10 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     c.queueDepth = 4
     return c
   }
+  private func lockedW() -> Int { lock.lock(); defer { lock.unlock() }; return w }
   // 改了帧率、码率、清晰度：截屏、编码器按新的来，下一帧是关键帧
   func reconfigure() async throws {
-    if fake { lock.lock(); let ow = w; lock.unlock(); let nw = min(maxW, 640) & ~1; if nw != ow { w = nw; h = (nw * 9 / 16) & ~1 }; makeEncoder(); startFake(); return }
+    if fake { let ow = lockedW(); let nw = min(maxW, 640) & ~1; if nw != ow { w = nw; h = (nw * 9 / 16) & ~1 }; makeEncoder(); startFake(); return }
     var pw = CGDisplayCopyDisplayMode(dispID).map { $0.pixelWidth } ?? w, ph = CGDisplayCopyDisplayMode(dispID).map { $0.pixelHeight } ?? h
     if pw > maxW { ph = ph * maxW / pw; pw = maxW }
     w = pw & ~1; h = ph & ~1
