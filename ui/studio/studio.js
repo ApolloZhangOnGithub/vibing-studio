@@ -4945,9 +4945,7 @@
       mi("主题", "", null, { icon: MI.scheme, items: [mi("配色方案…", "⌘K ⌘T", function () { pickScheme(tw); }, { icon: MI.scheme }), mi("高亮配色…", "", function () { pickHighlight(tw); }, { icon: MI.highlight })] }),
       mi("自定义布局…", "", function () { layoutPick(tw); }, { icon: MI.layout }),
       mi("显示语言…", "", function () { pickLang(tw); }, { icon: MI.web }),
-      // 网页版 / iPad：借你的 Mac 用（remote.js）；连着的时候能断开。App 里：开一个窗口连另一台 Mac（连着另一台的窗口里也能再开一台）
-      window.TSU_REMOTE && !TSU_REMOTE.hybrid ? mi(TSU_REMOTE.mac() ? "换一台 Mac / 断开…" : "连接到我的 Mac…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) :
-        canOpenMac() ? mi("连接到另一台设备…", "", function () { pickMac(tw); }, { icon: MI.term, sym: "laptopcomputer" }) : null,
+      // 连接另一台设备（网页版 / iPad 借用 Mac、App 里开一个连着另一台的窗口、远程桌面）不再单列在这里：都从「设备」开始（上面那一项；拓扑里点一台），命令面板里也有
       // iPad App 里（Classic 界面）：换成 iPad 原生的界面（App 自己画的列表、输入框、顶栏）
       window.vsApp && window.webkit && webkit.messageHandlers && webkit.messageHandlers.vsApp && !/iPhone/.test(navigator.userAgent) ? mi("切换到原生界面", "", function () { webkit.messageHandlers.vsApp.postMessage({ type: "setMode", mode: "native" }); }, { icon: MI.term, sym: "ipad" }) : null,
       { sep: true },
@@ -5747,6 +5745,7 @@
   } });
   command("view.os", { title: "选择应用风格…", run: function (tw) { quickPick(tw, { placeholder: "应用风格", items: osModesNow().map(function (x) { return { id: x[0], title: x[1], on: (getv("os") || "vscode") === x[0] }; }), pick: function (it) { setv("os", it.id); } }); } });
   command("view.lang", { title: "配置显示语言", run: function (tw) { pickLang(tw); } });
+  command("remote.pick", { title: "连接到另一台设备…", when: function () { return !!(window.TSU_REMOTE && !TSU_REMOTE.hybrid) || canOpenMac(); }, run: function (tw) { pickMac(tw); } });
   command("view.sideBarPos", { title: "切换主侧栏位置", run: function (tw) { setv("sideBarPos", getv("sideBarPos") === "right" ? "left" : "right"); } });
   command("term.new", { title: "新建终端", keys: "⌃`", run: function (tw) { newTerm(tw); } });
   command("settings", { title: "设置", keys: "⌘,", run: function (tw) { settings(tw, sectionFor(tw)); } });
