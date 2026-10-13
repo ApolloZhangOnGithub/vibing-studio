@@ -587,6 +587,13 @@
   words({ "应用界面字体": "App Interface Font", "Agent 界面字体": "Agent Interface Font", "跟随显示方式": "Follow View Style", "Agent 界面使用的字体：任务、子 Agent、底部状态与输入框，以及图形界面（GUI）中的对话": "The agent's own interface: tasks, subagents, the status and input at the bottom, and the whole GUI conversation" }); // 三种字：应用界面、Agent 界面、代码
   words({"复制标签页": "Duplicate Tab", "水平拆分": "Split Horizontally", "垂直拆分": "Split Vertically", "保存内容…": "Save Contents…", "关闭标签页中的所有面板": "Close All Panes in Tab", "会话": "Session", "清除缓冲区": "Clear Buffer", "上一个标签页": "Previous Tab", "下一个标签页": "Next Tab", "关闭标签页": "Close Tab", "新建标签页 (⌘T)": "New Tab (⌘T)"});
   words({"放弃更改": "Discard Changes", "新建终端": "New Terminal"});
+  // 状态栏右边 App 的新版本
+  words({ "App 有新版本": "App update available", "Linux 版有新版本": "Linux update available", "下载": "Download", "正在下载最新的 App，下好就重启": "Downloading the latest app; restarts when it’s done",
+    "正在准备重启…": "Preparing to restart…", "会话停下来以后自动重启以更新": "Restarts to update when sessions finish", "按 ⌘Q 退出后自动换上新版本并重新打开": "Quit with ⌘Q to install the update and reopen" });
+  PATTERNS.push(
+    [/^换上 Vibing Studio (\S+) 并重新打开：标签页、会话都会接回去；旧版留在 Application Support\/Vibing Studio\/previous$/, "Install Vibing Studio $1 and reopen. Tabs and sessions reconnect; the old version stays in Application Support/Vibing Studio/previous"],
+    [/^没能更新：([\s\S]*)$/, function (m) { return "Couldn’t update: " + sub(m[1]); }]
+  );
   words({"不保存": "Don't Save", "如果不保存，你的更改将丢失。": "Your changes will be lost if you don't save them.", "重试": "Retry", "读取超时（20 秒没有读完）": "Timed out (not read within 20 seconds)", "编辑器没载入": "The editor failed to load", "用默认应用打开": "Open with Default App", "正在生成预览（快速查看）…": "Generating preview (Quick Look)…", "这里没法预览这种文件": "This file can't be previewed here", "生成预览超时": "Preview timed out", "快速查看没有生成预览": "Quick Look produced no preview"});
   words({"账号设置…": "Account Settings…"}); // 对话框的按钮（studio.js 的 ask）；Claude App 风格里提示去掉了快捷键的那一半
   words({"输入框上方": "Above the Input", "Agent 底部抽屉": "Agent Bottom Drawer", "Agent 侧栏": "Agent Side Bar"}); // 任务清单放哪

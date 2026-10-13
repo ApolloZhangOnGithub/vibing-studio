@@ -1454,8 +1454,13 @@
     if (appUpd && appUpd.linux) { var NL = window.nadosNative; if (appUpd.deb) return NL.call("openExternal", { url: appUpd.url }).catch(function () {}); return NL.call("app.restartToUpdate").catch(function () {}); }
     if (!appUpd || !UPD_DIR() || !LOC() || !LOC().exec || updFetch) return;
     updFetch = true; allWins().forEach(function (w) { renderSoon(w); });
-    var go = function () { checkAppUpdate(true).then(function () { updFetch = false; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); if (appUpd) restartForUpdate(); }); };
-    checkRemoteApp(true).then(go, go);
+    var go = function (r) {
+      checkAppUpdate(true).then(function () {
+        updFetch = false; allWins().forEach(function (w) { renderSoon(w); syncAct(w); });
+        if (appUpd) restartForUpdate(); else if (r && r.state === "error") toast("没能更新：" + r.error);
+      });
+    };
+    checkRemoteApp(true).then(go, function () { go(null); });
   }
   function restartForUpdate() {
     var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
