@@ -31,13 +31,14 @@
     ext: '<svg viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M13.5 2.5L8 8M12 9.5v3.5H3V4h3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
   // 原生的那块跟着这一块走：位置、大小、看不看得见
+  // 别的页面也用这一套（远程桌面 rdp.js：TSU_WEB.track）：V.frameCmd / V.closeCmd 换成它自己的命令，V.want() 为假时也藏（比如还没连上）
   function place(V) {
     if (!native() || !V.host || !V.id) return;
-    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.shown() && !covered(r) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
+    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.shown() && (!V.want || V.want()) && !covered(r) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
     var k = r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), vis].join(",") : "";
     if (k === V.lastFrame) return;
     V.lastFrame = k;
-    N.call("web.frame", { id: V.id, x: r ? r.left : 0, y: r ? r.top : 0, w: r ? r.width : 0, h: r ? r.height : 0, visible: vis }).catch(function () {});
+    N.call(V.frameCmd || "web.frame", { id: V.id, x: r ? r.left : 0, y: r ? r.top : 0, w: r ? r.width : 0, h: r ? r.height : 0, visible: vis }).catch(function () {});
   }
   // 页面上盖着的东西（菜单、命令面板、浮层、快速查看、设置的浮动窗口）和这一块重叠：原生的先藏起来
   var OVER = ".st-menu, .st-pop, .st-palette, .st-float, .st-modal, .xp-ql, .gv-pop, .ts-sug:not([hidden]), .drag-ghost:not([hidden]), .ov-wrap, .st-pv-drop, .ca-dlgdim"; // .st-modal：模态层盖住整个窗口——原生的网页都藏
@@ -163,7 +164,7 @@
     },
   };
   // 关了标签页：原生的那块也关掉
-  setInterval(function () { Object.keys(views).forEach(function (id) { var V = views[id]; if (V.gone()) { delete views[id]; if (native()) N.call("web.close", { id: id }).catch(function () {}); } }); }, 2000);
+  setInterval(function () { Object.keys(views).forEach(function (id) { var V = views[id]; if (V.gone()) { delete views[id]; if (native()) N.call(V.closeCmd || "web.close", { id: id }).catch(function () {}); } }); }, 2000);
   // 对外：开一个浏览器标签页（地址栏、命令面板、链接用）
   window.TSU_WEB = {
     // iPad App 里：网页交给 App 自己的 Safari 视图（这里的内嵌网页靠 Mac 版 App 的原生网页视图，iPad 上没有——什么都载不出来）
@@ -174,6 +175,10 @@
     },
     normalize: normalize,
     native: native,
+    // 别的页面叠的原生视图交给这里摆（位置、盖住时藏、标签页关了就关）：V = { id, host, box, shown(), gone(), want()?, frameCmd, closeCmd }
+    track: function (V) { V.lastFrame = ""; views[V.id] = V; placeAll(); },
+    placeNow: function (V) { if (views[V.id] === V) place(V); },
+    covered: covered,
     // 别的页面也在一块地方叠一个原生的网页视图（文件：PDF、Office 的快速查看预览、很大的图片——原生直接读文件，不经过页面，几百 MB 也不卡）：
     //   位置跟着那一块、被菜单 / 浮层盖住时藏起来、那一块没了（标签页关了）就关掉释放，都同上。shown()：现在该不该露出来。没有原生 → null
     overlay: function (box, url, shown) {
