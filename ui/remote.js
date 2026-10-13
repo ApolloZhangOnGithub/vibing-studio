@@ -133,7 +133,7 @@
       '</p><div class="rm-acts">' + off + "</div>";
     else if (st === "code") html = "<b>" + tr("输入验证码", "Enter the Code") + "</b><p>" + tr("输入" + Q(M) + "上显示的 6 位验证码。", "Enter the 6-digit code shown on " + Q(M) + ".") + '</p><input class="rm-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="' + esc(tr("验证码", "Code")) + '"><p class="rm-err">' + esc(msg || "") + "</p>";
     else if (st === "expired") html = "<b>" + tr("验证码已过期", "The Code Expired") + "</b><p>" + tr("重新请求，" + Q(M) + "上会再显示一个新的验证码。", "Request again and " + Q(M) + " will show a new code.") + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
-    else if (st === "denied") html = "<b>" + tr(Q(M) + "没有允许这台设备", Q(M) + " didn’t allow this device") + "</b><p>" + esc(msg || tr("可以重新请求，在那台 Mac 上点按「允许」。", "You can request again and click Allow on that Mac.")) + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
+    else if (st === "denied") html = "<b>" + tr(Q(M) + "没有允许这台设备", Q(M) + " didn’t allow this device") + "</b><p>" + esc(msg || tr("可以重新请求，在那台电脑上点「允许」。", "You can request again and click Allow on that computer.")) + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
     else if (st === "nokey") html = "<b>" + tr("无法验证这台设备", "Couldn’t Verify This Device") + "</b><p>" + esc(msg || "") + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="reload" class="rm-pri">' + tr("重新载入", "Reload") + "</button></div>";
     authCard.innerHTML = '<div class="rm-card">' + html + "</div>";
     authCard.hidden = false;
@@ -170,8 +170,8 @@
       window.TSU_REMOTE.pick().then(function (hosts) {
         hosts = (hosts || []).filter(function (h) { return h && h.device; });
         if (hosts.length === 1) { boot("connecting", { mac: hosts[0].name || "" }); return window.TSU_REMOTE.use(hosts[0].device, hosts[0].name); }
-        if (!hosts.length) return say(tr("Mac 不在线", "No Mac Is Online"), tr("请在 Mac 上的 Vibing Studio 中打开「设置 › 通用 › 其他设备使用这台 Mac」，然后重试。", "On your Mac, open Vibing Studio and turn on Settings › General › Allow Other Devices to Use This Mac, then try again."), true);
-        say(tr("选择要连接的 Mac", "Choose a Mac"), "", false);
+        if (!hosts.length) return say(tr("没有在线的电脑", "No Computer Is Online"), tr("在那台电脑的 Vibing Studio 里打开「设置 › 通用 › 其他设备使用这台电脑」，然后重试。", "On that computer, open Vibing Studio and turn on Settings › General › Allow Other Devices to Use This Computer, then try again."), true);
+        say(tr("选择要连接的电脑", "Choose a Computer"), "", false);
         var acts = veil.querySelector(".rm-acts");
         acts.querySelectorAll("[data-mac]").forEach(function (b) { b.remove(); });
         hosts.forEach(function (h) { var b = document.createElement("button"); b.type = "button"; b.dataset.mac = h.device; b.textContent = h.name || h.device; b.onclick = function () { window.TSU_REMOTE.use(h.device, h.name); }; acts.insertBefore(b, acts.firstChild); });
@@ -261,7 +261,7 @@
         if (cmd === "info") return LN.call("info").then(function (i) { var o = Object.assign({}, i); o.commands = (i.commands || []).filter(function (c) { return !HOST.test(c) && !LOCAL_ONLY.test(c) && !NOT_THERE.test(c) && !/^(pty|exec|proc|cc)\./.test(c); }).concat(HOST_CMDS); o.remote = true; o.host = macName; return o; });
         if (cmd === "open.pending") return Promise.resolve([]); // 在访达里用 App 打开的文件归这台的主窗口
         if (LOCAL_ONLY.test(cmd)) return Promise.resolve(null);
-        if (NOT_THERE.test(cmd)) { var ne = new Error(tr("连着另一台 Mac 时不可用", "Not available while connected to another Mac")); ne.code = "E_REMOTE"; return Promise.reject(ne); }
+        if (NOT_THERE.test(cmd)) { var ne = new Error(tr("连着另一台电脑时不可用", "Not available while connected to another computer")); ne.code = "E_REMOTE"; return Promise.reject(ne); }
         if (cmd === "window.title") { lastTitle = String(args.title || ""); return LN.call("window.title", { title: macName + (lastTitle ? " — " + lastTitle : "") }); }
         if (!HOST.test(cmd)) return LN.call(cmd, args);
       } else {
@@ -273,7 +273,7 @@
       }
       return new Promise(function (resolve, reject) {
         var id = pid + "." + (++seq);
-        pend[id] = { resolve: resolve, reject: reject, cmd: cmd, t: setTimeout(function () { if (pend[id]) { delete pend[id]; var e = new Error(tr("Mac 未响应（", "The Mac didn’t respond (") + cmd + tr("）", ")")); e.code = "E_TIMEOUT"; reject(e); } }, cmd === "cc.sessions" || cmd === "cc.search" ? 120000 : 60000) };
+        pend[id] = { resolve: resolve, reject: reject, cmd: cmd, t: setTimeout(function () { if (pend[id]) { delete pend[id]; var e = new Error(tr("「" + macName + "」没有回应（", "“" + macName + "” didn’t respond (") + cmd + tr("）", ")")); e.code = "E_TIMEOUT"; reject(e); } }, cmd === "cc.sessions" || cmd === "cc.search" ? 120000 : 60000) };
         var m = JSON.stringify({ id: id, cmd: cmd, args: args, k: 1, s: sess });
         if (up) ws.send(m); else outQ.push(m);
       });
@@ -307,7 +307,7 @@
     delete pend[m.id];
     clearTimeout(p.t);
     if (m.ok) { if (p.cmd === "info") hostInfo = m.value; if (p.cmd !== "auth.prove" && !firstOk) { firstOk = true; clearTimeout(waitT); clearTimeout(connT); if (authNow && authNow !== "code") { authNow = ""; if (authCard) authCard.hidden = true; } badge(); } boot("ready"); return p.resolve(m.value); } // Mac 回话了：能用了
-    var e = new Error((m.error && m.error.message) || tr("Mac 上没做成", "The Mac couldn’t do it")); e.code = (m.error && m.error.code) || "E_FAILED";
+    var e = new Error((m.error && m.error.message) || tr("那台电脑上没做成", "That computer couldn’t do it")); e.code = (m.error && m.error.code) || "E_FAILED";
     if (e.code === "E_DENIED" && /没有允许|未授权/.test(e.message) && p.cmd !== "auth.code") { state = "denied"; boot("denied"); badge(); authShow("denied", /重新载入/.test(e.message) ? e.message : ""); return p.reject(e); }
     p.reject(e);
   }
@@ -326,7 +326,7 @@
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       // Mac 那边断了（它的 App 更新、重新载入，一会儿就回来）：不盖整屏、不重新载入（以前一断就整屏盖住，回来时整页重载——iPad 上黑一下）；
       //   断了 4 秒还没回来才在底下一行小字，回来了就收起，页面接着用
-      if (m.sys === "host-offline") { boot("offline"); state = "offline"; badge(); clearTimeout(offT); offT = setTimeout(function () { if (state === "offline") toast(tr("无法连接到 Mac，正在重新连接", "Can’t reach the Mac. Reconnecting…")); }, 4000); return; }
+      if (m.sys === "host-offline") { boot("offline"); state = "offline"; badge(); clearTimeout(offT); offT = setTimeout(function () { if (state === "offline") toast(tr("连不上「" + macName + "」，正在重新连接", "Can’t reach “" + macName + "”. Reconnecting…")); }, 4000); return; }
       if (m.sys === "host-online") { clearTimeout(offT); if (state === "offline") state = "open"; badge(); toast(""); lastNonce = ""; rewatchAll(); return; }
       if (m.sys === "auth") {
         if (m.host) setName(m.host);

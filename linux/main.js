@@ -167,6 +167,11 @@ function createWindow(open, mac, mname) {
   let url = START;
   if (open || mac) { try { const u = new URL(START); if (open) u.searchParams.set("open", String(open)); if (mac) { u.searchParams.set("mac", String(mac)); u.searchParams.set("win", String(win.webContents.id)); if (mname) u.searchParams.set("mname", String(mname)); } url = u.toString(); } catch (e) { /* 照旧 */ } }
   if (mac) win.__mac = String(mac);
+  // 自动测试（同 macOS 版的 NADOS_TESTJS）：VS_TESTJS=<文件>——主窗口的页面载完，把它当成 async 函数体在页面里跑一遍，返回值写到 VS_TESTJS_OUT
+  if (process.env.VS_TESTJS && !mac) win.webContents.once("did-finish-load", () => {
+    const src = fs.readFileSync(process.env.VS_TESTJS, "utf8"), out = process.env.VS_TESTJS_OUT || process.env.VS_TESTJS.replace(/\.js$/, "") + ".json";
+    win.webContents.executeJavaScript("(async () => {\n" + src + "\n})()", true).then((v) => fs.writeFileSync(out, JSON.stringify({ page: v }, null, 1)), (e) => fs.writeFileSync(out, JSON.stringify({ error: String((e && e.stack) || e) })));
+  });
   win.loadURL(url);
   return win;
 }
