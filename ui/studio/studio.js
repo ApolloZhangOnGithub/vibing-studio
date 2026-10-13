@@ -1433,9 +1433,10 @@
       "[ -d \"$U/Vibing Studio.app\" ] && \"$LSR\" -u \"$U/Vibing Studio.app\" >/dev/null 2>&1",
       "if [ -d \"$P\" ]; then",
       "  ls -1 \"$P\" | grep -E '^(staged|rejected)-.*\\.app$' | while IFS= read -r f; do trash \"$P/$f\"; done",
-      // 「Vibing Studio <版本> <日期-时间>.app」：按名字最后的时间排，最新的留着
-      "  ls -1 \"$P\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | awk '{ print $NF \"\\t\" $0 }' | sort -r | cut -f2- | tail -n +2 | while IFS= read -r f; do trash \"$P/$f\"; done",
-      "  ls -1 \"$P\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | while IFS= read -r f; do \"$LSR\" -u \"$P/$f\" >/dev/null 2>&1; done",
+      // 「Vibing Studio <版本> <日期-时间>.app」：按名字最后的时间排，最新的一份挪进 rollback.noindex（聚焦不收录，不会又被登记成 App），更早的挪进废纸篓
+      "  R=\"$P/rollback.noindex\"; mkdir -p \"$R\"",
+      "  for d in \"$P\" \"$R\"; do ls -1 \"$d\" | grep -E '^Vibing Studio .* [0-9]{8}-[0-9]{6}\\.app$' | while IFS= read -r f; do printf '%s\\t%s\\n' \"${f##* }\" \"$d/$f\"; done; done | sort -r | cut -f2- | {",
+      "    n=0; while IFS= read -r a; do n=$((n+1)); if [ $n -gt 1 ]; then trash \"$a\"; elif [ \"${a%/*}\" != \"$R\" ]; then \"$LSR\" -u \"$a\" >/dev/null 2>&1; mv \"$a\" \"$R/\" && \"$LSR\" -u \"$R/${a##*/}\" >/dev/null 2>&1; else \"$LSR\" -u \"$a\" >/dev/null 2>&1; fi; done; }",
       "fi",
       "ls -1 \"$U\" 2>/dev/null | grep -E '^download-[0-9]+\\.zip$' | sort -t- -k2 -n -r | tail -n +4 | while IFS= read -r f; do trash \"$U/$f\"; done",
       "echo OK"].join("\n");

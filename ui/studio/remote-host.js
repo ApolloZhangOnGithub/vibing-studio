@@ -1,5 +1,5 @@
 // remote-host.js —— 让 iPad 借这台 Mac 用（Vibing Studio 的 iPad 端；另一头是 remote.js，中间是服务端的 src/relay.js）。
-//   设置 › 通用 › 「其他设备使用这台 Mac」（默认关）：开着时这个页面连一条 WebSocket 到 /api/relay/host。iPad 发来的调用在这台 Mac 上照原样执行
+//   设置 › 通用 › 「其他设备使用这台 Mac」（这个页面当主机时默认开）：开着时这个页面连一条 WebSocket 到 /api/relay/host。iPad 发来的调用在这台 Mac 上照原样执行
 //   （nadosNative.call），回复、终端和命令的输出（事件）再送回那台 iPad。
 //   安全：只有你自己的账号能连上中转；每台新设备第一次来，这边问一次「允许」（记住；设置里能撤销）；只放行下面 ALLOW 这些命令——
 //   终端、命令、文件、Claude Code 的会话。窗口、菜单、通知、剪贴板、截屏、内嵌浏览器这些是这台 Mac 自己的界面，不给。
@@ -8,6 +8,9 @@
   var N = window.nadosNative;
   if (!N || !N.local || N.remote || window.TSU_REMOTE_HOST) return;
   var KEY_ON = "vs-remote-on", KEY_DEV = "vs-remote-device", KEY_OK = "vs-remote-ok";
+  // 这个页面当主机时（Linux 版、老版本的 Mac App）默认开着（用户 2026-10-14：登录同一个账号的电脑都要能用——Linux 上也要「在新窗口中打开」「打开终端」）：
+  //   没选过的当开着，自己关了的照旧关着。新设备第一次来照旧问一次「允许」
+  var onNow = function () { var v = localStorage.getItem(KEY_ON); return v === null || v === "1"; };
   var ALLOW = ["local.info", "pty.open", "pty.attach", "pty.list", "pty.write", "pty.resize", "pty.pause", "pty.resume", "pty.close", "pty.cwd",
     "exec.start", "exec.kill", "proc.start", "proc.write", "proc.close", "proc.kill", "fs.read", "fs.write", "fs.stat", "fs.glob", "fs.list", "fs.trash", "fs.tags",
     "cc.sessions", "cc.find", "cc.search"];
@@ -84,17 +87,17 @@
   function gate(m) {
     var cid = m.from, ok = okMap();
     if (ok[cid]) { if (ok[cid].name !== m.cname && m.cname) { ok[cid].name = m.cname; setOk(ok); } return run(m); }
-    if (denied[cid]) return reply(cid, m.id, false, { code: "E_DENIED", message: "这台 Mac 未授权此设备" });
+    if (denied[cid]) return reply(cid, m.id, false, { code: "E_DENIED", message: "这台电脑没有允许这台设备" });
     (waiting[cid] = waiting[cid] || []).push(m);
     if (asking[cid]) return;
     asking[cid] = true;
     var S = window.STUDIO, nm = m.cname || "iPad";
-    var q = S && S.ask ? S.ask({ title: "「" + nm + "」请求使用这台 Mac", text: "允许该设备在这台 Mac 上打开终端、读写文件，并查看和继续 Claude Code / Codex 的会话？可随时在「设置 › 通用」中撤销。", ok: "允许" }) : Promise.resolve(window.confirm("「" + nm + "」请求使用这台 Mac，是否允许？"));
+    var q = S && S.ask ? S.ask({ title: "「" + nm + "」要使用这台电脑", text: "允许它在这台电脑上开终端、读写文件、继续会话", ok: "允许" }) : Promise.resolve(window.confirm("「" + nm + "」要使用这台电脑，允许吗？"));
     q.then(function (yes) {
       asking[cid] = false;
       var l = waiting[cid] || []; delete waiting[cid];
       if (yes) { var o2 = okMap(); o2[cid] = { name: nm, at: Date.now() }; setOk(o2); l.forEach(run); }
-      else { denied[cid] = true; l.forEach(function (x) { reply(cid, x.id, false, { code: "E_DENIED", message: "这台 Mac 未授权此设备" }); }); }
+      else { denied[cid] = true; l.forEach(function (x) { reply(cid, x.id, false, { code: "E_DENIED", message: "这台电脑没有允许这台设备" }); }); }
     });
   }
   // 这台 Mac 上的终端、命令的输出：是哪台 iPad 开的就送给哪台（这台 Mac 自己开的不往外送）
@@ -110,7 +113,7 @@
     if (native !== false) return; // 原生那边接管了（或者还没问清楚）：这个页面不连
     startTickers();
     clearTimeout(retryT);
-    if (localStorage.getItem(KEY_ON) !== "1" || ws) return;
+    if (!onNow() || ws) return;
     var u = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/api/relay/host?device=" + encodeURIComponent(dev) + "&name=" + encodeURIComponent(macName);
     try { ws = new WebSocket(u); } catch (e) { ws = null; return later(); }
     ws.onopen = function () { up = true; retry = 0; fire(); };
@@ -124,7 +127,7 @@
     ws.onclose = function (ev) { ws = null; up = false; clients = {}; tails = {}; fire(); if (ev && ev.code === 4000) return; later(); }; // 盯着的记录：那边重连后会重新要
     ws.onerror = function () { /* onclose 接着来 */ };
   }
-  function later() { if (localStorage.getItem(KEY_ON) !== "1") return; retry = Math.min(retry + 1, 6); retryT = setTimeout(connect, 1000 * Math.pow(2, retry - 1)); }
+  function later() { if (!onNow()) return; retry = Math.min(retry + 1, 6); retryT = setTimeout(connect, 1000 * Math.pow(2, retry - 1)); }
   function set(on) {
     localStorage.setItem(KEY_ON, on ? "1" : "0");
     if (on) connect(); else { try { if (ws) ws.close(1000, "off"); } catch (e) { /* 已经断了 */ } ws = null; up = false; clients = {}; }
@@ -142,7 +145,7 @@
     if (sig !== lastCfg) { lastCfg = sig; N.call("remote.cfg", { cfg: o0 }).catch(function () {}); }
   };
   window.TSU_REMOTE_HOST = {
-    on: function () { return native ? !!nst.on : localStorage.getItem(KEY_ON) === "1"; },
+    on: function () { return native ? !!nst.on : onNow(); },
     set: function (on) { if (native) return N.call("remote.set", { on: !!on }).then(apply, function () {}); set(on); },
     connected: function () { return native ? !!nst.up : up; },
     device: function () { return native ? nst.device || dev : dev; },

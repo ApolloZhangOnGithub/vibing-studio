@@ -11,7 +11,7 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-13", ver: "0.2.1.456", items: {
+    { date: "2026-10-13", ver: "0.2.1.457", items: {
       new: [
         ["活动监视器：「App」里一格，开成一个标签页，每个会话一行（在做什么、用时、CPU、内存、进程、上下文）。以前在底部面板里、或者浮在上面的那个窗口不再有了；整机的数在状态栏最右边。", "Activity Monitor: a tile in Apps that opens as a tab, one row per session (what it’s doing, time, CPU, memory, processes, context). It no longer lives in the bottom panel or a floating window; whole-machine numbers are at the right end of the status bar."],
         ["状态栏最右边显示整机的 CPU、GPU、内存和磁盘剩余（两秒一更新；右键状态栏选显示哪几个，点一下打开活动监视器）。", "The right end of the status bar shows CPU, GPU, memory and free disk space for the whole machine (updated every two seconds; right-click the status bar to choose which, click one to open Activity Monitor)."],
