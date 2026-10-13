@@ -11,7 +11,7 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-13", ver: "0.2.1.453", items: {
+    { date: "2026-10-13", ver: "0.2.1.454", items: {
       new: [
         ["活动监视器：「App」里一格，开成一个标签页（同 macOS 的活动监视器：概览、CPU、GPU、内存、磁盘、网络、能耗几页，每个会话一行，底下一条整机的图）。以前在底部面板里、或者浮在上面的那个窗口不再有了。", "Activity Monitor: a tile in Apps that opens as a tab (like macOS Activity Monitor: Overview, CPU, GPU, Memory, Disk, Network and Energy, one row per session, with the whole-machine graphs along the bottom). It no longer lives in the bottom panel or a floating window."],
         ["状态栏最右边显示整机的 CPU、GPU、内存和磁盘剩余（两秒一更新；右键状态栏选显示哪几个，点一下打开活动监视器）。", "The right end of the status bar shows CPU, GPU, memory and free disk space for the whole machine (updated every two seconds; right-click the status bar to choose which, click one to open Activity Monitor)."],
@@ -40,6 +40,7 @@
       ],
       fixed: [
         ["Claude App 风格的对话里选不了字（回答里的字拷贝不了）：现在能选、能拷贝、能右键收藏。", "Text in Claude App style conversations couldn’t be selected (you couldn’t copy from replies); it can now be selected, copied and saved from the right-click menu."],
+        ["点「重启以更新」时网站上已经发了更新的一版（连着发了几版、App 一小时才看一次）：以前换上的是早先下好的那版，重开以后又让你点一次；现在先下好最新的（状态栏写「正在下载最新的 App，下好就重启」）再重启，点一次就是最新的。", "If a newer build had been published by the time you clicked Restart to Update (several releases in a row; the app checks hourly), you got the older build that was already downloaded and were asked to restart again. It now downloads the newest one first (the status bar says “Downloading the latest app; restarts when it’s done”), so one click gets you the latest."],
         ["「重启以更新」要点两次才重启（退出时系统问「要终止正在运行的进程吗」，常常没看见）：现在没有会话在工作时点一下就重启；有的话页面里问一次——现在重启、等它们停下来自动重启、取消。需要这一版之后的 App。", "Restart to Update took two clicks (the system’s “terminate running processes?” prompt on quit was easy to miss). It now restarts on one click when no session is working; otherwise it asks once in the page — restart now, restart automatically when they stop, or cancel. Requires the app version after this one."],
         ["图形界面（GUI）的输入框里拖进截图（截屏后右下角那张缩略图）只插了一个临时文件的路径：现在同 TUI，变成附图。", "Dragging a screenshot (the thumbnail after taking one) into the GUI input only inserted a temporary file path; like the TUI, it now becomes an attached image."],
         ["用一台 Linux 电脑时开着两个连它的窗口，关掉一个，另一个里的终端就不再出字：现在这台设备连着它的窗口都关了才收拾（那台 Linux 上的 Vibing Studio 重新打开后生效）。", "With two windows connected to a Linux computer, closing one stopped output in the other’s terminals; now cleanup waits until all of this device’s windows are closed (takes effect after Vibing Studio on that Linux computer restarts)."],

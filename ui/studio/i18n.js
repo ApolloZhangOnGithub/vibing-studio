@@ -589,8 +589,11 @@
   words({"放弃更改": "Discard Changes", "新建终端": "New Terminal"});
   // 状态栏右边 App 的新版本
   words({ "App 有新版本": "App update available", "Linux 版有新版本": "Linux update available", "下载": "Download", "正在下载最新的 App，下好就重启": "Downloading the latest app; restarts when it’s done",
-    "正在准备重启…": "Preparing to restart…", "会话停下来以后自动重启以更新": "Restarts to update when sessions finish", "按 ⌘Q 退出后自动换上新版本并重新打开": "Quit with ⌘Q to install the update and reopen" });
+    "正在准备重启…": "Preparing to restart…", "会话停下来以后自动重启以更新": "Restarts to update when sessions finish", "按 ⌘Q 退出后自动换上新版本并重新打开": "Quit with ⌘Q to install the update and reopen",
+    "解开安装包没有成功": "Couldn’t unpack the update", "没有这种芯片的安装包": "There’s no build for this Mac’s chip" });
   PATTERNS.push(
+    [/^读不到版本信息（HTTP (\d+)）$/, "Couldn’t read the version info (HTTP $1)"],
+    [/^新版本（([^）]+)）(签名不完整|签它的证书已被 Apple 吊销)，没有放进待更新$/, function (m) { return "The new version (" + m[1] + ") " + (m[2] === "签名不完整" ? "has an incomplete signature" : "is signed with a certificate Apple has revoked") + ", so it wasn’t installed"; }],
     [/^换上 Vibing Studio (\S+) 并重新打开：标签页、会话都会接回去；旧版留在 Application Support\/Vibing Studio\/previous$/, "Install Vibing Studio $1 and reopen. Tabs and sessions reconnect; the old version stays in Application Support/Vibing Studio/previous"],
     [/^没能更新：([\s\S]*)$/, function (m) { return "Couldn’t update: " + sub(m[1]); }]
   );
