@@ -102,7 +102,23 @@
   var devices = {}; // id → { name, kind, last_seen }
   // 中转里的编号：这台 Mac 当主机时的（remote-host.js）、这台设备连别的 Mac 时的（remote.js）——「设备」App 按它把在线的 Mac、连着它的设备和这里对上
   function relayIds() { var a = []; try { var h = window.TSU_REMOTE_HOST; if (h && h.device) a.push(h.device()); a.push(localStorage.getItem("vs-remote-client")); } catch (e) { /* 没有 */ } return a.filter(Boolean).join(" ").slice(0, 120); }
-  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined }).catch(function () {}); }
+  // 这台当主机时谁能用它（「设备」App 在每台设备上画谁能用谁、双方的权限）：开没开、连入时怎么确认、允许过的设备（[中转里的编号, 允许的时刻, 上次连接, 名字]，秒）、
+  //   现在连着的。只有 App 里当得了主机的那一页有（TSU_REMOTE_HOST）；变了马上再报一次
+  var accWatched = false, accT = 0;
+  function access() {
+    var h = window.TSU_REMOTE_HOST;
+    if (!h || !h.on || !h.approved) return undefined;
+    if (!accWatched && h.watch) { accWatched = true; h.watch(function () { clearTimeout(accT); accT = setTimeout(hello, 2000); }); }
+    try {
+      var o = { on: !!h.on(), policy: (h.policy && h.policy()) || "", dev: h.device ? h.device() : "",
+        ok: (h.approved() || []).slice(0, 40).map(function (a) { return [String(a.id), Math.round((+a.at || 0) / 1000), Math.round((+a.last || 0) / 1000), String(a.name || "").slice(0, 40)]; }),
+        now: (h.clients() || []).slice(0, 20).map(function (c) { return String(c.id); }) };
+      var s = JSON.stringify(o);
+      while (s.length > 3800 && o.ok.length) { o.ok.pop(); s = JSON.stringify(o); }
+      return s;
+    } catch (e) { return undefined; }
+  }
+  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined, access: access() }).catch(function () {}); }
   // App 里（自己认得出名字、型号）：认出来时报到；3 秒还没认出来就先用记着的报一次
   var N0 = window.nadosNative;
   if (N0 && !N0.remote && N0.call) setTimeout(function () { if (!identified) hello(); }, 3000); else hello();
@@ -268,11 +284,11 @@
   function deviceList() {
     var now = serverNow(), mine = devices[dev] || {};
     var all = Object.keys(devices).filter(function (id) { return id !== dev; }).map(function (id) { return Object.assign({}, devices[id]); });
-    all.push({ id: dev, name: name, kind: kind, model: model, os: osName, app: appVer, hw: hw, relay: relayIds(), created_at: mine.created_at || now, last_seen: now, self: true });
+    all.push({ id: dev, name: name, kind: kind, model: model, os: osName, app: appVer, hw: hw, relay: relayIds(), access: access() || mine.access, created_at: mine.created_at || now, last_seen: now, self: true });
     all.sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0); });
     // 并进来的记录（ids 跟着走：从账户里移除这一台时，它名下以前的记录一起移除，不会又冒出一台）
     //   guess：只是猜它被取代了（不一定是同一台）——首次登录、中转编号不跟着并
-    var absorb = function (k, d, guess) { k.ids.push.apply(k.ids, d.ids); if (guess) return; if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); };
+    var absorb = function (k, d, guess) { k.ids.push.apply(k.ids, d.ids); if (guess) return; if (d.created_at && d.created_at < k.created_at) k.created_at = d.created_at; if (d.relay) k.relay = [k.relay, d.relay].filter(Boolean).join(" "); if (d.access && !k.access) k.access = d.access; };
     var byHw = {}, out = [];
     all.forEach(function (d) {
       d.ids = [d.id];
