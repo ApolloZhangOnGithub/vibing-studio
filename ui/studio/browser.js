@@ -48,11 +48,12 @@
   var CXL = function () { return (window.TSU_LOGOS && TSU_LOGOS.codex) || "◎"; }; // Codex：ChatGPT / OpenAI 的结（ext.js）
   var PMAV = function () { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || "✦"; }; // Paimon：派蒙的头像（ext.js）
   var PIL = function () { return (window.TSU_LOGOS && TSU_LOGOS.pi) || ""; }; // pi：画出来的 π（ext.js）
+  var TYL = function () { return (window.TSU_LOGOS && TSU_LOGOS.teyvat) || ""; }; // Teyvat：画出来的四角星（ext.js）
   var CLOCK = '<svg class="bf-clock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.4 1.6"/></svg>'; // 历史记录：画的钟（不用 ◷ 这种字符当图标）
-  var FAV = { claude: '<span class="bfav bf-claude">' + CLG() + '</span>', paimon: '<span class="bfav bf-paimon">' + PMAV() + '</span>', shell: '<span class="bfav bf-shell">›_</span>', history: '<span class="bfav bf-hist">' + CLOCK + '</span>', codex: '<span class="bfav bf-codex">' + CXL() + '</span>', pi: '<span class="bfav bf-pi">' + PIL() + '</span>', web: '<span class="bfav bf-web">◍</span>' };
+  var FAV = { claude: '<span class="bfav bf-claude">' + CLG() + '</span>', paimon: '<span class="bfav bf-paimon">' + PMAV() + '</span>', shell: '<span class="bfav bf-shell">›_</span>', history: '<span class="bfav bf-hist">' + CLOCK + '</span>', codex: '<span class="bfav bf-codex">' + CXL() + '</span>', pi: '<span class="bfav bf-pi">' + PIL() + '</span>', teyvat: '<span class="bfav bf-pi bf-ty">' + TYL() + '</span>', web: '<span class="bfav bf-web">◍</span>' };
   // 主页里每行前面：状态点（在干活绿、开着闲着灰圈、没在跑不画），同一页里不用每行都挂同一个图标
   var DOT = function (st) { return '<span class="bdot' + (st ? " " + st : "") + '"></span>'; };
-  var kindOfURL = function (u) { return /^(local\.)?claude[:.]/.test(u) ? "claude" : /^(local\.)?codex[:.]/.test(u) ? "codex" : /^(local\.)?pi[:.]/.test(u) ? "pi" : /^((dash|explorer)\.)?(local\.)?paimon[:.]?/.test(u) ? "paimon" : /^(~|\/)/.test(u) ? "shell" : /^https?:/.test(u) ? "web" : "history"; };
+  var kindOfURL = function (u) { return /^(local\.)?claude[:.]/.test(u) ? "claude" : /^(local\.)?codex[:.]/.test(u) ? "codex" : /^(local\.)?pi[:.]/.test(u) ? "pi" : /^(local\.)?teyvat[:.]/.test(u) ? "teyvat" : /^((dash|explorer)\.)?(local\.)?paimon[:.]?/.test(u) ? "paimon" : /^(~|\/)/.test(u) ? "shell" : /^https?:/.test(u) ? "web" : "history"; };
 
   // ---- 面板现在的地址：{ url, title, kind } ----
   function ccOf(tw) { return tw && tw.side && tw.side.cc ? tw.side.cc() : { list: [], panes: {} }; }
@@ -69,6 +70,7 @@
     if (prog.agentId && /^cc:/.test(prog.agentId)) return { url: ccURL(prog.agentId.slice(3)), title: prog.title(), kind: "claude" };
     if (prog.agentId && /^cx:/.test(prog.agentId)) { var xid = window.TSU_CODEX ? TSU_CODEX.real(prog.agentId.slice(3)) : prog.agentId.slice(3); return { url: /^new-/.test(xid) ? "local.codex:" : "local.codex:" + xid.slice(0, 8) + "/", title: prog.title(), kind: "codex" }; } // Codex 的会话（连接器）：local.codex:<会话 id 前 8 位>/
     if (prog.agentId && /^pi:/.test(prog.agentId)) { var pid = prog.agentId.slice(3); return { url: "local.pi:" + pid.slice(0, 8) + "/", title: prog.title(), kind: "pi" }; } // pi 的会话（连接器）：local.pi:<会话 id 前 8 位>/
+    if (prog.agentId && /^ty:/.test(prog.agentId)) return { url: "local.teyvat:" + prog.agentId.slice(3) + "/", title: prog.title(), kind: "teyvat" }; // Teyvat 的 agent：local.teyvat:<agent id>/
     if (prog.agentId) return { url: pmURL(prog.agentId), title: prog.title(), kind: "paimon" };
     var cc = ccOf(P.win), id = null;
     Object.keys(cc.panes).forEach(function (k) { if (cc.panes[k] === P) id = k; });
@@ -130,6 +132,18 @@
       var hitP = pickP();
       if (hitP && tw.side.viewPI) { tw.side.viewPI(hitP.id, hitP); return true; }
       PIc.refresh(true).then(function () { var x4 = pickP(); if (x4 && tw.side.viewPI) tw.side.viewPI(x4.id, x4); else flash(tw, "本机没有此 pi 会话：" + pidq); });
+      return true;
+    }
+    // Teyvat 的 agent（连接器）：local.teyvat:<agent id 或名字的开头>/
+    var tym = /^(?:local\.)?teyvat:\/*([0-9A-Za-z_.-]*)\/*$/i.exec(s);
+    if (tym) {
+      var TYc = window.TSU_TEYVAT;
+      if (!TYc) return flash(tw, "Teyvat 连接器没开（设置 › 连接器）");
+      var tq = tym[1], pickT = function () { return tq ? TYc.list().filter(function (y) { return y.id.indexOf(tq) === 0 || y.name === tq; })[0] : null; };
+      if (!tq) { if (window.STUDIO && STUDIO.showView) STUDIO.showView(tw, "agents"); return true; }
+      var hitT = pickT();
+      if (hitT && tw.side.viewTY) { tw.side.viewTY(hitT.id); return true; }
+      TYc.refresh(true).then(function () { var x5 = pickT(); if (x5 && tw.side.viewTY) tw.side.viewTY(x5.id); else flash(tw, "本机没有此 Teyvat agent：" + tq); });
       return true;
     }
     // 资源管理器（explorer.local.paimon/<agent>/… 是进到那个 agent 的包里）。仪表盘（dash.local.paimon）没有了

@@ -923,8 +923,8 @@
     var lab = S.side.querySelector(".st-sagent");
     if (!lab) { lab = document.createElement("button"); lab.type = "button"; lab.className = "st-sagent"; lab.dataset.st = "side-agent"; var lv = S.side.querySelector(".st-sidehdr .st-sidelv"); if (lv) lv.after(lab); }
     // 名字左边是这个 agent 的标志（同右边的「···」一左一右）：Claude Code 的会话是 Claude 的标志（橙）、Codex 的是它的记号、Paimon 的是派蒙的头像
-    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : /^pi:/.test(aid || "") ? LG.pi : LG.paimon;
-    var lk = /^cc:/.test(aid || "") ? "cc" : /^(cx|pi):/.test(aid || "") ? "cx" : "pm"; // pi 的标志同 Codex 的一样单色
+    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : /^pi:/.test(aid || "") ? LG.pi : /^ty:/.test(aid || "") ? LG.teyvat : LG.paimon;
+    var lk = /^cc:/.test(aid || "") ? "cc" : /^(cx|pi|ty):/.test(aid || "") ? "cx" : "pm"; // pi、Teyvat 的标志同 Codex 的一样单色
     var lh = aid ? (alg ? '<i class="st-salogo st-salogo-' + lk + '" aria-hidden="true">' + alg + "</i>" : "") + '<span class="st-cut">' + esc(nm || aid) + "</span>" : "";
     if (lab.dataset.h !== lh) { lab.dataset.h = lh; lab.innerHTML = lh; }
     lab.hidden = !aid;
@@ -1455,14 +1455,14 @@
     rts.forEach(function (rt) {
       var a = rt.agent;
       if (!a || a.deleted) return;
-      var cn = /^cc:/.test(a.id || "") ? "cc" : /^cx:/.test(a.id || "") ? "cx" : /^pi:/.test(a.id || "") ? "pi" : "pm", ts = rt.tasks || [];
+      var cn = /^cc:/.test(a.id || "") ? "cc" : /^cx:/.test(a.id || "") ? "cx" : /^pi:/.test(a.id || "") ? "pi" : /^ty:/.test(a.id || "") ? "ty" : "pm", ts = rt.tasks || [];
       var st = cn === "pm" ? (rt.state ? rt.state() : "idle") : rt.stream ? "working" : "idle";
       if (cn === "pm" && !ts.length && st !== "working") return;
       var tt = rt.stream && rt.stream.turn, fg = tt && tt.parts ? tt.parts.filter(function (p) { return isFg(p) && p.status === "running"; }) : [];
       groups.push({ a: a, cn: cn, rt: rt, st: st, fg: fg, run: ts.filter(function (x) { return x.status === "running"; }).sort(taskOrder), done: ts.filter(function (x) { return x.status !== "running"; }).sort(taskOrder) });
     });
     if (!groups.length) return '<div class="st-dim st-pempty">现在没有打开的会话</div>';
-    var LG = window.TSU_LOGOS || {}, logo = function (g) { return g.cn === "cc" ? '<span class="st-alogo cc">' + (LG.claude || "") + "</span>" : g.cn === "cx" ? '<span class="st-alogo cx">' + (LG.codex || "›_") + "</span>" : g.cn === "pi" ? '<span class="st-alogo cx">' + (LG.pi || "") + "</span>" : '<span class="st-alogo pm">' + (LG.paimon || "✦") + "</span>"; };
+    var LG = window.TSU_LOGOS || {}, logo = function (g) { return g.cn === "cc" ? '<span class="st-alogo cc">' + (LG.claude || "") + "</span>" : g.cn === "cx" ? '<span class="st-alogo cx">' + (LG.codex || "›_") + "</span>" : g.cn === "pi" ? '<span class="st-alogo cx">' + (LG.pi || "") + "</span>" : g.cn === "ty" ? '<span class="st-alogo cx">' + (LG.teyvat || "") + "</span>" : '<span class="st-alogo pm">' + (LG.paimon || "✦") + "</span>"; };
     var fgLine = function (p, id) { var a0 = p.input || {}, raw = String(a0.description || a0.command || a0.file_path || a0.pattern || a0.url || p.name || "").replace(/\s+/g, " ").trim(), t = trT(raw, id); return '<div class="st-prw st-sub st-afg"><i class="st-tg st-fgdot">●</i> <span class="st-cut"' + trTitle(t, raw) + ">" + esc(t) + '</span><span class="st-fill"></span><span class="st-tick st-dim" data-t0="' + (p.t0 || 0) + '"></span></div>'; };
     groups.sort(function (x, y) { var r = function (g) { return g.st === "working" ? 0 : g.run.length ? 1 : 2; }; return r(x) - r(y) || String(x.a.name || "").localeCompare(String(y.a.name || "")); });
     var html = groups.map(function (g) {
@@ -4906,6 +4906,20 @@
     if (remoteLast && remoteLast.state === "error") return { text: L2("上次检查 App 更新没有成功：", "The last App update check failed: ") + remoteLast.error, btn: "重试", act: "check" };
     return { text: L2("已是最新版本", "Up to date") + (remoteAt ? L2(" · 上次检查 ", " · Last checked ") + when(remoteAt) : uiVer.siteAt ? L2(" · 上次检查 ", " · Last checked ") + when(uiVer.siteAt) : ""), btn: "检查更新", act: "check" };
   }
+  // 芯片：macOS 上 arm64 = Apple 芯片、x86_64 = Intel；别的系统写架构（Linux 的 Node 报 x64）
+  function chipOf(A, L2) {
+    var mac = (A.platform || "") === "macos", a = String(A.arch || "");
+    if (/^(x86_64|x64|amd64)$/.test(a)) return mac ? "Intel" : "x86-64";
+    if (/^(arm64|aarch64)$/.test(a)) return mac ? L2("Apple 芯片", "Apple silicon") : "ARM64";
+    return a;
+  }
+  function devRow(A, L2) {
+    var SY = window.TSU_SYNC, L0 = LOC() && LOC().info ? LOC().info() : null;
+    var model = SY && SY.model ? SY.model() : "", osName = SY && SY.os ? SY.os() : "", name = SY && SY.name ? SY.name() : "";
+    if (!osName || /^(macOS|Linux)$/.test(osName)) osName = (L0 && L0.os) || (A && (A.platform || "") === "macos" && A.os ? "macOS " + String(A.os).replace(/\.0$/, "") : osName);
+    if (!model && !osName) return null;
+    return { key: "abDev", label: "这台设备", must: true, kind: "info", value: model || name || (L0 && L0.host) || "—", desc: [model && name ? name : "", osName].filter(Boolean).join(" · ") };
+  }
   addSettings("about", {
     title: "关于", icon: "i", desc: "版本与更新",
     fields: function () {
@@ -4914,7 +4928,9 @@
       var day = function (s) { var d = new Date(s); return isNaN(d.getTime()) ? "" : d.toLocaleString(L2("zh-CN", "en-US"), { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
       return [
         { key: "abVer", label: "版本", must: true, kind: "info", value: uiVer.cur || "—", desc: uiVer.built ? L2("发布于 ", "Released ") + day(uiVer.built) : "" },
-        A && A.version ? { key: "abApp", label: "App", must: true, kind: "info", value: A.version + (A.build ? L2("（构建 " + A.build + "）", " (build " + A.build + ")") : ""), desc: [A.arch === "x86_64" ? "Intel" : L2("Apple 芯片", "Apple silicon"), A.os ? "macOS " + String(A.os).replace(/\.0$/, "") : ""].filter(Boolean).join(" · ") } : null,
+        A && A.version ? { key: "abApp", label: "App", must: true, kind: "info", value: A.version + (A.build ? L2("（构建 " + A.build + "）", " (build " + A.build + ")") : ""), desc: chipOf(A, L2) } : null,
+        // 这台设备：同「设备」页的那一张卡片（型号、系统都是它认出来的那一份，Linux 是发行版的名字，不是内核版本）
+        devRow(A, L2),
         { key: "abSrc", label: "界面来源", must: true, kind: "info", value: LU ? L2("本机文件夹", "Local folder") : N ? L2("网站", "Website") : L2("网页版", "Web"), desc: LU ? tilde(LU.dir) : location.host },
         { key: "abUpd", label: "更新", must: true, kind: "button", text: st.btn, act: st.act, desc: st.text },
         { key: "abLog", label: "更新内容", must: true, kind: "button", text: "查看", act: "changelog" },

@@ -19,6 +19,8 @@
   var pmTree = function () { return localStorage.getItem("st-pm-vols") === "1" && pmOn(); };
   var cxSpec = function (sp) { return !!sp && /^cx:/.test(sp.agent || ""); };
   var piSpec = function (sp) { return !!sp && /^pi:/.test(sp.agent || ""); };
+  var tySpec = function (sp) { return !!sp && /^ty:/.test(sp.agent || ""); };
+  var tyOn = function () { return !!(window.TSU_CONNECTORS && TSU_CONNECTORS.on("teyvat")); };
   // 没装时不恢复的 Claude Code 标签页先收着（装上时再打开，不丢）
   var ccStash = function (sp) {
     var l = []; try { l = JSON.parse(localStorage.getItem("tsu-cc-stash") || "[]") || []; } catch (e) { /* 坏了就重来 */ }
@@ -3332,7 +3334,9 @@
         if (vmode("sysErrors") === "hidden" && b.tone) return;
         var c = b.tone === "err" ? RED : b.tone === "warn" ? AMBER : D;
         r.text([""]); mark(b.at);
-        r.text(wrap(String(b.text || "").replace(/\s+$/, ""), P.cols - 2).map(function (l, k) { return (k ? "  " : c + "▸" + RESET + " ") + c + l + RESET; }));
+        var sl = [].concat.apply([], String(b.text || "").replace(/\s+$/, "").split("\n").map(function (x) { return wrap(x, P.cols - 4); })), sOpen = key in open ? !!open[key] : verbose, sLim = sOpen ? sl.length : 6;
+        r.text(sl.slice(0, sLim).map(function (l, k) { return (k ? "  " : c + "▸" + RESET + " ") + c + l + RESET; }));
+        if (sl.length > sLim) r.block('<span class="grp" data-key="' + key + '">' + hotHtml(["  " + D + HOT + "… +" + (sl.length - sLim) + " lines" + HOT_END + RESET]) + "</span>");
         return;
       }
       if (!vmode("notices")) return;
@@ -7828,7 +7832,7 @@
       return { v: 2, grid: ws.grid ? ser(ws.grid) : null, g: Math.max(0, ws.groups().indexOf(ws.group)) };
     };
     ws.restore = function (saved) {
-      var keep = function (sp) { if (sp && sp.page === "dash") return false; if (ccSpec(sp) ? ccOn() : cxSpec(sp) ? cxOn() : piSpec(sp) ? piOn() : true) return true; ccStash(sp); return false; }; // 以前的仪表盘标签页：不再恢复 // 连接器（Claude Code、Codex）关着：它的标签页不恢复（整组都是就整组不要），先收着
+      var keep = function (sp) { if (sp && sp.page === "dash") return false; if (ccSpec(sp) ? ccOn() : cxSpec(sp) ? cxOn() : piSpec(sp) ? piOn() : tySpec(sp) ? tyOn() : true) return true; ccStash(sp); return false; }; // 以前的仪表盘标签页：不再恢复 // 连接器（Claude Code、Codex）关着：它的标签页不恢复（整组都是就整组不要），先收着
       var de = function (n) {
         if (n.e) { var eds = n.e.filter(keep).map(function (sp) { return Pane(tw, sp); }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
         var a = de(n.a), b = de(n.b);

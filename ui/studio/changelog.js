@@ -11,6 +11,14 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-13", ver: "0.2.1.434", items: {
+      new: [
+        ["Teyvat 连接器：主侧栏「Teyvat」列出这台电脑上的 Teyvat agent，写着它在哪儿跑（前台 / 后台）、在做什么（工作中、等待中、休眠中、已暂停）。打开看它的记录（每次启动一份，往上翻接着读更早的），它的工具和通知照它自己的画法画：Execute 的标题和结果、转到后台的命令和跑完的 Result、Wait 等了多久、休眠的说明、Agent 之间的消息、Life Restarted、系统提示。后台运行的直接对话（经它自己的后台命令通道，Esc 打断）；没在运行的先在后台启动；在终端里运行的只能看。不改 Teyvat 自己的任何文件。", "Teyvat connector: the \"Teyvat\" group in the Primary Side Bar lists the Teyvat agents on this computer with where each runs (foreground or background) and what it is doing (working, waiting, hibernating, paused). Open one to read its transcripts (one per start; scroll up for earlier ones), with its tools and notices drawn the way Teyvat draws them: Execute titles and results, background commands and their Result when done, how long a Wait lasted, hibernation notes, messages between agents, Life Restarted and system notices. Talk to agents running in the background directly (through their own background command channel; Esc interrupts); agents that are not running are started in the background first; agents running in a terminal are read-only. Teyvat's own files are never changed."],
+      ],
+      fixed: [
+        ["Linux 上的「关于」把芯片写成 Apple 芯片、系统写成 macOS 加内核版本：现在芯片按实际架构写，系统和型号同「设备」页里的那一份。", "About on Linux showed Apple silicon and \"macOS\" with the kernel version; it now shows the real architecture, and the system and model match the Devices page."],
+      ],
+    } },
     { date: "2026-10-08", ver: "0.2.1.433", items: {
       new: [
         ["设置里有了「关于」（⚙ 菜单、App 菜单里的「关于 Vibing Studio」也打开它）：版本号、发布时间；App 的版本、构建号、芯片和系统；界面从哪里读取；更新情况（已是最新、有新版本、正在下载、已下载待重启、上次检查失败的原因）和对应的按钮；更新内容、服务状态。", "Settings now has About (also opened by About Vibing Studio in the ⚙ menu and the App menu): the version and release time; the App’s version, build, chip and macOS; where the interface is loaded from; update status (up to date, update available, downloading, ready to restart, or why the last check failed) with the matching button; plus What’s New and Service Status."],
