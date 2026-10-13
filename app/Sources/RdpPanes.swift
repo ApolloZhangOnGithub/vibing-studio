@@ -284,6 +284,7 @@ final class RdpPanes: NSObject {
       if let h = RdpStore.get(sessions[id]?.hostId ?? id) { await RdpKeychain.remove(RdpStore.account(h)) }
       return nil
     case "rdp.snapshot":
+      if a["view"] as? Bool == true { return sessions[id]?.view.viewSnapshot() } // 视图现在显示的样子（自动测试用：画面放在哪、正不正）
       return sessions[id]?.view.snapshot(width: (a["width"] as? NSNumber)?.doubleValue ?? 0)
     default:
       return nil
@@ -833,6 +834,19 @@ final class RdpView: NSView {
     ctx.draw(cg, in: CGRect(x: 0, y: 0, width: tw, height: th))
     guard let small = ctx.makeImage(), let jpg = NSBitmapImageRep(cgImage: small).representation(using: .jpeg, properties: [.compressionFactor: 0.75]) else { return nil }
     return "data:image/jpeg;base64," + jpg.base64EncodedString()
+  }
+
+  // 这个视图现在显示的样子（图层树按 CPU 画一遍，含画面的位置、缩放）：PNG 的 data URL
+  func viewSnapshot() -> String? {
+    guard let layer, bounds.width > 0, bounds.height > 0 else { return nil }
+    let sc = window?.backingScaleFactor ?? 2, W = Int(bounds.width * sc), H = Int(bounds.height * sc)
+    guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    ctx.scaleBy(x: sc, y: sc)
+    ctx.translateBy(x: 0, y: bounds.height)
+    ctx.scaleBy(x: 1, y: -1)
+    layer.render(in: ctx)
+    guard let img = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) else { return nil }
+    return "data:image/png;base64," + png.base64EncodedString()
   }
 
   // ---- 指针（远端给的样子） ----
