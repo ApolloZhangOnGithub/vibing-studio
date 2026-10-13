@@ -29,9 +29,11 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   let localOn: Bool
   private var simulatedAt: Date? = nil, bypassOnce = false
   let winId: Int // 1 = 主窗口（红色按钮只是收起来）；2、3… = 新建的窗口（关了就关）
-  init(url: URL = Config.startURL, winId: Int = 1) {
+  let remoteMac: String? // 连着另一台 Mac 的窗口：那台的设备号（关了窗口就断开）
+  init(url: URL = Config.startURL, winId: Int = 1, remoteMac: String? = nil) {
     startURL = url
     self.winId = winId
+    self.remoteMac = remoteMac
     let cfg = WKWebViewConfiguration()
     cfg.websiteDataStore = .default() // Cookie、localStorage、IndexedDB 都在磁盘上，关了再开还是登录着
     cfg.preferences.javaScriptCanOpenWindowsAutomatically = true
@@ -70,7 +72,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     if ["setDrawsBackground:", "_setDrawsBackground:"].contains(where: { webView.responds(to: NSSelectorFromString($0)) }) { webView.setValue(false, forKey: "drawsBackground") } // KVC 找得到才设（找不到会抛异常）
     webView.underPageBackgroundColor = look.bg
 
-    window.title = Config.appName
+    window.title = remoteMac.flatMap { UserDefaults.standard.string(forKey: "remote.name." + $0) } ?? Config.appName
     window.titleVisibility = .hidden
     window.titlebarAppearsTransparent = true
     window.tabbingMode = .disallowed
@@ -81,7 +83,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     window.isReleasedWhenClosed = false
     window.contentView = webView
     window.delegate = self
-    let frameName = (Config.terminal ? "PaimonTerminalMain" : "PaimonMain") + (winId > 1 ? "-\(winId)" : "")
+    let frameName = remoteMac.map { "PaimonRemote-" + $0 } ?? (Config.terminal ? "PaimonTerminalMain" : "PaimonMain") + (winId > 1 ? "-\(winId)" : "") // 连另一台 Mac 的窗口：按那台记大小、位置
     if !window.setFrameUsingName(frameName) {
       let vf = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
       window.setFrame(vf.insetBy(dx: vf.width * 0.06, dy: vf.height * 0.06), display: false)
@@ -248,6 +250,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   func windowDidExitFullScreen(_ notification: Notification) { emit("fullscreen", ["on": false, "inset": buttonsInset]) }
   // 点红色按钮：窗口收起来但页面不关（agent 还在跑）；点 Dock 图标再出来
   func windowShouldClose(_ sender: NSWindow) -> Bool {
+    if remoteMac != nil { return true } // 连着另一台 Mac 的窗口：关了就是断开（终端、程序在那台 Mac 上照常跑，下次打开接回来）
     if winId > 1, (bridge.local?.running() ?? []).isEmpty { return true } // 新建的窗口：里面没有程序在跑才真关掉
     sender.orderOut(nil) // 主窗口、有程序在跑的窗口：只收起来（不小心点了红色按钮也不影响 Agent、命令）；菜单栏图标、程序坞叫回来
     return false

@@ -159,18 +159,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     return main
   }
 
-  // 新建一个窗口：同一个页面，带上窗口号（各窗口的布局各记各的）；open 是要放进去的那个标签页（拖出来的），没有就是空的新窗口
+  // 新建一个窗口：同一个页面，带上窗口号（各窗口的布局各记各的）；open 是要放进去的那个标签页（拖出来的），没有就是空的新窗口；
+  //   mac：连另一台 Mac 的窗口（页面上 ?mac=：bridge.js 把这台的桥交给 remote.js，它把终端、文件、会话那些转到那台 Mac 去）——布局按那台 Mac 记，下次开它还是那几个标签页
   @discardableResult
-  func newWindow(open: String?, topLeft: NSPoint?) -> Int {
+  func newWindow(open: String?, topLeft: NSPoint?, mac: String? = nil) -> Int {
     let id = nextWin
     nextWin += 1
     let base = web?.webView.url ?? Config.startURL
     var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) ?? URLComponents(url: Config.startURL, resolvingAgainstBaseURL: false)!
-    var q = (comps.queryItems ?? []).filter { !["win", "open", "fresh"].contains($0.name) }
+    var q = (comps.queryItems ?? []).filter { !["win", "open", "fresh", "mac"].contains($0.name) }
     q.append(URLQueryItem(name: "win", value: String(id)))
-    if let open, !open.isEmpty { q.append(URLQueryItem(name: "open", value: open)) } else { q.append(URLQueryItem(name: "fresh", value: "1")) }
+    if let mac { q.append(URLQueryItem(name: "mac", value: mac)) }
+    if let open, !open.isEmpty { q.append(URLQueryItem(name: "open", value: open)) } else if mac == nil { q.append(URLQueryItem(name: "fresh", value: "1")) }
     comps.queryItems = q
-    let c = WebController(url: comps.url ?? Config.startURL, winId: id)
+    let c = WebController(url: comps.url ?? Config.startURL, winId: id, remoteMac: mac)
     extra.append(c)
     c.load()
     if let topLeft { c.window.setFrameTopLeftPoint(topLeft) }
@@ -180,6 +182,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     return id
   }
   func closed(_ c: WebController) { extra.removeAll { $0 === c } }
+  // 用另一台 Mac：它已经开着窗口就叫到前面（一台 Mac 一个窗口，同 VS Code 的远程窗口）；没有就开一个
+  func openRemote(mac: String, name: String) -> Int {
+    if let c = extra.first(where: { $0.remoteMac == mac }) {
+      if c.window.isMiniaturized { c.window.deminiaturize(nil) }
+      c.window.makeKeyAndOrderFront(nil)
+      NSApp.activate()
+      return c.winId
+    }
+    if !name.isEmpty { UserDefaults.standard.set(name, forKey: "remote.name." + mac) }
+    return newWindow(open: nil, topLeft: nil, mac: mac)
+  }
 
   // ---- 菜单栏图标（同 Claude 的 App）：默认显示；点按（左右键都行）出菜单：显示窗口、在后台的窗口、新建窗口、设置、退出 ----
   //   关掉窗口不退出：主窗口一直是收起来（页面不关）；别的窗口里有程序在跑也只收起来——从这里或程序坞叫回来；退出只在这里和 ⌘Q
@@ -228,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     show.target = self
     menu.addItem(show)
     for (i, c) in extra.enumerated() where !c.window.isVisible { // 收起来的别的窗口（里面有程序在跑）
-      let w = NSMenuItem(title: "窗口 \(i + 2)（在后台运行）", action: #selector(statusShowWindow(_:)), keyEquivalent: "")
+      let w = NSMenuItem(title: c.remoteMac != nil ? c.window.title : "窗口 \(i + 2)（在后台运行）", action: #selector(statusShowWindow(_:)), keyEquivalent: "")
       w.target = self; w.tag = i
       menu.addItem(w)
     }

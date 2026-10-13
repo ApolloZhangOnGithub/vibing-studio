@@ -16,7 +16,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
   static let protocolVersion = 1
   static let commands = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "screenshot", "badge", "attention", "window.dragRegions", "window.fullscreen",
                          "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "ui.source", "open.pending",
-                         "window.tabDrop", "app.activate", "app.quit", "statusItem.set"]
+                         "window.tabDrop", "app.activate", "app.quit", "statusItem.set", "remote.open", "window.close"]
   weak var controller: WebController? { didSet { local?.controller = controller; web?.controller = controller } }
   let local: Local? = Config.terminal ? Local() : nil // Paimon Terminal：这台 Mac 本身（真终端、命令、文件）
   let web: WebPanes? = Config.terminal ? WebPanes() : nil // Vibing Studio：内嵌的浏览器（页面给位置，这边叠一个真的 WKWebView）
@@ -119,6 +119,15 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       var tl: NSPoint?
       if let x = (a["x"] as? NSNumber)?.doubleValue, let y = (a["y"] as? NSNumber)?.doubleValue, let scr = NSScreen.screens.first { tl = NSPoint(x: x - 40, y: scr.frame.maxY - y + 14) }
       return ["id": app.newWindow(open: a["open"] as? String, topLeft: tl)]
+    case "remote.open":
+      // 用另一台 Mac：开一个新窗口连它（终端、文件、会话都在那台 Mac 上；窗口、菜单、剪贴板是这台的）。那台已经开着窗口就把它叫到前面
+      guard Config.terminal, let app = NSApp.delegate as? AppDelegate, let mac = a["mac"] as? String, mac.range(of: "^[\\w-]{4,64}$", options: .regularExpression) != nil else { throw BridgeError.args("remote.open { mac, name? }") }
+      return ["id": app.openRemote(mac: mac, name: a["name"] as? String ?? "")]
+    case "window.close":
+      // 关掉这个窗口（连着另一台 Mac 的窗口里「断开连接」）；主窗口只是收起来
+      guard let c = controller else { return nil }
+      if c.winId > 1 { c.window.close() } else { c.window.orderOut(nil) }
+      return nil
     case "window.appearance":
       // 窗口跟着页面的深浅色（不是系统的）：标题栏、红黄绿、原生右键菜单、对话框都一起变；auto = 跟系统
       let mode = a["mode"] as? String ?? "auto"

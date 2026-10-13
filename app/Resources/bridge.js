@@ -27,5 +27,8 @@
       window.dispatchEvent(new CustomEvent("nados-native", { detail: { type: type, detail: detail } }));
     },
   };
-  Object.defineProperty(window, "nadosNative", { value: Object.freeze(api), enumerable: false, configurable: false, writable: false });
+  // 连着另一台 Mac 的窗口（?mac=<那台的设备号>，见 AppDelegate.newWindow）：这台的桥换个名字交给 remote.js——它搭一个 nadosNative，
+  //   终端、文件、会话转到那台 Mac，窗口、菜单、剪贴板、通知、内置浏览器还用这里的。原生这边的事件照旧发给 window.nadosNative._emit（就是它搭的那个）
+  var mac = new URLSearchParams(location.search).get("mac");
+  Object.defineProperty(window, mac && mac !== "off" ? "__nadosLocal" : "nadosNative", { value: Object.freeze(api), enumerable: false, configurable: false, writable: false });
 })();
