@@ -114,9 +114,10 @@
     var detail = function (s) { return s ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(s) + "</pre></details>" : ""; };
     if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在连接…", "Connecting…")) + "</div>";
     if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' +
-      esc(V.notFound === "offline" ? t("它现在不在线", "It’s offline") : V.notFound === "nordp" ? t("它的远程桌面没有打开", "Its remote desktop is off") : t("连不上它的远程桌面", "Can’t reach its remote desktop")) + "</div>" +
+      esc({ offline: t("它现在不在线", "It’s offline"), nordp: t("它的远程桌面没有打开", "Its remote desktop is off"), denied: t("它没有允许这台设备", "It hasn’t allowed this device"),
+        noreply: t("它没有回应", "It isn’t responding"), update: t("要先更新这台的 Vibing Studio", "Update Vibing Studio on this Mac first") }[V.notFound] || t("连不上它的远程桌面", "Can’t reach its remote desktop")) + "</div>" +
       (V.tunErr ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(V.tunErr) + "</pre></details>" : "") +
-      '<div class="rd-cbtns"><button type="button" data-act="refind" class="rd-primary">' + esc(t("重试", "Try Again")) + "</button></div>";
+      '<div class="rd-cbtns">' + (V.notFound === "update" ? '<button type="button" data-act="app-update" class="rd-primary">' + esc(t("更新", "Update")) + "</button>" : '<button type="button" data-act="refind" class="rd-primary">' + esc(t("重试", "Try Again")) + "</button>") + "</div>";
     if (st.popped) return head + '<div class="rd-msg">' + esc(t("在单独的窗口中", "In a separate window")) + '</div><div class="rd-cbtns">' + btn("front", t("显示窗口", "Show Window")) + btn("dock", t("放回这里", "Move Back Here"), true) + "</div>";
     switch (st.state) {
       case "needpass":
@@ -296,11 +297,12 @@
         if (sib && differs(hostOf(V.hostId), sib)) return adopt(V, sib).then(function () { V.finding = false; open(V, { again: true }); });
         return saveDevHost(V, { host: m.host + ":" + m.port, via: "", user: (hostOf(V.hostId) || {}).user || m.user || "" }).then(function () { V.finding = false; go(V); });
       }
-      if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "nordp" : V.dev.relay ? "offline" : true; paint(V); return; }
+      if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "update" : V.dev.relay ? "offline" : true; paint(V); return; } // 这台的 App 太旧：没有中转通道
+
       // 这台 Mac 通不到它：经 Vibing Studio 自己的连接
       return creds(V).then(function (c) {
         V.finding = false;
-        if (!c) { V.notFound = L.state === "offline" ? "offline" : "nordp"; paint(V); return; }
+        if (!c) { V.credP = null; V.notFound = L.state === "offline" ? "offline" : V.credWhy || "nordp"; paint(V); return; } // 下次「重试」重新问
         V.route = { tunnel: true }; V.routeFp = "";
         return saveDevHost(V, { rport: c.port || 3389 }).then(function () { go(V); });
       });
@@ -335,12 +337,13 @@
     if (V.credP) return V.credP;
     var L = linkFor(V);
     if (!L) return Promise.resolve(null);
+    V.credWhy = "";
     V.credP = TSU_RLINK.exec(L, "LC_ALL=C grdctl status --show-credentials 2>&1", 15000).then(function (r) {
       var g = parseGrd(r && r.out);
-      if (!g || !g.enabled) return null;
+      if (!g || !g.enabled) { V.credWhy = "nordp"; return null; }
       V.cred = g;
       return g;
-    }, function () { return null; });
+    }, function (e) { V.credWhy = e && e.code === "E_DENIED" ? "denied" : e && e.code === "E_TIMEOUT" ? "noreply" : "nordp"; return null; });
     return V.credP;
   }
   // grdctl status 的样子：「RDP:」下面一行一项（Status: enabled、Port: 3389、TLS fingerprint: …、Username: …、Password: …）
@@ -628,6 +631,7 @@
         if (a === "front") return popOut(V, "window");
         if (a === "dock") return popOut(V, "tab");
         if (a === "refind" && V.dev) return findDevice(V);
+        if (a === "app-update" && window.STUDIO && STUDIO.act) return STUDIO.act(P.win, "app-update");
         if (a === "pass") { V.st = { state: "pass" }; paint(V); return; }
         if (a === "edit") { V.editing = true; paint(V); return; }
         if (a === "trust") return N.call("rdp.trust", { id: V.id }).then(function (d) { if (d) { V.st = d; paint(V); } }).catch(function () {});

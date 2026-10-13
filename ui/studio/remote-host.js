@@ -1,7 +1,7 @@
 // remote-host.js —— 让 iPad 借这台 Mac 用（Vibing Studio 的 iPad 端；另一头是 remote.js，中间是服务端的 src/relay.js）。
 //   设置 › 通用 › 「其他设备使用这台 Mac」（这个页面当主机时默认开）：开着时这个页面连一条 WebSocket 到 /api/relay/host。iPad 发来的调用在这台 Mac 上照原样执行
 //   （nadosNative.call），回复、终端和命令的输出（事件）再送回那台 iPad。
-//   安全：只有你自己的账号能连上中转；每台新设备第一次来，这边问一次「允许」（记住；设置里能撤销）；只放行下面 ALLOW 这些命令——
+//   安全：只有你自己的账号能连上中转；新设备默认直接允许（设置里能改成第一次来问一次「允许」、能撤销）；只放行下面 ALLOW 这些命令——
 //   终端、命令、文件、Claude Code 的会话。窗口、菜单、通知、剪贴板、截屏、内嵌浏览器这些是这台 Mac 自己的界面，不给。
 (function () {
   "use strict";
@@ -9,8 +9,11 @@
   if (!N || !N.local || N.remote || window.TSU_REMOTE_HOST) return;
   var KEY_ON = "vs-remote-on", KEY_DEV = "vs-remote-device", KEY_OK = "vs-remote-ok";
   // 这个页面当主机时（Linux 版、老版本的 Mac App）默认开着（用户 2026-10-14：登录同一个账号的电脑都要能用——Linux 上也要「在新窗口中打开」「打开终端」）：
-  //   没选过的当开着，自己关了的照旧关着。新设备第一次来照旧问一次「允许」
+  //   没选过的当开着，自己关了的照旧关着
   var onNow = function () { var v = localStorage.getItem(KEY_ON); return v === null || v === "1"; };
+  // 连入时怎么确认（这个页面当主机时）：auto 同一账号的设备直接允许（默认，同 TeamViewer 用账号连自己的电脑——那台前面没人点「允许」也能用）；first 每台新设备问一次
+  var KEY_POL = "vs-remote-policy";
+  var pagePolicy = function () { return localStorage.getItem(KEY_POL) === "first" ? "first" : "auto"; };
   var ALLOW = ["local.info", "pty.open", "pty.attach", "pty.list", "pty.write", "pty.resize", "pty.pause", "pty.resume", "pty.close", "pty.cwd",
     "exec.start", "exec.kill", "proc.start", "proc.write", "proc.close", "proc.kill", "fs.read", "fs.write", "fs.stat", "fs.glob", "fs.list", "fs.trash", "fs.tags",
     "cc.sessions", "cc.find", "cc.search"];
@@ -79,7 +82,7 @@
     if (m.cmd === "info") return info().then(function (v) { reply(from, m.id, true, v); }, function (e) { reply(from, m.id, false, { code: "E_FAILED", message: String(e && e.message || e) }); });
     // 这台 Mac 上对话的翻译设置：iPad 连上时照着用（不然 iPad 那边默认关着，Mac 上早翻好的那边一直是原文）
     if (m.cmd === "agents.cfg") { var c0 = (window.TSU_AGENTS && TSU_AGENTS.cfg) || {}, o0 = { _full: 1 }; Object.keys(c0).forEach(function (k) { if (c0[k] !== undefined && typeof c0[k] !== "function") o0[k] = c0[k]; }); return reply(from, m.id, true, o0); }
-    if (ALLOW.indexOf(m.cmd) < 0) return reply(from, m.id, false, { code: "E_DENIED", message: "这台 Mac 不让 iPad 用「" + m.cmd + "」" });
+    if (ALLOW.indexOf(m.cmd) < 0) return reply(from, m.id, false, { code: "E_DENIED", message: "这台电脑不给其他设备用「" + m.cmd + "」" });
     if (OWNS[m.cmd] && m.args && m.args.id) owner[m.args.id] = from;
     N.call(m.cmd, m.args || {}).then(function (v) { reply(from, m.id, true, v); }, function (e) { reply(from, m.id, false, { code: (e && e.code) || "E_FAILED", message: String(e && e.message || e) }); });
   }
@@ -88,6 +91,7 @@
     var cid = m.from, ok = okMap();
     if (ok[cid]) { if (ok[cid].name !== m.cname && m.cname) { ok[cid].name = m.cname; setOk(ok); } return run(m); }
     if (denied[cid]) return reply(cid, m.id, false, { code: "E_DENIED", message: "这台电脑没有允许这台设备" });
+    if (pagePolicy() === "auto") { var o1 = okMap(); o1[cid] = { name: m.cname || "iPad", at: Date.now(), auto: true }; setOk(o1); return run(m); } // 同一账号：直接允许（记下来，设置里看得到、能移除）
     (waiting[cid] = waiting[cid] || []).push(m);
     if (asking[cid]) return;
     asking[cid] = true;
@@ -154,13 +158,26 @@
     approved: function () { if (native) return nst.approved || []; var o = okMap(); return Object.keys(o).map(function (k) { return { id: k, name: o[k].name, at: o[k].at }; }); },
     revoke: function (id) { if (native) return N.call("remote.revoke", { id: id }).then(apply, function () {}); var o = okMap(); delete o[id]; setOk(o); denied[id] = true; },
     // 其他设备连进来时怎么确认（新版的原生那边才有）：first 首次确认 · every 每次确认 · code 首次确认并输入验证码 · auto 直接允许
-    policy: function () { return native ? nst.policy || "" : ""; },
-    setPolicy: function (p) { if (native) return N.call("remote.policy", { policy: p }).then(apply, function () {}); },
+    policy: function () { return native ? nst.policy || "" : pagePolicy(); },
+    setPolicy: function (p) { if (native) return N.call("remote.policy", { policy: p }).then(apply, function () {}); localStorage.setItem(KEY_POL, p === "auto" ? "auto" : "first"); fire(); },
     watch: function (f) { listeners.push(f); },
   };
+  // 当主机的页面（Linux 版、老版本的 Mac App）：网站上有新版本、这台 10 分钟没人碰、也没有会话在工作时，自己重新载入——
+  //   这种电脑常常没人在前面（别的设备在用它），修好的东西不用等谁去刷新；终端、会话重新载入后接回去
+  var lastInput = Date.now();
+  ["keydown", "mousedown", "pointerdown", "wheel"].forEach(function (t) { document.addEventListener(t, function () { lastInput = Date.now(); }, true); });
+  function maybeReload() {
+    if (native !== false || !onNow() || !window.STUDIO || !STUDIO.updateReady || !STUDIO.updateReady()) return;
+    if (Date.now() - lastInput < 10 * 60000) return;
+    var busy = false;
+    try { (window.TSU_AGENTS && TSU_AGENTS.liveRuntimes ? TSU_AGENTS.liveRuntimes() : []).forEach(function (rt) { if (rt && rt.stream) busy = true; }); } catch (e) { /* 没有就算了 */ }
+    if (busy) return;
+    try { if (window.TSU_FLUSH) TSU_FLUSH(); } catch (e) { /* 记不了就算了 */ }
+    location.reload();
+  }
   N.call("info").then(function (i) {
     native = !!(i && Array.isArray(i.commands) && i.commands.indexOf("remote.state") >= 0);
-    if (!native) return connect();
+    if (!native) { ticker(60000, maybeReload); return connect(); }
     if (N.on) N.on("remote.changed", apply);
     // 第一次：这个页面当主机时用过的设备号、允许过的设备、开没开，交给原生那边（iPad 记着的是这个设备号；允许过的不用再问）
     N.call("remote.import", { on: localStorage.getItem(KEY_ON) === "1", device: dev, ok: okMap() }).then(apply, function () {});
