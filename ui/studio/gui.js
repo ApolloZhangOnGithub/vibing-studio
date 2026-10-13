@@ -485,9 +485,11 @@
     function add(t, before) {
       var el = document.createElement("div");
       el.className = "gv-turn";
+      el._t = t;
       blocks.set(t, el);
       listEl.insertBefore(el, before || null);
       paintTurn(t, el);
+      flagMark(el, t);
       if (farIO) farIO.observe(el);
     }
     function redraw(t) { var el = blocks.get(t); if (el) paintTurn(t, el); else add(t); }
@@ -940,7 +942,23 @@
     V.detach = function () { if (host.classList.contains("gv-docked")) V.dock(null); off1(); off2(); closePop(); sugClose(); host.remove(); shown = false; }; // 输入框那一列在面板里：先搬回来，一起收走
     V.focus = function () { ta.focus({ preventScroll: true }); };
     V.exportText = function () { return rt.session().turns.map(function (t) { return (t.ask ? "> " + t.ask + "\n\n" : "") + (t.parts || []).filter(function (p) { return p.kind === "text"; }).map(function (p) { return p.text; }).join("\n\n"); }).join("\n\n"); };
-    // 搜索结果：滚到那一问，闪一下
+    // 摘录本（clips.js）：这一处是哪一问——出处同终端界面（live.js 的 clipSrc）；标记了的那一问左边一道橙线
+    V.clipSrc = function (node) {
+      var el0 = node && node.nodeType === 3 ? node.parentElement : node, b = el0 && el0.closest ? el0.closest(".gv-turn") : null, t = b && b._t;
+      if (!t) return null;
+      var sid = (rt.session && rt.session().id) || String(agentId).replace(/^[a-z]{2}:/, ""), cwd = "";
+      try { cwd = rt.home ? String(rt.home() || "") : ""; } catch (e) { cwd = ""; }
+      var kind = /^cc:/.test(agentId) ? "cc" : /^cx:/.test(agentId) ? "cx" : /^pi:/.test(agentId) ? "pi" : /^ty:/.test(agentId) ? "ty" : "pm";
+      return { kind: kind, agent: agentId, session: sid, title: String(agent.name || ""), cwd: cwd, uuid: t.uuid || "", turn: rt.session().turns.indexOf(t), at: t.at || 0, role: el0.closest(".gv-user, .gv-ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
+    };
+    V.flagOf = function (src) { if (!src || !window.TSU_CLIPS) return null; return TSU_CLIPS.flagsFor(agentId).filter(function (f) { var s0 = f.src || {}; return src.uuid ? s0.uuid === src.uuid : s0.at === src.at; })[0] || null; };
+    function flagMark(el, t) {
+      if (!window.TSU_CLIPS || !el) return;
+      var on = TSU_CLIPS.flagsFor(agentId).some(function (f) { var s0 = f.src || {}; return t.uuid ? s0.uuid === t.uuid : !!t.at && s0.at === t.at; });
+      el.classList.toggle("vs-flag", on);
+    }
+    document.addEventListener("vs-clips", function () { if (host.isConnected) blocks.forEach(function (el, t) { flagMark(el, t); }); });
+    // 搜索结果、摘录本跳过来：滚到那一问，闪一下
     V.reveal = function (t) {
       var el = blocks.get(t);
       if (!el) return false;

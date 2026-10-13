@@ -38,3 +38,5 @@
 .cl-acts button.done { border-color: #30d158; }
 /* 对话里被标记的那一问：左边一道橙线（指着出现那条标记的备注） */
 .tpane .term .out > .blk.vs-flag::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: #ff9f0a; pointer-events: none; }
+.gv-turn.vs-flag { position: relative; }
+.gv-turn.vs-flag::before { content: ""; position: absolute; left: -12px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: #ff9f0a; pointer-events: none; }

@@ -298,3 +298,6 @@ pre.gv-out.err { color: var(--st-red); }
 .gv-cmd.gv-clip.gv-clip3 { max-height: calc(3 * 1.5em + 12px); }
 .gv-cmd.gv-clip.gv-over { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 2.2em), transparent); }
 .gv-imgrefs { margin: 0 0 4px; color: var(--st-dim); font-size: .92em; } /* 悬停预览：[Image #N]（指着浮出小图、点了放大） */
+/* 对话里的字能选、能拷贝、能右键「收藏到摘录本」（整个界面默认不让选：desk.css 的 body）；按钮、行号这些照旧不选 */
+.gv-list :is(.gv-bubble, .gv-ai), .gv-list :is(.gv-bubble, .gv-ai) * { -webkit-user-select: text; user-select: text; }
+.gv-list :is(.gv-bubble, .gv-ai) :is(button, .gv-ps) { -webkit-user-select: none; user-select: none; }

@@ -82,6 +82,17 @@ async function site(req, env, url) {
     if (isPage || (req.headers.get("accept") || "").includes("text/html")) return loginPage(url.pathname + url.search);
     return new Response("Not signed in", { status: 401, headers: { "cache-control": "no-store" } });
   }
+  // Linux 版的 AppImage 一整个下载（/downloads/linux/latest/x64.AppImage、arm64）：网站上一个文件最多 25 MB，它切成了几段（tools/release-linux.sh）——
+  //   这里按 linux.json 一段段接着流出去，浏览器里点一下就是完整的一个文件（第一次装、deb 换成 AppImage 时用；装好以后 App 自己更新）
+  const la = /^\/downloads\/linux\/latest\/(x64|arm64)\.AppImage$/.exec(url.pathname);
+  if (la && env.ASSETS) {
+    const mr = await env.ASSETS.fetch(new Request(url.origin + "/downloads/linux.json"));
+    const m = mr.ok ? await mr.json().catch(() => null) : null, e = m && m[la[1]];
+    if (!e || !Array.isArray(e.parts)) return new Response("No Linux build yet", { status: 404 });
+    const { readable, writable } = new TransformStream();
+    (async () => { try { for (const p of e.parts) { const r0 = await env.ASSETS.fetch(new Request(url.origin + "/" + p)); if (!r0.ok || !r0.body) throw new Error("part " + p); await r0.body.pipeTo(writable, { preventClose: true }); } await writable.close(); } catch (err) { await writable.abort(err); } })();
+    return new Response(readable, { headers: { "content-type": "application/octet-stream", "content-length": String(e.size || ""), "content-disposition": 'attachment; filename="Vibing-Studio-' + m.version + "-" + (la[1] === "x64" ? "x86_64" : "arm64") + '.AppImage"', "cache-control": "private, no-store" } });
+  }
   // 线上：页面里引用的脚本、样式地址带上这次部署的版本号（?v=，见下面改页面那里），这样的请求让浏览器（App 里的 WKWebView）存一年、不再问——
   // 以前 60 来个文件每次启动都要各问一遍「改了没有」（线上每个一个来回），第一帧要等它们。部署了新版本，页面里的地址跟着变，旧的自然不再用。
   // 本地开发（DEV_STATIC）不带：文件随时在改

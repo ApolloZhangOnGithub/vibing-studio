@@ -1788,7 +1788,7 @@
     var pr = P && P.program, aid = pr && pr.agentId;
     if (!aid || P.side || !window.STUDIO || !STUDIO.menu) return;
     var sel = window.getSelection(), selText = String(sel || "").trim(), C = window.TSU_CLIPS;
-    var inHere = !!(selText && sel.rangeCount && P.screen.contains(sel.getRangeAt(0).commonAncestorContainer));
+    var inHere = !!(selText && sel.rangeCount && (P.screen.contains(sel.getRangeAt(0).commonAncestorContainer) || (pr.gui && P.el.contains(sel.getRangeAt(0).commonAncestorContainer)))); // 图形界面（gui.js）的对话不在 P.screen 里
     if (selText && (!inHere || !C)) return; // 选着别处的字：系统自己的菜单
     e.preventDefault();
     var MI = STUDIO.menuIcons ? STUDIO.menuIcons() : {};
