@@ -374,8 +374,11 @@ final class RemoteHost: NSObject {
     let then = pol == "code" && !known ? L("允许后，这台 Mac 上会显示一个 6 位验证码，在「\(nm)」上输入它。", "After you allow it, this Mac shows a 6-digit code to enter on “\(nm)”.")
       : pol == "every" ? (known ? L("这台设备以前允许过；按这台 Mac 的设置，每次连接都要确认。", "This device was allowed before; this Mac asks every time a device connects.") : L("只允许这一次连接，下次连接时会再问。", "Allows this connection only; you’ll be asked again next time."))
       : L("这台设备以后再连接时不再询问。可随时在「设置 › 通用」中移除。", "This device won’t be asked again. You can remove it anytime in Settings › General.")
-    panel(key: "ask:" + k, title: L("「\(nm)」请求使用这台 Mac", "“\(nm)” wants to use this Mac"), lines: [loc, what, then].filter { !$0.isEmpty },
-          symbol: "lock.shield", ok: L("允许", "Allow"), cancel: L("不允许", "Don’t Allow")) { [weak self] yes in
+    // 用着一台允许过的设备的编号、密钥却不一样：可能是那台设备清过网站数据 / 重装了 App，也可能是有人在冒用它——写清楚
+    let rekey = !known && (approved[cid]?["key"] as? String).map { $0 != key } == true
+    let warn = rekey ? L("这台设备的密钥和以前允许时不一样。如果你没有在「\(nm)」上清除过网站数据或重新安装 App，不要允许。", "This device’s key is different from the one you allowed before. Unless you cleared website data or reinstalled the app on “\(nm)”, don’t allow it.") : ""
+    panel(key: "ask:" + k, title: L("「\(nm)」请求使用这台 Mac", "“\(nm)” wants to use this Mac"), lines: [warn, loc, what, then].filter { !$0.isEmpty },
+          symbol: rekey ? "exclamationmark.shield" : "lock.shield", ok: L("允许", "Allow"), cancel: L("不允许", "Don’t Allow")) { [weak self] yes in
       guard let self else { return }
       self.asking.remove(k)
       guard self.clients[cid] != nil || self.waiting[cid] != nil else { return } // 那台设备已经走了
@@ -396,7 +399,7 @@ final class RemoteHost: NSObject {
     w.hidesOnDeactivate = false
     let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage())
     icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 30, weight: .regular)
-    icon.contentTintColor = .controlAccentColor
+    icon.contentTintColor = symbol.hasPrefix("exclamationmark") ? .systemOrange : .controlAccentColor
     let t = NSTextField(wrappingLabelWithString: title)
     t.font = .boldSystemFont(ofSize: 14)
     var views: [NSView] = [icon, t]
@@ -473,6 +476,8 @@ final class RemoteHost: NSObject {
     let note = NSTextField(wrappingLabelWithString: L("验证码 5 分钟内有效。输入后，「\(nm)」就能使用这台 Mac。", "The code is valid for 5 minutes. Once it’s entered, “\(nm)” can use this Mac."))
     note.font = .systemFont(ofSize: 12)
     note.textColor = .secondaryLabelColor
+    note.alignment = .center
+    note.preferredMaxLayoutWidth = 340
     let cancel = NSButton(title: L("取消", "Cancel"), target: self, action: #selector(cancelCode(_:)))
     cancel.identifier = NSUserInterfaceItemIdentifier(cid)
     let stack = NSStackView(views: [title, digits, note, cancel])
@@ -481,6 +486,7 @@ final class RemoteHost: NSObject {
     stack.spacing = 10
     stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20)
     w.contentView = stack
+    stack.widthAnchor.constraint(equalToConstant: 380).isActive = true
     codeWins[cid]?.close()
     codeWins[cid] = w
     if testEnv["NADOS_REMOTE_TEST_ANSWER"] != nil { testSnap(w, "code"); testLog(["ev": "code", "cid": cid, "code": code]) } // 自动测试：不上屏幕

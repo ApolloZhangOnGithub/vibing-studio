@@ -177,7 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     extra.append(c)
     c.load()
     if let topLeft { c.window.setFrameTopLeftPoint(topLeft) }
-    else if let key = NSApp.keyWindow { c.window.setFrameTopLeftPoint(NSPoint(x: key.frame.minX + 30, y: key.frame.maxY - 30)) }
+    else if mac == nil || UserDefaults.standard.string(forKey: "NSWindow Frame PaimonRemote-" + (mac ?? "")) == nil, let key = NSApp.keyWindow { c.window.setFrameTopLeftPoint(NSPoint(x: key.frame.minX + 30, y: key.frame.maxY - 30)) } // 连另一台 Mac 的窗口：开过的回到上次的位置
+    if testJS { c.window.orderFront(nil); return id } // 自动测试：不抢前台
     c.window.makeKeyAndOrderFront(nil)
     NSApp.activate()
     return id
