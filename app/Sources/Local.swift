@@ -358,7 +358,7 @@ final class Local {
     return env
   }
   // 常装在登录 shell 的 PATH 之外的几个位置（Claude Code 的原生版在 ~/.local/bin，写在 ~/.zshrc 里——这里读 PATH 用的非交互登录 shell 读不到它）：有就补在后面
-  static func withCommonDirs(_ path: String) -> String {
+  nonisolated static func withCommonDirs(_ path: String) -> String { // 只看文件在不在：哪个线程都能叫
     let home = ProcessInfo.processInfo.environment["NADOS_HOME"] ?? NSHomeDirectory(), have = Set(path.split(separator: ":").map(String.init))
     let extra = [home + "/.local/bin", home + "/.claude/local", home + "/.npm-global/bin", home + "/.bun/bin", home + "/.cargo/bin", home + "/.volta/bin", "/opt/homebrew/bin", "/usr/local/bin"]
       .filter { !have.contains($0) && FileManager.default.fileExists(atPath: $0) }

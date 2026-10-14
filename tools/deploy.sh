@@ -6,6 +6,9 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"; WEB="$HERE/web"
 cd "$HERE"
 SITE_ONLY=0; [ "${1:-}" = "--site-only" ] && SITE_ONLY=1 # 只把已经装好的这一版传到网站（上一次传失败了的时候），版本号不再 +1
 setopt null_glob
+# iCloud 同步冲突留下的副本（「live 2.js」「Info 2.plist」这种）：不发出去，先挪开（2026-10-15 查出一个 600 KB 的旧 live.js 跟着部署了十天）
+DUP=$(find ui app/Sources linux -path '*/node_modules' -prune -o -path ui/downloads -prune -o -name '* [2-9].*' -print 2>/dev/null)
+if [ -n "$DUP" ]; then echo "iCloud duplicates (move them to the Trash first):"; print -r -- "$DUP"; exit 1; fi
 for f in ui/*.js ui/studio/*.js ui/sim/*.js ui/sim/ios/*.js ui/sim/office/*.js; do case $f in ui/ttu-core.js|ui/sandbox*.js) continue;; esac; node --check "$f" || { echo "SYNTAX $f"; exit 1; }; done
 for f in "$WEB"/src/*.js; do node --check "$f" || { echo "SYNTAX $f"; exit 1; }; done
 # 冒烟测试：无界面的浏览器打开刚同步的界面（不开任何窗口、不连本地开发服务器），工作台起不来或页面报错就不部署；输出写在 ~/Library/Caches（不进 iCloud）

@@ -44,7 +44,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     cfg.setURLSchemeHandler(LocalUISchemeHandler(), forURLScheme: LocalUI.scheme) // 本地界面文件（LocalUI.swift）
     // https 的页面里引用 vibing-ui:// 的脚本：WebKit 默认当它是「不安全的」混合内容、不给跑——这里把它登记成安全的协议（WebKit 的 SPI，找不到就算了，退回内联）
     let secSel = NSSelectorFromString("_registerURLSchemeAsSecure:")
-    if cfg.processPool.responds(to: secSel) { cfg.processPool.perform(secSel, with: LocalUI.scheme as NSString); LocalUI.secureScheme = true }
+    if let pool = cfg.value(forKey: "processPool") as? NSObject, pool.responds(to: secSel) { pool.perform(secSel, with: LocalUI.scheme as NSString); LocalUI.secureScheme = true } // processPool 已经不推荐用（这个 SPI 还得经它）
     localOn = LocalUI.enabled(for: url)
     webView = WebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), configuration: cfg)
     window = DesktopWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)

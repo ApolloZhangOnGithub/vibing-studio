@@ -126,7 +126,12 @@ def main():
     print("results:", work, flush=True)
     procs = []
     try:
-        procs.append(Proc(["npx", "wrangler", "dev", "--port", "8787", "--local", "--persist-to", os.path.join(work, "wr")], cwd=os.path.join(ROOT, "web"),
+        # 本机的网页服务（wrangler dev）：数据库（账号、开发用的登录）放在 e2e/wrangler-state，每次先把表建好（schema.sql 全是 IF NOT EXISTS）
+        state = os.path.join(CACHE, "e2e", "wrangler-state")
+        r = subprocess.run(["npx", "wrangler", "d1", "execute", "native-agent-desktop-os-web", "--local", "--persist-to", state, "--file", "schema.sql", "--yes"],
+                           cwd=os.path.join(ROOT, "web"), capture_output=True, text=True, timeout=180)
+        if r.returncode != 0: raise RuntimeError("schema: " + (r.stderr or r.stdout)[-500:])
+        procs.append(Proc(["npx", "wrangler", "dev", "--port", "8787", "--local", "--persist-to", state], cwd=os.path.join(ROOT, "web"),
                           log=os.path.join(work, "wrangler.log"), ready="Ready on"))
         needs = set(x for n in names for x in TESTS[n].get("needs", []))
         if "rdp_sample" in needs:  # FreeRDP 自带的示例服务器（只在 unix socket 上听）+ 转到 127.0.0.1:33899

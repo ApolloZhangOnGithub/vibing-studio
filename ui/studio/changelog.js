@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-15", ver: "0.2.1.466", items: {
+      new: [
+        ["Linux 版登录时自己打开（默认开，设置 › 通用 › 其他设备里能关）：那台常常是给别的设备用的，重启、注销后没人去点它，远程桌面、在新窗口中打开、打开终端就都连不上。需要 Linux 版 0.2.1.465（AppImage 装的会自己更新）。", "The Linux app now opens at login (on by default; turn it off in Settings › General › Other Devices): that computer is often used from other devices, and after a restart nobody is there to open it, so Remote Desktop, Open in New Window and Open Terminal couldn’t connect. Requires Linux app 0.2.1.465 (AppImage installs update themselves)."],
+      ],
+    } },
     { date: "2026-10-14", ver: "0.2.1.465", items: {
       new: [
         ["Mac 对 Mac 的远程桌面用 H.265（HEVC）：两台都能硬件编解码时自动用，同样清楚的画面码率少三成左右，编码一样快；状态栏写着 H.265。那台还是老版本的照旧 H.264。两台都要 App 307。", "Mac-to-Mac Remote Desktop now uses H.265 (HEVC) when both Macs can encode and decode it in hardware: about 30% less data for the same picture at the same speed; the status bar shows H.265. If the other Mac runs an older version it stays on H.264. Both Macs need App 307."],

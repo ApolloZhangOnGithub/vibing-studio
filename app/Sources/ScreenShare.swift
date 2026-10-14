@@ -239,7 +239,7 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     let msg: [String: Any] = ["ev": "screen.frame", "detail": d]
     nonisolated(unsafe) let m = msg
     let to = self.to, send = sender
-    DispatchQueue.main.async { send?(to, m) { [weak self] in self?.sent() } }
+    DispatchQueue.main.async { [weak self] in send?(to, m) { [weak self] in self?.sent() } }
   }
   private func sent() { lock.lock(); inflight = max(0, inflight - 1); lock.unlock() }
 
