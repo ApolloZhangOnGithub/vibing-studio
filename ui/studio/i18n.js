@@ -595,7 +595,7 @@
   words({ "没有打开的会话": "No open sessions", "这段时间里没有会话在工作": "No session worked during this period", "请按一下指纹…": "Touch the sensor…", "还没用过": "Never used", "显示简介": "Get Info" });
   PATTERNS.push([/^上次使用 (.+)$/, "Last used $1"]);
   words({ "允许它在这台电脑上开终端、读写文件、继续会话": "Allow it to open terminals, read and write files and continue sessions on this computer", "这台电脑没有允许这台设备": "This computer hasn’t allowed this device",
-    "其他设备使用这台电脑": "Let Other Devices Use This Computer" });
+    "其他设备使用这台电脑": "Let Other Devices Use This Computer", "登录时打开 Vibing Studio": "Open Vibing Studio at Login" });
   PATTERNS.push([/^这台电脑不给其他设备用「(.+)」$/, "This computer doesn’t let other devices use “$1”"]);
   PATTERNS.push([/^「(.+)」要使用这台电脑$/, "“$1” wants to use this computer"]);
   PATTERNS.push(

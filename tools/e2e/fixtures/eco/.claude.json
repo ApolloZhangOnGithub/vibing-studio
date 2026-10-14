@@ -1,0 +1,30 @@
+{
+  "numStartups": 3,
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
+      "env": {
+        "TOKEN": "not-shown"
+      }
+    }
+  },
+  "projects": {
+    "/Users/test/proj": {
+      "mcpServers": {
+        "proj-docs": {
+          "type": "http",
+          "url": "http://localhost:9999/mcp",
+          "headers": {
+            "Authorization": "Bearer x"
+          }
+        }
+      }
+    }
+  }
+}

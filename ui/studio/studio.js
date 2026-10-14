@@ -4033,6 +4033,7 @@
     },
     change: function (k, v, tw) {
       if (k === "remoteOn" && window.TSU_REMOTE_HOST) { TSU_REMOTE_HOST.set(!!v); return redrawSettings(); }
+      if (k === "loginOpen" && window.nadosNative) { nadosNative.call("app.autostart", { on: !!v }).then(function (r) { autostartSt = r; redrawSettings(); }, function () {}); return; }
       if (k === "remotePolicy" && window.TSU_REMOTE_HOST && TSU_REMOTE_HOST.setPolicy) { Promise.resolve(TSU_REMOTE_HOST.setPolicy(v)).then(redrawSettings); return; }
       return setChange(k, v, tw);
     },
@@ -4045,8 +4046,10 @@
   // 其他设备使用这台 Mac（remote-host.js / RemoteHost.swift）：App 里才有——开关、连入时怎么确认、现在谁连着；
   //   允许过哪些设备、它们和这台互相能不能用、上次连接，在「设备」里画成图看、在那里移除（用户 2026-10-13：列表看不出谁是谁、双方的权限）
   var REMOTE_POLICIES = [["first", "首次连接时确认"], ["every", "每次连接都确认"], ["code", "首次连接时确认并输入验证码"], ["auto", "直接允许"]];
+  var autostartSt = null; // Linux 版的「登录时打开」：{ on, supported }（app.autostart）
   function remoteFields() {
     var H = window.TSU_REMOTE_HOST;
+    if (autostartSt === null && window.nadosNative && appInfo && (appInfo.commands || []).indexOf("app.autostart") >= 0) { autostartSt = false; nadosNative.call("app.autostart", {}).then(function (r) { autostartSt = r || false; redrawSettings(); }, function () {}); }
     if (!H) return [];
     if (!H.watched) { H.watched = true; H.watch(function () { redrawSettings(); }); }
     var on = H.on(), now = H.clients(), ok = H.approved(), pol = H.policy ? H.policy() : "", pols = H.policies && H.policies();
@@ -4054,6 +4057,8 @@
     var when = function (ms) { var d = new Date(ms); return isNaN(d.getTime()) ? "" : d.toLocaleDateString(en ? "en-US" : "zh-CN", { year: "numeric", month: "short", day: "numeric" }); };
     return [{ head: "其他设备" },
       { key: "remoteOn", label: appInfo && appInfo.platform === "linux" ? "其他设备使用这台电脑" : "其他设备使用这台 Mac", must: true, kind: "toggle", value: on, def: false },
+      // Linux 版：登录时打开（默认开；这台常常是给别的设备用的，重启后没人去点它就连不上）
+      autostartSt && autostartSt.supported ? { key: "loginOpen", label: "登录时打开 Vibing Studio", must: true, kind: "toggle", value: !!autostartSt.on, def: true } : null,
       on && pol ? { key: "remotePolicy", label: "其他设备连接时", must: true, kind: "seg", options: pols ? REMOTE_POLICIES.filter(function (o) { return pols.indexOf(o[0]) >= 0; }) : REMOTE_POLICIES, value: pol, def: "auto" } : null,
       on ? { key: "remoteState", label: "状态", kind: "info", value: H.connected() ? (now.length ? tz("已连接 · ", "Connected · ") + now.map(function (c) { return c.name; }).join(tz("、", ", ")) : tz("已连接，等待其他设备", "Connected, waiting for other devices")) : tz("正在连接…", "Connecting…") } : null,
       { key: "remoteDevices", label: "设备与权限", desc: ok.length ? tz("允许过 " + ok.length + " 台设备", ok.length + (ok.length === 1 ? " device allowed" : " devices allowed")) : "", must: true, kind: "button", text: "打开「设备」", act: "openDevices" },

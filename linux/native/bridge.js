@@ -12,7 +12,7 @@ const { Local, BridgeError, COMMANDS: LOCAL_COMMANDS } = require("./local");
 const PROTOCOL = 1;
 const COMMANDS = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "badge", "attention", "window.fullscreen",
   "window.title", "window.new", "window.appearance", "window.titlebar", "menu.set", "page.snapshot", "pdf.render", "app.activate", "app.quit", "open.pending", "ui.stamp", "remote.open", "window.close",
-  "app.update", "app.restartToUpdate"]; // app.update：有没有新版本、下好了没有（main.js 的 updater）；app.restartToUpdate：换好的那一版马上重开
+  "app.update", "app.restartToUpdate", "app.autostart"]; // app.update：有没有新版本、下好了没有（main.js 的 updater）；app.restartToUpdate：换好的那一版马上重开
 
 // 菜单：页面给的 [{ title, place, items: [{ id, title, key?, mods?, enabled?, checked?, sep?, items? }] }] → Electron 的菜单栏；点了 → menu.action { id }
 //   mods 里的 cmd 在 Linux 上是 Ctrl（同 VS Code 的 Linux 版）
@@ -90,6 +90,7 @@ class Bridge {
       case "app.quit": setTimeout(() => app.quit(), 200); return { ok: true };
       case "app.update": return this.opts.update ? this.opts.update.state(a.check === true) : { state: "none" };
       case "app.restartToUpdate": if (!this.opts.update) throw BridgeError.failed("no updater"); this.opts.update.relaunch(); return { ok: true };
+      case "app.autostart": { const A = this.opts.autostart; if (!A) return { on: false, supported: false }; return { on: typeof a.on === "boolean" ? A.set(a.on) : A.on(), supported: true }; } // 登录时打开（main.js）
       case "window.fullscreen": { if (!w || w.isDestroyed()) throw BridgeError.failed("no window"); const on = w.isFullScreen(), want = typeof a.on === "boolean" ? a.on : !on; if (want !== on) w.setFullScreen(want); return { on: want }; }
       case "window.title": if (w && !w.isDestroyed()) w.setTitle(String(a.title || "Vibing Studio").slice(0, 200)); return null;
       case "window.new": return { id: this.opts.newWindow ? this.opts.newWindow(a.open) : null };

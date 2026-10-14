@@ -1,0 +1,10 @@
+#!/bin/bash
+SIL=0; ARGS=()
+for a in "$@"; do if [ "$a" = "--silent" ]; then SIL=1; else ARGS+=("$a"); fi; done
+set -- "${ARGS[@]}"
+if [ "$1" = bg ]; then
+  id=$(python3 -c "import json,sys; print([a['id'] for a in json.load(open(sys.argv[1])) if a['name']==sys.argv[2]][0])" "$HOME/.teyvat/MemoryData/plist.json" "$2")
+  M=no; [ -e "$HOME/.teyvat/RuntimeCache/$id/attached-back" ] && M=yes
+  echo "args=$* silent=$SIL marker_before_start=$M" >> "$HOME/genshin-calls.log"
+  mkdir -p "$HOME/.teyvat/RuntimeCache/$id"; echo "{}" > "$HOME/.teyvat/RuntimeCache/$id/detached"; echo " ok"
+fi

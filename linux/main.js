@@ -138,6 +138,38 @@ const updater = {
 };
 app.whenReady().then(() => { setTimeout(checkUpdate, 15000); setInterval(checkUpdate, 3600e3); });
 
+// ======== 登录时打开（默认开）：这台常常是给别的设备用的（远程桌面、在新窗口中打开、打开终端都要它开着）——
+//   重启、注销再登录后没人去点它，别的设备就连不上（用户 2026-10-14：Linux 那台没开着，什么都连不上）。
+//   ~/.config/autostart/vibing-studio.desktop（XDG 自动启动，GNOME、KDE 都认）；设置里关掉就挪开它、另记一个「关了」（不再自己加回来）
+const AUTOSTART = path.join(app.getPath("home"), ".config", "autostart", "vibing-studio.desktop");
+const AUTOSTART_OFF = path.join(app.getPath("userData"), "autostart-off");
+const autostartExec = () => process.env.APPIMAGE || process.execPath;
+function autostartOn() { return fs.existsSync(AUTOSTART); }
+function setAutostart(on) {
+  try {
+    if (on) {
+      fs.mkdirSync(path.dirname(AUTOSTART), { recursive: true });
+      const q = (x) => '"' + String(x).replace(/(["\\`$])/g, "\\$1") + '"';
+      fs.writeFileSync(AUTOSTART, ["[Desktop Entry]", "Type=Application", "Name=Vibing Studio", "Exec=" + q(autostartExec()), "Icon=vibing-studio",
+        "X-GNOME-Autostart-enabled=true", "X-GNOME-Autostart-Delay=5", "Terminal=false", ""].join("\n"));
+      if (fs.existsSync(AUTOSTART_OFF)) fs.renameSync(AUTOSTART_OFF, AUTOSTART_OFF + ".was");
+    } else {
+      if (fs.existsSync(AUTOSTART)) fs.renameSync(AUTOSTART, AUTOSTART + ".off"); // 不删：挪开（XDG 只认 .desktop）
+      fs.writeFileSync(AUTOSTART_OFF, "1");
+    }
+  } catch (e) { console.error("autostart:", e.message); }
+  return autostartOn();
+}
+const autostart = process.platform === "linux" ? { on: autostartOn, set: setAutostart } : null; // 只在 Linux 上（在 Mac 上开发、测试时不碰）
+app.whenReady().then(() => {
+  if (process.platform !== "linux" || process.env.VS_HEADLESS === "1" || process.env.VS_TESTJS) return; // 自动测试：不动这台的自动启动
+  // 第一次（没关过）：加上；AppImage 换了地方（更新、挪了文件夹）：写成现在这一份
+  if (!fs.existsSync(AUTOSTART_OFF)) {
+    let cur = ""; try { cur = fs.readFileSync(AUTOSTART, "utf8"); } catch (e) { cur = ""; }
+    if (!cur || cur.indexOf(autostartExec()) < 0) setAutostart(true);
+  }
+});
+
 // ======== 窗口 ========
 const wins = new Map(); // webContents.id → { win, bridge }
 const statePath = () => path.join(app.getPath("userData"), "window.json");
@@ -227,7 +259,7 @@ function attach(win) {
     openRemote: (mac, mname) => openRemote(mac, mname),
     saveBoot: (b0) => saveState({ boot: Object.assign({}, loadState().boot || {}, b0) }),
     uiStamp: () => ({ stamp: uiStamp(), dir: UI_DIR || "", local: LOCAL_UI }),
-    update: updater,
+    update: updater, autostart: autostart,
   });
   const id = win.webContents.id;
   wins.set(id, { win: win, bridge: bridge });

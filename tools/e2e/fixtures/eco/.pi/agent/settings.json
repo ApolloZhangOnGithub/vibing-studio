@@ -1,0 +1,7 @@
+{
+  "theme": "dark",
+  "packages": [
+    "npm:pi-subagents",
+    "git:github.com/foo/pi-tools"
+  ]
+}

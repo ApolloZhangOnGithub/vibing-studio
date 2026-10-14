@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "plugins": {
+    "demo@test-market": [
+      {
+        "scope": "user",
+        "installPath": "/Users/zhangkezhen/.claude/jobs/a189f857/tmp/rdp/homeEco/.claude/plugins/cache/demo",
+        "version": "1.2.0",
+        "installedAt": "2026-10-01T00:00:00Z"
+      }
+    ],
+    "off@test-market": [
+      {
+        "scope": "user",
+        "installPath": "",
+        "version": "0.3.1",
+        "installedAt": "2026-09-01T00:00:00Z"
+      }
+    ]
+  }
+}
