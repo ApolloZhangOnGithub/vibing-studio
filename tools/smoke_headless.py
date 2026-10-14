@@ -36,6 +36,19 @@ try:
             except Exception as e:
                 last = str(e)[:300]
         pg.wait_for_timeout(1500)
+        if ok:
+            # 再把常用的几页一一打开（活动监视器、收藏、设备、更新内容、设置里连接器那一页……）：哪一页一打开就报错，不部署
+            pg.evaluate("""() => {
+              var tw = TSU_TERM.front(), S = window.STUDIO, bad = window.__smokeErr = [];
+              ["activity", "clips", "devices", "changelog", "dash", "keys", "welcome", "status"].forEach(function (p) {
+                try { if (S.pages[p]) S.openPage(tw, p, ""); } catch (e) { bad.push(p + ": " + e); }
+              });
+              ["general", "connectors/claude-code", "connectors/codex", "connectors/pi", "appearance"].forEach(function (s) {
+                try { if (S.settings) S.settings(tw, s); } catch (e) { bad.push("settings " + s + ": " + e); }
+              });
+            }""")
+            pg.wait_for_timeout(3000)
+            errs.extend(pg.evaluate("() => window.__smokeErr || []"))
         b.close()
     errs = [e for e in errs if "stat is not a function" not in e]  # 没有原生的桥（浏览器里）时预期会有的
     if not ok: errs.append("workbench did not start: " + last)
