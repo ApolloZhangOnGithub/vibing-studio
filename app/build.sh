@@ -56,8 +56,15 @@ if [ "$MODE" = terminal ]; then
   # 远程桌面的助手（Helpers/vs-rdp.c，FreeRDP 3）：这台 Mac 上有 Homebrew 的 FreeRDP、芯片对得上就编一个带上；源码也带上——
   #   别的 Mac 上带的这个跑不起来（没装 FreeRDP、版本不同、Intel）时，App 用那台 Mac 上的 FreeRDP 现编（RdpPanes.swift 的 RdpHelper）
   cp Helpers/vs-rdp.c "$APP/Contents/Resources/vs-rdp.c"
+  #   先用 tools/build-freerdp.sh 编的静态 FreeRDP（OpenSSL、H.264 解码都链进去）：这个助手只靠系统自带的东西，哪台 Mac 都直接能用，不用装 Homebrew、FreeRDP
   FRDP=""; for p in /opt/homebrew/opt/freerdp /usr/local/opt/freerdp; do [ -f "$p/lib/libfreerdp3.dylib" ] && { FRDP="$p"; break; }; done
-  if [ -n "$FRDP" ] && lipo -archs "$FRDP/lib/libfreerdp3.dylib" 2>/dev/null | grep -qw "$ARCH"; then
+  FS="$HOME/Library/Caches/VibingStudio/frdp/$ARCH"
+  if [ -f "$FS/lib/libfreerdp3.a" ] && [ -f "$FS/lib/libavcodec.a" ]; then
+    xcrun clang -O2 -w -target "$ARCH-apple-macos14.0" Helpers/vs-rdp.c -I"$FS/include/freerdp3" -I"$FS/include/winpr3" -L"$FS/lib" -L"$FS/lib/freerdp3" \
+      -lfreerdp-client3 -lremdesk-common -lrdpsnd-common -lfreerdp3 -lwinpr3 -lavcodec -lswscale -lavutil -lssl -lcrypto -lz \
+      -framework CoreFoundation -framework Foundation -framework IOKit -framework Security -framework AudioToolbox -framework CoreAudio -framework AVFoundation \
+      -framework CoreServices -framework Carbon -framework Cocoa -framework CoreVideo -framework CoreMedia -framework VideoToolbox -o "$APP/Contents/Resources/bin/vs-rdp" 2>&1 | grep -v '^ld: warning' || true
+  elif [ -n "$FRDP" ] && lipo -archs "$FRDP/lib/libfreerdp3.dylib" 2>/dev/null | grep -qw "$ARCH"; then
     xcrun clang -O2 -w -target "$ARCH-apple-macos14.0" Helpers/vs-rdp.c -I"$FRDP/include/freerdp3" -I"$FRDP/include/winpr3" -L"$FRDP/lib" -lfreerdp3 -lfreerdp-client3 -lwinpr3 -o "$APP/Contents/Resources/bin/vs-rdp"
   fi # 编不了（没有 FreeRDP、芯片不对）：不带；App 先试着跑，跑不起来就现编
 fi

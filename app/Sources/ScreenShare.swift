@@ -73,6 +73,10 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
   // 下面这些改的时候都拿着 lock
   private var inflight = 0, needKey = true, paused = false, stopped = false
   private(set) var fps = 30, bitrate = 8_000_000, maxW = 2560
+  // 编码：看的那台说它能硬件解 HEVC（screen.start 的 codecs 里有 hevc）、这台建得起 HEVC 的低延迟硬件编码器就用 H.265
+  //   （同样清楚的画面码率少三成左右：2026-10-14 在这台 Mac 上 2560×1440 量的，编码一帧都是 11 ms 左右）；不然 H.264。老版本的那台不写 codecs：照旧 H.264
+  private var wantHEVC = false
+  private(set) var codec = "h264"
   private(set) var w = 0, h = 0
   private var disp = CGRect(x: 0, y: 0, width: 1440, height: 900) // 截的那块屏幕在全局坐标里（点）：键盘鼠标按它换算
   private var dispID: CGDirectDisplayID = CGMainDisplayID()
@@ -84,13 +88,14 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 
   init(id: String, to: String, fake: Bool, inputLog: String?) { self.id = id; self.to = to; self.fake = fake; self.inputLog = inputLog }
 
-  var info: [String: Any] { ["w": w, "h": h, "dw": disp.width, "dh": disp.height, "fps": fps, "bitrate": bitrate, "ax": inputLog != nil || AXIsProcessTrusted(), "fake": fake] }
+  var info: [String: Any] { ["w": w, "h": h, "dw": disp.width, "dh": disp.height, "fps": fps, "bitrate": bitrate, "ax": inputLog != nil || AXIsProcessTrusted(), "fake": fake, "codec": codec] }
 
   func apply(_ a: [String: Any]) {
     lock.lock(); defer { lock.unlock() }
     if let f = (a["fps"] as? NSNumber)?.intValue, (1...120).contains(f) { fps = f }
     if let b = (a["bitrate"] as? NSNumber)?.intValue, (500_000...80_000_000).contains(b) { bitrate = b }
     if let m = (a["maxW"] as? NSNumber)?.intValue, (320...7680).contains(m) { maxW = m }
+    if let cs = a["codecs"] as? [String] { wantHEVC = cs.contains("hevc") }
   }
 
   func start(_ send: @escaping (String, [String: Any], @escaping @Sendable () -> Void) -> Void) async throws -> [String: Any] {
@@ -156,11 +161,20 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     if let v = vt { VTCompressionSessionInvalidate(v); vt = nil }
     var s: VTCompressionSession?
     let spec = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: kCFBooleanTrue!] as CFDictionary
-    guard VTCompressionSessionCreate(allocator: nil, width: Int32(w), height: Int32(h), codecType: kCMVideoCodecType_H264, encoderSpecification: spec, imageBufferAttributes: nil,
-                                     compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &s) == noErr, let s else { return }
+    let hevcSpec = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: kCFBooleanTrue!, kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: kCFBooleanTrue!] as CFDictionary
+    var type = kCMVideoCodecType_H264
+    if wantHEVC, VTCompressionSessionCreate(allocator: nil, width: Int32(w), height: Int32(h), codecType: kCMVideoCodecType_HEVC, encoderSpecification: hevcSpec, imageBufferAttributes: nil,
+                                            compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &s) == noErr, s != nil { type = kCMVideoCodecType_HEVC }
+    else {
+      s = nil
+      guard VTCompressionSessionCreate(allocator: nil, width: Int32(w), height: Int32(h), codecType: kCMVideoCodecType_H264, encoderSpecification: spec, imageBufferAttributes: nil,
+                                       compressedDataAllocator: nil, outputCallback: nil, refcon: nil, compressionSessionOut: &s) == noErr else { return }
+    }
+    guard let s else { return }
+    codec = type == kCMVideoCodecType_HEVC ? "hevc" : "h264"
     VTSessionSetProperty(s, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
     VTSessionSetProperty(s, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
-    VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_H264_High_AutoLevel)
+    VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ProfileLevel, value: type == kCMVideoCodecType_HEVC ? kVTProfileLevel_HEVC_Main_AutoLevel : kVTProfileLevel_H264_High_AutoLevel)
     VTSessionSetProperty(s, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrate as CFNumber)
     VTSessionSetProperty(s, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: fps as CFNumber)
     VTSessionSetProperty(s, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 10 as CFNumber)
@@ -206,13 +220,18 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
     let isKey = !((atts?.first?[kCMSampleAttachmentKey_NotSync] as? Bool) ?? false)
     var d: [String: Any] = ["id": id, "b64": data.base64EncodedString(), "k": isKey, "w": w, "h": h]
     if isKey, let fd = CMSampleBufferGetFormatDescription(sb) {
+      let hevc = CMFormatDescriptionGetMediaSubType(fd) == kCMVideoCodecType_HEVC
+      if hevc { d["c"] = "hevc" }
       var n = 0
-      CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &n, nalUnitHeaderLengthOut: nil)
+      if hevc { CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(fd, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &n, nalUnitHeaderLengthOut: nil) }
+      else { CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, parameterSetIndex: 0, parameterSetPointerOut: nil, parameterSetSizeOut: nil, parameterSetCountOut: &n, nalUnitHeaderLengthOut: nil) }
       var sets: [String] = []
       for i in 0..<n {
         var p: UnsafePointer<UInt8>?
         var len = 0
-        if CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, parameterSetIndex: i, parameterSetPointerOut: &p, parameterSetSizeOut: &len, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil) == noErr, let p { sets.append(Data(bytes: p, count: len).base64EncodedString()) }
+        let ok = hevc ? CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(fd, parameterSetIndex: i, parameterSetPointerOut: &p, parameterSetSizeOut: &len, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+                      : CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, parameterSetIndex: i, parameterSetPointerOut: &p, parameterSetSizeOut: &len, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
+        if ok == noErr, let p { sets.append(Data(bytes: p, count: len).base64EncodedString()) }
       }
       d["ps"] = sets
     }
@@ -313,12 +332,13 @@ final class ScreenCap: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Se
 // MARK: - 这台：画那台的屏幕，送键盘鼠标
 @MainActor
 final class ScreenPanes {
-  static let commands = ["scr.open", "scr.data", "scr.place", "scr.close", "scr.focus", "scr.window", "scr.pause", "scr.opts", "scr.snapshot", "scr.list"]
+  static let commands = ["scr.codecs", "scr.open", "scr.data", "scr.place", "scr.close", "scr.focus", "scr.window", "scr.pause", "scr.opts", "scr.snapshot", "scr.list"]
   weak var controller: WebController?
   private var views: [String: ScreenView] = [:]
 
   func run(_ cmd: String, _ a: [String: Any]) async throws -> Any? {
     if cmd == "scr.list" { return views.map { ["id": $0.key, "info": $0.value.debugInfo] as [String: Any] } }
+    if cmd == "scr.codecs" { return (VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) && ProcessInfo.processInfo.environment["NADOS_SCREEN_H264"] == nil ? ["hevc", "h264"] : ["h264"]) as [String] }
     guard let id = a["id"] as? String, !id.isEmpty else { throw BridgeError.args("\(cmd) { id, … }") }
     switch cmd {
     case "scr.open":
@@ -372,6 +392,7 @@ final class ScreenView: NSView {
   private let video = AVSampleBufferDisplayLayer()
   private let hud = CATextLayer()
   private var fmt: CMVideoFormatDescription?
+  private var codec = "h264" // 那边发来的是哪种（关键帧里写着）
   private var lastKey: CMSampleBuffer? // 最近的关键帧：截图（标签页概览、测试）时自己解一帧
   private(set) var vw = 0, vh = 0
   private var paused = false
@@ -431,11 +452,13 @@ final class ScreenView: NSView {
   func enqueue(_ a: [String: Any]) {
     if let ps = a["ps"] as? [String], ps.count >= 2 {
       let sets = ps.compactMap { Data(base64Encoded: $0) }
-      if sets.count >= 2 {
+      let hevc = a["c"] as? String == "hevc"
+      if sets.count >= (hevc ? 3 : 2) {
         var nf: CMFormatDescription?
         let ptrs = sets.map { d -> UnsafePointer<UInt8> in let p = UnsafeMutablePointer<UInt8>.allocate(capacity: d.count); d.copyBytes(to: p, count: d.count); return UnsafePointer(p) }
         let sizes = sets.map { $0.count }
-        CMVideoFormatDescriptionCreateFromH264ParameterSets(allocator: nil, parameterSetCount: sets.count, parameterSetPointers: ptrs, parameterSetSizes: sizes, nalUnitHeaderLength: 4, formatDescriptionOut: &nf)
+        if hevc { CMVideoFormatDescriptionCreateFromHEVCParameterSets(allocator: nil, parameterSetCount: sets.count, parameterSetPointers: ptrs, parameterSetSizes: sizes, nalUnitHeaderLength: 4, extensions: nil, formatDescriptionOut: &nf); codec = "hevc" }
+        else { CMVideoFormatDescriptionCreateFromH264ParameterSets(allocator: nil, parameterSetCount: sets.count, parameterSetPointers: ptrs, parameterSetSizes: sizes, nalUnitHeaderLength: 4, formatDescriptionOut: &nf); codec = "h264" }
         ptrs.forEach { UnsafeMutablePointer(mutating: $0).deallocate() }
         if let nf { fmt = nf }
       }
@@ -463,10 +486,10 @@ final class ScreenView: NSView {
 
   private func tickStats() {
     let ms = max(1, Date().timeIntervalSince(statAt) * 1000)
-    panes?.emit("scr.stats", ["id": sid, "ms": ms, "frames": nFrames, "bytes": nBytes, "w": vw, "h": vh, "paused": paused, "popped": popWin != nil])
+    panes?.emit("scr.stats", ["id": sid, "ms": ms, "frames": nFrames, "bytes": nBytes, "w": vw, "h": vh, "paused": paused, "popped": popWin != nil, "codec": codec])
     if hudOn {
       let mb = Double(nBytes) * 8 / ms / 1000
-      setHud(paused ? "\(vw)×\(vh)" : "\(vw)×\(vh)  ·  \(Int((Double(nFrames) * 1000 / ms).rounded())) fps  ·  " + String(format: mb >= 10 ? "%.0f Mbps" : mb >= 1 ? "%.1f Mbps" : "%.2f Mbps", mb) + "  ·  H.264")
+      setHud(paused ? "\(vw)×\(vh)" : "\(vw)×\(vh)  ·  \(Int((Double(nFrames) * 1000 / ms).rounded())) fps  ·  " + String(format: mb >= 10 ? "%.0f Mbps" : mb >= 1 ? "%.1f Mbps" : "%.2f Mbps", mb) + "  ·  " + (codec == "hevc" ? "H.265" : "H.264"))
     }
     nFrames = 0; nBytes = 0; statAt = Date()
   }

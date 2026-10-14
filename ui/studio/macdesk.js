@@ -49,7 +49,7 @@
     var d = V && V.stats;
     if (!V || !V.up || !d) return "";
     if (V.paused) return t("已暂停", "Paused") + (d.w ? " · " + d.w + "×" + d.h : "");
-    var bits = [d.w ? d.w + "×" + d.h : "", Math.round(d.frames * 1000 / Math.max(1, d.ms)) + " fps", mbps(d.bytes, d.ms), "H.264"];
+    var bits = [d.w ? d.w + "×" + d.h : "", Math.round(d.frames * 1000 / Math.max(1, d.ms)) + " fps", mbps(d.bytes, d.ms), d.codec === "hevc" ? "H.265" : "H.264"];
     if (V.rtt) bits.push(V.rtt + " ms");
     return bits.filter(Boolean).join(" · ");
   }
@@ -66,7 +66,9 @@
       V.offS = V.L.on("state", function (s) { if (s === "open" && V.wantUp && !V.up && !V.starting) start(V); if (s === "offline") { V.up = false; paint(V); } });
     }
     V.wantUp = true; V.starting = true;
-    V.L.call("screen.start", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680 }, 25000).then(function (info) {
+    // 这台能硬件解哪几种：能解 H.265 就请那台用 H.265（同样清楚码率少三成左右）；老版本的 App 没有 scr.codecs：照旧 H.264
+    var codecsP = V.codecs ? Promise.resolve(V.codecs) : N.call("scr.codecs").then(function (c) { V.codecs = Array.isArray(c) ? c : ["h264"]; return V.codecs; }, function () { V.codecs = ["h264"]; return V.codecs; });
+    codecsP.then(function (codecs) { return V.L.call("screen.start", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680, codecs: codecs }, 25000); }).then(function (info) {
       V.starting = false;
       if (V.closed) return;
       V.info = info || {}; V.up = true; V.axWarn = info && info.ax === false;
@@ -117,7 +119,7 @@
     o[k] = v;
     saveOpts(V.dev, o);
     if (k === "hud") return N.call("scr.opts", { id: V.id, hud: v }).catch(function () {});
-    if (V.up) V.L.call("screen.opts", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680 }, 20000).catch(function () {});
+    if (V.up) V.L.call("screen.opts", { id: V.id, fps: o.fps, bitrate: bitrateOf(o.q), maxW: o.maxW || 7680, codecs: V.codecs || ["h264"] }, 20000).catch(function () {});
   }
 
   // ---- 卡片（连上以前、出错、分出去了）：画在那一块中间；连着时原生的画面盖住整块 ----

@@ -96,6 +96,7 @@
 
   function open(V, extra) {
     if (!native() || !V.hostId) return;
+    if (V.dev && !V.dispPrep && linkFor(V)) { V.dispPrep = true; V.st = V.st && V.st.state === "connected" ? V.st : { state: "connecting" }; paint(V); prepDisplay(V).then(function () { open(V, extra); }, function () { open(V, extra); }); return; }
     V.st = V.st && V.st.state === "connected" ? V.st : { state: "connecting" };
     paint(V);
     var a = Object.assign({ id: V.id, host: V.hostId }, V.dev && V.route ? { route: V.route } : {}, extra || {});
@@ -286,6 +287,24 @@
     if (!o.host) o.host = String(V.dev.name || "device").replace(/[^A-Za-z0-9._-]/g, "") || "device"; // 还没有直连的路：先写它的名字（连的时候走 route）
     return N.call("rdp.saveHost", o).then(loadHosts);
   }
+  // ---- 直连：这台 Mac 和那台电脑都在 Tailscale 里（同一个 tailnet）——按那台的名字找到它的地址，远程桌面的端口通就直接连：
+  //   不绕 ssh 隧道、不经中转（最快；那台的隧道、Vibing Studio 断了也照样连得上——2026-10-14 那台内存用光，隧道被系统杀掉，从这里能直接连上）
+  var TS_CMD = 'T=$(command -v tailscale 2>/dev/null); [ -x "$T" ] || T=/Applications/Tailscale.app/Contents/MacOS/Tailscale; [ -x "$T" ] && "$T" status --json 2>/dev/null';
+  var tsName = function (s) { return String(s || "").toLowerCase().replace(/\.local$/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); };
+  function tsRoute(V, port) {
+    var LL = window.TSU_LOCAL;
+    if (!LL || !LL.exec || !V.dev || !V.dev.name) return Promise.resolve(null);
+    var want = tsName(V.dev.name), pt = +port || 3389;
+    return LL.exec({ cmd: TS_CMD }).then(function (r) {
+      var j = null; try { j = JSON.parse((r && r.out) || ""); } catch (e) { return null; }
+      var peers = j && j.Peer ? Object.keys(j.Peer).map(function (k) { return j.Peer[k]; }) : [];
+      var p = peers.filter(function (x) { return x && x.Online && (tsName(x.HostName) === want || tsName(String(x.DNSName || "").split(".")[0]) === want); })[0];
+      if (!p || !p.TailscaleIPs || !p.TailscaleIPs.length) return null;
+      var ip = p.TailscaleIPs.filter(function (a) { return a.indexOf(":") < 0; })[0] || p.TailscaleIPs[0];
+      return LL.exec({ cmd: "nc -z -G 3 -w 3 " + ip + " " + pt + " >/dev/null 2>&1 && echo OK" }).then(function (r2) { return /OK/.test((r2 && r2.out) || "") ? { host: ip, port: pt } : null; });
+    }, function () { return null; });
+  }
+  var hostPort = function (r) { return (/:/.test(r.host) ? "[" + r.host + "]" : r.host) + ":" + r.port; };
   function findDevice(V) {
     V.finding = true; V.notFound = false; V.tunErr = ""; V.st = null; paint(V);
     var L = linkFor(V);
@@ -298,16 +317,21 @@
         if (sib && differs(hostOf(V.hostId), sib)) return adopt(V, sib).then(function () { V.finding = false; open(V, { again: true }); });
         return saveDevHost(V, { host: m.host + ":" + m.port, via: "", user: (hostOf(V.hostId) || {}).user || m.user || "" }).then(function () { V.finding = false; go(V); });
       }
-      if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "update" : V.dev.relay ? "offline" : true; paint(V); return; } // 这台的 App 太旧：没有中转通道
-
-      // 这台 Mac 通不到它：经 Vibing Studio 自己的连接
-      return creds(V).then(function (c) {
-        V.finding = false;
-        if (!c) { V.credP = null; V.notFound = L.state === "offline" ? "offline" : V.credWhy || "nordp"; paint(V); return; } // 下次「重试」重新问
-        V.route = { tunnel: true }; V.routeFp = "";
-        return saveDevHost(V, { rport: c.port || 3389 }).then(function () { go(V); });
+      return tsRoute(V, (hostOf(V.hostId) || {}).rport).then(function (ts) {
+        if (ts) { V.finding = false; V.route = { host: ts.host, port: ts.port }; V.routeFp = ""; return saveDevHost(V, { host: hostPort(ts), via: "" }).then(function () { go(V); }); }
+        return relayRoute(V, L);
       });
     }, function () { V.finding = false; V.notFound = true; paint(V); });
+  }
+  // 这台 Mac 直接通不到它：经 Vibing Studio 自己的连接（中转）
+  function relayRoute(V, L) {
+    if (!L || !tunnelOK()) { V.finding = false; V.notFound = L ? "update" : V.dev.relay ? "offline" : true; paint(V); return; } // 这台的 App 太旧：没有中转通道
+    return creds(V).then(function (c) {
+      V.finding = false;
+      if (!c) { V.credP = null; V.notFound = L.state === "offline" ? "offline" : V.credWhy || "nordp"; paint(V); return; } // 下次「重试」重新问
+      V.route = { tunnel: true }; V.routeFp = "";
+      return saveDevHost(V, { rport: c.port || 3389 }).then(function () { go(V); });
+    });
   }
   // 连：问到了能用的账号就用它（钥匙串里的可能是旧的）；没有就照常连（钥匙串里的，没有再问）
   function go(V) {
@@ -361,6 +385,8 @@
     var st = d.state;
     if (st === "connected") {
       V.credUsed = false; V.refound = false;
+      var wh = (d.w || 0) + "x" + (d.h || 0);
+      if (V.extend && V.soloWH !== wh) { V.soloWH = wh; V.soloRetry = false; soloDisplay(V); }
       var via = V.route && V.route.tunnel ? "tunnel" : "", h0 = hostOf(V.hostId) || {};
       if ((h0.via || "") !== via) saveDevHost(V, { via: via });
       return false;
@@ -384,6 +410,87 @@
     if (st === "error" && d.kind === "net" && V.route && !V.route.tunnel && !V.refound) { V.refound = true; findDevice(V); return true; } // 隧道断了、换了端口：重新找
     if (st === "error" && V.route && V.route.tunnel && V.tunErr && d.kind !== "auth") { var L0 = linkFor(V); V.notFound = L0 && L0.state === "offline" ? "offline" : "nordp"; V.st = d; paint(V); return true; }
     return false;
+  }
+  // ---- 远程桌面跟着这边的窗口（5K 的 iMac 就是 5K，用户 2026-10-14：「只能按照对面，那算什么远程桌面」）----
+  //   GNOME 的远程桌面默认「照那台的显示器」（screen-share-mode = mirror-primary：分辨率是那台显示器的，这边改不了）。连之前经 Vibing Studio 自己的连接
+  //   改成 extend：另开一块虚拟显示器，大小、缩放照这边的窗口（视网膜屏 200%），拖窗口大小、全屏都跟着变（GNOME 46 起，下一次连上生效）。
+  //   连上以后把那块设成唯一的显示器（DisplayConfig 的临时设置）：窗口、顶栏都在上面；那台的显示器远程时先关着，断开后 GNOME 自己恢复。
+  //   选项里「那台显示器的分辨率」：改回 mirror-primary（照那台的显示器）
+  var MON_PY = [
+    "import sys, json",
+    "try:",
+    "    from gi.repository import Gio, GLib",
+    "except Exception as e:",
+    "    print(json.dumps({'ok': False, 'err': 'gi: %s' % e})); sys.exit(0)",
+    "act = sys.argv[1] if len(sys.argv) > 1 else 'list'",
+    "want = float(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else 0.0",
+    "before = [c for c in (sys.argv[3] if len(sys.argv) > 3 else '').split(',') if c]",
+    "def call(bus, name, params=None):",
+    "    return bus.call_sync('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig', 'org.gnome.Mutter.DisplayConfig', name, params, None, Gio.DBusCallFlags.NONE, 8000, None)",
+    "try:",
+    "    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)",
+    "    serial, monitors, logical, props = call(bus, 'GetCurrentState').unpack()",
+    "except Exception as e:",
+    "    print(json.dumps({'ok': False, 'err': str(e)})); sys.exit(0)",
+    "mons = [{'c': m[0][0], 'v': m[0][1], 'p': m[0][2]} for m in monitors]",
+    "if act == 'list':",
+    "    print(json.dumps({'ok': True, 'monitors': mons})); sys.exit(0)",
+    "err = ''",
+    "for attempt in range(3):",
+    "    virt = [m for m in monitors if m[0][0] not in before] if before else []",
+    "    if not virt: virt = [m for m in monitors if 'virtual' in (m[0][2] or '').lower() or 'meta' in (m[0][1] or '').lower()]",
+    "    if not virt:",
+    "        print(json.dumps({'ok': False, 'err': 'no virtual monitor', 'monitors': mons})); sys.exit(0)",
+    "    v = virt[-1]",
+    "    cur = [md for md in v[1] if md[6].get('is-current', False)]",
+    "    md = cur[0] if cur else v[1][0]",
+    "    scales = list(md[5]) or [1.0]",
+    "    tries = ([min(scales, key=lambda s: abs(s - want))] if want else []) + [md[4], 1.0]",
+    "    for sc in tries:",
+    "        try:",
+    "            cfg = [(0, 0, float(sc), 0, True, [(v[0][0], md[0], {})])]",
+    "            call(bus, 'ApplyMonitorsConfig', GLib.Variant('(uua(iiduba(ssa{sv}))a{sv})', (serial, 1, cfg, {})))",
+    "            print(json.dumps({'ok': True, 'virtual': v[0][0], 'mode': md[0], 'scale': sc})); sys.exit(0)",
+    "        except Exception as e:",
+    "            err = str(e)",
+    "    serial, monitors, logical, props = call(bus, 'GetCurrentState').unpack()",
+    "print(json.dumps({'ok': False, 'err': err}))",
+  ].join("\n");
+  var b64u = function (s) { return btoa(unescape(encodeURIComponent(s))); };
+  var monCmd = function (args) { return "python3 -c \"$(printf %s '" + b64u(MON_PY) + "' | base64 -d)\" " + args + " 2>&1"; };
+  var lastJson = function (s) { var m = String(s || "").match(/\{[^\n]*\}\s*$/); try { return m ? JSON.parse(m[0]) : null; } catch (e) { return null; } };
+  // 照那台的显示器：选项里选的；或者在那台上设不成唯一显示器（不是 GNOME、没有 python3-gi……）——那样另开的虚拟显示器上什么都没有，不如照原样
+  var NOSOLO = "vs-rdp-nosolo:";
+  var wantMirror = function (V) { return (hostOf(V.hostId) || {}).res === "mirror" || localStorage.getItem(NOSOLO + V.hostId) === "1"; };
+  // 连之前：看那台的远程桌面是哪种（照显示器 / 虚拟显示器），不是想要的就改；记下现在有哪几块显示器（连上后多出来的那块就是虚拟的）
+  function prepDisplay(V) {
+    var L = linkFor(V);
+    if (!L) return Promise.resolve();
+    var mode = wantMirror(V) ? "mirror-primary" : "extend";
+    return TSU_RLINK.exec(L, "gsettings get org.gnome.desktop.remote-desktop.rdp screen-share-mode 2>/dev/null; " + monCmd("list"), 10000).then(function (r) {
+      var out = String((r && r.out) || ""), j = lastJson(out);
+      V.monBefore = j && j.ok ? j.monitors.map(function (m) { return m.c; }) : [];
+      V.extend = mode === "extend";
+      if (out.indexOf("'" + mode + "'") >= 0 || !/mirror-primary|extend/.test(out)) return; // 已经是了，或者不是 GNOME 的远程桌面
+      return TSU_RLINK.exec(L, "gsettings set org.gnome.desktop.remote-desktop.rdp screen-share-mode " + mode, 10000).then(function () {}, function () {});
+    }, function () {});
+  }
+  // 连上以后、窗口大小变了以后：虚拟的那块设成唯一的显示器，缩放照这边的屏幕
+  function soloDisplay(V) {
+    var L = linkFor(V);
+    if (!L || !V.extend) return;
+    clearTimeout(V.soloT);
+    V.soloT = setTimeout(function () {
+      var sc = Math.max(1, Math.round((window.devicePixelRatio || 2) * 4) / 4);
+      TSU_RLINK.exec(L, monCmd("solo " + sc + " " + (V.monBefore || []).join(",")), 15000).then(function (r) {
+        var j = lastJson(r && r.out);
+        if (j && j.ok) return;
+        if (j && /no virtual monitor/.test(j.err || "") && !V.soloRetry) { V.soloRetry = true; soloDisplay(V); return; } // 还没建好：再等一下
+        // 设不成：改回照那台的显示器、重连（不然那块虚拟显示器上空空的）；以后这台都照显示器（选项里还能再选「跟随窗口」试）
+        try { localStorage.setItem(NOSOLO + V.hostId, "1"); } catch (e) { /* 存不了就算了 */ }
+        V.extend = false; V.dispPrep = false; open(V, { again: true });
+      }, function () {});
+    }, V.soloRetry ? 3000 : 1500);
   }
   // ---- 中转通道的那一头：原生在本机开的端口每来一条连接（rdp.tun open），在那台电脑上起一个小程序（python3）接到它本机的远程桌面端口，
   //   两边的字节经中转来回（一行一段 base64）。那台电脑上的 App 不用更新：用的是它本来就给的「起一个程序、写它的输入、读它的输出」
@@ -654,9 +761,15 @@
         if (!h || !h.device) return findDevice(V); // 从「设备」点进来、还没连过：先找路
         var sib0 = !h.hasPass && h.via !== "tunnel" ? sibling(V, h.host, h.port, h.pin) : null; // 没记密码、同一个远程桌面另有连得上的：照它
         if (sib0 && differs(h, sib0)) return adopt(V, sib0).then(function () { open(V); });
-        V.route = h.via === "tunnel" ? { tunnel: true } : { host: h.host, port: h.port }; // 上一次通的那条；不通了 devState 再找
         if (dv && dv.relay && dv.relay !== h.relay) saveDevHost(V);
-        open(V);
+        // Tailscale 能直接连就用它（比 ssh 隧道、中转都快，那台的隧道断了也照样连）；上一次就是它的直接连
+        if (/^100\.|^fd7a:115c:a1e0:/i.test(String(h.host || "").replace(/^\[/, ""))) { V.route = { host: String(h.host).replace(/^\[|\]$/g, ""), port: h.port }; return open(V); }
+        V.st = { state: "connecting" }; paint(V);
+        tsRoute(V, h.rport).then(function (ts) {
+          if (ts) { V.route = { host: ts.host, port: ts.port }; return saveDevHost(V, { host: hostPort(ts), via: "" }).then(function () { open(V); }); }
+          V.route = h.via === "tunnel" ? { tunnel: true } : { host: h.host, port: h.port }; // 上一次通的那条；不通了 devState 再找
+          open(V);
+        });
       });
     }
     paint(V);
@@ -728,9 +841,9 @@
   }
   function pause(V, on) { N.call("rdp.pause", { id: V.id, on: on === undefined ? !(V.st && V.st.paused) : on }).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); if (S.statusSoon && V.P && V.P.win) S.statusSoon(V.P.win); } }).catch(function () {}); }
   function popOut(V, mode) { N.call("rdp.window", { id: V.id, mode: mode }).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); } }).catch(function () {}); }
-  var RES = [["auto", "跟随窗口", "Match Window"], ["1280x720"], ["1920x1080"], ["2560x1440"], ["3840x2160"]];
+  var RES = [["auto", "跟随窗口", "Match Window"], ["1280x720"], ["1920x1080"], ["2560x1440"], ["3840x2160"], ["mirror", "那台显示器的分辨率", "That Computer’s Display"]];
   var FPS = [[0, "不限", "No Limit"], [60], [30], [15]];
-  var resName = function (r) { return r === "auto" ? t("跟随窗口", "Match Window") : String(r).replace("x", " × "); };
+  var resName = function (r) { return r === "auto" ? t("跟随窗口", "Match Window") : r === "mirror" ? t("那台显示器的分辨率", "That Computer’s Display") : String(r).replace("x", " × "); };
   function optsMenu(V) {
     var h = hostOf(V.hostId) || {}, cmd = h.cmd || "ctrl", up = V.st && V.st.state === "connected", d = V.stats || {};
     var res = h.res || "auto", fps = +h.fps || 0, sl = statsLine(V), canRes = !!(d.disp || (V.st && V.st.disp));
@@ -738,8 +851,14 @@
       sl ? { header: true, label: sl } : null,
       sl ? { sep: true } : null,
       newOK() ? { label: t("分辨率", "Resolution"), value: resName(res), items: (canRes ? [] : [{ header: true, label: t("由那台电脑的显示器决定", "Set by that computer’s display") }]).concat(RES.map(function (r) {
-        return { label: r[1] ? t(r[1], r[2]) : resName(r[0]), checked: res === r[0], disabled: !canRes && r[0] !== "auto", run: function () { setOpt(V, { res: r[0], dynres: r[0] === "auto" ? true : h.dynres }); } };
-      })) } : { label: t("分辨率跟随窗口", "Match Window Size"), checked: h.dynres !== false, run: function () { setOpt(V, { dynres: h.dynres === false }); } },
+        if (r[0] === "mirror" && !V.dev) return null; // 只有「设备」里的电脑（GNOME 的远程桌面）能换
+        return { label: r[1] ? t(r[1], r[2]) : resName(r[0]), checked: res === r[0], disabled: !canRes && r[0] !== "auto" && r[0] !== "mirror", run: function () {
+          var was = h.res === "mirror" || localStorage.getItem(NOSOLO + V.hostId) === "1", now = r[0] === "mirror";
+          if (!now) try { localStorage.removeItem(NOSOLO + V.hostId); } catch (e) { /* 没有就算了 */ }
+          setOpt(V, { res: r[0], dynres: r[0] === "auto" || now ? true : h.dynres });
+          if (V.dev && was !== now) { V.dispPrep = false; open(V, { again: true }); } // 照显示器 ↔ 虚拟显示器：那台改好再重连
+        } };
+      }).filter(Boolean)) } : { label: t("分辨率跟随窗口", "Match Window Size"), checked: h.dynres !== false, run: function () { setOpt(V, { dynres: h.dynres === false }); } },
       newOK() ? { label: t("帧率上限", "Frame Rate Limit"), value: fps ? fps + " fps" : t("不限", "No Limit"), items: FPS.map(function (f) { return { label: f[1] ? t(f[1], f[2]) : f[0] + " fps", checked: fps === f[0], run: function () { setOpt(V, { fps: f[0] }); } }; }) } : null,
       { label: t("画质", "Quality"), value: h.avc444 === false ? "AVC420" : "AVC444", items: [
         { label: t("清晰（AVC444）", "Sharp (AVC444)"), checked: h.avc444 !== false, run: function () { if (h.avc444 === false) setOpt(V, { avc444: true }); } },

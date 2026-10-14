@@ -36,7 +36,7 @@ enum RdpHelper {
   }
 
   private static func find(rebuild: Bool) async -> [String: Any] {
-    guard let prefix = freerdpPrefix() else { return ["ok": false, "need": "freerdp"] }
+    // App 里带的助手（静态链进 FreeRDP，只靠系统自带的东西）：先用它——别的 Mac 上什么都不用装。跑不起来才用这台 Mac 上 Homebrew 的 FreeRDP 现编
     var cands: [String] = []
     if !rebuild, let r = Bundle.main.resourcePath { cands.append(r + "/bin/vs-rdp") }
     cands.append(supportDir + "/vs-rdp")
@@ -45,6 +45,7 @@ enum RdpHelper {
         if let v = await version(c) { return ["ok": true, "path": c, "freerdp": v] }
       }
     }
+    guard let prefix = freerdpPrefix() else { return ["ok": false, "need": "freerdp"] }
     // 现编：要命令行工具（Xcode Command Line Tools；装 Homebrew 时一般已经装了）
     let clt = await RdpProc.run("/usr/bin/xcode-select", ["-p"], timeout: 5)
     guard clt.status == 0 else { return ["ok": false, "need": "clt"] }
