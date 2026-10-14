@@ -44,6 +44,7 @@ json.dump({"build": int(b), "version": v, "arm64": "downloads/" + a, "x86_64": "
 print("kind:", kind)
 PY
 echo "$B" > "$HERE/tools/app-build.txt"
+bash "$HERE/tools/prune-releases.sh" # 旧的安装包、编出来的旧版不越堆越多
 echo "released $V → $DL（tools/deploy.sh 之后别的 Mac 会自己更新）"
 if [ "${GH:-}" = 1 ]; then
   cd "$HERE"
