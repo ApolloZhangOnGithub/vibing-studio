@@ -133,7 +133,7 @@
       '</p><div class="rm-acts">' + off + "</div>";
     else if (st === "code") html = "<b>" + tr("输入验证码", "Enter the Code") + "</b><p>" + tr("输入" + Q(M) + "上显示的 6 位验证码。", "Enter the 6-digit code shown on " + Q(M) + ".") + '</p><input class="rm-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="' + esc(tr("验证码", "Code")) + '"><p class="rm-err">' + esc(msg || "") + "</p>";
     else if (st === "expired") html = "<b>" + tr("验证码已过期", "The Code Expired") + "</b><p>" + tr("重新请求，" + Q(M) + "上会再显示一个新的验证码。", "Request again and " + Q(M) + " will show a new code.") + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
-    else if (st === "denied") html = "<b>" + tr(Q(M) + "没有允许这台设备", Q(M) + " didn’t allow this device") + "</b><p>" + esc(msg || tr("可以重新请求，在那台电脑上点「允许」。", "You can request again and click Allow on that computer.")) + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
+    else if (st === "denied") html = "<b>" + tr(Q(M) + "没有允许这台设备", Q(M) + " didn’t allow this device") + "</b><p>" + esc(msg || tr("可以重新请求，然后在此电脑上点按「允许」。", "You can request again and click Allow on that computer.")) + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="retry" class="rm-pri">' + tr("重新请求", "Request Again") + "</button></div>";
     else if (st === "nokey") html = "<b>" + tr("无法验证这台设备", "Couldn’t Verify This Device") + "</b><p>" + esc(msg || "") + '</p><div class="rm-acts">' + off + '<button type="button" data-ra="reload" class="rm-pri">' + tr("重新载入", "Reload") + "</button></div>";
     authCard.innerHTML = '<div class="rm-card">' + html + "</div>";
     authCard.hidden = false;
@@ -170,7 +170,7 @@
       window.TSU_REMOTE.pick().then(function (hosts) {
         hosts = (hosts || []).filter(function (h) { return h && h.device; });
         if (hosts.length === 1) { boot("connecting", { mac: hosts[0].name || "" }); return window.TSU_REMOTE.use(hosts[0].device, hosts[0].name); }
-        if (!hosts.length) return say(tr("没有在线的电脑", "No Computer Is Online"), tr("在那台电脑的 Vibing Studio 里打开「设置 › 通用 › 其他设备使用这台电脑」，然后重试。", "On that computer, open Vibing Studio and turn on Settings › General › Allow Other Devices to Use This Computer, then try again."), true);
+        if (!hosts.length) return say(tr("没有在线的电脑", "No Computer Is Online"), tr("在此电脑的 Vibing Studio 中打开「设置 › 通用 › 其他设备使用这台电脑」，然后重试。", "On that computer, open Vibing Studio and turn on Settings › General › Allow Other Devices to Use This Computer, then try again."), true);
         say(tr("选择要连接的电脑", "Choose a Computer"), "", false);
         var acts = veil.querySelector(".rm-acts");
         acts.querySelectorAll("[data-mac]").forEach(function (b) { b.remove(); });
@@ -310,7 +310,7 @@
     delete pend[m.id];
     clearTimeout(p.t);
     if (m.ok) { if (p.cmd === "info") hostInfo = m.value; if (p.cmd !== "auth.prove" && !firstOk) { firstOk = true; clearTimeout(waitT); clearTimeout(connT); if (authNow && authNow !== "code") { authNow = ""; if (authCard) authCard.hidden = true; } badge(); } boot("ready"); return p.resolve(m.value); } // Mac 回话了：能用了
-    var e = new Error((m.error && m.error.message) || tr("那台电脑上没做成", "That computer couldn’t do it")); e.code = (m.error && m.error.code) || "E_FAILED";
+    var e = new Error((m.error && m.error.message) || tr("此电脑上的操作没有完成", "The operation didn’t complete on this computer")); e.code = (m.error && m.error.code) || "E_FAILED";
     if (e.code === "E_DENIED" && /没有允许|未授权/.test(e.message) && p.cmd !== "auth.code") { state = "denied"; boot("denied"); badge(); authShow("denied", /重新载入/.test(e.message) ? e.message : ""); return p.reject(e); }
     p.reject(e);
   }

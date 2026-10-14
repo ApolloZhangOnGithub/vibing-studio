@@ -62,7 +62,7 @@
     if (!V.L) {
       V.L = TSU_RLINK.open(V.dev);
       V.offF = V.L.on("screen.frame", function (d) { if (d && d.id === V.id && !V.closed) N.call("scr.data", d).catch(function () {}); });
-      V.offE = V.L.on("screen.end", function (d) { if (d && d.id === V.id) { V.up = false; V.err = t("那台 Mac 停止了截屏", "That Mac stopped capturing") + (d.msg ? "：" + d.msg : ""); paint(V); } });
+      V.offE = V.L.on("screen.end", function (d) { if (d && d.id === V.id) { V.up = false; V.err = t("此 Mac 停止了屏幕共享", "This Mac stopped sharing its screen") + (d.msg ? "：" + d.msg : ""); V.errTitle = t("屏幕共享已停止", "Screen Sharing Stopped"); paint(V); } });
       V.offS = V.L.on("state", function (s) { if (s === "open" && V.wantUp && !V.up && !V.starting) start(V); if (s === "offline") { V.up = false; paint(V); } });
     }
     V.wantUp = true; V.starting = true;
@@ -83,10 +83,11 @@
       else {
         var msg = String((e && e.message) || e || "");
         // 那台的 App 太旧（没有截屏这一套：它回「不允许使用 screen.start」）、没回话、不在线、没允许——各写各的
-        V.err = code === "E_OFFLINE" || V.L.state === "offline" ? t("那台 Mac 上的 Vibing Studio 没有打开", "Vibing Studio isn’t running on that Mac") :
-          code === "E_DENIED" && /screen\./.test(msg) ? t("那台 Mac 上的 Vibing Studio 要更新到最新版", "Vibing Studio on that Mac needs updating") :
-          code === "E_DENIED" ? t("那台 Mac 没有允许这台设备", "That Mac hasn’t allowed this device") :
-          code === "E_TIMEOUT" ? t("那台 Mac 没有回应", "That Mac isn’t responding") : msg;
+        V.errTitle = "";
+        V.err = code === "E_OFFLINE" || V.L.state === "offline" ? t("此 Mac 上的 Vibing Studio 未打开", "Vibing Studio isn’t open on this Mac") :
+          code === "E_DENIED" && /screen\./.test(msg) ? t("此 Mac 上的 Vibing Studio 需要更新", "Vibing Studio on this Mac needs updating") :
+          code === "E_DENIED" ? t("此 Mac 未授权这台设备", "This Mac hasn’t authorized this device") :
+          code === "E_TIMEOUT" ? t("此 Mac 没有响应", "This Mac isn’t responding") : msg;
       }
       paint(V);
     });
@@ -128,8 +129,8 @@
     var btn = function (act, label, primary) { return '<button type="button" data-act="' + act + '"' + (primary ? ' class="rd-primary"' : "") + ">" + esc(label) + "</button>"; };
     if (!native()) return head + '<div class="rd-msg">' + esc(t("需要新版 App", "Requires the latest app")) + "</div>";
     if (V.popped) return head + '<div class="rd-msg">' + esc(t("在单独的窗口中", "In a separate window")) + '</div><div class="rd-cbtns">' + btn("front", t("显示窗口", "Show Window")) + btn("dock", t("放回这里", "Move Back Here"), true) + "</div>";
-    if (V.perm === "screen") return head + '<div class="rd-err">' + esc(t("那台 Mac 还没允许「屏幕录制」", "That Mac hasn’t allowed Screen Recording")) + '</div><div class="rd-msg">' + esc(t("在那台 Mac 的「系统设置 › 隐私与安全性 › 屏幕与系统录音」里打开 Vibing Studio，然后重试。", "On that Mac, turn on Vibing Studio in System Settings › Privacy & Security › Screen & System Audio Recording, then try again.")) + '</div><div class="rd-cbtns">' + btn("retry", t("重试", "Try Again"), true) + "</div>";
-    if (V.err) return head + '<div class="rd-err">' + esc(V.err) + '</div><div class="rd-cbtns">' + btn("retry", t("重试", "Try Again"), true) + "</div>";
+    if (V.perm === "screen") return head + '<div class="rd-err">' + esc(t("此 Mac 尚未允许屏幕录制", "This Mac hasn’t allowed screen recording")) + '</div><div class="rd-msg">' + esc(t("在此 Mac 的「系统设置 › 隐私与安全性 › 屏幕与系统录音」中允许 Vibing Studio，然后重试。", "On this Mac, allow Vibing Studio in System Settings › Privacy & Security › Screen & System Audio Recording, then try again.")) + '</div><div class="rd-cbtns">' + btn("retry", t("重试", "Try Again"), true) + "</div>";
+    if (V.err) return head + '<div class="rd-err">' + esc(V.errTitle || t("无法连接到此 Mac", "Can’t Connect to This Mac")) + '</div><div class="rd-msg">' + esc(V.err) + '</div><div class="rd-cbtns">' + btn("retry", t("重试", "Try Again"), true) + "</div>";
     if (!V.up) return head + '<div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在连接…", "Connecting…")) + "</div>";
     return "";
   }
@@ -139,7 +140,7 @@
     if (V.card.dataset.h !== html) { V.card.dataset.h = html; V.card.innerHTML = html; }
     V.card.hidden = !html;
     V.box.classList.toggle("on", !html);
-    if (V.axWarn && V.up && !V.popped) toastOnce(V, t("那台 Mac 还没允许 Vibing Studio「辅助功能」：键盘鼠标还送不过去", "That Mac hasn’t allowed Vibing Studio Accessibility access, so keyboard and mouse don’t reach it yet"));
+    if (V.axWarn && V.up && !V.popped) toastOnce(V, t("此 Mac 尚未允许 Vibing Studio 使用辅助功能，暂时无法控制键盘和鼠标", "This Mac hasn’t allowed Vibing Studio to use Accessibility, so keyboard and mouse control isn’t available yet"));
     if (window.TSU_WEB && TSU_WEB.placeNow) TSU_WEB.placeNow(V);
     if (V.P && V.P.win) V.P.win.syncTitles();
   }

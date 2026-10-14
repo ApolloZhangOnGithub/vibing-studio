@@ -4393,7 +4393,7 @@
   // 别的 Mac 上的（丢了、不用了）：从账号里移除，那台就不能再用 Touch ID 登录
   function tidRemoveOther(id) {
     var k = (TID.keys || []).filter(function (x) { return x.id === id; })[0], go = function () { post0("/api/devicekey/remove", { id: id }).then(function () { tidLoad(true); }, function () {}); };
-    if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "移除「" + ((k && k.name) || "Mac") + "」的 Touch ID 登录？", message: "那台 Mac 之后要登录时会改走浏览器（GitHub）。", icon: "caution", buttons: [{ label: "取消", role: "cancel" }, { label: "移除", role: "default", run: go }] });
+    if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "移除「" + ((k && k.name) || "Mac") + "」的 Touch ID 登录？", message: "该 Mac 之后登录时将改用浏览器（GitHub）。", icon: "caution", buttons: [{ label: "取消", role: "cancel" }, { label: "移除", role: "default", run: go }] });
     else go();
   }
 

@@ -114,9 +114,12 @@
     var btn = function (act, label, primary) { return '<button type="button" data-act="' + act + '"' + (primary ? ' class="rd-primary"' : "") + ">" + esc(label) + "</button>"; };
     var detail = function (s) { return s ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(s) + "</pre></details>" : ""; };
     if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在连接…", "Connecting…")) + "</div>";
-    if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' +
-      esc({ offline: t("那台电脑上的 Vibing Studio 没有打开", "Vibing Studio isn’t running on that computer"), nordp: t("那台电脑的远程桌面没有打开", "Remote desktop is off on that computer"), denied: t("那台电脑没有允许这台设备", "That computer hasn’t allowed this device"),
-        noreply: t("那台电脑没有回应", "That computer isn’t responding"), update: t("要先更新这台的 Vibing Studio", "Update Vibing Studio on this Mac first") }[V.notFound] || t("连不上那台电脑的远程桌面", "Can’t reach that computer’s remote desktop")) + "</div>" +
+    // 连不上：上面一行「无法连接到此电脑」（同系统的说法），下面一行写原因
+    var why = { offline: t("此电脑上的 Vibing Studio 未打开", "Vibing Studio isn’t open on this computer"), nordp: t("此电脑未开启远程桌面", "Remote Desktop is turned off on this computer"),
+      denied: t("此电脑未授权这台设备", "This computer hasn’t authorized this device"), noreply: t("此电脑没有响应", "This computer isn’t responding"),
+      update: t("需要更新这台 Mac 上的 Vibing Studio", "Vibing Studio on this Mac needs updating") }[V.notFound] || "";
+    if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' + esc(t("无法连接到此电脑", "Can’t Connect to This Computer")) + "</div>" +
+      (why ? '<div class="rd-msg">' + esc(why) + "</div>" : "") +
       (V.tunErr ? '<details class="rd-det"><summary>' + esc(t("详细信息", "Details")) + "</summary><pre>" + esc(V.tunErr) + "</pre></details>" : "") +
       '<div class="rd-cbtns">' + (V.notFound === "update" ? '<button type="button" data-act="app-update" class="rd-primary">' + esc(t("更新", "Update")) + "</button>" : '<button type="button" data-act="refind" class="rd-primary">' + esc(t("重试", "Try Again")) + "</button>") + "</div>";
     if (st.popped) return head + '<div class="rd-msg">' + esc(t("在单独的窗口中", "In a separate window")) + '</div><div class="rd-cbtns">' + btn("front", t("显示窗口", "Show Window")) + btn("dock", t("放回这里", "Move Back Here"), true) + "</div>";
@@ -142,16 +145,15 @@
         if (st.need === "clt") return head + '<div class="rd-msg">' + esc(t("需要 Xcode 命令行工具", "The Xcode Command Line Tools are required")) + '</div><pre class="rd-code">xcode-select --install</pre><div class="rd-cbtns">' + btn("clt", t("安装命令行工具", "Install Command Line Tools")) + btn("recheck", t("重新检查", "Check Again"), true) + "</div>";
         return head + '<div class="rd-err">' + esc(t("远程桌面组件没能准备好。", "The remote desktop component couldn’t be prepared.")) + "</div>" + detail(st.detail) + '<div class="rd-cbtns">' + btn("rebuild", t("重新编译", "Rebuild"), true) + "</div>";
       case "error":
-        var title = st.kind === "auth" ? t("用户名或密码不对", "Incorrect user name or password") :
-          st.kind === "net" ? t("连接不上 " + addrOf(h).replace(/^[^@]*@/, ""), "Can’t reach " + addrOf(h).replace(/^[^@]*@/, "")) :
-          st.kind === "timeout" ? t("那台电脑没有回应", "The remote computer isn’t responding") :
+        var title = st.kind === "auth" ? t("用户名或密码不正确", "Incorrect user name or password") :
           st.kind === "ended" ? t("远程会话已结束", "The remote session ended") :
-          st.kind === "crash" ? t("远程桌面组件意外退出", "The remote desktop component quit unexpectedly") : t("没能连接", "Couldn’t connect");
-        return head + '<div class="rd-err">' + esc(title) + "</div>" +
+          st.kind === "crash" ? t("远程桌面组件意外退出", "The remote desktop component quit unexpectedly") : t("无法连接到此电脑", "Can’t Connect to This Computer");
+        var why2 = st.kind === "timeout" ? t("此电脑没有响应", "This computer isn’t responding") : st.kind === "net" ? t("网络连接失败", "The network connection failed") : "";
+        return head + '<div class="rd-err">' + esc(title) + "</div>" + (why2 ? '<div class="rd-msg">' + esc(why2) + "</div>" : "") +
           detail([st.name, st.msg, st.log].filter(Boolean).join("\n")) +
           '<div class="rd-cbtns">' + (st.kind === "auth" ? btn("pass", t("输入密码", "Enter Password"), true) : btn("again", t("重新连接", "Reconnect"), true)) + "</div>";
       case "closed":
-        return head + '<div class="rd-msg">' + esc(st.by === "remote" ? t("那台电脑断开了连接", "The remote computer closed the connection") : t("已断开", "Disconnected")) + '</div><div class="rd-cbtns">' + btn("again", t("重新连接", "Reconnect"), true) + "</div>";
+        return head + '<div class="rd-msg">' + esc(st.by === "remote" ? t("此电脑断开了连接", "This computer closed the connection") : t("已断开连接", "Disconnected")) + '</div><div class="rd-cbtns">' + btn("again", t("重新连接", "Reconnect"), true) + "</div>";
       default:
         return "";
     }
@@ -300,8 +302,10 @@
       var peers = j && j.Peer ? Object.keys(j.Peer).map(function (k) { return j.Peer[k]; }) : [];
       var p = peers.filter(function (x) { return x && x.Online && (tsName(x.HostName) === want || tsName(String(x.DNSName || "").split(".")[0]) === want); })[0];
       if (!p || !p.TailscaleIPs || !p.TailscaleIPs.length) return null;
-      var ip = p.TailscaleIPs.filter(function (a) { return a.indexOf(":") < 0; })[0] || p.TailscaleIPs[0];
-      return LL.exec({ cmd: "nc -z -G 3 -w 3 " + ip + " " + pt + " >/dev/null 2>&1 && echo OK" }).then(function (r2) { return /OK/.test((r2 && r2.out) || "") ? { host: ip, port: pt } : null; });
+      // IPv4、IPv6 两个地址同时试（有的 Mac 上 100.x 这一段被别的代理占了不通——2026-10-14 这台就是，只有 IPv6 通），哪个先通用哪个
+      var ips = p.TailscaleIPs.filter(function (a) { return /^[0-9a-f.:]+$/i.test(a); });
+      var cmd = ips.map(function (ip) { return "(nc -z -G 6 -w 6 " + ip + " " + pt + " >/dev/null 2>&1 && echo \"OK " + ip + "\") &"; }).join(" ") + " wait";
+      return LL.exec({ cmd: cmd }).then(function (r2) { var m = /OK (\S+)/.exec((r2 && r2.out) || ""); return m ? { host: m[1], port: pt } : null; });
     }, function () { return null; });
   }
   var hostPort = function (r) { return (/:/.test(r.host) ? "[" + r.host + "]" : r.host) + ":" + r.port; };
@@ -841,16 +845,16 @@
   }
   function pause(V, on) { N.call("rdp.pause", { id: V.id, on: on === undefined ? !(V.st && V.st.paused) : on }).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); if (S.statusSoon && V.P && V.P.win) S.statusSoon(V.P.win); } }).catch(function () {}); }
   function popOut(V, mode) { N.call("rdp.window", { id: V.id, mode: mode }).then(function (d) { if (d && sessions[V.id]) { V.st = d; paint(V); } }).catch(function () {}); }
-  var RES = [["auto", "跟随窗口", "Match Window"], ["1280x720"], ["1920x1080"], ["2560x1440"], ["3840x2160"], ["mirror", "那台显示器的分辨率", "That Computer’s Display"]];
+  var RES = [["auto", "跟随窗口", "Match Window"], ["1280x720"], ["1920x1080"], ["2560x1440"], ["3840x2160"], ["mirror", "与此电脑的显示器一致", "Match This Computer’s Display"]];
   var FPS = [[0, "不限", "No Limit"], [60], [30], [15]];
-  var resName = function (r) { return r === "auto" ? t("跟随窗口", "Match Window") : r === "mirror" ? t("那台显示器的分辨率", "That Computer’s Display") : String(r).replace("x", " × "); };
+  var resName = function (r) { return r === "auto" ? t("跟随窗口", "Match Window") : r === "mirror" ? t("与此电脑的显示器一致", "Match This Computer’s Display") : String(r).replace("x", " × "); };
   function optsMenu(V) {
     var h = hostOf(V.hostId) || {}, cmd = h.cmd || "ctrl", up = V.st && V.st.state === "connected", d = V.stats || {};
     var res = h.res || "auto", fps = +h.fps || 0, sl = statsLine(V), canRes = !!(d.disp || (V.st && V.st.disp));
     S.menu([
       sl ? { header: true, label: sl } : null,
       sl ? { sep: true } : null,
-      newOK() ? { label: t("分辨率", "Resolution"), value: resName(res), items: (canRes ? [] : [{ header: true, label: t("由那台电脑的显示器决定", "Set by that computer’s display") }]).concat(RES.map(function (r) {
+      newOK() ? { label: t("分辨率", "Resolution"), value: resName(res), items: (canRes ? [] : [{ header: true, label: t("由此电脑的显示器决定", "Set by this computer’s display") }]).concat(RES.map(function (r) {
         if (r[0] === "mirror" && !V.dev) return null; // 只有「设备」里的电脑（GNOME 的远程桌面）能换
         return { label: r[1] ? t(r[1], r[2]) : resName(r[0]), checked: res === r[0], disabled: !canRes && r[0] !== "auto" && r[0] !== "mirror", run: function () {
           var was = h.res === "mirror" || localStorage.getItem(NOSOLO + V.hostId) === "1", now = r[0] === "mirror";
