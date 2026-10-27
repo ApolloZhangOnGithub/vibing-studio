@@ -304,8 +304,17 @@
     if (c && Date.now() - c.at < 4000) return c.items;
     if (!LOC() || (c && c.busy)) return c ? c.items : null;
     cache[dir] = { at: 0, items: c ? c.items : null, busy: true };
-    LOC().list(dir).then(function (l) { cache[dir] = { at: Date.now(), items: l || [] }; done(); }, function (e) { cache[dir] = { at: Date.now(), items: [], err: String((e && e.message) || e || "") }; done(); });
+    LOC().list(dir).then(function (l) { return linksIn(dir, l || []); }).then(function (l) { cache[dir] = { at: Date.now(), items: l }; done(); }, function (e) { cache[dir] = { at: Date.now(), items: [], err: String((e && e.message) || e || "") }; done(); });
     return cache[dir].items;
+  }
+  // 替身（符号链接、访达的替身）：新的原生列表自己带 link；旧的（没有这一项）问一次 find 哪些是符号链接（同访达：图标左下角一个小箭头，种类「替身」）
+  function linksIn(dir, l) {
+    if (!l.length || l.some(function (x) { return "link" in x; }) || !LOC().exec) return l;
+    return LOC().exec({ cmd: "/usr/bin/find " + shq(dir) + " -mindepth 1 -maxdepth 1 -type l 2>/dev/null | head -5000", access: "user" }).then(function (r) {
+      var set = {}; String((r && r.out) || "").split("\n").forEach(function (p) { if (p) set[p.slice(p.lastIndexOf("/") + 1)] = 1; });
+      l.forEach(function (x) { x.link = !!set[x.name]; });
+      return l;
+    }, function () { return l; });
   }
   // Cloud 的 agent 的包在服务器的沙盒里：经 /api/sbx 列（以人的身份）
   function listCloud(dir, done) {
@@ -325,7 +334,7 @@
   var visible = function (l) { return XV.hidden ? l : l.filter(function (x) { return !hiddenName(x); }); }; // 同访达：点开头的、带隐藏标记的（~/Library、/bin……）、上面那些都不显示
   function fsItem(dir, x) {
     var p = (dir === "/" ? "" : dir) + "/" + x.name, app = x.dir && /\.app$/i.test(x.name);
-    return { kind: app ? "app" : x.dir ? "dir" : "file", name: x.name, label: nameOf(p, x.name), path: p, go: x.dir && !app ? argOf(p) : null, size: x.dir ? null : x.size, time: x.mtime, dot: hiddenName(x) };
+    return { kind: app ? "app" : x.dir ? "dir" : "file", name: x.name, label: nameOf(p, x.name), path: p, go: x.dir && !app ? argOf(x.target || p) : null, size: x.dir ? null : x.size, time: x.mtime, dot: hiddenName(x), link: !!x.link }; // 访达的替身指着文件夹：往里走是它指着的那个
   }
   // Agent Finder 里的一个文件夹（p 空 = 整个卷）：里面（多少层都算）有几个 agent、最近什么时候有动静
   var agentsIn = function (vol) { return A.list().concat(A.archived ? A.archived() : []).filter(function (a) { return A.volOf(a.id) === vol; }); };
@@ -417,6 +426,8 @@
   }
   var DOCISH = /\.(pdf|docx?|pages|key|pptx?|xlsx?|numbers|rtf|txt|md)$/i; // 白底的文稿：深色下压暗一点
   var rdT = 0; function redrawSoon() { clearTimeout(rdT); rdT = setTimeout(function () { redrawAll(); }, 80); }
+  // 替身的小箭头（同访达：图标左下角一块白底、一个弯箭头）
+  var ALIAS_B = '<span class="xp-alias"><svg viewBox="0 0 12 12"><rect x=".5" y=".5" width="11" height="11" rx="2"/><path d="M3.6 8.6V6.9a2.3 2.3 0 0 1 2.3-2.3h2.6M6.9 2.8l1.8 1.8-1.8 1.8"/></svg></span>';
   var CLOUD_SVG = '<svg viewBox="0 0 48 48"><path d="M14 36h21a8 8 0 0 0 1.2-15.9A11 11 0 0 0 15 18.6 8.8 8.8 0 0 0 14 36z"/></svg>';
   function iconOf(it, size) {
     if (it.kind === "agent") return bundleIcon(it.a, size);
@@ -424,11 +435,11 @@
     if (it.croot) return connIcon(it.conn, size, null, false, true); // 列出来的连接器都是开着的：彩色
     if (it.volume) return '<span class="xp-ic ' + (it.vol === "cloud" ? "dir" : "disk") + (size ? " " + (size === true ? "big" : size) : "") + (it.off ? " off" : "") + '">' + (it.vol === "cloud" ? CLOUD_SVG : ICONS.disk) + "</span>";
     var th = thumbOf(it, size === "huge" ? 256 : size ? 96 : 48);
-    if (th) return '<span class="xp-ic thumb' + (DOCISH.test(it.name || "") ? " doc" : "") + (size ? " " + (size === true ? "big" : size) : "") + '"><img src="' + th + '" alt="" draggable="false"></span>';
+    if (th) return '<span class="xp-ic thumb' + (DOCISH.test(it.name || "") ? " doc" : "") + (size ? " " + (size === true ? "big" : size) : "") + '"><img src="' + th + '" alt="" draggable="false">' + (it.link ? ALIAS_B : "") + "</span>";
     var k = it.kind === "identity" ? "file" : it.kind, sz = size ? " " + (size === true ? "big" : size) : "", g = it.path && (it.kind === "dir" || it.path === "/") ? glyphOf(it.path) : it.cf && it.cdir ? glyphOf(it.cdir) : ""; // Claude Code / Codex 的文件夹也按真目录画（~ 是房子、Macintosh HD 是磁盘、文稿、桌面…）
     if (g === "disk") k = "disk";
     return '<span class="xp-ic ' + k + sz + '">' + ICONS[k] + (g && g !== "disk" && g !== "home" ? '<span class="xp-gl">' + glyphSvg(g) + "</span>" : g === "home" ? '<span class="xp-gl">' + glyphSvg("home") + "</span>" : "") +
-      (k === "file" ? '<span class="xp-ext">' + esc(extOf(it.name).toUpperCase()) + "</span>" : "") + "</span>";
+      (k === "file" ? '<span class="xp-ext">' + esc(extOf(it.name).toUpperCase()) + "</span>" : "") + (it.link ? ALIAS_B : "") + "</span>";
   }
   // 种类（同访达的「种类」）
   var KINDS = { md: ["Markdown 文稿", "Markdown Document"], markdown: ["Markdown 文稿", "Markdown Document"], txt: ["纯文本文稿", "Plain Text Document"], rtf: ["RTF 文稿", "RTF Document"], log: ["日志文件", "Log File"],
@@ -443,6 +454,7 @@
     if (it.kind === "agent") return "Paimon Code Agent";
     if (it.kind === "csess") return tr(CONN[it.conn].name + " 会话", CONN[it.conn].name + " Session");
     if (it.croot) return tr("连接器", "Connector");
+    if (it.link) return tr("替身", "Alias");
     if (it.kind === "dir") return it.volume || it.path === "/" ? tr("宗卷", "Volume") : tr("文件夹", "Folder");
     if (it.kind === "app") return tr("应用程序", "Application");
     if (it.kind === "session") return tr("会话", "Session");
@@ -1146,7 +1158,7 @@
       var empty = !items0 ? "…" : err ? tr("无法读取这个文件夹", "Can't read this folder") : !items0.length ? (last && V.q ? tr("未找到结果", "No Results") : tr("空文件夹", "Empty Folder")) : "";
       return '<div class="xp-col" data-col="' + esc(arg) + '"><div class="xp-colh">' + esc(head) + '</div><div class="xp-colb">' + (rowsH || '<div class="xp-cempty">' + esc(empty) + "</div>") + "</div></div>";
     });
-    return '<div class="xp-cols">' + cols.join("") + '<div class="xp-col xp-colfill"><div class="xp-colh"></div></div></div>';
+    return '<div class="xp-cols">' + cols.join("") + '<div class="xp-col xp-colfill"></div></div>'; // 右边空出来的：空白（同访达），不画顶上那行，不像多了一栏
   }
   // 画廊：上面一大块是选中那个的样子（没有选就第一个），下面一排小图，←→ 换
   function galleryHtml(list, V) {
@@ -1270,7 +1282,7 @@
         if (qFocus) { var qi = host.querySelector(".xp-q"); qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
         else if (mFocus) main.focus({ preventScroll: true });
         host.querySelectorAll(".xp-pvcard[data-path]").forEach(function (pv) {
-          fileView(pv.dataset.path, 60, function (x) {
+          fileView(pv.dataset.path, 800, function (x) { // 预览能滚：多读一些（读的上限 256 KB）
             if (!pv.isConnected) return;
             if (x) { pv.innerHTML = x; pv.classList.toggle("img", /^<img/.test(x)); }
             else { var it0 = V.items[V.sel] || V.items[0]; pv.outerHTML = '<div class="xp-pvtop">' + (it0 ? iconOf(it0, "huge") : "") + "</div>"; }

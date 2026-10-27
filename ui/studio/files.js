@@ -34,7 +34,9 @@
     });
 
     // ---- 记着的：根、展开了哪些、选中哪个、最近打开的文件夹、显示隐藏文件 ----
-    var KEY = "st-files";
+    // 连着另一台电脑的窗口（remote.js：nadosNative.remote、.mac）：那台的根、展开了哪些另记一份——以前和这台共用一份，
+    //   打开的是这台的路径（/Users/这台的用户名），那台上没有，一直「无法读取此文件夹」（用户 2026-10-28）
+    var NN = window.nadosNative, KEY = "st-files" + (NN && NN.remote && NN.mac ? "@" + NN.mac : "");
     var st = (function () { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } })();
     st.open = st.open || {}; st.recent = st.recent || [];
     if (st.hidden === undefined) st.hidden = true;
@@ -462,7 +464,11 @@
     // ---- 挂到活动栏；命令面板里的几条 ----
     S.addView("files", {
       title: "文件", icon: ICON, sym: "doc.on.doc", order: 1,
-      create: function (tw) { var el = create(tw); L.ready.then(function () { if (!st.root) { st.root = home(); save(); } load(st.root).then(repaintAll); }); return el; },
+      create: function (tw) { var el = create(tw); L.ready.then(function () {
+        if (!st.root) { st.root = home(); save(); }
+        // 记着的根在这台电脑上读不了（文件夹没了、是别的电脑上的路径）：回到这台的主目录
+        load(st.root).then(function (c) { if (c && c.err && home() && st.root !== home()) { st.root = home(); st.open = {}; st.sel = ""; save(); return load(st.root); } }).then(repaintAll);
+      }); return el; },
       show: function (el, tw, fromBar) {
         var v = views.filter(function (x) { return x.el === el; })[0];
         if (!v) return;

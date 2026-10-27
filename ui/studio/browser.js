@@ -522,6 +522,8 @@
   }
   var lastTitle = "";
   function syncAll() { var tt = T(); if (!tt) return; tt.wins().forEach(function (w) { if (w.open && w.ws.active) w.ws.syncTitles(); }); }
+  // 连接器的图（Teyvat 那颗星球是一张图片，载好得晚一点）：载好了，标签页上的图标重画一遍（不然一直是空的 / 终端的）
+  document.addEventListener("tsu-logos", function () { FAV.teyvat = '<span class="bfav bf-ty">' + TYL() + "</span>"; syncAll(); });
   // 标签页前面的小图标（同 VS Code：按类型；文件按扩展名）
   var EXT_ICON = { md: ["md", "↓"], markdown: ["md", "↓"], js: ["js", "JS"], mjs: ["js", "JS"], cjs: ["js", "JS"], ts: ["ts", "TS"], tsx: ["ts", "TS"], jsx: ["js", "JS"], json: ["js", "{}"], py: ["py", "PY"], sh: ["sh", "$"], zsh: ["sh", "$"], swift: ["cc", "SW"],
     css: ["ts", "#"], html: ["cc", "<>"], yml: ["cfg", "⚙"], yaml: ["cfg", "⚙"], toml: ["cfg", "⚙"], txt: ["cfg", "≡"], log: ["cfg", "≡"], png: ["py", "▣"], jpg: ["py", "▣"], jpeg: ["py", "▣"], gif: ["py", "▣"], svg: ["py", "▣"], pdf: ["cc", "▤"] };
@@ -532,7 +534,7 @@
     if (a.page && PAGE_ICON[a.page]) return PAGE_ICON[a.page];
     if (PAGE_ICON[a.kind]) return PAGE_ICON[a.kind];
     if (a.kind === "file") { if (window.TSU_FICON) return TSU_FICON(a.path); var e = String(a.path || "").split(".").pop().toLowerCase(), x = EXT_ICON[e] || ["cfg", "≡"]; return '<i class="st-ico st-i-' + x[0] + '">' + x[1] + "</i>"; } // 文件：同「文件」视图的图标（ficons.js）
-    return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', pi: '<i class="st-ico st-i-cx st-i-pi">' + PIL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
+    return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', pi: '<i class="st-ico st-i-cx st-i-pi">' + PIL() + '</i>', teyvat: '<i class="st-ico st-i-ty">' + TYL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
   }
   function fav(tabEl, P) {
     var span = tabEl.querySelector("span");

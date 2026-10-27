@@ -212,6 +212,10 @@ html:not(.st-gui) :is(.xp-seg, .xp-q) { border-radius: 3px; }
 .xp-ext { position: absolute; bottom: 18%; left: 0; right: 0; text-align: center; font: 700 calc(9px * var(--st-fk, 1)) var(--st-guifont, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); color: var(--st-dim); }
 .xp-ic:not(.big):not(.huge) .xp-ext { display: none; }
 .xp-it .xp-ext { display: block; font-size: calc(9px * var(--st-fk, 1)); }
+/* 替身：左下角一块白底的弯箭头（同访达），跟着图标大小 */
+.xp-alias { position: absolute; left: 0; bottom: 0; width: 42%; height: 42%; min-width: 8px; min-height: 8px; display: flex; color: #1d1d1f; }
+.xp-alias svg { width: 100%; height: 100%; fill: #fff !important; stroke: currentColor; stroke-width: 1.3 !important; }
+.xp-alias svg path { fill: none; }
 .xp-ic.big { width: 64px; height: 64px; }
 .xp-ic.huge { width: 128px; height: 128px; }
 .xp-ic.huge .xp-ext { font-size: calc(15px * var(--st-fk, 1)); }
@@ -244,10 +248,9 @@ html:not(.st-gui) :is(.xp-seg, .xp-q) { border-radius: 3px; }
 .xp-pane { flex: none; width: clamp(220px, var(--xp-panew, 290px), 480px); border-left: 1px solid var(--st-line); overflow-y: auto; padding: 16px 16px 20px; scrollbar-width: thin; }
 .xp-pv { display: flex; flex-direction: column; }
 .xp-pvtop { display: flex; justify-content: center; padding: 10px 0 16px; }
-.xp-pvcard { margin: 2px 0 14px; max-height: 300px; overflow: hidden; border: 1px solid var(--st-line); border-radius: 10px; background: var(--st-bg); padding: 10px 12px; position: relative; }
-.xp-pvcard::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: linear-gradient(transparent, var(--st-bg)); pointer-events: none; }
+/* 文件内容的预览：能上下滚（用户 2026-10-28：以前截掉、底下一道渐隐，看不到后面） */
+.xp-pvcard { margin: 2px 0 14px; max-height: 300px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--st-line); border-radius: 10px; background: var(--st-bg); padding: 10px 12px; position: relative; }
 .xp-pvcard.img { padding: 0; background: var(--st-bg2); }
-.xp-pvcard.img::after { display: none; }
 .xp-pvcard .xp-pre { margin: 0; font-size: calc(11px * var(--st-fk, 1)); }
 .xp-pvcard .xp-md { font-size: calc(12px * var(--st-fk, 1)); }
 .xp-pvcard .xp-img { margin: 0 auto; border-radius: 0; max-height: 300px; object-fit: contain; }
@@ -340,7 +343,7 @@ html.light .xp-qlbg { background: rgba(0, 0, 0, 0.06); }
 /* ---- 分栏（同访达）：一层一栏，从左到右；走过的文件夹亮着（淡），当前选中的亮（实） ---- */
 .xp-main:has(> .xp-cols) { padding: 0; overflow: hidden; }
 .xp-cols { display: flex; height: 100%; min-height: 0; overflow-x: auto; overflow-y: hidden; }
-/* 每一栏是一个封闭的框：竖线到底；顶上一行小字（这一层是什么），下面一条细线连着各栏、一直到右边（.xp-colfill） */
+/* 每一栏是一个封闭的框：竖线到底；顶上一行小字（这一层是什么）、下面一条细线；最后一栏右边空出来的（.xp-colfill）是空白，不像多了一栏 */
 .xp-col { flex: none; width: 230px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--st-line); }
 .xp-colfill { flex: 1 0 24px; border-right: 0; }
 .xp-colh { flex: none; height: 24px; line-height: 24px; padding: 0 12px; box-sizing: border-box; font-size: calc(11px * var(--st-fk, 1)); color: var(--st-dim); border-bottom: 1px solid var(--st-line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

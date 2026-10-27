@@ -107,6 +107,8 @@ html.termapp .termwin .tab .st-ico { order: 0; visibility: visible; width: auto;
 html.termapp .termwin .tab > span { order: 1; }
 .st-ico { flex: none; font-weight: 700; font-size: inherit; font-style: normal; text-align: left; }
 .st-ico.st-i-pm > img.pm-av { width: 1.15em; height: 1.15em; vertical-align: -0.22em; } /* Paimon 的 agent：派蒙的头像 */
+.st-ico.st-i-ty { display: inline-flex; align-items: center; } /* Teyvat 的 agent：提瓦特那颗星球（同侧栏里它的图标） */
+.st-ico.st-i-ty > img.pm-av { width: 14px; height: 14px; vertical-align: 0; }
 .st-ico.st-i-sh { color: var(--st-dim); } .st-ico.st-i-pm { color: var(--st-hi); } .st-ico.st-i-cc { color: var(--st-orange); } .st-ico.st-i-md { color: var(--st-blue); }
 .st-ico.st-i-js { color: var(--st-yellow); } .st-ico.st-i-ts { color: var(--st-blue); } .st-ico.st-i-py { color: var(--st-green); } .st-ico.st-i-cfg { color: var(--st-dim); }
 .st-tacts { flex: none; position: sticky; right: 0; margin-left: auto; display: flex; align-items: center; gap: 2px; padding: 0 6px; background: var(--st-bg2); }

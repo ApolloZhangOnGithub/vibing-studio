@@ -8,6 +8,9 @@
 // 这是连接器（ext.js 的 TSU_CONNECTORS：claude-code）：开着才有 window.TSU_CLAUDE，界面上跟 Claude Code 有关的都看它
 (function () {
   "use strict";
+  // /goal 结束了：达成了（met），或者判不了 / 放弃了（failed：它判定这个条件没法评估，Claude Code 就把目标清掉了、/goal 显示 No goal set），
+  //   以及以后可能有的 cleared / cancelled / stopped / expired——都不再算「在跑」（用户 2026-10-28：目标早清掉了，右边还写着 active 13d）
+  function goalEnded(gs) { return !!(gs && (gs.met || gs.failed || gs.cleared || gs.cancelled || gs.canceled || gs.stopped || gs.expired)); }
   // 这边起的 claude -p 进程（stream-json）：页面要走了（重新载入、关窗口）就全部停掉——不然成了孤儿进程一直占着会话，
   // 用户在终端里 claude --resume / 后台会话列表里打开它会被拒（「this session is running in another terminal」）
   var LIVE_PROCS = new Set();
@@ -369,7 +372,7 @@
           var j; try { j = JSON.parse(l); } catch (e) { return; }
           if (j.type === "attachment" && j.attachment && j.attachment.type === "goal_status") {
             var gs = j.attachment;
-            if (gs.met) goal = null; else if (gs.condition) goal = { text: String(gs.condition), at: goal && goal.text === String(gs.condition) ? goal.at : ts(j), checking: false, iterations: 0 };
+            if (goalEnded(gs)) goal = null; else if (gs.condition) goal = { text: String(gs.condition), at: goal && goal.text === String(gs.condition) ? goal.at : ts(j), checking: false, iterations: 0 };
             return;
           }
           var c = j.message && j.message.content, text = typeof c === "string" ? c : Array.isArray(c) ? c.map(function (b) { return b && b.type === "text" ? b.text : ""; }).join("") : "";
@@ -757,6 +760,7 @@
       var clean = function (x) { x = String(x || "").replace(/\x1b\[[\d;]*m/g, "").trim(); return x === "(no content)" ? "" : x; };
       if (so) lastCmd.note = clean(so[1]);
       if (se) lastCmd.err = clean(se[1]);
+      if (/^\/goal\b/.test(lastCmd.cmd) && /No goal set|Goal cleared/i.test(lastCmd.note || "")) { if (agent.goal) { agent.goal = null; emit("config"); } goalSeen = true; } // /goal 说没有目标：右边那块也清掉
       if (j.contextUsage) lastCmd.ctxUsage = j.contextUsage;
       if (j.usageReport) lastCmd.usageReport = j.usageReport;
       return lastCmd;
@@ -905,7 +909,7 @@
       // /goal（Claude Code 的会话级目标）：goal_status 附件——met 了就算完成（不再在跑）；没 met 的就是还在跑（同它输入框上面那句「◎ /goal active (1d)」）
       if (j.type === "attachment" && j.attachment && j.attachment.type === "goal_status") {
         var gs = j.attachment; goalSeen = true;
-        if (gs.met) agent.goal = null;
+        if (goalEnded(gs)) agent.goal = null;
         else if (gs.condition) agent.goal = { text: String(gs.condition), at: agent.goal && agent.goal.text === String(gs.condition) ? agent.goal.at : ts(j), checking: false, iterations: 0 };
         emit("config");
         return null;

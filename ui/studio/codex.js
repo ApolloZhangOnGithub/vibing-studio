@@ -352,6 +352,10 @@
 
     // ---- 读记录 ----
     var offset = 0, pollT = 0, cur = null, byCall = {}, loading = null, running = null;
+    // 它在想吗（同 Claude Code 转圈那一行的 thinking / still thinking / deep in thought：live.js 的 thinkPhrase 问 rt.thinkSince）：
+    //   最后一条是要它回的（你的话、开始一问、工具的结果）、它还没写出东西（推理、回复、工具调用）——这段时间它在推理。用户 2026-10-28：Codex 以前只写 Working
+    var lastIn = 0, lastOut = 0;
+    rt.thinkSince = function () { return rt.stream && running && lastIn > lastOut ? lastIn : 0; };
     function finishTurn() { if (cur && cur.last && !cur.stats && cur.at) cur.stats = { secs: Math.max(1, Math.round((cur.last - cur.at) / 1000)), verb: "Worked", at: cur.last, auto: true }; }
     // 在跑的那一问（转圈那一行、「在跑」的画法跟着它）：读到新的一问就换成它——不然还指着上一问（已经答完的），
     //   新的一问的回复、「Worked for」那一行都画错（上一问当成在跑、少了做完那一行）
@@ -402,7 +406,7 @@
       if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (cs && cs.reasoning_effort) agent.effort = cs.reasoning_effort; return null; }
       if (j.type === "compacted") { finishTurn(); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
       if (j.type === "event_msg") {
-        if (p.type === "task_started") { running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
+        if (p.type === "task_started") { running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
         if (p.type === "task_complete") { running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
         if (p.type === "thread_goal_updated") { var g = p.goal || {}; agent.goal = g.status === "active" && g.objective ? { text: String(g.objective), at: (g.createdAt || 0) * 1000 || at, checking: false, iterations: 0 } : null; emit("config"); return null; } // Codex 的 /goal
         if (p.type === "turn_aborted") { running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
@@ -413,7 +417,8 @@
       }
       if (j.type !== "response_item") return null;
       if (p.type === "message") {
-        if (p.role === "user") { var u = userOf(p.content); if ((!u.text.trim() && !u.images.length) || synthetic(u.text)) return null; return newTurn(u.text, at, u.images); }
+        if (p.role === "user") { var u = userOf(p.content); if ((!u.text.trim() && !u.images.length) || synthetic(u.text)) return null; lastIn = Math.max(lastIn, at); return newTurn(u.text, at, u.images); }
+        if (p.role === "assistant") lastOut = Math.max(lastOut, at);
         var text = textOf(p.content);
         if (p.role !== "assistant" || !text.trim()) return null;
         var t = ensureTurn(at);
@@ -423,12 +428,14 @@
         return t;
       }
       if (p.type === "reasoning") {
+        lastOut = Math.max(lastOut, at); // 推理写进记录了：这一段想完了（接下来是回复或工具调用）
         var sm = (p.summary || []).map(function (x) { return x && x.text || ""; }).filter(Boolean).join("\n\n");
         var t2 = ensureTurn(at);
         if (sm) t2.thinking = (t2.thinking ? t2.thinking + "\n\n" : "") + sm;
         t2.thought = Math.max(t2.thought || 1, Math.round((at - t2.at) / 1000));
         return t2;
       }
+      if (/_call$/.test(p.type) && p.type !== "function_call_output") lastOut = Math.max(lastOut, at);
       if (/_call$/.test(p.type) && p.type !== "function_call_output") {
         var po = pollOf(p), tg = po && sessOf[po.sess];
         if (tg && (p.call_id || p.id)) { byCall[p.call_id || p.id] = { poll: tg, chars: po.chars }; return null; }
@@ -441,6 +448,7 @@
         t3.last = at;
         return t3;
       }
+      if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "tool_search_output") lastIn = Math.max(lastIn, at); // 工具的结果回去了：它又要想了
       if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "tool_search_output") {
         var pp = byCall[p.call_id];
         if (!pp) return null;

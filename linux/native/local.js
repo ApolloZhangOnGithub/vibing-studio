@@ -221,9 +221,10 @@ class Local {
         const out = [];
         for (const n of names.slice(0, 5000)) {
           const full = path.join(p, n);
-          let st;
+          let st, link = false;
           try { st = fs.statSync(full); } catch (e) { continue; } // 断了的链接
-          out.push({ name: n, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs, hidden: n.startsWith("."), package: false });
+          try { link = fs.lstatSync(full).isSymbolicLink(); } catch (e) { link = false; }
+          out.push({ name: n, dir: st.isDirectory(), size: st.size, mtime: st.mtimeMs, hidden: n.startsWith("."), package: false, link });
         }
         const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
         out.sort((x, y) => (x.dir !== y.dir ? (x.dir ? -1 : 1) : coll.compare(x.name, y.name)));

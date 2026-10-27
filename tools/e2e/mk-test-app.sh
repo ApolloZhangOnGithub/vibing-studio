@@ -9,6 +9,7 @@ CONFIG=debug DEV=1 MODE=terminal APP_DIR="$B" ./build.sh 2>&1 | grep -E 'error|b
 mkdir -p "$(dirname "$T")"
 ditto "$B/Vibing Studio.app" "$T"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier beer.paimon.terminal.rdptest' -c 'Set :CFBundleName Vibing Studio RDPTest' -c 'Set :CFBundleDisplayName Vibing Studio RDPTest' "$T/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Delete :CFBundleDocumentTypes' "$T/Contents/Info.plist" >/dev/null 2>&1 || true # 不认任何文件：就算被系统登记了，「打开方式」里也不会有它（2026-10-28）
 SKC="$HOME/Library/Keychains/vibing-studio-signing.keychain-db"; SID=""
 if [ -f "$SKC" ]; then security unlock-keychain -p "$(security find-generic-password -s "Vibing Studio signing keychain" -w)" "$SKC" 2>/dev/null; SID="$(security find-identity -p codesigning "$SKC" | awk '/"Vibing Studio Local Signing"/ { print $2; exit }')"; fi
 if [ -n "$SID" ]; then codesign --force --sign "$SID" --keychain "$SKC" --options runtime --entitlements Paimon.entitlements "$T" 2>/dev/null; else codesign --force --sign - --options runtime --entitlements Paimon.entitlements "$T" 2>/dev/null; fi

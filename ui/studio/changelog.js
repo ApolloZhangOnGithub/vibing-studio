@@ -11,6 +11,27 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-28", ver: "0.2.1.467", items: {
+      new: [
+        ["状态栏左边显示当前 agent 的 5 小时、7 天用量和上下文：把输入框下面的「状态信息」关掉后，它们挪到这里（跟着这个窗口正在用的 agent）；右键状态栏选显示哪几样。", "The status bar now shows the current agent’s 5-hour and 7-day usage and context on the left: when Status Info under the input box is turned off, they move here (following the agent this window is using); right-click the status bar to choose which ones to show."],
+        ["从访达拖文件进来：落在对话上照旧插进输入框、落在终端上照旧贴路径；落在别处（文件、设置、访达页、边栏、标签页栏）就打开它——文件在编辑区打开，文件夹在访达页里打开。", "Dragging files in from Finder: dropped on a conversation they still go into the input box, and on a terminal the path is still pasted; dropped anywhere else (a file, Settings, the Finder page, the sidebar, the tab bar) they open — files in the editor, folders in the Finder page."],
+        ["访达页里的替身、符号链接带上访达那样的小箭头，种类写「替身」；指着文件夹的替身点进去就是它指着的那个文件夹（访达的替身要新版 App）。", "Aliases and symbolic links in the Finder page now show Finder’s small arrow badge and the kind Alias; opening an alias to a folder goes to the folder it points to (Finder aliases need the next app version)."],
+      ],
+      improved: [
+        ["Codex 的会话也分「思考中」和「工作中」：它在想（还没开始回答、还没调工具）时显示 Thinking，同 Claude Code。", "Codex sessions now distinguish Thinking from Working: while it is reasoning (before it answers or calls a tool) the status shows Thinking, as in Claude Code."],
+        ["Teyvat 标签页的图标和边栏里一样（它自己的图标，不再是终端的 ›_）。", "Teyvat tabs now use the same icon as the sidebar (its own icon instead of the terminal’s)."],
+        ["对话里文件的预览卡片能上下滚动，看得到整个文件的开头一大段，不再被截在几行。", "File preview cards in conversations now scroll vertically, so you can read well past the first few lines."],
+        ["「打开方式」里只剩一个 Vibing Studio：废纸篓里、测试用的、别处的旧版本，App 每次启动后自己从系统的列表里拿掉（文件不动）。", "Open With now lists a single Vibing Studio: old copies in the Trash, test builds and copies elsewhere are removed from the system list after each launch (the files themselves are left alone)."],
+      ],
+      fixed: [
+        ["Teyvat 右侧栏的后台命令一直显示几百个「运行中」：跑完的通知对不上、被吞了、不显示的都认了；Teyvat 自己说还剩几个就按它的数；超时没回音的写「已结束（没有收到结果）」。", "The Teyvat side bar showed hundreds of background commands as running: finished notices that didn’t match, were lost or were hidden are now recognized, the count follows Teyvat’s own remaining count, and commands that time out without a result show as ended."],
+        ["Claude Code 的目标清掉之后（/goal clear、目标结束），右侧栏还一直写「进行中」。", "After a Claude Code goal was cleared or ended, the side bar kept showing it as active."],
+        ["新窗口中打开另一台电脑时，访达页、文件边栏一直「无法读取此文件夹」：它们用的是这台 Mac 的路径；现在每台电脑记自己的，读不到就回到那台的主目录。", "In a window opened on another computer, the Finder page and the Files sidebar showed “Can’t read this folder” because they used this Mac’s path; each computer now keeps its own, and falls back to its home folder."],
+        ["新窗口中打开另一台电脑时，用量页报错「can’t open file …/ccusage.py」。", "In a window opened on another computer, the usage page failed with “can’t open file …/ccusage.py”."],
+        ["边栏 Teyvat 那一组的筛选（仅显示运行中）点了没反应；去掉了那一组用不上的「全部折叠」。", "The Teyvat group’s filter in the sidebar (Show Running Only) did nothing; the unused Collapse All button on that group is gone."],
+        ["访达页分栏的右边多出一栏空的：空出来的地方现在是空白。", "The Finder page’s column view showed an extra empty column on the right; the leftover space is now blank."],
+      ],
+    } },
     { date: "2026-10-15", ver: "0.2.1.466", items: {
       new: [
         ["Linux 版登录时自己打开（默认开，设置 › 通用 › 其他设备里能关）：那台常常是给别的设备用的，重启、注销后没人去点它，远程桌面、在新窗口中打开、打开终端就都连不上。需要 Linux 版 0.2.1.465（AppImage 装的会自己更新）。", "The Linux app now opens at login (on by default; turn it off in Settings › General › Other Devices): that computer is often used from other devices, and after a restart nobody is there to open it, so Remote Desktop, Open in New Window and Open Terminal couldn’t connect. Requires Linux app 0.2.1.465 (AppImage installs update themselves)."],

@@ -6491,7 +6491,7 @@
         var TYc = TSU_TEYVAT, tyAll = TYc.list().filter(function (x) { return qHit(x.name, x.id); }), seeT = {};
         tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^ty:/.test(ag)) seeT[ag.slice(3)] = p; });
         var tyLogoIn = function (html, busy) { var L0 = window.TSU_LOGOS && TSU_LOGOS.teyvat; return L0 ? String(html).replace(/\uE039/g, '<i class="ts-ccl ts-cxl ts-tyl' + (busy ? " busy" : "") + '">' + L0 + "</i>") : String(html).replace(/\uE039/g, "T"); };
-        out += "\n" + row("ts-fold ts-head", foldAt("ty", false), [[chev("ty"), ""], ["Teyvat", BOLD]], [["only-ty", only("ty") ? "\uE023" : "\uE022", only("ty") ? "显示全部" : "仅显示运行中"], ["fold-ty", "\uE024", "全部折叠"]]);
+        out += "\n" + row("ts-fold ts-head", foldAt("ty", false), [[chev("ty"), ""], ["Teyvat", BOLD]], [["only-ty", only("ty") ? "\uE023" : "\uE022", only("ty") ? "显示全部" : "仅显示运行中"]]); // 一组是平的（没有文件夹）：不放「全部折叠」
         if (!folded("ty")) {
           var tyShow = tyAll.filter(function (x) { return !only("ty") || x.running; });
           if (!tyAll.length) out += H("  " + DIMC + "暂无 Agent" + RESET) + "\n";
@@ -6957,7 +6957,7 @@
       if (act0 && act0.dataset.act === "new-pi-sess") { if (canNewIn0("pi")) TSU_CONNECTORS.newSession("pi", ""); return; }
       if (act0 && act0.dataset.act === "fold-pi") { var op = fold["only:pi"] ? "o" : ""; Object.keys(fold).forEach(function (k) { if (/^o?pi:/.test(k) && k !== "pi:all") fold[k] = true; }); if (window.TSU_PI) TSU_PI.list().forEach(function (x) { ccDirKeys(x.cwd).forEach(function (k) { fold[op + "pi:" + k.slice(3)] = true; }); }); saveSidePref(); return S.render(true); }
       if (act0 && act0.dataset.act === "new-tm") { S.newTerm(); return; }
-      if (act0 && /^only-(pm|cc|cx|pi)$/.test(act0.dataset.act)) { var ok0 = "only:" + act0.dataset.act.slice(5); fold[ok0] = !fold[ok0]; saveSidePref(); return S.render(true); }
+      if (act0 && /^only-(pm|cc|cx|pi|ty)$/.test(act0.dataset.act)) { var ok0 = "only:" + act0.dataset.act.slice(5); fold[ok0] = !fold[ok0]; saveSidePref(); return S.render(true); }
       if (act0 && (act0.dataset.act === "fold-pm" || act0.dataset.act === "fold-cc")) return collapseAll(act0.dataset.act.slice(5));
       var it = e.target.closest(".ts-it"), act = e.target.closest(".ts-act");
       if (it && it.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(it.dataset.cc) : S.openCC(it.dataset.cc);
@@ -8362,15 +8362,16 @@
     if (hit) { e.preventDefault(); e.stopPropagation(); hit.run(); }
   }, true);
 
-  // ---- Paimon Terminal：从访达拖文件进来 = 把路径贴进鼠标下面那个终端（转义好、后面带个空格，同「终端」）；agent 的输入框里就插进去 ----
+  // ---- 从访达拖文件进来：落在终端上 = 把路径贴进去（转义好、后面带个空格，同「终端」）；落在 agent 的对话上 = 插进它的输入框（图片当附图）；
+  //   落在别处（文件、设置、访达页、边栏、标签页栏……）= 打开它：文件在编辑区、文件夹在访达页（用户 2026-10-28：不是把路径贴进去） ----
   if (window.nadosNative && nadosNative.local) nadosNative.on("drop.paths", function (d) {
     if (!d || !d.paths || !d.paths.length) return;
     // 远程桌面的连接文件（.rdp）：拖到哪里都是直接连它
     var rdps = d.paths.filter(function (x) { return /\.rdp$/i.test(x); });
     if (rdps.length && window.TSU_RDP && TSU_RDP.native()) { rdps.forEach(function (x) { TSU_RDP.openFile(x, frontTerm()); }); d = Object.assign({}, d, { paths: d.paths.filter(function (x) { return rdps.indexOf(x) < 0; }) }); if (!d.paths.length) return; }
     var el = document.elementFromPoint(d.x, d.y), p = el && allPanes().filter(function (x) { return x.el.contains(el); })[0], tw = frontTerm();
-    if (!p && tw) p = tw.ws.active;
-    if (!p) return;
+    var chat = !!(p && p.program && p.program.agentId && (p.ta || p.program.attachFile || p.program.insertText)), term = !!(p && p.program && p.program === p.shell && p.shell.paste);
+    if (!chat && !term) { if (window.STUDIO && STUDIO.openPaths) STUDIO.openPaths((p && p.win) || tw, d.paths); return; }
     p.win.ws.activate(p);
     p.focus();
     if (p.program === p.shell && p.shell.paste) p.shell.paste(d.paths.map(shellEscape).join(" ") + " ");

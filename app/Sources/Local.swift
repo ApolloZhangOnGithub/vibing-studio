@@ -198,7 +198,8 @@ final class Local {
       procs[try idArg(a)]?.kill()
       return nil
     case "fs.list":
-      // 一个目录里的东西（资源管理器）：[{ name, dir, size, mtime }]，文件夹在前、按名字
+      // 一个目录里的东西（资源管理器）：[{ name, dir, size, mtime, hidden, package, link, target? }]，文件夹在前、按名字。
+      //   link：符号链接、访达的替身（图标上画小箭头）；替身指着文件夹时 dir 为真、target 是它指着的地方（点进去去那里）
       let p = try pathArg(a)
       let fm = FileManager.default
       guard let names = try? fm.contentsOfDirectory(atPath: p) else { throw BridgeError.failed("Can't list \(p)") }
@@ -209,9 +210,17 @@ final class Local {
         guard fm.fileExists(atPath: full, isDirectory: &isDir) else { continue }
         let at = try? fm.attributesOfItem(atPath: full)
         // 访达藏起来的（同访达）：点开头的、带 hidden 标记的（~/Library、/bin、/usr……）、.hidden 里列的
-        let rv = try? URL(fileURLWithPath: full).resourceValues(forKeys: [.isHiddenKey, .isPackageKey, .creationDateKey])
-        out.append(["name": n, "dir": isDir.boolValue, "size": (at?[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
-                    "hidden": rv?.isHidden ?? n.hasPrefix("."), "package": rv?.isPackage ?? false])
+        let rv = try? URL(fileURLWithPath: full).resourceValues(forKeys: [.isHiddenKey, .isPackageKey, .creationDateKey, .isSymbolicLinkKey, .isAliasFileKey])
+        let sym = rv?.isSymbolicLink ?? false, ali = !sym && (rv?.isAliasFile ?? false)
+        var dir = isDir.boolValue, target: String? = nil
+        if ali, let t = try? URL(resolvingAliasFileAt: URL(fileURLWithPath: full), options: [.withoutUI, .withoutMounting]) {
+          var td: ObjCBool = false
+          if fm.fileExists(atPath: t.path, isDirectory: &td) { dir = td.boolValue; target = t.path }
+        }
+        var e: [String: Any] = ["name": n, "dir": dir, "size": (at?[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
+                                "hidden": rv?.isHidden ?? n.hasPrefix("."), "package": rv?.isPackage ?? false, "link": sym || ali]
+        if let target = target { e["target"] = target }
+        out.append(e)
       }
       out.sort { a, b in
         let da = a["dir"] as? Bool ?? false, db = b["dir"] as? Bool ?? false

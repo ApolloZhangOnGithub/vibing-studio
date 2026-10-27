@@ -423,11 +423,12 @@
         famSubs.set(w, { aid: aid, off: typeof off === "function" ? off : null });
       }
       if (aid) familyPaint(w);
+      if (getv("statusBar") && agentUsage(P && P.program) !== (w._aguTxt || "")) statusSoon(w); // 状态栏左边那段用量、上下文变了
       // 面板的 Agent 那一层跟着的 agent 换了（关了标签页、换了编辑器组）而没有重画：跟上
       if (footOn() && w.st) { var fsp = w.sidePane, fid = P && sideAgent(P); if (fid ? !fsp || !fsp.program || fsp.program.agentId !== fid || !fsp.el.isConnected || fsp.el.hidden : fsp && !fsp.el.hidden) renderPanel(w); }
     });
   }, 1000);
-  if (window.TSU_AGENTS && TSU_AGENTS.on) TSU_AGENTS.on(function (t) { if (t === "cfg") familyChanged(); }); // 设置里的开关（任务清单、后台任务、子 Agent）
+  if (window.TSU_AGENTS && TSU_AGENTS.on) TSU_AGENTS.on(function (t) { if (t === "cfg") { familyChanged(); allWins().forEach(function (w) { statusSoon(w); }); } }); // 设置里的开关（任务清单、后台任务、子 Agent）
   // 对话 ··· 里我这边加的几项：显示 ›（任务清单 ⌃T、后台任务、子 Agent、状态信息）；在跑的时候还有「停止」（不放在显眼的地方：发送键一直是发送）
   function agentMenuItems(MI0, aid) {
     MI0 = MI0 || MI;
@@ -923,6 +924,14 @@
     var P = tw.ws.active, items = [{ label: "隐藏状态栏", icon: MI.status, run: function () { setv("statusBar", false); } }];
     // 最右边的系统状态：显示哪几个（勾掉就不读那一样）；打开活动监视器
     var on0 = statsOn();
+    var agP0 = agentPaneFor(tw);
+    if (agP0 && agP0.program && agP0.program.agentId) {
+      var ag0 = aguOn(), infoOn = acfg().footInfo !== false;
+      items = items.concat([{ sep: true }, { header: true, label: infoOn ? "当前 Agent（状态信息关着时显示）" : "当前 Agent" }], AGU.map(function (x) {
+        var on = ag0.indexOf(x[0]) >= 0;
+        return { label: x[1], checked: on, disabled: infoOn, run: function () { setv("statusAgent", AGU.map(function (y) { return y[0]; }).filter(function (k) { return k === x[0] ? !on : ag0.indexOf(k) >= 0; })); allWins().forEach(function (w) { statusSoon(w); }); } };
+      }));
+    }
     items = items.concat([{ sep: true }, { header: true, label: "系统状态" }], STATS.map(function (x) {
       var on = on0.indexOf(x[0]) >= 0;
       return { label: x[1], checked: on, run: function () { var nx = STATS.map(function (y) { return y[0]; }).filter(function (k) { return k === x[0] ? !on : on0.indexOf(k) >= 0; }); setv("statusStats", nx); LOAD.busy = false; loadTick(); allWins().forEach(function (w) { statusSoon(w); }); } };
@@ -1097,6 +1106,22 @@
   // ---- 状态栏最右边：整机的 CPU、GPU、内存、磁盘剩余（同菜单栏上的系统状态小工具；用户 2026-10-13）——右键状态栏选显示哪几个，点一下打开活动监视器。
   //   App 里两秒问一次原生（system.load：不起进程）；老版本的 App、Linux 版用一条很轻的命令兜底。窗口看不见、状态栏关着时不读 ----
   var STATS = [["cpu", "CPU", "CPU"], ["gpu", "GPU", "GPU"], ["mem", "内存", "Memory"], ["disk", "磁盘剩余", "Disk Free"]];
+  // ---- 状态栏左边：当前标签页的 agent 的 5 小时 / 7 天用量和上下文（输入框下面那行「状态信息」关着时，放到这里；用户 2026-10-28）——右键状态栏选显示哪几样 ----
+  var AGU = [["five", "5 小时用量", "5-Hour Usage"], ["week", "7 天用量", "7-Day Usage"], ["ctx", "上下文", "Context"]];
+  var aguOn = function () { var s0 = getv("statusAgent"); return Array.isArray(s0) ? s0 : AGU.map(function (x) { return x[0]; }); };
+  function agentUsage(prog) {
+    var aid = prog && prog.agentId, A = window.TSU_AGENTS;
+    if (!aid || !A || !A.runtime || acfg().footInfo !== false) return "";
+    var rt = null; try { rt = A.runtime(aid); } catch (e) { rt = null; }
+    if (!rt) return "";
+    var on = aguOn(), L0 = null, c = null;
+    try { L0 = rt.limits ? rt.limits() : null; c = rt.ctx ? rt.ctx() : null; } catch (e) { return ""; }
+    var pc = function (v) { return typeof v === "number" && isFinite(v) ? Math.round(v) + "%" : ""; }, bits = [];
+    if (on.indexOf("five") >= 0 && L0 && pc(L0.five)) bits.push("5h " + pc(L0.five));
+    if (on.indexOf("week") >= 0 && L0 && pc(L0.week)) bits.push("7d " + pc(L0.week));
+    if (on.indexOf("ctx") >= 0 && c && c.window && c.tokens) bits.push("Ctx " + Math.round(c.pct) + "%");
+    return bits.join(" · ");
+  }
   var LOAD = { v: null, busy: false, prev: null };
   var statsOn = function () { var s0 = getv("statusStats"); return Array.isArray(s0) ? s0 : STATS.map(function (x) { return x[0]; }); };
   var enUI = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
@@ -1170,6 +1195,7 @@
       // 连着的远程桌面：分辨率、帧率、码率、编码、往返时间（每秒更新）；点一下出「连接选项」
       if (prog && prog.page === "rdp" && window.TSU_RDP && TSU_RDP.statusLine) { var rdl = TSU_RDP.statusLine(prog); if (rdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(rdl) + "</span>"); }
       if (prog && prog.page === "macdesk" && window.TSU_MACDESK) { var mdl = TSU_MACDESK.statusLine(prog); if (mdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(mdl) + "</span>"); }
+      var agP = agentPaneFor(tw), agu = agentUsage(agP && agP.program); tw._aguTxt = agu; if (agu) left.unshift('<span class="st-item st-dim" data-st="agent-usage" title="' + esc(enUI() ? "Current agent: usage and context" : "当前 agent 的用量与上下文") + '">' + esc(agu) + "</span>");
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
       if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();
@@ -1441,6 +1467,9 @@
       "if [ -d \"$P\" ]; then ls -1 \"$P\" | grep -E '^(staged|rejected)-.*\\.app$' | while IFS= read -r f; do trash \"$P/$f\"; done; fi",
     ].concat(TIDY_SH, [
       "ls -1 \"$U\" 2>/dev/null | grep -E '^download-[0-9]+\\.zip$' | sort -t- -k2 -n -r | tail -n +4 | while IFS= read -r f; do trash \"$U/$f\"; done",
+      // 系统里登记着的别的几份（废纸篓里的、测试用的、别处的旧版）：只取消登记（文件不动），「打开方式」里只剩「应用程序」里那一份和正在用的这一份（用户 2026-10-28）
+      "KEEP='/Applications/Vibing Studio.app'; SELF=" + qq(appInfo && appInfo.bundle ? String(appInfo.bundle).replace(/\/Contents\/MacOS\/[^/]*$/, "") : "") + "; [ -n \"$SELF\" ] || SELF=$(ps -o comm= -p $PPID | sed 's|/Contents/MacOS/.*||')",
+      "[ -n \"$SELF\" ] && \"$LSR\" -dump 2>/dev/null | awk '/^path:/ {p=$0; sub(/^path: */,\"\",p); sub(/ \\(0x[0-9a-f]+\\)$/,\"\",p)} /^identifier: *beer\\.paimon\\.terminal/ {print p}' | sort -u | while IFS= read -r a; do [ \"$a\" = \"$KEEP\" ] || [ \"$a\" = \"$SELF\" ] || \"$LSR\" -u \"$a\" >/dev/null 2>&1; done",
       "echo OK"]).join("\n");
     return LOC().exec({ cmd: sh }).catch(function () {});
   }
@@ -3225,9 +3254,14 @@
     nadosNative.call("open.pending").then(function (paths) {
       var tw = T() && T().front ? T().front() : null;
       if (!tw || !Array.isArray(paths) || !paths.length) return;
-      var h = home(), argOf = function (p) { return p === "/" ? "/" : h && p === h ? "~" : h && p.indexOf(h + "/") === 0 ? "~" + p.slice(h.length) : p.replace(/^\/+/, ""); };
-      paths.forEach(function (p) { LOC().stat(p).then(function (st) { if (st && st.type === "dir") openPage(tw, "explorer", argOf(p)); else openFile(tw, p); }, function () { openFile(tw, p); }); });
+      openPaths(tw, paths);
     }, function () { /* 老版本的 App 没有这一条 */ });
+  }
+  // 打开几个路径：文件在编辑区打开，文件夹在访达页里打开（「打开方式」、从访达拖到不是对话、不是终端的地方都走这里）
+  function openPaths(tw, paths) {
+    if (!tw || !LOC()) return;
+    var h = home(), argOf = function (p) { return p === "/" ? "/" : h && p === h ? "~" : h && p.indexOf(h + "/") === 0 ? "~" + p.slice(h.length) : p.replace(/^\/+/, ""); };
+    paths.forEach(function (p) { LOC().stat(p).then(function (st) { if (st && st.type === "dir") openPage(tw, "explorer", argOf(p)); else openFile(tw, p); }, function () { openFile(tw, p); }); });
   }
   window.addEventListener("nados-native", function (e) { var d = e.detail || {}; if (d.type === "open-files") openPending(); });
   setTimeout(openPending, 2500); // 刚启动（从访达里打开文件把 App 叫起来的）：窗口恢复完再来取
@@ -4487,7 +4521,8 @@
   //   本地界面（App 从本机的界面目录读）：直接跑那个文件；从网站 / 开发服务器加载的：取下来经 stdin 交给 python3
   var ccPy = null;
   function claudeUsage() {
-    var ui = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir, py = "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin python3 ";
+    // 连着另一台电脑的窗口：命令在那台上跑，这台界面文件夹的路径那台上没有（用户 2026-10-28：「can't open file …/ccusage.py」）——一律经 stdin 交过去
+    var ui = !(window.nadosNative && nadosNative.remote) && window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir, py = "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin python3 ";
     if (!ui) ccPy = ccPy || fetch("studio/ccusage.py", { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("ccusage.py " + r.status); return r.text(); }).then(null, function (e) { ccPy = null; throw e; });
     return (ui ? Promise.resolve(py + shq(ui + "/studio/ccusage.py")) : ccPy.then(function (src) { return "printf %s " + btoa(unescape(encodeURIComponent(src))) + " | /usr/bin/base64 -D | " + py + "-"; })).then(function (cmd) {
       return LOC().exec({ cmd: cmd });
@@ -4942,7 +4977,7 @@
     //   主目录、根这种大的：不进 Library、Applications；node_modules、.git 不找；内容边找边出、最多 12 秒；新的一次搜索把上一次停掉
     var fctl = null, FIDX = { key: "", at: 0, p: null };
     var RG0 = 'RG=$(command -v rg || ls /opt/homebrew/bin/rg /usr/local/bin/rg 2>/dev/null | head -n 1); ';
-    function filesRoot() { if (!LOC() || !LOC().exec) return ""; var r = ""; try { r = (JSON.parse(localStorage.getItem("st-files") || "{}") || {}).root || ""; } catch (e) { /* 没记过 */ } return r || home() || ""; }
+    function filesRoot() { if (!LOC() || !LOC().exec) return ""; var r = "", NN = window.nadosNative; try { r = (JSON.parse(localStorage.getItem("st-files" + (NN && NN.remote && NN.mac ? "@" + NN.mac : "")) || "{}") || {}).root || ""; } catch (e) { /* 没记过 */ } return r || home() || ""; }
     var bigRoot = function (r) { return r === "/" || r === home(); };
     var fglob = function (r) { return (bigRoot(r) ? "--max-depth 16 -g '!Library' -g '!Applications' -g '!System' " : "") + "-g '!node_modules' -g '!.git' "; };
     var fjoin = function (r, f) { return r === "/" ? "/" + f : r + "/" + f; };
@@ -6127,7 +6162,7 @@
     toggle: toggleSide, isOpen: function () { return !!L.side; },
     // 这一页的目标（/goal）现在看得见吗：右侧栏开着（VS Code 风格）、或者在卡片 / 抽屉里（另两种风格）——看不见时 live.js 把它画在输入框上面
     goalShown: function (P) { var h = familyHost(); if (h !== "side") return true; var tw = P && (P.win || (P.side && P.side.win)); return !!(tw ? sideVis(tw) : L.side) && L.sideLevel !== "global"; }, togglePanel: panelOrStatus, panelOpen: function () { return !noPanel() && !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
-    openFile: openFile, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
+    openFile: openFile, openPaths: openPaths, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
     askUnsaved: askUnsaved, // 关标签页 / 窗格 / 窗口之前：里面有改了没存的文件就问保存 / 不保存 / 取消（live.js 的 askClose 先走这里）
     renderPanelAll: function () { allWins().forEach(function (w) { try { renderPanel(w); } catch (e) { /* 下一次再画 */ } }); },
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
