@@ -15,7 +15,7 @@ const unb64u = (str) => { const s = String(str || "").replace(/-/g, "+").replace
 const sha = async (s) => b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(s))));
 const tokenOk = (t) => /^[A-Za-z0-9_-]{43}$/.test(t || "");
 const SCHEMA = [
-  "CREATE TABLE IF NOT EXISTS server_tokens (hash TEXT PRIMARY KEY, github_id INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0, used_at INTEGER, used_name TEXT)",
+  "CREATE TABLE IF NOT EXISTS server_tokens (hash TEXT PRIMARY KEY, github_id INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0, used_at INTEGER, used_name TEXT, lang TEXT)",
   "CREATE TABLE IF NOT EXISTS devicekeys (id TEXT PRIMARY KEY, github_id INTEGER NOT NULL, pub TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, last_used INTEGER)",
   "CREATE INDEX IF NOT EXISTS devicekeys_by_user ON devicekeys (github_id)",
 ];
@@ -66,10 +66,11 @@ export async function server(req, env, url, h) {
     const user = await h.currentUser(req, env);
     if (!user) return h.json({ error: "Not signed in" }, 401);
     if (!user.allowed) return h.json({ error: "Invite only" }, 403);
+    const b = await req.json().catch(() => ({})), lang = /^zh/i.test(String(b.lang || "")) ? "zh" : "en"; // 安装时服务器上那几句话用哪种语言（同要口令的那台设备的界面）
     const token = b64u(crypto.getRandomValues(new Uint8Array(32))), t = now();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM server_tokens WHERE expires < ?").bind(t - 7 * 864e5), // 一周前过期的不留
-      env.DB.prepare("INSERT INTO server_tokens (hash, github_id, created, expires) VALUES (?, ?, ?, ?)").bind(await sha(token), user.github_id, t, t + TOKEN_MS),
+      env.DB.prepare("INSERT INTO server_tokens (hash, github_id, created, expires, lang) VALUES (?, ?, ?, ?, ?)").bind(await sha(token), user.github_id, t, t + TOKEN_MS, lang),
     ]);
     return h.json({ token, command: "curl -fsSL " + origin + "/s/" + token + " | sh", expires: t + TOKEN_MS });
   }
@@ -109,9 +110,13 @@ export async function server(req, env, url, h) {
   if (!m[2]) {
     if (!live) return shFail("这条安装命令已过期。请在 Vibing Studio 的「设备」里点「添加服务器」，复制新的命令。", "This install command has expired. In Vibing Studio, open Devices › Add Server and copy a new command.");
     if (row.used) return shFail("这条安装命令已经用过了。请在 Vibing Studio 的「设备」里点「添加服务器」，复制新的命令。", "This install command was already used. In Vibing Studio, open Devices › Add Server and copy a new command.");
-    const r = await env.ASSETS.fetch(new Request(origin + "/downloads/server/install.sh"));
-    if (!r.ok) return shFail("服务器版还没有发布。", "The server edition hasn't been published yet.");
-    const body = (await r.text()).replace(/__VS_ORIGIN__/g, origin).replace(/__VS_TOKEN__/g, m[1]);
+    const r = await env.ASSETS.fetch(new Request(origin + "/downloads/server/install.sh")), mf = await manifest(env, origin);
+    if (!r.ok || !mf || !mf.pkg || !mf.node) return shFail("服务器版还没有发布。", "The server edition hasn't been published yet.");
+    // 脚本里的版本号、校验值由这里填（服务器上不用解析 JSON）；只填认得的字符，免得拼进脚本里出事
+    const v = (x) => String(x == null ? "" : x).replace(/[^\w.+-]/g, "");
+    const fill = { ORIGIN: origin, TOKEN: m[1], VERSION: v(mf.version), BUILD: v(mf.build), NODE_VERSION: v(mf.node.version), NODE_SHA_X64: v(mf.node.x64 && mf.node.x64.sha256),
+      NODE_SHA_ARM64: v(mf.node.arm64 && mf.node.arm64.sha256), PKG_SHA: v(mf.pkg.sha256), LANG: row.lang === "zh" ? "zh" : "en" };
+    const body = (await r.text()).replace(/__VS_([A-Z0-9_]+)__/g, (all, k) => (k in fill ? fill[k] : all));
     return sh(body);
   }
   if (!live) return new Response("expired", { status: 410 });

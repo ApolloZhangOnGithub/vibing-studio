@@ -634,13 +634,17 @@
     // 滚到顶：往前再读一段，接在前面（没有「较早的对话未加载」这种提示——同终端往上翻）
     var moreBusy = false;
     rt.more = function () { return from > 0; };
+    var perf = [];
+    rt.perf = function () { return perf.slice(); };
     rt.earlier = function () {
       if (!(from > 0) || moreBusy || !path || loadingNow) return Promise.resolve(false);
       moreBusy = true;
-      var s0 = Math.max(0, from - TAIL), g = gen;
+      var s0 = Math.max(0, from - TAIL), g = gen, pf = { at: Date.now(), bytes: from - s0 }, tq = performance.now(); // pf：往前读一段各步用了多久（rt.perf，滚动测试看瓶颈在哪）
       return LOC.read(path, { offset: s0, max: from - s0 }).then(function (buf) {
         if (g !== gen) { moreBusy = false; return false; } // 这期间重读了：这一段接不上了
+        var t1 = performance.now(); pf.read = Math.round(t1 - tq);
         var r = linesOf(buf, s0 > 0), lines = r.lines, head = r.head; // 读到 from 为止，正好是一行的结尾
+        var t2 = performance.now(); pf.decode = Math.round(t2 - t1); pf.lines = lines.length;
         // 用一份新的状态读这一段；会话现在的标题、任务清单、模型、上下文不能被旧的盖掉
         var keep = { turns: turns, cur: cur, lastCmd: lastCmd, lastCompact: lastCompact, lastBash: lastBash, byTool: byTool, title: sess.title, name: agent.name, todo: sess.todo.items, model: agent.model, ctx: sess.ctx, queue: queue, turnAt: turnAt, tokById: tokById, agentName: info.agentName, agentSetting: info.agentSetting, modelCmd: modelCmd };
         turns = []; cur = null; lastCmd = null; lastCompact = null; lastBash = null; byTool = {}; queue = []; tokById = {}; pendFire = null;
@@ -665,7 +669,10 @@
         Array.prototype.unshift.apply(turns, older);
         from = s0 + head;
         moreBusy = false;
+        var t3 = performance.now(); pf.parse = Math.round(t3 - t2); pf.turns = older.length;
         emit("prepend");
+        pf.render = Math.round(performance.now() - t3); pf.total = Math.round(performance.now() - tq);
+        perf.push(pf); if (perf.length > 30) perf.shift();
         return true;
       }, function () { moreBusy = false; return false; });
     };

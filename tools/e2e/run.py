@@ -47,7 +47,10 @@ def chk_scroll(o):
     for k in ("up1", "down", "up2"):
         p = o.get(k) or {}
         if p.get("blankFrames"): return "%s: %s frames showed undrawn (black) blocks (max %s)" % (k, p.get("blankFrames"), p.get("maxBlank"))
-    if (o.get("up1") or {}).get("stuckFrames"): return "up1: stuck at the top waiting for older history for %s frames" % o["up1"]["stuckFrames"]
+    for k in ("up1", "up2"):
+        p = o.get(k) or {}
+        if p.get("edgeFrames"): return "%s: stopped at the top of what was drawn for %s frames while older parts were still loading" % (k, p["edgeFrames"])
+        if p.get("over100", 0) > 3: return "%s: %s frames took over 100 ms (max %s ms)" % (k, p["over100"], p.get("maxGap"))
 
 def chk_idle(o):
     if (o.get("longTasks") or 0) > 0: return "long tasks while idle: %s (%s ms)" % (o.get("longTasks"), o.get("longTaskMs"))

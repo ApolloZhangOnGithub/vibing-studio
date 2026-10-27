@@ -147,7 +147,8 @@ CREATE TABLE IF NOT EXISTS server_tokens (
   expires    INTEGER NOT NULL,
   used       INTEGER NOT NULL DEFAULT 0,
   used_at    INTEGER,
-  used_name  TEXT
+  used_name  TEXT,
+  lang       TEXT
 );
 CREATE TABLE IF NOT EXISTS devicekeys (id TEXT PRIMARY KEY, github_id INTEGER NOT NULL, pub TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, last_used INTEGER);
 CREATE INDEX IF NOT EXISTS devicekeys_by_user ON devicekeys (github_id);

@@ -40,7 +40,7 @@
         // 能点的都不算拖动区：按钮、地址栏、右上角的布局开关（.st-lay 是一组按钮）、以后加的控件标 data-nodrag 就行
         // data-dragfill 的一组（Claude App 风格的标题行）：只有里面的按钮、输入框、标签不能拖，组里的空白能拖
         Array.prototype.forEach.call(bar.querySelectorAll(":scope > button, :scope > .ts-btn, :scope > .ts-tb, :scope > .ts-addr, :scope > .st-lay, :scope > .term-toggle, :scope > [data-nodrag], :scope > [data-dragfill] :is(button, input, a, .ca-chip, [data-nodrag])"), function (b) {
-          if (!b.offsetParent) return;
+          if (!b.offsetParent || getComputedStyle(b).visibility === "hidden") return; // 藏起来的（地址栏关着时只是看不见、还占着位置）：那一段照样能拖窗口（用户 2026-10-28）
           var r = b.getBoundingClientRect();
           spans.push([r.left - 6, r.right + 6]);
         });
@@ -68,6 +68,7 @@
   if (root.classList.contains("termapp")) document.addEventListener("DOMContentLoaded", function () {
     var bar = document.querySelector("#win .bar");
     if (bar && window.MutationObserver) new MutationObserver(regionsSoon).observe(bar, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class", "style"] });
+    if (window.MutationObserver) new MutationObserver(regionsSoon).observe(root, { attributes: true, attributeFilter: ["class"] }); // 地址栏、工具栏的开关记在 <html> 的 class 上（st-tb-address……）：开关时重算
     regionsSoon();
   });
 
