@@ -922,7 +922,7 @@
   // 状态栏右键的菜单：隐藏状态栏；这个标签页交出来、放在状态栏的每一项（勾掉 = 隐藏，勾上 = 回到状态栏），指着就预览
   function statusMenu(tw) {
     var P = tw.ws.active, items = [{ label: "隐藏状态栏", icon: MI.status, run: function () { setv("statusBar", false); } }];
-    // 最右边的系统状态：显示哪几个（勾掉就不读那一样）；打开活动监视器
+    // 最右边的系统状态：显示哪几个（勾掉就不读那一样）。不放「打开活动监视器」（用户 2026-10-28：谁要这个；点状态栏上的数就打开它）
     var on0 = statsOn();
     var agP0 = agentPaneFor(tw);
     if (agP0 && agP0.program && agP0.program.agentId) {
@@ -935,7 +935,7 @@
     items = items.concat([{ sep: true }, { header: true, label: "系统状态" }], STATS.map(function (x) {
       var on = on0.indexOf(x[0]) >= 0;
       return { label: x[1], checked: on, run: function () { var nx = STATS.map(function (y) { return y[0]; }).filter(function (k) { return k === x[0] ? !on : on0.indexOf(k) >= 0; }); setv("statusStats", nx); LOAD.busy = false; loadTick(); allWins().forEach(function (w) { statusSoon(w); }); } };
-    }), [{ label: "打开活动监视器", icon: MI.status, run: function () { openPage(tw, "activity", ""); } }]);
+    }));
     var els = list(P).filter(function (el) {
       if (!TYPES[el.type]) return false;
       var site = el.site || "paimon", k = site + ":" + el.id, cur = slotOf(site, el.id, true);
@@ -1116,11 +1116,13 @@
     if (!rt) return "";
     var on = aguOn(), L0 = null, c = null;
     try { L0 = rt.limits ? rt.limits() : null; c = rt.ctx ? rt.ctx() : null; } catch (e) { return ""; }
-    var pc = function (v) { return typeof v === "number" && isFinite(v) ? Math.round(v) + "%" : ""; }, bits = [];
-    if (on.indexOf("five") >= 0 && L0 && pc(L0.five)) bits.push("5h " + pc(L0.five));
-    if (on.indexOf("week") >= 0 && L0 && pc(L0.week)) bits.push("7d " + pc(L0.week));
-    if (on.indexOf("ctx") >= 0 && c && c.window && c.tokens) bits.push("Ctx " + Math.round(c.pct) + "%");
-    return bits.join(" · ");
+    // 同右边的系统状态一样的写法（名字 数，一样的颜色、间距）：5 小时 63%　7 天 8%　上下文 19%
+    var en = enUI(), pc = function (v) { return typeof v === "number" && isFinite(v) ? Math.round(v) + "%" : ""; }, bits = [];
+    var item = function (k, name, v, tip) { bits.push('<span class="st-item st-agu" data-agu="' + k + '" title="' + esc(tip) + '">' + esc(name + " " + v) + "</span>"); };
+    if (on.indexOf("five") >= 0 && L0 && pc(L0.five)) item("five", en ? "5h" : "5 小时", pc(L0.five), en ? "5-hour usage limit used" : "5 小时用量已用");
+    if (on.indexOf("week") >= 0 && L0 && pc(L0.week)) item("week", en ? "7d" : "7 天", pc(L0.week), en ? "7-day usage limit used" : "7 天用量已用");
+    if (on.indexOf("ctx") >= 0 && c && c.window && c.tokens) item("ctx", en ? "Context" : "上下文", Math.round(c.pct) + "%", en ? "Context window used" : "上下文已用");
+    return bits.join('<span class="st-gap"></span>');
   }
   var LOAD = { v: null, busy: false, prev: null };
   var statsOn = function () { var s0 = getv("statusStats"); return Array.isArray(s0) ? s0 : STATS.map(function (x) { return x[0]; }); };
@@ -1195,7 +1197,7 @@
       // 连着的远程桌面：分辨率、帧率、码率、编码、往返时间（每秒更新）；点一下出「连接选项」
       if (prog && prog.page === "rdp" && window.TSU_RDP && TSU_RDP.statusLine) { var rdl = TSU_RDP.statusLine(prog); if (rdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(rdl) + "</span>"); }
       if (prog && prog.page === "macdesk" && window.TSU_MACDESK) { var mdl = TSU_MACDESK.statusLine(prog); if (mdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(mdl) + "</span>"); }
-      var agP = agentPaneFor(tw), agu = agentUsage(agP && agP.program); tw._aguTxt = agu; if (agu) left.unshift('<span class="st-item st-dim" data-st="agent-usage" title="' + esc(enUI() ? "Current agent: usage and context" : "当前 agent 的用量与上下文") + '">' + esc(agu) + "</span>");
+      var agP = agentPaneFor(tw), agu = agentUsage(agP && agP.program); tw._aguTxt = agu; if (agu) left.unshift(agu);
       if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
       if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
       var stx = statsHtml();

@@ -680,8 +680,7 @@
     rt.elsewhere = function () { return false; };
     rt.inputHint = function () {
       if (info.mode === "fg") return tr("在终端里运行（前台）：在它的终端里按 Ctrl+C 转到后台后，可以在这里对话");
-      if (info.mode === "offline") return tr("没有在运行：发消息会先在后台启动它");
-      return "";
+      return ""; // 没在跑：同平常一样的输入框（发消息时自己先在后台启动它），不写一句说明（用户 2026-10-28）
     };
     var wnorm = function (t) { return String(t || "").replace(/\s+/g, ""); };
     function dropSent(text, at) {

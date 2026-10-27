@@ -162,7 +162,7 @@
     "更快": "Faster", "更聪明": "Smarter", "上下文窗口": "Context window", "本段会话": "This session", "价格（每百万 token）": "Price (per 1M tokens)",
     "支持图片": "Vision", "只能读写自己的文件夹": "Can read and write only its own folder", "可以读取其他位置，不能修改": "Can read other locations but not change them",
     "可以读写其他位置": "Can read and write other locations", "新会话": "New Session", "切换模型": "Switch Model", "切换到终端界面": "Switch to Terminal UI",
-    "更新任务清单": "Update task list", "列出 Agent": "List agents", "休眠": "Hibernate", "会话记录不存在": "The transcript doesn't exist",
+    "更新任务清单": "Update task list", "列出 Agent": "List agents", "停止循环": "Stop loop", "稍后继续": "Resume later", "休眠": "Hibernate", "会话记录不存在": "The transcript doesn't exist",
     "通义千问": "Qwen", "智谱": "Zhipu", "豆包": "Doubao",
   });
   // ---- 提醒、确认框、系统通知 ----
@@ -264,6 +264,7 @@
     [/^(.+?) · (\S+) → (\S+) tokens$/, function (m) { return sub(m[1]) + " · " + m[2] + " → " + m[3] + " tokens"; }],
     [/^(.*)最近一次 Codex 会话里记下的（(.+)）；不向 OpenAI 查询$/, function (m) { return m[1] + "From your latest Codex session (" + sub(m[2]) + "); OpenAI is not queried"; }],
     [/^(\d+) 小时限额$/, "$1-hour limit"], [/^(\d+) 天限额$/, "$1-day limit"], [/^(\d+) 分钟限额$/, "$1-minute limit"],
+    [/^稍后继续（(\d+) 分钟后）$/, "Resume in $1 min"], [/^稍后继续（(\d+) 秒后）$/, "Resume in $1 s"],
     [/^(\d+) 分钟后重置$/, "Resets in $1 min"], [/^(\d+) 小时 (\d+) 分钟后重置$/, "Resets in $1 hr $2 min"],
     [/^周(.) (\d+:\d+) 重置$/, function (m) { return "Resets " + ({ 日: "Sun", 一: "Mon", 二: "Tue", 三: "Wed", 四: "Thu", 五: "Fri", 六: "Sat" }[m[1]] || m[1]) + " " + m[2]; }],
     [/^到 (.+) 为止（Claude Code 的 \/stats 算的）$/, "Up to $1 (computed by Claude Code's /stats)"],

@@ -43,6 +43,8 @@ def chk_mac(o):
     if o.get("closedList"): return "capture not stopped after closing: %s" % o.get("closedList")
 def chk_idle(o):
     if (o.get("longTasks") or 0) > 0: return "long tasks while idle: %s (%s ms)" % (o.get("longTasks"), o.get("longTaskMs"))
+    # 窗口看不见（显示器睡了、锁屏、被挡住）：系统把定时器压到一秒一次，量出来的「延迟」是这个，不是页面忙——只看长任务（2026-10-28 凌晨跑出 131 ms，hidden 为真）
+    if o.get("hidden"): print("  (window hidden: lag not measured)", end=" ", flush=True); return None
     if (o.get("lagAvgMs") or 0) > 20: return "main thread busy while idle: lag %s ms" % o.get("lagAvgMs")
 
 TESTS = {

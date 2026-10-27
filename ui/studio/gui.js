@@ -146,6 +146,7 @@
     if (/^Task(Create|Update|List|Output|Stop)$|^TodoWrite$/.test(n)) return "更新任务清单";
     if (n === "SendMessage") return "发送消息给 " + clip(a.to, 40);
     if (n === "ListAgents") return "列出 Agent";
+    if (n === "ScheduleWakeup") return a.stop ? "停止循环" : "稍后继续" + (a.delaySeconds ? "（" + (a.delaySeconds >= 60 ? Math.round(a.delaySeconds / 60) + " 分钟后" : a.delaySeconds + " 秒后") + "）" : "");
     if (n === "hibernate") return "休眠";
     if (n === "ToolSearch") { var sel = /^select:(.+)$/.exec(String(a.query || "")); return sel ? "加载 " + sel[1].split(",").length + " 个工具" : "查找工具 " + clip(a.query, 50); }
     if (n === "NotebookEdit") return "编辑 " + base(a.notebook_path);

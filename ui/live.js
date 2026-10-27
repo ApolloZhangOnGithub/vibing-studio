@@ -1512,7 +1512,8 @@
   var CC_NAMES = { Edit: "Update", MultiEdit: "Update", Grep: "Search", Glob: "Search", TodoWrite: "Update Todos" }; // Claude Code 风格里的叫法（同 Claude Code 2.x）
   // Claude Code 里不画的工具（同 ~/Desktop/src：renderToolUseMessage 返回 null、或 userFacingName 是空的）：
   //   ABSORB——任务清单那几个，并进前后那一组、不打断（Claude Code 的 isAbsorbedSilently）；SILENT——不画，但前后的组到这里断开
-  var CC_ABSORB = /^(TodoWrite|TaskCreate|TaskGet|TaskList|TaskUpdate)$/, CC_SILENT = /^(ToolSearch|AskUserQuestion|EnterPlanMode|SendUserMessage)$/;
+  //   SILENT 照 Claude Code 2.1.281 里 renderToolUseMessage 返回 null、没有结果那一块的工具（ScheduleWakeup 这些：以前画成「● ScheduleWakeup ⎿ Next wakeup scheduled…」，用户 2026-10-28）
+  var CC_ABSORB = /^(TodoWrite|TaskCreate|TaskGet|TaskList|TaskUpdate)$/, CC_SILENT = /^(ToolSearch|AskUserQuestion|EnterPlanMode|SendUserMessage|ScheduleWakeup|ListAgents|EndConversation|SubagentHandback|ShowOnboardingRolePicker)$/;
   // 别的 agent 发来的消息（同 teyvat 的 social-message）：青蓝色的 ➤ 一行（谁 [mode] · 时间），正文按 Markdown 画（缩进四格；不再带行号——表格、粗体、标题照原样漏出来，用户 2026-10-13：乱七八糟）
   var SOCIAL_C = { dark: rgb("61;187;255"), light: rgb("0;119;204") };
   var hms = function (t) { var d = new Date(t), z = function (n) { return (n < 10 ? "0" : "") + n; }; return z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds()); };
@@ -4551,10 +4552,11 @@
       var pcs = function (v) { return v === null || v === undefined ? "n/a" : v + "%"; };
       if (agent.connector === "teyvat") { // Teyvat：它在哪儿跑（前台 / 后台 / 没在跑）、在做什么（同它状态栏的 Working… / Waiting… / Hibernating… / Paused）、模型
         var ti0 = rt.info || {}, en0 = enLang(), wk = ti0.wakeAt ? new Date(ti0.wakeAt).toLocaleTimeString(en0 ? "en-US" : "zh-CN", { hour: "numeric", minute: "2-digit" }) : "";
-        var whereT = ti0.mode === "fg" ? (en0 ? "In a terminal (foreground)" : "在终端里运行（前台）") : ti0.mode === "bg" ? (en0 ? "Running in background" : "后台运行") : (en0 ? "Not running" : "没有在运行");
-        // 在做什么（Working… / Waiting… / Hibernating…）写在上面那一行（它的状态栏）；这里只写在哪儿跑、模型
+        // 在做什么（Working… / Waiting… / Hibernating…）写在上面那一行（它的状态栏）；这里只写模型。在终端里（前台）跑的这里只能看：写一句「在终端里运行」
+        //   后台跑的、没在跑的不写（没在跑的发消息时自己启动；用户 2026-10-28：「没有在运行 · 模型」不要）
+        var whereT = ti0.mode === "fg" ? (en0 ? "In a terminal" : "在终端里运行") : "", mid = rt.model && rt.model().id ? rt.model().id : "";
         void wk;
-        out.push(indent + "  " + D + whereT + (rt.model && rt.model().id ? " · " + rt.model().id : "") + RESET);
+        if (whereT || mid) out.push(indent + "  " + D + [whereT, mid].filter(Boolean).join(" · ") + RESET);
         return out;
       }
       out.push(indent + "  " + D + (agent.connector === "pi" ? "" : "5h: " + pcs(L && L.five) + " | 7d: " + pcs(L && L.week) + " | ") + "Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a") + RESET); // pi 没有 5 小时、7 天的限额：只写上下文
