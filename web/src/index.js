@@ -3,6 +3,7 @@ import { fetchPage } from "./fetch.js";
 import { account } from "./account.js";
 import { translate, translateUsage, svcLog } from "./translate.js";
 import { passkey, PASSKEY_JS, passkeyIcon } from "./passkey.js";
+import { server } from "./server.js";
 export { Relay } from "./relay.js"; // iPad 端借 Mac 干活的中转（Durable Object，见 relay.js）
 // 浏览器只拿到一个签名的会话 Cookie（HttpOnly，JS 读不到）；GitHub token 用完即弃，Anthropic Key 只在 Worker Secret 里。
 // 路由：/auth/login → GitHub → /auth/callback；/auth/logout；/api/me；/api/chat（SSE 原样转给浏览器，另一路读完记账）；
@@ -29,6 +30,8 @@ export default {
       // 通行密钥（passkey.js）：登录（/auth/passkey/*）、管理（/account/passkeys、/api/passkeys、/api/passkey/*）
       if (url.pathname.startsWith("/auth/passkey/") || url.pathname === "/account/passkeys" || url.pathname === "/api/passkeys" || url.pathname.startsWith("/api/passkey/") ||
           url.pathname.startsWith("/auth/devicekey/") || url.pathname === "/api/devicekeys" || url.pathname.startsWith("/api/devicekey/")) return passkey(req, env, url, passkeyHelpers); // devicekey：用 Touch ID 登录（macOS App）
+      // Linux 服务器版（server.js）：一次性的安装命令（/s/<口令>）、配对（/auth/server/pair）、要口令（/api/server/token）——安装、配对不用登录，凭口令
+      if (url.pathname.startsWith("/s/") || url.pathname === "/auth/server/pair" || url.pathname === "/api/server/token" || url.pathname.startsWith("/api/server/node/")) return server(req, env, url, passkeyHelpers);
       if (url.pathname === "/api/me") return me(req, env);
       if (url.pathname === "/api/chat" && req.method === "POST") return chat(req, env, ctx);
       if (url.pathname === "/api/usage") return usage(req, env);

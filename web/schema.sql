@@ -138,3 +138,16 @@ CREATE TABLE IF NOT EXISTS svc_log (
   note       TEXT
 );
 CREATE INDEX IF NOT EXISTS svc_log_user_at ON svc_log (github_id, at);
+
+-- Linux 服务器版（src/server.js）：一次性的安装口令（只存 sha256）；配对时用掉，换一把设备钥匙（devicekeys，passkey.js 也会按需建这张表）
+CREATE TABLE IF NOT EXISTS server_tokens (
+  hash       TEXT PRIMARY KEY,
+  github_id  INTEGER NOT NULL,
+  created    INTEGER NOT NULL,
+  expires    INTEGER NOT NULL,
+  used       INTEGER NOT NULL DEFAULT 0,
+  used_at    INTEGER,
+  used_name  TEXT
+);
+CREATE TABLE IF NOT EXISTS devicekeys (id TEXT PRIMARY KEY, github_id INTEGER NOT NULL, pub TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', created INTEGER NOT NULL, last_used INTEGER);
+CREATE INDEX IF NOT EXISTS devicekeys_by_user ON devicekeys (github_id);
