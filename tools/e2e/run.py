@@ -41,6 +41,14 @@ def chk_mac(o):
     if not (p.get("stoppedWhilePaused") and p.get("resumedGrows")): return "pause/resume: %s" % p
     if o.get("input") != "ok": return "input: %s" % o.get("input")
     if o.get("closedList"): return "capture not stopped after closing: %s" % o.get("closedList")
+# 往上快速滚动长会话：看得见的地方不能有没画的块（黑的），不能停在已读进来的最顶上等更早的那段
+def chk_scroll(o):
+    if not o.get("ok"): return "scroll test failed: %s" % o.get("error")
+    for k in ("up1", "down", "up2"):
+        p = o.get(k) or {}
+        if p.get("blankFrames"): return "%s: %s frames showed undrawn (black) blocks (max %s)" % (k, p.get("blankFrames"), p.get("maxBlank"))
+    if (o.get("up1") or {}).get("stuckFrames"): return "up1: stuck at the top waiting for older history for %s frames" % o["up1"]["stuckFrames"]
+
 def chk_idle(o):
     if (o.get("longTasks") or 0) > 0: return "long tasks while idle: %s (%s ms)" % (o.get("longTasks"), o.get("longTaskMs"))
     # 窗口看不见（显示器睡了、锁屏、被挡住）：系统把定时器压到一秒一次，量出来的「延迟」是这个，不是页面忙——只看长任务（2026-10-28 凌晨跑出 131 ms，hidden 为真）
@@ -54,6 +62,7 @@ TESTS = {
     "eco_embed": {"fixture": "eco", "timeout": 150, "check": chk_eco_embed},
     "mac2mac": {"timeout": 240, "check": chk_mac},
     "idle": {"fixture": "ty", "timeout": 150, "check": chk_idle},
+    "scroll": {"gen": "cc", "timeout": 400, "check": chk_scroll},
 }
 
 class Proc:
@@ -95,6 +104,9 @@ def make_home(work, name, fixture):
     if fixture: shutil.copytree(os.path.join(HERE, "fixtures", fixture), home, symlinks=True, ignore=lambda d, names: [n for n in names if not (os.path.isfile(os.path.join(d, n)) or os.path.isdir(os.path.join(d, n)))])
     else: os.makedirs(home, exist_ok=True)
     return home
+
+def gen_home(home, gen):
+    if gen == "cc": subprocess.run([sys.executable, os.path.join(HERE, "gen_cc.py"), home], check=True, capture_output=True) # 很长的 Claude Code 会话（滚动测试）
 
 def run_app(work, name, js, home, timeout, extra_env=None, background=False):
     out = os.path.join(work, name + ".json")
@@ -158,7 +170,9 @@ def main():
                     try: host.wait(timeout=10)
                     except subprocess.TimeoutExpired: host.kill()
             else:
-                o = run_app(work, n, os.path.join(HERE, "tests", n + ".js"), make_home(work, n, t.get("fixture")), t["timeout"])
+                hm = make_home(work, n, t.get("fixture"))
+                if t.get("gen"): gen_home(hm, t["gen"])
+                o = run_app(work, n, os.path.join(HERE, "tests", n + ".js"), hm, t["timeout"])
             save_shots(work, n, o)
             why = o.get("error") or t["check"](o)
             results[n] = {"ok": not why, "why": why or "", "s": round(time.monotonic() - t0)}
