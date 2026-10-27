@@ -259,7 +259,7 @@
     var bgRow = function (x) {
       var q = x.q, dn = q.done, k = "bg:" + q.recId, op = wrapK(k), title = String((q.input && q.input.title) || "").trim() || String((q.input && q.input.command) || "").split("\n")[0];
       var ico = x.status === "running" ? '<i class="st-tg st-fgdot">●</i>' : x.status === "error" ? '<i class="st-tg st-tgerr">✗</i>' : x.status === "lost" ? '<i class="st-tg st-dim">○</i>' : '<i class="st-tg st-tgok">✔</i>';
-      var tail = x.status === "running" ? '<span class="st-tick st-dim" data-t0="' + x.t0 + '"></span>' : '<span class="st-dim">' + esc(x.status === "lost" ? "没有结果" : dn.sum) + "</span>";
+      var tail = x.status === "running" ? '<span class="st-tick st-dim" data-t0="' + x.t0 + '"></span>' : '<span class="st-dim">' + esc(x.status === "lost" ? (q.lostWhy === "gone" ? "已结束" : "没有结果") : dn.sum) + "</span>";
       var det = "";
       if (op) {
         var outL = dn ? (dn.lines || []).filter(function (l, i, all) { return i < all.length - 1 || String(l).trim(); }) : [];

@@ -89,7 +89,8 @@ def build_app():
 
 def make_home(work, name, fixture):
     home = os.path.join(work, "home-" + name)
-    if fixture: shutil.copytree(os.path.join(HERE, "fixtures", fixture), home, symlinks=True)
+    # 只拷普通文件（测试跑的时候 genshin 会在家目录里建命名管道之类的：那些不是 fixture 的一部分）
+    if fixture: shutil.copytree(os.path.join(HERE, "fixtures", fixture), home, symlinks=True, ignore=lambda d, names: [n for n in names if not (os.path.isfile(os.path.join(d, n)) or os.path.isdir(os.path.join(d, n)))])
     else: os.makedirs(home, exist_ok=True)
     return home
 

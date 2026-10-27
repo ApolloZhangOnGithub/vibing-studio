@@ -214,7 +214,7 @@
         // 快命令：⎿ done in 1.2s（+ 输出，淡的，带行号）；转到后台的：⎿ Created 1 bash process (3 in total), id …（跑完时它推一条 cmd-done，见下面）
         if (d.execId && d.createdInfo) {
           var ci = d.createdInfo || {};
-          p.status = "background"; p.recId = d.recId || d.execId;
+          p.status = "background"; p.recId = d.recId || d.execId; p.bgTotal = ci.total > 0 ? ci.total : 0; p.bgTerm = d.terminal === true;
           out("Created " + (ci.created || 1) + " " + (d.terminal === true ? "terminal process" + (d.tname ? " named " + d.tname : "") : "bash process") + (ci.total > 0 ? " (" + ci.total + " in total)" : "") + (p.recId ? ", id " + p.recId : ""), []);
           break;
         }
@@ -348,6 +348,7 @@
         toolResult(pp, m);
         pp.resulted = true;
         if (pp.recId) P.byRec[pp.recId] = pp;
+        if (pp.ty === "execute" && pp.status === "background" && pp.bgTotal > 0) trimBg(pp.bgTotal, pp);
         if (pp.turn) pp.turn.last = mat;
         return pp.turn;
       }
@@ -355,8 +356,36 @@
       return null;
     };
     // 它自己的消息（custom_message）：display 的照它的画法画；不显示的（给模型看的续命提示、wait 被打断、记忆快照……）不画，只取有用的（wait 等了多久、换了模型）
+    // 还在跑的后台命令最多 keep 个（它自己报的：Created 时的「一共 N 个」、跑完时的「还剩 N 个」）：多出来的、更早的那些已经结束了——
+    //   结果没对上（跑完的通知 id 对不上、被吞了、手动结束的）。以前这样的一直算「在跑」，越积越多（用户 2026-10-28：188 个在跑 22 小时）
+    function trimBg(keep, cur) {
+      var run = P.bgs.filter(function (q) { return q !== cur && q.status === "background" && !q.done && !q.lost; });
+      var extra = run.length - Math.max(0, keep - (cur ? 1 : 0));
+      if (extra <= 0) return;
+      run.sort(function (a, b) { return (a.t0 || 0) - (b.t0 || 0); }).slice(0, extra).forEach(function (q) { q.lost = true; q.lostWhy = "gone"; touch(q.turn); });
+    }
+    function cmdDone(d, txt, at, show) {
+      // 转到后台的命令跑完（它推的 cmd-done）：⏺ Result "标题" done in 16s + 输出；原来那一条 Execute 改成做完了
+      var st = d.status || "done", src = d.recId && P.byRec[d.recId], ec = typeof d.exitCode === "number" ? d.exitCode : null;
+      if ((!src || src.done) && d.cmd) { // id 对不上（它那边换了算法、跨秒）：同一条命令里最早还在跑的那个
+        var c0 = String(d.cmd).trim();
+        src = P.bgs.filter(function (q) { return q.status === "background" && !q.done && !q.lost && String((q.input && q.input.command) || "").trim() === c0; }).sort(function (a, b) { return (a.t0 || 0) - (b.t0 || 0); })[0] || src;
+      }
+      var head = st === "failed" ? "failed after " : st === "timeout" ? "timed out after " : st === "terminated" ? "terminated after " : (d.elapsedSec > 0 ? "done in " : "");
+      var body = String(d.output != null ? d.output : txt).replace(/\s+$/, "");
+      var res = { ty: "result", title: d.title || (src && src.input && src.input.title) || "", sum: (head ? head + (d.elapsedSec > 0 || st !== "done" ? elapsed((d.elapsedSec || 0) * 1000) : "") : "done instantly") + (ec ? ", exit " + ec : ""), remaining: d.remaining > 0 ? d.remaining : 0,
+        err: st !== "done" || !!ec, lines: d.status ? (body ? body.split("\n") : []) : stripTags(txt).split("\n"), recId: d.recId || "", src: src || null, endTs: d.endTs || at };
+      if (src && !src.done) { src.status = res.err ? "error" : "done"; src.doneBy = at; src.done = res; src.lost = false; if (src.turn) touch(src.turn); }
+      if (typeof d.remaining === "number") trimBg(d.remaining, null);
+      if (!show) return src ? src.turn : null; // 它不显示的那种：只把那一条改成跑完了，不另画一块
+      wake(at, { kind: "cmd" });
+      finish(); P.runEnded = false;
+      work(at);
+      return block(res, at, true);
+    }
     function custom(e, at) {
       var ct = String(e.customType || ""), txt = textOf(e.content), d = e.details && typeof e.details === "object" ? e.details : {};
+      if (ct === "continuous-cmd-done") return cmdDone(d, txt, at, !!e.display);
       if (ct === "wait-interrupted") { var wm = /\[wait (\d+)s (?:被打断|interrupted) \(([^)]*)\)\]/.exec(txt), w = P.lastWait; if (wm && w) { w.waited = +wm[1]; w.waitWhy = wm[2]; w.interrupted = true; w.status = "done"; w.wokeAt = at; return w.turn; } return null; }
       if (ct === "continuous-resume" && (d.resumeType === "wait" || d.resumeType === "hibernate" || d.resumeType === "hibernate-until")) {
         var isW = d.resumeType === "wait", rw = isW ? P.lastWait : P.lastHib, sm = /(\d+)s/.exec(txt), nx = /\(next:\s*([\s\S]*)\)\s*$/.exec(txt);
@@ -385,24 +414,12 @@
           finish(); P.runEnded = false;
           return newTurn({ system: true, social: [sm2], ask: "", at: at });
         }
-        case "continuous-cmd-done": {
-          // 转到后台的命令跑完（它推的 cmd-done）：⏺ Result "标题" done in 16s + 输出；原来那一条 Execute 改成做完了
-          var st = d.status || "done", src = d.recId && P.byRec[d.recId], ec = typeof d.exitCode === "number" ? d.exitCode : null;
-          var head = st === "failed" ? "failed after " : st === "timeout" ? "timed out after " : st === "terminated" ? "terminated after " : (d.elapsedSec > 0 ? "done in " : "");
-          var body = String(d.output != null ? d.output : txt).replace(/\s+$/, "");
-          var res = { ty: "result", title: d.title || (src && src.input && src.input.title) || "", sum: (head ? head + (d.elapsedSec > 0 || st !== "done" ? elapsed((d.elapsedSec || 0) * 1000) : "") : "done instantly") + (ec ? ", exit " + ec : ""), remaining: d.remaining > 0 ? d.remaining : 0,
-            err: st !== "done" || !!ec, lines: d.status ? (body ? body.split("\n") : []) : stripTags(txt).split("\n"), recId: d.recId || "", src: src || null, endTs: d.endTs || at };
-          if (src) { src.status = res.err ? "error" : "done"; src.doneBy = at; src.done = res; if (src.turn) touch(src.turn); }
-          wake(at, { kind: "cmd" });
-          finish(); P.runEnded = false;
-          work(at);
-          return block(res, at, true);
-        }
+        // continuous-cmd-done：在上面（cmdDone），不管显示不显示都认
         case "continuous-resume":
           if (d.resumeType === "restart") {
             var self0 = /自己触发了重启|you triggered|self[- ]?reboot/i.test(txt);
             wake(at, { kind: "restart" });
-            P.bgs.forEach(function (q) { if (q.status === "background" && !q.done) { q.lost = true; touch(q.turn); } }); // 重启了：转到后台的那些跟着没了（它不会再推 cmd-done）
+            P.bgs.forEach(function (q) { if (q.status === "background" && !q.done && !q.lost) { q.lost = true; q.lostWhy = "restart"; touch(q.turn); } }); // 重启了：转到后台的那些跟着没了（它不会再推 cmd-done）
             work(at);
             return block({ ty: "event", label: "Life Restarted", sub: self0 ? "自己重启" : "用户重启", text: txt.replace(/^\[系统\]\s*/, "") }, at, true);
           }
@@ -606,7 +623,14 @@
     var ACT = { Read: "reading", Write: "writing", Edit: "editing" }; // 同它：只有这三样写在 Working 后面
     function bgList() {
       var p = cur.parser;
-      return p ? p.bgs.filter(function (q) { return q.recId && (q.status === "background" || q.done || q.lost); }) : [];
+      if (!p) return [];
+      var now = Date.now();
+      p.bgs.forEach(function (q) {
+        if (q.status !== "background" || q.done || q.lost || q.bgTerm || !q.t0) return;
+        var lim = ((+(q.input && q.input.timeout_minutes)) || 30) * 60000 + 120000;
+        if (now - q.t0 > lim) { q.lost = true; q.lostWhy = "gone"; if (q.turn) emit("turn", q.turn); }
+      });
+      return p.bgs.filter(function (q) { return q.recId && (q.status === "background" || q.done || q.lost); });
     }
     rt.tyState = function () {
       var p = cur.parser || {}, o = { state: info.state, mode: info.mode, at: info.stateAt || 0 }, last = turns[turns.length - 1];

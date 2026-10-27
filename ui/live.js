@@ -3446,7 +3446,7 @@
           rows.push(sub + (dn.err ? RED : "") + "Result " + dn.sum + RESET + (dn.remaining ? D + " (" + dn.remaining + " remaining)" + RESET : "") + tyLines(dl.length));
           return rows.concat(tyBody({ lines: dl, num: true }, lvl, full, pad5, D));
         }
-        if (p.lost) { rows.push(sub + D + uiT("它重启了，这个命令没有等到结果") + RESET); return rows; }
+        if (p.lost) { rows.push(sub + D + (p.lostWhy === "gone" ? uiT("已结束（没有收到结果）") : uiT("它重启了，这个命令没有等到结果")) + RESET); return rows; }
         rows.push(sub + AMBER + "Running" + RESET + D + " · " + tyFe(now - (p.t0 || now)) + RESET);
         return rows;
       }
