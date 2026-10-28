@@ -53,15 +53,23 @@
     var raf = 0, off = rt && rt.on ? rt.on(function (type) { if (type === "tasks" || type === "state" || type === "status") { cancelAnimationFrame(raf); raf = requestAnimationFrame(function () { paint(P); }); } }) : null;
     subs[P.id] = { aid: aid, off: typeof off === "function" ? off : null };
   }
-  function syncAll() {
+  // 这个 agent 现在有东西在跑（在回答、后台命令在跑）：抽屉里的用时要每秒走——没有就不用每秒重画
+  function running(P) {
+    var aid = P.program && P.program.agentId, rt = null;
+    if (!aid || !A()) return false;
+    try { rt = A().runtime(aid); } catch (e) { return false; }
+    return !!(rt && (rt.stream || (rt.tasks || []).some(function (x) { return x.status === "running"; })));
+  }
+  // tick：每秒那一次——只重画有东西在跑的（以前每秒把每个标签页的整份任务清单、几百条后台任务重新拼一遍，能耗采样里占了一截）
+  function syncAll(tick) {
     var t = T(), list = t && t.panes ? t.panes() : [], live = {};
-    list.forEach(function (P) { if (!P || P.closed || !P.el) return; live[P.id] = true; watch(P); paint(P); });
+    list.forEach(function (P) { if (!P || P.closed || !P.el) return; live[P.id] = true; watch(P); if (tick !== true || (here() && !P.side && running(P))) paint(P); });
     Object.keys(subs).forEach(function (id) { if (!live[id]) { if (subs[id].off) subs[id].off(); delete subs[id]; } });
   }
-  setInterval(function () { if (!document.hidden) syncAll(); }, 1000);
-  // 换了应用风格：马上重排（到了 VS Code / Claude App 风格，抽屉收走，东西去辅助侧栏 / 卡片）
-  var moT = 0;
-  new MutationObserver(function () { clearTimeout(moT); moT = setTimeout(syncAll, 30); }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  setInterval(function () { if (!document.hidden) syncAll(true); }, 1000);
+  // 换了应用风格：马上重排（到了 VS Code / Claude App 风格，抽屉收走，东西去辅助侧栏 / 卡片）——<html> 上别的 class 变了不算（它们变得很勤）
+  var moT = 0, styleSig = function () { return (document.documentElement.className.match(/\bst-(?:os|gui|ui|tb|lay)[\w-]*/g) || []).sort().join(" "); }, lastStyle = styleSig();
+  new MutationObserver(function () { var s0 = styleSig(); if (s0 === lastStyle) return; lastStyle = s0; clearTimeout(moT); moT = setTimeout(syncAll, 30); }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   setTimeout(syncAll, 500);
   window.TSU_TDRAWER = { sync: syncAll, paint: paint };
 })();

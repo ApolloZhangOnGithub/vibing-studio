@@ -699,5 +699,5 @@
       open: function (tw) { return S.openPage(tw, "activity", ""); },
     });
   });
-  setInterval(function () { if (document.hidden) return; document.querySelectorAll(".tr-host.am-amhost").forEach(function (h) { render(h); }); }, 1000); // 底下那一条每秒一新（数据每秒一帧）
+  setInterval(function () { if (document.hidden) return; document.querySelectorAll(".tr-host.am-amhost").forEach(function (h) { if (h.offsetParent) render(h); }); }, 1000); // 底下那一条每秒一新（数据每秒一帧）——藏在别的标签页后面的不画（看不见还每秒重画整页，耗电）
 })();

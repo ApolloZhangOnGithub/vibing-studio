@@ -596,7 +596,7 @@
   words({ "没有打开的会话": "No open sessions", "这段时间里没有会话在工作": "No session worked during this period", "请按一下指纹…": "Touch the sensor…", "还没用过": "Never used", "显示简介": "Get Info" });
   PATTERNS.push([/^上次使用 (.+)$/, "Last used $1"]);
   words({ "允许它在这台电脑上开终端、读写文件、继续会话": "Allow it to open terminals, read and write files and continue sessions on this computer", "这台电脑没有允许这台设备": "This computer hasn’t allowed this device",
-    "5 小时用量": "5-Hour Usage", "7 天用量": "7-Day Usage", "当前 Agent": "Current Agent", "当前 Agent（状态信息关着时显示）": "Current Agent (shown when Status Info is off)",
+    "代码块行号": "Code Block Line Numbers", "5 小时用量": "5-Hour Usage", "7 天用量": "7-Day Usage", "当前 Agent": "Current Agent", "当前 Agent（状态信息关着时显示）": "Current Agent (shown when Status Info is off)",
     "系统状态": "System Status",
     "其他设备使用这台电脑": "Let Other Devices Use This Computer", "登录时打开 Vibing Studio": "Open Vibing Studio at Login",
     "已结束（没有收到结果）": "Ended (no result received)", "已结束": "Ended" });

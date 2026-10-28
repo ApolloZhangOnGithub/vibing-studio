@@ -419,10 +419,16 @@
         if (s && s.off) s.off();
         var rt = null;
         if (aid && window.TSU_AGENTS) try { rt = TSU_AGENTS.runtime(aid); } catch (e) { rt = null; }
-        var raf = 0, off = rt && rt.on ? rt.on(function (type) { if (type === "tasks" || type === "status" || type === "state" || type === "turn") { cancelAnimationFrame(raf); raf = requestAnimationFrame(function () { familyPaint(w); }); } }) : null;
-        famSubs.set(w, { aid: aid, off: typeof off === "function" ? off : null });
+        // 对话里每来一点（turn，干活时一秒好几次）不必每次都重拼整份任务：最多 0.4 秒一次；任务、状态变了马上画
+        var raf = 0, turnT = 0, turnAt = 0, off = rt && rt.on ? rt.on(function (type) {
+          if (type === "tasks" || type === "status" || type === "state") { cancelAnimationFrame(raf); raf = requestAnimationFrame(function () { familyPaint(w); }); }
+          else if (type === "turn" && !turnT) turnT = setTimeout(function () { turnT = 0; turnAt = performance.now(); familyPaint(w); }, Math.max(0, 400 - (performance.now() - turnAt)));
+        }) : null;
+        famSubs.set(w, { aid: aid, off: typeof off === "function" ? off : null, rt: rt });
       }
-      if (aid) familyPaint(w);
+      // 每秒一遍只为用时在走：没东西在跑就不重画（以前每秒把整份任务清单、几百条后台任务拼一遍）
+      var rt1 = (famSubs.get(w) || {}).rt;
+      if (aid && rt1 && (rt1.stream || (rt1.tasks || []).some(function (x) { return x.status === "running"; }))) familyPaint(w);
       if (getv("statusBar") && agentUsage(P && P.program) !== (w._aguTxt || "")) statusSoon(w); // 状态栏左边那段用量、上下文变了
       // 面板的 Agent 那一层跟着的 agent 换了（关了标签页、换了编辑器组）而没有重画：跟上
       if (footOn() && w.st) { var fsp = w.sidePane, fid = P && sideAgent(P); if (fid ? !fsp || !fsp.program || fsp.program.agentId !== fid || !fsp.el.isConnected || fsp.el.hidden : fsp && !fsp.el.hidden) renderPanel(w); }
@@ -3587,7 +3593,7 @@
   }
   // 发布的默认值 = 作者自己用着的那一套（2026-09-29 照 ~/.paimon/studio.json 抄的）：做完通知、界面用系统字、活动栏精致、布局紧凑、标题栏不放地址放总览、
   //   不要状态栏 / 缩略图 / 路径导航。名字、头像、语言这些个人的不抄
-  var SET_DEF = { linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
+  var SET_DEF = { mdLineNumbers: false, linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
   var SET_ABOUT = {
     colorScheme: "配色方案：auto（跟随系统）或方案 ID（paimon-dark、paimon-light、dark-gray、solarized-dark、solarized-light），也可以自定义：{ \"type\": \"dark\", \"colors\": {…}, \"terminal\": {…} }",
     highlightScheme: "（旧的，只认自定义颜色 { \"k\": \"#…\" }）代码高亮现在分浅色、深色两套：见 highlightLight、highlightDark",
@@ -3598,7 +3604,7 @@
     extensions: "已安装的扩展（在「扩展」视图中勾选安装）：{ \"claude-code\": true }",
     titleBar: "顶栏上显示哪些（顶栏右键可改）：address 地址栏、layout 布局控件、newTab 新建标签页、overview 标签页概览",
     activityItems: "活动栏上显示哪些图标（活动栏右键可改）：agents、search、extensions、manage",
-    codeLineNumbers: "代码文件左侧的行号", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
+    codeLineNumbers: "代码文件左侧的行号", mdLineNumbers: "对话里代码块左侧的行号（默认不显示，同 Claude Code）", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
     fontSize: "终端与对话的字号（px）", statusBar: "窗口底部的状态栏", minimap: "对话、终端与文件右侧的缩略图：show（始终显示）、scroll（仅手动滚动时浮现）、transparent（透明：无背景与边框，悬停时显示滑块）、hide（隐藏）", activityBar: "窗口最左侧的活动栏（左下角 ⚙ 为管理菜单）", breadcrumbs: "标签栏下方的路径导航（现在在哪：Agent › 会话、文件夹 › 文件）",
   };
   var SET = Object.assign({}, SET_DEF, store("st-settings", {}));

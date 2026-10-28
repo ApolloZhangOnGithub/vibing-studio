@@ -102,7 +102,19 @@
       }).join("\n");
     };
   }
-  var mdLines = function (md, o) { return TTU.markdownLines(cjkEm(md), o); };
+  // Markdown → 一行行（终端的样子）：同一段字、同样的宽度和设置，排出来一样——记住最近的（在跑的那一问每秒重画一次、来一点就重画一次，
+  //   一问几百次工具调用时整问的每段话都要重排，2026-10-28 能耗采样里这是大头）。代码块的行号：设置 › 对话里的「代码块行号」（默认不显示，同 Claude Code）
+  var MD_MEMO = new Map(), MD_MAX = 1200;
+  var mdNums = function () { return !!(window.STUDIO && STUDIO.get && STUDIO.get("mdLineNumbers") === true); };
+  var mdLines = function (md, o) {
+    var ln = mdNums(), opt = Object.assign({ lineNumbers: ln }, o || {}), key = (opt.width || 0) + "|" + (opt.theme || "") + "|" + (opt.lineNumbers ? 1 : 0) + "|" + md;
+    var hit = MD_MEMO.get(key);
+    if (hit) { MD_MEMO.delete(key); MD_MEMO.set(key, hit); return hit.slice(); } // 用到的挪到最后（最久没用的先丢）
+    var lines = TTU.markdownLines(cjkEm(md), opt);
+    MD_MEMO.set(key, lines);
+    if (MD_MEMO.size > MD_MAX) MD_MEMO.delete(MD_MEMO.keys().next().value);
+    return lines.slice();
+  };
   window.TSU_MD = { lines: mdLines, cjkEm: cjkEm }; // 别的文件（翻译、GUI）要同样的修正时用
   // 这是 App 的第几个窗口（原生开的新窗口带 ?win=2…）：各窗口的布局各记各的；?open=<标签页的 spec（JSON）> 开一个只有这一页的窗口（拖出去的标签页）
   //   App 里连着另一台 Mac 的窗口（remote.js 的 hybrid）：按那台 Mac 记（关了再打开它，还是上次那几个标签页）
@@ -2434,7 +2446,7 @@
     // 一问画成的那一段：宽度、字宽、深浅、筛选、设置、后台任务、这一问自己（有变就 drawTurn 升一版）、它的译文到了几段都没变——直接用上次画的；
     //   拆分、挪标签页、合并时宽度来回变，变回来过的那个宽度不用再算一遍（几千行的一问算一遍要几十上百毫秒）。在跑的那一问、还有在跑的工具的不留
     var rowCache = new Map(), rcSig = "", htmlN = 0, idxOf = null;
-    function rcGlobal() { var tk = rt.tasks || []; return [P.cols, P.chPx, P.light ? 1 : 0, verbose ? 1 : 0, enLang() ? 1 : 0, JSON.stringify(P.view || null), JSON.stringify(cfg), tk.length + ":" + tk.filter(function (x) { return x.status === "running"; }).length].join("|"); }
+    function rcGlobal() { var tk = rt.tasks || []; return [mdNums() ? 1 : 0, P.cols, P.chPx, P.light ? 1 : 0, verbose ? 1 : 0, enLang() ? 1 : 0, JSON.stringify(P.view || null), JSON.stringify(cfg), tk.length + ":" + tk.filter(function (x) { return x.status === "running"; }).length].join("|"); }
     function trN(t) { // 这一问的话里已经有译文的有几段（回复翻译开着时；译文到了，这一问要重画）
       if (!window.TSU_TRANSLATE || !TSU_TRANSLATE.reply || !cfg.translateReplies || cfg.translateReplies === "off") return 0;
       var n = 0; (t.parts || []).forEach(function (x) { if (x.kind === "text" && x.text && TSU_TRANSLATE.reply(x.text, agentId)) n++; });
@@ -7745,6 +7757,13 @@
             var MM = STUDIO.miniModes || [];
             if (ag0) kinds = kinds.concat([tsItem(MI, ag0)]); // 时间戳、缩略图一组
             if (STUDIO.get && MM.length) kinds = kinds.concat([{ label: "缩略图", icon: MI.minimap, value: (MM.filter(function (x) { return x[0] === STUDIO.get("minimap", true); })[0] || ["", ""])[1], items: function () { var mm = STUDIO.get("minimap", true); return MM.map(function (x) { return { label: x[1], radio: true, checked: mm === x[0], run: function () { STUDIO.setv("minimap", x[0]); }, preview: function (p) { STUDIO.previewSet("minimap", p ? x[0] : null); } }; }); } }, { sep: true }]);
+            // 对话里代码块的行号（同 Claude Code 默认不显示；显示时左边一栏淡的行号）：记在设置里，所有对话一起变
+            if (ag0 && STUDIO.get && STUDIO.setv) {
+              var en1 = window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en", mdOn = STUDIO.get("mdLineNumbers") === true;
+              var mln = function (on) { return { label: on ? (en1 ? "Shown" : "显示") : (en1 ? "Hidden" : "隐藏"), radio: true, checked: mdOn === on, run: function () { STUDIO.setv("mdLineNumbers", on); allPanes().forEach(function (p) { if (p.program && p.program.agentId && p.renderNow) p.renderNow(); }); } }; };
+              if (kinds.length && kinds[kinds.length - 1].sep) kinds.pop();
+              kinds = kinds.concat([{ label: "代码块行号", icon: MI.lineNo, value: mdOn ? (en1 ? "Shown" : "显示") : (en1 ? "Hidden" : "隐藏"), items: function () { return [mln(true), mln(false)]; } }, { sep: true }]);
+            }
             // 代码文件：行号显示 / 隐藏（同 设置 › 外观 › 行号；记在设置里，所有代码文件一起变）
             var fpr = g.active && g.active.program;
             if (fpr && fpr.page === "file" && STUDIO.get && STUDIO.setv) {
