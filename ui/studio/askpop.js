@@ -41,6 +41,7 @@
       try { rt = A.runtime(x.aid); } catch (e) { rt = null; }
       var q = rt && rt.question ? rt.question() : null;
       if (!q || !q.questions || !q.questions.length || seen[q.id]) continue;
+      if (rt.canAnswer && !rt.canAnswer()) continue; // 在别的终端里跑的会话：这里答不了，不弹一张答了也送不出去的卡片
       frontApp(q.id);
       if (x.aid === fa && !document.hidden) continue; // 正在看它：问答就在它自己的输入框那里
       return show(x, rt, q);

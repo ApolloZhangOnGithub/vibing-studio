@@ -1006,6 +1006,15 @@
       // 一块接一块放进这一问。思考不单独占一块：记在它后面那一块上（thinkBefore）——同 Claude Code 并进那一组「Thought for 5s, ran 2 shell commands」；
       // 这一问最后、还没有下一块的记在 cur.think。旁白（narration）的思考同 Claude Code 是一段话
       var put = function (p) { var lp0 = cur.parts[cur.parts.length - 1]; if (lp0 && lp0.preview) cur.parts.pop(); if (cur.think) { p.thinkBefore = cur.think; cur.think = null; } cur.parts.push(p); }; // 屏幕上先抄来的那段（streamScan）：记录里的到了就换掉
+      // Claude Code 自己写进来的提示（API 出错、到了会话上限「You've hit your limit · resets 5:40am」……，isApiErrorMessage、model 是 <synthetic>）：
+      //   不是它说的话——画成一行提示（淡的 ⎿，不当回答）；它一遍遍重试时同样的一句不叠一串：并成一行、记次数（用户 2026-10-28）
+      var apiNote = j.isApiErrorMessage === true || (j.message && j.message.model === "<synthetic>" && (Array.isArray(c) ? c : []).every(function (b) { return b && b.type === "text"; }));
+      if (apiNote) {
+        var nt = (Array.isArray(c) ? c : []).map(function (b) { return b && b.text || ""; }).join("\n").trim();
+        if (nt) { var lpN = cur.parts[cur.parts.length - 1]; if (lpN && lpN.kind === "notice" && lpN.text === nt) { lpN.n = (lpN.n || 1) + 1; lpN.at = ts(j); } else put({ kind: "notice", text: nt, n: 1, at: ts(j), err: !!j.apiErrorStatus || /error/i.test(nt) && !/limit/i.test(nt) }); }
+        cur.last = ts(j);
+        return cur;
+      }
       (Array.isArray(c) ? c : []).forEach(function (b) {
         // whole：记录里读到的都是说完了的整段（不是流式的半段）——在跑的这一问里也整段画（不然最后一行没换行的整句看不见，要等下一句才出来）
         if (b.type === "text" && b.text && b.text.trim()) put({ kind: "text", text: b.text, whole: true });

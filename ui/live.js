@@ -2921,7 +2921,7 @@
         if (!ccs || !list || !list.length || tm === "hidden") return;
         if (tm === "expanded" || verbose) { flushGroup(); list.forEach(function (x) { r.text(["", D + ITALIC + "∴ Thinking…" + RESET]); String(x.text || "").trim().split("\n").forEach(function (p0) { wrap(p0, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); }); }); return; }
         gThink = gThink || { ms: 0, text: "" };
-        list.forEach(function (x) { gThink.ms += x.ms || 0; gThink.text = String(x.text || "").replace(/\s+/g, " ").trim(); });
+        list.forEach(function (x) { gThink.ms += x.ms || 0; gThink.text = String(x.text || "").replace(/\s+/g, " ").trim(); var ft = String(x.text || "").trim(); if (ft) gThink.full = (gThink.full ? gThink.full + "\n\n" : "") + ft; });
       };
       // 连着放到后台的几个子 agent（同一步里一起派出去的）：并成一块（同 Claude Code）——
       //   ● 2 background agents launched (↓ to manage)
@@ -3358,7 +3358,11 @@
         //   它的命令淡色跟在下面——统计、每条在干什么都看得到（Claude Code 从第二条起就只剩「$ 命令」）
         // 点：真有一条在跑才闪；两条之间的空当（上一条跑完、下一条还没开始，它在想）不闪
         rows.push(D + (run.length ? DOT_RUN : DOT) + RESET + " " + HOT + bits.join("") + "…" + HOT_END); // 「…」紧跟着字、同色；这一组一共多久不写在这里（右侧栏「正在运行」那一行写）
-      } else rows.push("  " + HOT_NUM + bits.join("") + HOT_END + ((isOpen || tlv[key]) && list.length > 1 && g0 && g1 - g0 >= 2000 ? D + " · " + dur(g1 - g0) + RESET : "")); // 跑完的：收着时不写用时（同 Claude Code），点开了才写
+      } else {
+        rows.push("  " + HOT_NUM + bits.join("") + HOT_END + ((isOpen || tlv[key]) && list.length > 1 && g0 && g1 - g0 >= 2000 ? D + " · " + dur(g1 - g0) + RESET : "")); // 跑完的：收着时不写用时（同 Claude Code），点开了才写
+        // 「Thought for 5s」那一行点开：想的全文（淡、斜体）就在它下面，再点收起（用户 2026-10-28：thinking 那一行要能点开）
+        if ((isOpen || tlv[key]) && think && think.full) think.full.split("\n").forEach(function (p0, pi) { wrap(p0, P.cols - 6).forEach(function (l, li) { rows.push((pi === 0 && li === 0 ? "  " + D + "⎿" + RESET + "  " : "     ") + D + ITALIC + l + RESET); }); });
+      }
       var titleOf = function (p) { var a = p.input || {}; return String(p.name === "Bash" ? a.description || String(a.command || "").split("\n")[0] : (ccHint(p) || "").split("\n")[0] || p.name).replace(/\s+/g, " ").trim(); };
       // 出错的、放到后台的：同 Claude Code 也只是组里的一条（组下面不另画红字；点开 / ctrl+o 的完整样子里才看得到）
       // segs：一段段——普通的行（数组）和单独点开的那一条的细节（{ det, i }，灰底；点它收起）；items：每条能点的标题对应第几条（data-items）
