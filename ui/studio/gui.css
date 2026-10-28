@@ -301,3 +301,8 @@ pre.gv-out.err { color: var(--st-red); }
 /* 对话里的字能选、能拷贝、能右键「收藏到摘录本」（整个界面默认不让选：desk.css 的 body）；按钮、行号这些照旧不选 */
 .gv-list :is(.gv-bubble, .gv-ai), .gv-list :is(.gv-bubble, .gv-ai) * { -webkit-user-select: text; user-select: text; }
 .gv-list :is(.gv-bubble, .gv-ai) :is(button, .gv-ps) { -webkit-user-select: none; user-select: none; }
+
+/* Claude Code 自己的提示（API 出错、会话上限）：淡的一行，不像回答；出错的红字 */
+.gv-apinote { color: var(--st-dim); }
+.gv-apinote.err { color: var(--st-red, #e5534b); }
+.gv-apin { opacity: .7; margin-left: 4px; }

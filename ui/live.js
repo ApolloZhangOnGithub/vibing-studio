@@ -2993,6 +2993,14 @@
           return;
         }
         if (p.kind === "killed") { r.text(["", RED + DOT + RESET + " " + D + "All background agents stopped" + RESET]); return; } // 同 2.1.281：红点、淡字
+        // Claude Code 自己的提示（API 出错、到了会话上限）：不是它说的话——一行淡的 ⎿（同它挂在上一步下面的提示），重试了几次写「×3」；出错的才用红字
+        if (p.kind === "apinote") {
+          flushGroup();
+          mark(p.at);
+          var nl0 = wrapN(String(p.text || "").replace(/\s*\n\s*/g, " · "), P.cols - 8);
+          r.text(nl0.map(function (l, k) { return (k ? "     " : "  " + D + "⎿" + RESET + "  ") + (p.err ? RED : D) + l + RESET + (k === nl0.length - 1 && p.n > 1 ? D + "  ×" + p.n + RESET : ""); }));
+          return;
+        }
         if (p.kind === "allowed") { // 同 2.1.281（permission_retry）：「✻ Allowed npm test, git push」——✻ 淡、命令加粗
           r.text([""]);
           mark(p.at);

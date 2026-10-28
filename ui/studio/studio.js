@@ -248,11 +248,17 @@
     stRows += '<div class="st-todoi st-tynote"><i class="st-tg"></i><span class="st-cut st-dim">' + esc(where + (model ? " · " + model : "")) + "</span></div>";
     // 意图
     var il = String(d.intentions || "").split("\n").filter(function (l) { return l.trim(); }), nDone = 0, nTodo = 0;
+    // 行内的 Markdown（**粗**、`代码`、*斜*）：照样子画，不露出星号、反引号（以前原样显示）
+    var inl = function (s) { return esc(s).replace(/`([^`]+)`/g, '<code class="st-ic">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*\s][^*]*)\*(?!\*)/g, "$1<i>$2</i>"); };
+    // 哪种行：标题（【…】、★ …、# …）粗体；编号的是待办（左边一栏编号）；✓ 的是做完的；- • → 开头的、接在编号后面的说明是普通的一行（不加粗，接在上一条下面缩进）
+    var afterItem = false;
     var intHtml = il.map(function (l, i) {
-      var t = l.trim(), done = /^[✓✅☑]\s?/.test(t), todo = /^\d+[.)]\s/.test(t), k = "int:" + i, op = wrapK(k);
-      if (done) { nDone++; return '<div class="st-todoi done' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg st-tgok">✔</i><s class="st-cut">' + esc(t.replace(/^[✓✅☑]\s?/, "")) + "</s></div>"; }
-      if (todo) { nTodo++; var m = /^(\d+)[.)]\s+([\s\S]*)$/.exec(t); return '<div class="st-todoi open' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg st-dim">' + esc(m[1]) + '</i><span class="st-cut">' + esc(m[2]) + "</span></div>"; }
-      return '<div class="st-todoi st-tyhead' + (op ? " wrap" : "") + '" data-st="todo-wrap-' + esc(aid + ":" + k) + '"><i class="st-tg"></i><span class="st-cut">' + esc(t.replace(/^#+\s*/, "")) + "</span></div>";
+      var t = l.trim(), done = /^[✓✅☑]\s?/.test(t), todo = /^\d+[.)、]\s*/.test(t), head = /^(【.*】|#+\s|★|☆|■|▶)/.test(t), bullet = /^([-•·→＊*]\s|→)/.test(t), k = "int:" + i, op = wrapK(k);
+      var dk = ' data-st="todo-wrap-' + esc(aid + ":" + k) + '"';
+      if (done) { nDone++; afterItem = true; return '<div class="st-todoi done' + (op ? " wrap" : "") + '"' + dk + '><i class="st-tg st-tgok">✔</i><s class="st-cut">' + inl(t.replace(/^[✓✅☑]\s?/, "")) + "</s></div>"; }
+      if (todo) { nTodo++; afterItem = true; var m = /^(\d+)[.)、]\s*([\s\S]*)$/.exec(t); return '<div class="st-todoi open' + (op ? " wrap" : "") + '"' + dk + '><i class="st-tg st-dim">' + esc(m[1]) + '</i><span class="st-cut">' + inl(m[2]) + "</span></div>"; }
+      if (head) { afterItem = false; return '<div class="st-todoi st-tyhead' + (op ? " wrap" : "") + '"' + dk + '><i class="st-tg"></i><span class="st-cut">' + inl(t.replace(/^#+\s*/, "").replace(/^【(.*)】$/, "$1")) + "</span></div>"; }
+      return '<div class="st-todoi st-tyline' + (afterItem && !bullet ? " st-tycont" : "") + (op ? " wrap" : "") + '"' + dk + '><i class="st-tg st-dim">' + (bullet ? "·" : "") + '</i><span class="st-cut">' + inl(t.replace(/^([-•·→＊*]\s|→\s?)/, "")) + "</span></div>";
     }).join("");
     // 后台命令
     var bg = (d.bg || []).map(function (q) { var dn = q.done, run = !dn && !q.lost; return { q: q, status: run ? "running" : q.lost ? "lost" : dn.err ? "error" : "done", t0: q.t0 || 0 }; });

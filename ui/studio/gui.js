@@ -365,6 +365,8 @@
           ai += reportsHtml((p.notices || []).filter(function (n) { return n.kind === "agent"; }), ti + ":r" + i, p.at || t.at);
           return;
         }
+        // Claude Code 自己的提示（API 出错、到了会话上限）：一行淡的提示，不当回答；重试的同一句并成一行写次数
+        if (p.kind === "apinote") { ai += '<div class="gv-note gv-apinote' + (p.err ? " err" : "") + '">' + esc(String(p.text || "").replace(/\s*\n\s*/g, " · ")) + (p.n > 1 ? ' <span class="gv-apin">×' + p.n + "</span>" : "") + "</div>"; return; }
         if (p.kind !== "text" || !String(p.text || "").trim()) return;
         // 回复翻译（translate.js 的 reply）：说完了的一段有译文就换上（还在流的那段照原文）。没有「原文 / 译文」按钮：
         //   译文那一块指上去淡淡一层高亮，点一下换成原文（浅色底）；原文那块里任何地方点一下换回译文（划选文字、点链接不算）

@@ -1011,7 +1011,7 @@
       var apiNote = j.isApiErrorMessage === true || (j.message && j.message.model === "<synthetic>" && (Array.isArray(c) ? c : []).every(function (b) { return b && b.type === "text"; }));
       if (apiNote) {
         var nt = (Array.isArray(c) ? c : []).map(function (b) { return b && b.text || ""; }).join("\n").trim();
-        if (nt) { var lpN = cur.parts[cur.parts.length - 1]; if (lpN && lpN.kind === "notice" && lpN.text === nt) { lpN.n = (lpN.n || 1) + 1; lpN.at = ts(j); } else put({ kind: "notice", text: nt, n: 1, at: ts(j), err: !!j.apiErrorStatus || /error/i.test(nt) && !/limit/i.test(nt) }); }
+        if (nt) { var lpN = cur.parts[cur.parts.length - 1]; if (lpN && lpN.kind === "apinote" && lpN.text === nt) { lpN.n = (lpN.n || 1) + 1; lpN.at = ts(j); } else put({ kind: "apinote", text: nt, n: 1, at: ts(j), err: !!j.apiErrorStatus || /error/i.test(nt) && !/limit/i.test(nt) }); }
         cur.last = ts(j);
         return cur;
       }

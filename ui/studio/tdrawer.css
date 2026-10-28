@@ -249,6 +249,10 @@ html.termapp .st-pagent .tpane .term .blk.status.live, html.termapp .st-pagent .
 
 /* Teyvat 的会话（右侧栏）：状态、意图、后台命令 */
 .st-tyfam .st-todoi.st-tyhead { font-weight: 600; color: var(--st-hi, var(--st-fg)); }
+.st-tyfam .st-todoi.st-tyhead:not(:first-child) { margin-top: 4px; }
+.st-tyfam .st-todoi.st-tyline { color: var(--st-fg); font-weight: 400; }
+.st-tyfam .st-todoi.st-tycont { padding-left: 14px; color: var(--st-dim); } /* 接在编号那一条下面的说明：缩进、淡一点 */
+.st-tyfam .st-todoi code.st-ic { font: 0.92em var(--st-mono, ui-monospace, Menlo, monospace); padding: 0 3px; border-radius: 3px; background: var(--st-hover, rgba(128,128,128,.12)); }
 .st-tyfam .st-todoi.st-tyst .st-tg { color: var(--st-dim); }
 .st-tyfam .st-todoi.st-tyst.doing .st-tg { color: #e8c547; animation: ts-ccl-pulse 1.4s ease-in-out infinite; }
 html.light .st-tyfam .st-todoi.st-tyst.doing .st-tg { color: #a87a00; }
