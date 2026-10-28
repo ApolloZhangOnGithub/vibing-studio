@@ -27,7 +27,7 @@ for p in @lydell/node-pty @lydell/node-pty-linux-x64 @lydell/node-pty-linux-arm6
   mkdir -p "$PK/node_modules/$p"
   tar -xzf "$OUT/npm/$f" -C "$PK/node_modules/$p" --strip-components=1
 done
-COPYFILE_DISABLE=1 tar -czf "$OUT/vs-server-$V.tar.gz" -C "$OUT/pkg" "vs-server-$V"
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "$OUT/vs-server-$V.tar.gz" -C "$OUT/pkg" "vs-server-$V" # 不带 macOS 的扩展属性（Linux 的 tar 解开时一行行报警告）
 PKG_SHA=$(shasum -a 256 "$OUT/vs-server-$V.tar.gz" | awk '{print $1}'); PKG_SIZE=$(stat -f %z "$OUT/vs-server-$V.tar.gz")
 
 # ---- Node 运行时（官方的，校验后切段）----

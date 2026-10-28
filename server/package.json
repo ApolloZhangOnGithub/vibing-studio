@@ -1,0 +1,8 @@
+{
+ "name": "vibing-studio-server",
+ "version": "0.0.0",
+ "vsVersion": "dev",
+ "build": 0,
+ "private": true,
+ "main": "main.js"
+}

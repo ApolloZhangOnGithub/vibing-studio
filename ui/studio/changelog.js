@@ -11,13 +11,16 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
-    { date: "2026-10-28", ver: "0.2.1.469", items: {
+    { date: "2026-10-28", ver: "0.2.1.470", items: {
       new: [
         ["状态栏左边显示当前 agent 的 5 小时、7 天用量和上下文（写法同右边的系统状态）：把输入框下面的「状态信息」关掉后，它们挪到这里（跟着这个窗口正在用的 agent）；右键状态栏选显示哪几样。", "The status bar now shows the current agent’s 5-hour and 7-day usage and context on the left, styled like the system stats on the right: when Status Info under the input box is turned off, they move here (following the agent this window is using); right-click the status bar to choose which ones to show."],
         ["从访达拖文件进来：落在对话上照旧插进输入框、落在终端上照旧贴路径；落在别处（文件、设置、访达页、边栏、标签页栏）就打开它——文件在编辑区打开，文件夹在访达页里打开。", "Dragging files in from Finder: dropped on a conversation they still go into the input box, and on a terminal the path is still pasted; dropped anywhere else (a file, Settings, the Finder page, the sidebar, the tab bar) they open — files in the editor, folders in the Finder page."],
         ["访达页里的替身、符号链接带上访达那样的小箭头，种类写「替身」；指着文件夹的替身点进去就是它指着的那个文件夹（访达的替身要新版 App）。", "Aliases and symbolic links in the Finder page now show Finder’s small arrow badge and the kind Alias; opening an alias to a folder goes to the folder it points to (Finder aliases need the next app version)."],
       ],
       improved: [
+        ["耗电少得多：闲着、或 agent 在长会话里干活时，页面不再一直重排、重画——设置文件一被写、账号信息一刷新就把每个对话整段重画（大会话一次几秒）、缩略图每 0.7 秒把整段对话读一遍、分段控件一有节点加进来就扫整个页面、任务清单每秒整份重拼（没东西在跑也拼）、藏在别的标签页后面的活动监视器每秒重画，这些都去掉了；同一段 Markdown 排过就记住，在跑的那一问重画时不再每段重排。", "Much lower energy use: while idle or while an agent works in a long session, the page no longer keeps re-laying out and repainting. Every conversation is no longer fully redrawn whenever the settings file is written or account info refreshes (seconds for a big session); the minimap no longer re-reads the whole conversation every 0.7 s; segmented controls no longer scan the whole page whenever a node is added; task lists are no longer rebuilt every second when nothing is running; Activity Monitor no longer redraws behind other tabs; and Markdown that was already laid out is reused when the running turn redraws."],
+        ["往上快速滚动长会话不再变黑、不再停下来等：更早的记录离顶还有十几屏（按滚动速度）就开始读，接上时已经画好的一块都不动（以前整段重建、上面那一截要慢慢补回来）；滚得快时要露出来的那几屏在这一帧画之前就放出来。", "Scrolling up quickly through a long session no longer shows black areas or pauses to load: earlier history starts loading a dozen screens before the top (more when scrolling fast), and when it arrives nothing already drawn is rebuilt (it used to rebuild everything and refill the part above slowly); the screens about to come into view are drawn before the frame is painted."],
+        ["对话里的代码块默认不显示行号（同 Claude Code，代码顶格排）；标签页的 ··· ›「代码块行号」可以打开。", "Code blocks in conversations no longer show line numbers by default (as in Claude Code, aligned with the text); turn them on in the tab’s ··· › Code Block Line Numbers."],
         ["Codex 的会话也分「思考中」和「工作中」：它在想（还没开始回答、还没调工具）时显示 Thinking，同 Claude Code。", "Codex sessions now distinguish Thinking from Working: while it is reasoning (before it answers or calls a tool) the status shows Thinking, as in Claude Code."],
         ["Teyvat 标签页的图标和边栏里一样（它自己的图标，不再是终端的 ›_）。", "Teyvat tabs now use the same icon as the sidebar (its own icon instead of the terminal’s)."],
         ["没在跑的 Teyvat agent：输入框和平常一样（不再写「没有在运行：发消息会先在后台启动它」），下面只写模型；发消息时照旧自己先启动它。", "Teyvat agents that aren’t running now show the usual input box (no “not running” explanation) with just the model below it; sending a message still starts the agent first."],
@@ -31,6 +34,7 @@
         ["新窗口中打开另一台电脑时，访达页、文件边栏一直「无法读取此文件夹」：它们用的是这台 Mac 的路径；现在每台电脑记自己的，读不到就回到那台的主目录。", "In a window opened on another computer, the Finder page and the Files sidebar showed “Can’t read this folder” because they used this Mac’s path; each computer now keeps its own, and falls back to its home folder."],
         ["新窗口中打开另一台电脑时，用量页报错「can’t open file …/ccusage.py」。", "In a window opened on another computer, the usage page failed with “can’t open file …/ccusage.py”."],
         ["Claude Code 会话里 ScheduleWakeup、ListAgents 这些 Claude Code 自己不显示的工具，不再画成「● ScheduleWakeup」加一段给模型看的原文（同 Claude Code：不显示）；图形界面里是一步「稍后继续（25 分钟后）」。", "Tools that Claude Code itself doesn’t show, such as ScheduleWakeup and ListAgents, no longer appear in Claude Code sessions as “● ScheduleWakeup” followed by text meant for the model (hidden, as in Claude Code); the graphical view shows a short “Resume in 25 min” step."],
+        ["地址栏关着时，窗口顶上原来地址栏那一段拖不动窗口。", "With the address bar hidden, the strip where it used to be couldn’t drag the window."],
         ["边栏 Teyvat 那一组的筛选（仅显示运行中）点了没反应；去掉了那一组用不上的「全部折叠」。", "The Teyvat group’s filter in the sidebar (Show Running Only) did nothing; the unused Collapse All button on that group is gone."],
         ["访达页分栏的右边多出一栏空的：空出来的地方现在是空白。", "The Finder page’s column view showed an extra empty column on the right; the leftover space is now blank."],
       ],
