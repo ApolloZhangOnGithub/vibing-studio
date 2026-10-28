@@ -5062,7 +5062,7 @@
       res.innerHTML = (secs ? secHead("conv", "对话", "", sum || (last.pending ? "正在搜索…" : "")) : '<div class="st-dim st-spad">' + sum + (last.pending ? '<span class="st-dim"> · 正在搜索 Claude Code 会话…</span>' : "") + "</div>") + (secs && folds["sec:conv"] ? "" : last.groups.map(function (g, gi) {
         var f = !!folds[g.key];
         return '<div class="st-sg"><div class="st-sgh" data-g="' + gi + '">' + '<span class="ts-chev ' + (f ? "r" : "d") + '"></span> ' + (g.kind === "cc" || g.kind === "ccm" ? '<span class="st-orange st-cclogo">' + ((window.TSU_LOGOS && TSU_LOGOS.claude) || "") + '</span> ' : g.kind === "cx" ? '<span class="st-cclogo">' + ((window.TSU_LOGOS && TSU_LOGOS.codex) || "◎") + '</span> ' : "") + esc(g.title) + '<span class="st-fill"></span><span class="st-dim">' + g.count + "</span></div>" +
-          (f ? "" : g.hits.map(function (h, hi) { return '<div class="st-sh" data-g="' + gi + '" data-h="' + hi + '"><span class="st-dim">' + (h.role === "user" ? "❯ " : "⏺ ") + "</span>" + hl(h.text, h.match) + "</div>"; }).join("") + (g.count > g.hits.length ? '<div class="st-dim st-sh">还有 ' + (g.count - g.hits.length) + " 个结果</div>" : "")) + "</div>";
+          (f ? "" : g.hits.map(function (h, hi) { return '<div class="st-sh" data-g="' + gi + '" data-h="' + hi + '"><span class="st-dim">' + (h.role === "user" ? "❯ " : "⏺ ") + "</span>" + hl(h.text, h.match) + "</div>"; }).join("") + (g.count > g.hits.length ? '<div class="st-dim st-sh">另外 ' + (g.count - g.hits.length) + " 个结果</div>" : "")) + "</div>";
       }).join("")) + (secs ? fileSec() : "");
       if (kf) markK();
     }
@@ -5433,8 +5433,8 @@
         mi("活动栏", "", function () { setv("activityBar", !getv("activityBar")); }, { checked: !!getv("activityBar") }),
         mi("路径导航", "", function () { setv("breadcrumbs", !getv("breadcrumbs")); }, { checked: !!getv("breadcrumbs") }),
         mi("缩略图", "", null, { value: (MINI_MODES.filter(function (x) { return x[0] === getv("minimap", true); })[0] || ["", ""])[1], items: function () { return MINI_MODES.map(function (x) { return mi(x[1], "", function () { setv("minimap", x[0]); }, { radio: true, checked: getv("minimap", true) === x[0], preview: function (p) { previewSet("minimap", p ? x[0] : null); } }); }); } }),
-        mi("状态栏", "", function () { setv("statusBar", !getv("statusBar")); }, { checked: !!getv("statusBar") }),
-      ] })];
+        noPanel() ? null : mi("状态栏", "", function () { setv("statusBar", !getv("statusBar")); }, { checked: !!getv("statusBar") }), // 没有面板的风格：⌘J 那一项已经是「状态栏」，不再列一遍
+      ].filter(Boolean) })];
   }
   // ======== 自定义布局（同 VS Code 的 Customize Layout）：一块浮在上面的选择框——每行一个图标；可见性、界面、缩略图、模式分组，组名在这组第一行右边；
   // 快捷键是一个键一格；勾着的打 ✓；点了（回车、空格）马上换、框不关；右上角 ↺ 恢复默认、× 关 ========
@@ -5477,9 +5477,9 @@
         vis("主侧栏", MI.sideL, !!(tw.side && tw.side.shown()), "⌘B", function () { if (tw.side) tw.side.toggle(); }),
         vis("辅助侧栏", MI.sideR, !!L.side, "⌥⌘I", function () { toggleSide(tw); }),
         noPanel() ? vis("状态栏", MI.status, !!getv("statusBar"), "⌘J", function () { toggleStatus(); }) : vis("面板", MI.panel, !!L.panel, "⌘J", function () { togglePanel(tw); }),
-        zen && getv("statusBar") ? vis("状态栏", MI.status, !zen.hid.status, "", function () { zenShow("status", !!zen.hid.status); }) : vis("状态栏", MI.status, !!getv("statusBar"), "", function () { setv("statusBar", !getv("statusBar")); }),
+        zen && getv("statusBar") ? vis("状态栏", MI.status, !zen.hid.status, "", function () { zenShow("status", !!zen.hid.status); }) : noPanel() ? null : vis("状态栏", MI.status, !!getv("statusBar"), "", function () { setv("statusBar", !getv("statusBar")); }), // 没有面板的风格：上面 ⌘J 那一项就是状态栏
         vis("路径导航", MI.crumbs, !!getv("breadcrumbs"), "", function () { setv("breadcrumbs", !getv("breadcrumbs")); }),
-      ].concat(one("主侧栏位置", "sideBarPos", [["left", "左侧", MI.sideL], ["right", "右侧", MI.sideR]]))
+      ].filter(Boolean).concat(one("主侧栏位置", "sideBarPos", [["left", "左侧", MI.sideL], ["right", "右侧", MI.sideR]]))
         .concat([["side", "默认", LI.actSide], ["top", "顶部", LI.actTop], ["bottom", "底部", LI.actBottom]].map(function (x) { return { g: "活动栏位置", label: x[1], icon: x[2], on: ap === x[0], radio: true, run: function () { setActPos(x[0]); } }; }))
         .concat(one("面板对齐", "panelAlign", [["left", "左对齐", LI.paLeft], ["right", "右对齐", LI.paRight], ["center", "居中", LI.paCenter], ["justify", "两端对齐", LI.paJustify]]))
         .concat(one("快速输入位置", "quickInput", [["top", "顶部", LI.qiTop], ["center", "居中", LI.qiCenter]]))

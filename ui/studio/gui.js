@@ -169,8 +169,8 @@
   // 点开后的内容（结果）：short = 结果预览（前几行，设置里「结果预览」那一档）
   // 显示什么（带 ··· 菜单里指着时的预览）：同终端界面
   var vmv = function (k, view) { return window.TSU_TERM && TSU_TERM.viewMode ? TSU_TERM.viewMode(k, view) : (A.cfg || {})[k]; };
-  // short：true = 预览（前 5 行）；"card" = 卡片（前 40 行，「… 还有 N 行」点开看全）；"all" = 全部（最后「收起」）；false / 不给 = 老样子（前 400 行，别处的快速查看用）
-  //   k：这一条的键（「… 还有 N 行」点了记在 open[k + ":all"]）
+  // short：true = 预览（前 5 行）；"card" = 卡片（前 40 行，「… 另外 N 行」点开看全）；"all" = 全部（最后「收起」）；false / 不给 = 老样子（前 400 行，别处的快速查看用）
+  //   k：这一条的键（「… 另外 N 行」点了记在 open[k + ":all"]）
   function detail(p, short, rtx, view, k) { // view：拆出来的一格自己的筛选（没有就按设置）
     var lvl = short === true ? "peek" : short === "card" || short === "all" ? short : "old";
     var a = p.input || {}, out = "", lines = p.detail || [], n = { peek: 5, card: 40, all: 20000, old: 400 }[lvl];
@@ -178,7 +178,7 @@
     var more = function (len) {
       if (k && lvl === "all" && len > 40) return '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">' + (EN() ? "Show less" : "收起") + "</button>";
       if (len <= n || lvl === "old" || lvl === "all") return "";
-      return k ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">… 还有 ' + (len - n) + " 行</button>" : '<div class="gv-more">… 还有 ' + (len - n) + " 行</div>";
+      return k ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">… 另外 ' + (len - n) + " 行</button>" : '<div class="gv-more">… 另外 ' + (len - n) + " 行</div>";
     };
     // 子 Agent（Agent、Claude Code 的 Task）：一行状态，再按设置挑几块——任务说明（交给它的 prompt）、过程（它的每一步，有记录的话）、结果（它的报告）
     if (p.name === "Agent" || p.name === "Task") {
@@ -186,9 +186,9 @@
       var steps = ag && ag.log ? ag.log.filter(function (x) { return x.kind === "tool"; }) : [], report = ag && ag.result ? String(ag.result) : !isErr(p) && lines.length ? lines.join("\n") : "";
       var sec = function (h, body) { return '<div class="gv-sub"><div class="gv-subh">' + esc(h) + "</div>" + body + "</div>"; }, cut = function (txt, k) { var ls = String(txt).split("\n"); return { t: short ? ls.slice(0, k).join("\n") : txt, more: short && ls.length > k ? ls.length - k : 0 }; };
       out += '<div class="gv-ch' + (isErr(p) ? " err" : "") + '">' + esc(isErr(p) ? p.error || "" : ag ? (ag.status === "running" ? "运行中" : "完成") + " · " + ag.tools + " 次工具调用" : running(p) ? "运行中" : "完成") + "</div>";
-      if (vmv("agentPrompt", view) === true && a.prompt) { var pc = cut(a.prompt, 3); out += sec("任务说明", '<pre class="gv-out">' + esc(pc.t) + "</pre>" + (pc.more ? '<div class="gv-more">… 还有 ' + pc.more + " 行</div>" : "")); }
+      if (vmv("agentPrompt", view) === true && a.prompt) { var pc = cut(a.prompt, 3); out += sec("任务说明", '<pre class="gv-out">' + esc(pc.t) + "</pre>" + (pc.more ? '<div class="gv-more">… 另外 ' + pc.more + " 行</div>" : "")); }
       if (vmv("agentSteps", view) !== false && steps.length) { var sv = short ? steps.slice(-3) : steps.slice(0, 50); out += sec("子 Agent 过程", sv.map(function (x) { return '<div class="gv-step">' + esc(title(x)) + "</div>"; }).join("") + (steps.length > sv.length ? '<div class="gv-more">… 共 ' + steps.length + " 步</div>" : "")); }
-      if (vmv("agentResult", view) !== false && report) { var rc = cut(report, 6); out += sec("结果", '<div class="gv-md">' + md(rc.t) + "</div>" + (rc.more ? '<div class="gv-more">… 还有 ' + rc.more + " 行</div>" : "")); }
+      if (vmv("agentResult", view) !== false && report) { var rc = cut(report, 6); out += sec("结果", '<div class="gv-md">' + md(rc.t) + "</div>" + (rc.more ? '<div class="gv-more">… 另外 ' + rc.more + " 行</div>" : "")); }
       return out;
     }
     if (p.name === "Bash") {
@@ -201,8 +201,8 @@
       else if (lines.length) out += '<pre class="gv-out' + (isErr(p) ? " err" : "") + '">' + esc(lines.slice(0, n).join("\n")) + "</pre>" + more(lines.length);
       return out;
     }
-    if (p.diff) { var dn = lvl === "peek" ? 12 : lvl === "card" ? 60 : 2000; return '<div class="gv-ch">' + esc(p.summary || "") + '</div><div class="gv-diff">' + diffHtml(p.diff.slice(0, dn)) + "</div>" + (p.diff.length > dn ? (k && lvl !== "peek" ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">… 还有 ' + (p.diff.length - dn) + " 行改动</button>" : '<div class="gv-more">… 还有 ' + (p.diff.length - dn) + " 行改动</div>") : lvl === "all" && k && p.diff.length > 60 ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">' + (EN() ? "Show less" : "收起") + "</button>" : ""); }
-    if (p.name === "web_search" && p.results) return '<div class="gv-ch">' + esc(p.summary || "搜索结果") + "</div>" + p.results.slice(0, short ? 3 : 100).map(function (x) { return '<div class="gv-res"><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.title) + '</a><span class="gv-dim">' + esc(x.url) + "</span></div>"; }).join("") + (short && p.results.length > 3 ? '<div class="gv-more">… 还有 ' + (p.results.length - 3) + " 条结果</div>" : "");
+    if (p.diff) { var dn = lvl === "peek" ? 12 : lvl === "card" ? 60 : 2000; return '<div class="gv-ch">' + esc(p.summary || "") + '</div><div class="gv-diff">' + diffHtml(p.diff.slice(0, dn)) + "</div>" + (p.diff.length > dn ? (k && lvl !== "peek" ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">… 另外 ' + (p.diff.length - dn) + " 行改动</button>" : '<div class="gv-more">… 另外 ' + (p.diff.length - dn) + " 行改动</div>") : lvl === "all" && k && p.diff.length > 60 ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">' + (EN() ? "Show less" : "收起") + "</button>" : ""); }
+    if (p.name === "web_search" && p.results) return '<div class="gv-ch">' + esc(p.summary || "搜索结果") + "</div>" + p.results.slice(0, short ? 3 : 100).map(function (x) { return '<div class="gv-res"><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.title) + '</a><span class="gv-dim">' + esc(x.url) + "</span></div>"; }).join("") + (short && p.results.length > 3 ? '<div class="gv-more">… 另外 ' + (p.results.length - 3) + " 条结果</div>" : "");
     var headL = p.summary || (isErr(p) ? p.error : "");
     if (headL) out += '<div class="gv-ch' + (isErr(p) ? " err" : "") + '">' + esc(headL) + "</div>";
     if (lines.length) out += '<pre class="gv-out">' + esc(lines.slice(0, n).join("\n")) + "</pre>" + more(lines.length);
@@ -429,7 +429,7 @@
     }
     // 一次工具调用：一行（标题 · 用时；出错红；在跑的带 …）+ 点开的卡片。图形界面默认收着（同终端界面的 TUI：一问里几十次调用全摊开没法看）：
     //   在跑的那条自动展开（跑完收回）；最新的那一条（最后一问里最后一次调用）露出结果的前几行；别的只有一行，点一下看卡片、再点收起。
-    //   卡片里的输出先给 40 行，「… 还有 N 行」点开看全，最后「收起」。档位「只看调用」：只有这一行（点开照样看）；「隐藏」：不画（在跑的除外）
+    //   卡片里的输出先给 40 行，「… 另外 N 行」点开看全，最后「收起」。档位「只看调用」：只有这一行（点开照样看）；「隐藏」：不画（在跑的除外）
     function toolOne(p, k, m, hot) {
       var run = running(p), auto = run || (hot && m !== "call"), o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
       // 在跑的：用时不写进 HTML（每秒一变，整问重画一遍，看着的那一块就跳）——空的 span 带起点，旁边每秒填一次（tickTm）
@@ -438,7 +438,7 @@
         (o ? '<div class="gv-det gv-card' + (lvl === "peek" ? " gv-peek" : "") + '">' + detail(p, lvl === "peek" ? true : lvl, rt, P.view, k) + "</div>" : "") + "</div>";
     }
     // 连着的几次工具调用（中间没说话）：一行汇总「运行了 12 条命令、读取了 3 个文件 · 6 分 3 秒」（这一组从第一条开始的总时长），点开是每一条一行；
-    //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 还有 N 条」点开，再点收起）；别的组收着
+    //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 另外 N 条」点开，再点收起）；别的组收着
     function toolGroup(g, key, hot, rowKey) {
       var live = g.some(running), o = key in open ? !!open[key] : live || hot, allR = !!open[key + ":more"], MAXR = 4;
       var t0 = g.reduce(function (m0, p) { return p.t0 && (!m0 || p.t0 < m0) ? p.t0 : m0; }, 0), t1 = live ? 0 : g.reduce(function (m0, p) { return Math.max(m0, p.t1 || (p.t0 ? p.t0 + (p.secs || 0) * 1000 : 0)); }, 0);
@@ -446,7 +446,7 @@
       var rows = "";
       if (o) {
         var hid = Math.max(0, g.length - MAXR), from = allR ? 0 : hid;
-        if (hid) rows += '<button type="button" class="gv-gmore" data-gmore="' + key + '">' + (allR ? (EN() ? "Hide " + hid + " earlier" : "收起前面 " + hid + " 条") : (EN() ? "… " + hid + " more" : "… 还有 " + hid + " 条")) + "</button>";
+        if (hid) rows += '<button type="button" class="gv-gmore" data-gmore="' + key + '">' + (allR ? (EN() ? "Hide " + hid + " earlier" : "收起前面 " + hid + " 条") : (EN() ? "… " + hid + " more" : "… 另外 " + hid + " 条")) + "</button>";
         rows += g.slice(from).map(function (p, j) { var i = from + j; return toolOne(p, rowKey ? rowKey(p, i) : key + ":" + i, modeOf(p), hot && i === g.length - 1); }).join("");
       }
       return '<div class="gv-group' + (o ? " open" : "") + (live ? " run" : "") + (bad ? " bad" : "") + '" data-k="' + key + '" data-kind="' + kindOf((g[g.length - 1] || {}).name) + '"><button class="gv-sum"><span class="gv-st">' + esc(head) + "</span>" + (live ? '<span class="gv-dots"></span>' : "") +
@@ -555,7 +555,7 @@
         return;
       }
       var mb = e.target.closest("[data-more], [data-gmore]");
-      if (mb) { // 卡片里「… 还有 N 行」/「收起」；一组里「… 还有 N 条」/「收起前面 N 条」
+      if (mb) { // 卡片里「… 另外 N 行」/「收起」；一组里「… 另外 N 条」/「收起前面 N 条」
         e.preventDefault();
         var kk = mb.dataset.more ? mb.dataset.more + ":all" : mb.dataset.gmore + ":more";
         open[kk] = !open[kk];
@@ -609,7 +609,7 @@
       if (openT.length && todoHere) {
         var ordT = openT.filter(function (x) { return x.status === "in_progress"; }).concat(openT.filter(function (x) { return x.status !== "in_progress"; })), doneT = todo.filter(function (x) { return x.status === "completed"; }), nT = todoEl._all ? ordT.length : 6;
         var liT = function (x) { return '<div class="gv-todoi ' + x.status + '"><span class="gv-task' + (x.status === "completed" ? " done" : x.status === "in_progress" ? " doing" : "") + '"></span>' + esc(trG(x.status === "in_progress" && x.activeForm ? x.activeForm : x.subject)) + "</div>"; };
-        var th = '<div class="gv-todoh">任务 ' + doneT.length + " / " + todo.length + "</div>" + ordT.slice(0, nT).map(liT).join("") + (ordT.length > nT ? '<div class="gv-todoi gv-todom" data-todo="all"><span>' + esc("还有 " + (ordT.length - nT) + " 项") + "</span></div>" : "") +
+        var th = '<div class="gv-todoh">任务 ' + doneT.length + " / " + todo.length + "</div>" + ordT.slice(0, nT).map(liT).join("") + (ordT.length > nT ? '<div class="gv-todoi gv-todom" data-todo="all"><span>' + esc("另外 " + (ordT.length - nT) + " 项") + "</span></div>" : "") +
           (doneT.length ? '<div class="gv-todoi gv-todom" data-todo="done"><span class="gv-tchev">' + (todoEl._done ? "▾" : "▸") + "</span><span>" + esc(doneT.length + " 项已完成") + "</span></div>" + (todoEl._done ? doneT.map(liT).join("") : "") : "");
         if (!todoEl._bound) { todoEl._bound = true; todoEl.addEventListener("click", function (e) { var t = e.target.closest("[data-todo]"); if (!t) return; if (t.dataset.todo === "all") todoEl._all = !todoEl._all; else todoEl._done = !todoEl._done; status(); }); }
         if (todoEl.dataset.h !== th) { todoEl.dataset.h = th; todoEl.innerHTML = th; }

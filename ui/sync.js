@@ -278,6 +278,9 @@
   // 给人看的名字：通用名的 App 记录用型号（没有就是「iPad」），浏览器的写「iPhone 上的 Safari」
   var EN = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
   var plainName = function (d) {
+    // 以前的版本报的「Safari（Mac）」「Chrome (Windows)」：同现在的写法（「Mac 上的 Safari」），不两种写法混着（用户 2026-10-28）
+    var old = /^(Safari|Chrome|Edge|Firefox|浏览器)\s*[（(](iPhone|iPad|Mac|Windows|Linux|Android)[)）]$/.exec(String(d.name || ""));
+    if (old) d = Object.assign({}, d, { name: old[2] + " · " + old[1] });
     var m = GENERIC.exec(String(d.name || ""));
     if (!m) return String(d.name || "") || (EN() ? "Another Device" : "另一台设备");
     if (m[2] !== "App") { var br = m[2] === "浏览器" ? (EN() ? "Browser" : "浏览器") : m[2], dv = d.model || m[1]; return EN() ? br + " on " + dv : dv + " 上的 " + br; }

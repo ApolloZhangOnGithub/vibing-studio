@@ -380,7 +380,7 @@
       }
     });
     if (move) remove(a, true);
-    if (skipped.length) throw denied(skipped[0] + (skipped.length > 1 ? "（还有 " + (skipped.length - 1) + " 个）" : ""));
+    if (skipped.length) throw denied(skipped[0] + (skipped.length > 1 ? "（另外 " + (skipped.length - 1) + " 个）" : ""));
   }
   // 遍历只给看得见的（读不了的目录整棵跳过）
   function walk(p) { var out = []; files.forEach(function (v, k) { if ((k === p || k.indexOf(p === "/" ? "/" : p + "/") === 0) && can(k, "r")) out.push(k); }); return out.sort(); }

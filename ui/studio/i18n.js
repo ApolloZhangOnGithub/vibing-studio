@@ -289,7 +289,7 @@
     [/^(\d+) 个运行中$/, "$1 running"],
     [/^(\d+) 个在运行$/, "$1 running"], [/^(\d+) 个已完成$/, "$1 finished"], [/^后台任务 · (.+)$/, "Background Tasks · $1"], // 底部面板的「Agent 活动」、Claude App 的后台任务卡片
     [/^退出登录 (.+)？$/, "Sign out of $1?"], [/^(.+) 做完了$/, "$1 finished"], [/^这个模型（(.+)）单独设的；新会话用它$/, "Set for this model ($1); used by new sessions"], [/^关闭「(.+)」？$/, "Close “$1”?"], [/^设备（(\d+)）…$/, "Devices ($1)…"],
-    [/^(\d+) 项已完成$/, "$1 completed"], [/^还有 (\d+) 项$/, "$1 more"], [/^任务清单 (\d+)\/(\d+)$/, "Tasks $1/$2"], // 任务清单（输入框上方、抽屉、侧栏、卡片）
+    [/^(\d+) 项已完成$/, "$1 completed"], [/^(?:另外|还有) (\d+) 项$/, "$1 more"], [/^任务清单 (\d+)\/(\d+)$/, "Tasks $1/$2"], // 任务清单（输入框上方、抽屉、侧栏、卡片）
     [/^后台任务 (\d+)$/, "Background tasks $1"], [/^子 Agent (\d+)$/, "Subagents $1"], [/^(\d+) 条消息等它下一步读到$/, "$1 messages pending"], // agent 右边「任务」一家子的标题行；图形界面排着的
     [/^跟着 (.+)（最近用的 agent；点一下切过去）$/, "Following $1 (the most recent agent; click to switch to it)"], // 辅助侧栏标题行上 agent 的名字
     [/^文件太大（(.+)），不在这里预览$/, "File too large ($1) to preview here"], [/^二进制文件（(.+)），不显示内容$/, "Binary file ($1), content not shown"], [/^只显示前 (.+)（共 (.+)）$/, "Showing the first $1 (of $2)"], [/^打不开：(.+)$/, "Can't open: $1"], // 小的文件面板（filepanel.js）
@@ -301,7 +301,7 @@
     [/^(\d+) 问$/, function (m) { return pl(m[1], "turn"); }],
     [/^(\d+) 项已全部完成$/, "All $1 done"],
     [/^(\d+) 个对话中有 (\d+) 个结果$/, function (m) { return pl(m[2], "result") + " in " + pl(m[1], "chat"); }],
-    [/^还有 (\d+) 个结果$/, function (m) { return m[1] + " more " + (+m[1] === 1 ? "result" : "results"); }],
+    [/^(?:另外|还有) (\d+) 个结果$/, function (m) { return m[1] + " more " + (+m[1] === 1 ? "result" : "results"); }],
     [/^已归档 (\d+)$/, "Archived $1"],
     [/^(\d+) 秒$/, "$1s"], [/^(\d+) 分 (\d+) 秒$/, "$1m $2s"], [/^(\d+) 分钟前$/, "$1 min ago"],
     [/^账号 (\S+)$/, "Account $1"],
@@ -311,7 +311,7 @@
     [/^读取了 (\d+) 个文件、搜索了 (\d+) 次$/, function (m) { return "Read " + pl(m[1], "file") + ", searched " + pl(m[2], "time"); }],
     [/^读取了 (\d+) 个文件$/, function (m) { return "Read " + pl(m[1], "file"); }],
     [/^搜索了 (\d+) 次$/, function (m) { return "Searched " + pl(m[1], "time"); }],
-    [/^… 还有 (\d+) 行$/, "… $1 more lines"], [/^… 还有 (\d+) 行改动$/, "… $1 more changed lines"], [/^… 还有 (\d+) 条结果$/, "… $1 more results"],
+    [/^… (?:另外|还有) (\d+) 行$/, "… $1 more lines"], [/^… (?:另外|还有) (\d+) 行改动$/, "… $1 more changed lines"], [/^… (?:另外|还有) (\d+) 条结果$/, "… $1 more results"],
     // 按工具（··· › 工具 › 按工具、设置 › 对话）：继承类别的那一档；子 Agent 的状态
     [/^继承（全部 · (.+)）$/, function (m) { return "Inherit (All · " + (WORDS.get(m[1]) || m[1]) + ")"; }], // Agent 消息 › 收到的 / 发出的 / 子 Agent 报告
     [/^继承（(.+)）$/, function (m) { return "Inherit (" + (WORDS.get(m[1]) || m[1]) + ")"; }],
@@ -596,7 +596,7 @@
   words({ "没有打开的会话": "No open sessions", "这段时间里没有会话在工作": "No session worked during this period", "请按一下指纹…": "Touch the sensor…", "还没用过": "Never used", "显示简介": "Get Info" });
   PATTERNS.push([/^上次使用 (.+)$/, "Last used $1"]);
   words({ "允许它在这台电脑上开终端、读写文件、继续会话": "Allow it to open terminals, read and write files and continue sessions on this computer", "这台电脑没有允许这台设备": "This computer hasn’t allowed this device",
-    "代码块行号": "Code Block Line Numbers", "5 小时用量": "5-Hour Usage", "7 天用量": "7-Day Usage", "当前 Agent": "Current Agent", "当前 Agent（状态信息关着时显示）": "Current Agent (shown when Status Info is off)",
+    "代码块行号": "Code Block Line Numbers", "服务器": "Server", "添加服务器": "Add Server", "已拷贝": "Copied", "5 小时用量": "5-Hour Usage", "7 天用量": "7-Day Usage", "当前 Agent": "Current Agent", "当前 Agent（状态信息关着时显示）": "Current Agent (shown when Status Info is off)",
     "系统状态": "System Status",
     "其他设备使用这台电脑": "Let Other Devices Use This Computer", "登录时打开 Vibing Studio": "Open Vibing Studio at Login",
     "已结束（没有收到结果）": "Ended (no result received)", "已结束": "Ended" });

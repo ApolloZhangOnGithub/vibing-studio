@@ -32,8 +32,10 @@
     ipad: SV('<rect x="11" y="6.5" width="26" height="35" rx="3.6"/><path d="M22 37.4h4"/>'),
     iphone: SV('<rect x="15" y="5.5" width="18" height="37" rx="4"/><path d="M21 9.4h6"/>'),
     web: SV('<rect x="6" y="9" width="36" height="30" rx="3"/><path d="M6 16h36"/><path d="M10.5 12.5h.01M14 12.5h.01M17.5 12.5h.01"/>'),
+    // 服务器（Linux 服务器版，没有屏幕）：机架上的两层
+    server: SV('<rect x="9" y="10" width="30" height="11.5" rx="2.4"/><rect x="9" y="26.5" width="30" height="11.5" rx="2.4"/><path d="M14.5 15.75h.01M14.5 32.25h.01M20 15.75h13M20 32.25h13"/>'),
   };
-  var TOP = { cloud: 11.2, laptop: 11, desktop: 8.5, mini: 18, linux: 8.5, windows: 8.5, ipad: 6.5, iphone: 5.5, web: 9 };
+  var TOP = { server: 10, cloud: 11.2, laptop: 11, desktop: 8.5, mini: 18, linux: 8.5, windows: 8.5, ipad: 6.5, iphone: 5.5, web: 9 };
   var COPY = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.2A1.3 1.3 0 0 0 9.2 2H3.3A1.3 1.3 0 0 0 2 3.3v5.9a1.3 1.3 0 0 0 1.3 1.3h.2"/></svg>';
   var DONE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3 3 6.6-6.6"/></svg>';
   var LOGO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="12.5" height="9" rx="1.2"/><path d="M1 16.5h17"/><rect x="16.5" y="8.5" width="6" height="11" rx="1.3"/><path d="M19 17.6h1"/></svg>';
@@ -50,6 +52,7 @@
     if (k === "iPad") return "ipad";
     if (k === "iPhone" || k === "Android") return "iphone";
     if (d.web) return "web";
+    if (d.kind === "server") return "server";
     if (k === "Linux") return "linux";
     if (k === "Windows") return "windows";
     if (/MacBook/i.test(s)) return "laptop";
@@ -59,14 +62,15 @@
   // 名字下面那一行：型号（没有就是哪一类）· 系统——几台 Mac 一眼分得出（「MacBook Air · macOS 27」「OptiPlex 7090 · Ubuntu 26.04」）
   var shortOs = function (os) { return String(os || "").replace(/\s*\(.*\)\s*$/, "").replace(/^(macOS|iPadOS|iOS)\s+(\d+)(\.0)?(\.\d+)?$/, "$1 $2$4").replace(/ LTS$/, "").trim(); };
   var subOf = function (n) {
-    if (n.web) return [n.browser || t("网页", "Web"), shortOs(n.os)].filter(Boolean).join(" · ");
+    if (n.web) return [t("网页", "Web"), shortOs(n.os)].filter(Boolean).join(" · "); // 浏览器已经写在名字里（「iPhone 上的 Safari」「Mac 上的 Safari」）：下面一律「网页 · 系统」
+    if (n.kind === "server") return [t("服务器", "Server"), shortOs(n.os)].filter(Boolean).join(" · ");
     var full = String(n.model || ""), m = full.replace(/\s*\((M\d|Intel|\d{4}).*\)$/, "").replace(/^(Dell Inc\.|LENOVO|HP|ASUS|Micro-Star International Co\., Ltd\.|Gigabyte Technology Co\., Ltd\.)\s+/i, "").trim();
     if (m && m === n.label) { var chip = /\((M\d[^,)]*|Intel)/.exec(full); m = chip ? chip[1] : ""; } // 名字就是型号（「Mac mini」）：写芯片
     return [m || kindLabel(n), shortOs(n.os)].filter(Boolean).join(" · ");
   };
 
   // 能连它桌面的：别的 Linux / Windows 电脑（它们的远程桌面是 RDP；Mac 的以后由 Vibing Studio 自己来）——App 里才有
-  var canDesk = function (n) { return !!(n && !n.self && !n.web && n.family === "computer" && /^(Linux|Windows)$/.test(kindLabel(n)) && window.TSU_RDP && TSU_RDP.native()); };
+  var canDesk = function (n) { return !!(n && !n.self && !n.web && n.kind !== "server" && n.family === "computer" && /^(Linux|Windows)$/.test(kindLabel(n)) && window.TSU_RDP && TSU_RDP.native()); }; // 服务器版没有桌面：连按两下是在新窗口中打开
   // 另一台 Mac：它的 Vibing Studio 开着、让别的设备用——经 Vibing Studio 自己的连接用它的屏幕（macdesk.js）
   var canMacDesk = function (n) { return !!(n && !n.self && !n.web && n.family === "computer" && kindLabel(n) === "Mac" && n.host && n.online && window.TSU_MACDESK && TSU_MACDESK.native()); };
   // ---- 数据 ----
@@ -145,6 +149,11 @@
     return '<button type="button" class="dv-node' + (n.self ? " self" : "") + (n.online ? " on" : "") + '" data-node="' + esc(key) + '" title="' + esc(n.label) + '">' +
       '<span class="dv-ic" data-top="' + TOP[ic] + '">' + ICON[ic] + '<i class="dv-dot"></i></span><span class="dv-name">' + esc(n.label) + '</span><span class="dv-sub">' + esc(subOf(n)) + '</span><span class="dv-st">' + esc(st) + "</span></button>";
   }
+  // 「添加服务器」（Linux 服务器版）：登录了才有
+  function addSrvBtn(m) {
+    if (!m.signed) return "";
+    return '<button type="button" class="dv-add" data-act="addsrv" title="' + esc(t("在 Linux 服务器上安装 Vibing Studio（不需要桌面）", "Install Vibing Studio on a Linux server (no desktop needed)")) + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>' + esc(t("添加服务器", "Add Server")) + "</button>";
+  }
   function render(host, P, arg, V) {
     loadHosts(function () { if (V.shown()) render(host, P, arg, V); });
     clearTimeout(host._dvT);
@@ -156,7 +165,7 @@
     var up = m.up.map(function (n) { return nodeHtml(n, put(n)); }).join(""), down = m.down.map(function (n) { return nodeHtml(n, put(n)); }).join("");
     var rel = m.draw.map(function (e) { return e.from._key + ">" + e.to._key + ":" + (e.live ? "L" : "") + (e.both ? "B" : "") + (e.liveRev ? "R" : ""); }).join(" ");
     var legend = m.edges.length ? '<div class="dv-legend"><span><i class="dv-lg live"></i>' + esc(t("正在使用", "In use")) + '</span><span><i class="dv-lg"></i>' + esc(t("允许使用", "Allowed")) + "</span></div>" : "";
-    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + esc(t("设备", "Devices")) + "</h1>" + legend + '</div><div class="dv-scroll"><div class="dv-fit"><div class="dv-map" data-rel="' + esc(rel) + '"><svg class="dv-lines" aria-hidden="true"></svg>' +
+    var html = '<div class="dv-wrap"><div class="dv-head"><h1>' + esc(t("设备", "Devices")) + "</h1>" + legend + addSrvBtn(m) + '</div><div class="dv-scroll"><div class="dv-fit"><div class="dv-map" data-rel="' + esc(rel) + '"><svg class="dv-lines" aria-hidden="true"></svg>' +
       (up ? '<div class="dv-tier dv-up">' + up + "</div>" : "") + '<div class="dv-tier dv-mid">' + acct + "</div>" + (down ? '<div class="dv-tier dv-down">' + down + "</div>" : "") + "</div></div></div></div>";
     V.nodes = keys;
     V.edges = m.edges;
@@ -263,6 +272,7 @@
   }
   function wire(host, P, V) {
     host.addEventListener("click", function (e) {
+      if (e.target.closest('[data-act="addsrv"]')) return addServer(host);
       if (e.target.closest(".dv-card")) return;
       var nd = e.target.closest("[data-node]");
       if (!nd) { clearTimeout(host._dvPend); host.querySelectorAll(".dv-node.sel").forEach(function (x) { x.classList.remove("sel"); }); return closeCard(); }
@@ -369,6 +379,43 @@
     if (e.loc) bits.push(e.loc.replace(/\s*·\s*IP .*$/, ""));
     return '<span class="dv-rn"><b>' + esc(other.label) + "</b><i>" + esc(bits.join(" · ") || t("允许使用", "Allowed")) + "</i></span>";
   };
+  // ---- 添加服务器（Linux 服务器版）：要一条一次性的安装命令（1 小时内有效、用一次），在服务器上运行它就装好、自己出现在这里 ----
+  function addServer(host) {
+    closeCard();
+    card = document.createElement("div");
+    card.className = "dv-card dv-panel dv-addsrv";
+    card.setAttribute("role", "dialog");
+    card._key = "addsrv"; card._host = host;
+    var X = '<button type="button" class="dv-x" data-act="close" title="' + esc(t("关闭", "Close")) + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>';
+    var head = '<div class="dv-ch"><span class="dv-cic">' + ICON.server + '</span><div class="dv-ct"><b>' + esc(t("添加服务器", "Add Server")) + "</b><span>" + esc(t("Linux · 不需要桌面", "Linux · no desktop needed")) + "</span></div></div>";
+    card.innerHTML = X + head + '<div class="dv-cmd"><code>…</code></div><div class="dv-cmdnote"></div><div class="dv-acts"><button type="button" class="dv-primary" data-act="copycmd" disabled>' + esc(t("拷贝", "Copy")) + "</button></div>";
+    host.appendChild(card);
+    card.style.top = host.scrollTop + 64 + "px";
+    host.classList.add("dv-open");
+    layout(host);
+    var me = card, before = {}, list = function () { return (SY() && SY().deviceList ? SY().deviceList() : null) || []; };
+    list().forEach(function (d) { before[d.id] = 1; });
+    card.addEventListener("click", function (e) { if (e.target.closest('[data-act="close"]')) { clearTimeout(me._lookT); closeCard(); } });
+    fetch("/api/server/token", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ lang: t("zh", "en") }) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (me !== card) return;
+        if (!j || !j.command) throw new Error((j && j.error) || "");
+        me.querySelector(".dv-cmd code").textContent = j.command;
+        me.querySelector(".dv-cmdnote").textContent = t("在服务器上运行。1 小时内有效，用一次。", "Run it on the server. Valid for 1 hour, once.");
+        var b = me.querySelector('[data-act="copycmd"]');
+        b.disabled = false;
+        b.onclick = function () { if (navigator.clipboard) navigator.clipboard.writeText(j.command); b.textContent = t("已拷贝", "Copied"); };
+        // 等它出现：同步拉回来的设备里多了一台服务器
+        var look = function () {
+          if (me !== card) return;
+          var hit = list().filter(function (d) { return d.kind === "server" && !before[d.id]; })[0];
+          if (hit) { me.querySelector(".dv-cmdnote").textContent = t("已添加「" + (hit.name || hit.label || "") + "」", "Added “" + (hit.name || hit.label || "") + "”"); return; }
+          if (SY() && SY().refresh) SY().refresh();
+          me._lookT = setTimeout(look, 3000);
+        };
+        me._lookT = setTimeout(look, 3000);
+      }).catch(function (e) { if (me === card) me.querySelector(".dv-cmdnote").textContent = t("现在拿不到安装命令", "Couldn't get an install command") + (e && e.message ? "（" + e.message + "）" : ""); });
+  }
   function openCard(host, P, el, n, key, V, keep) {
     closeCard();
     var m = key === "acct" ? model() : null, c = key === "acct" ? acctCard(m) : devCard(n);

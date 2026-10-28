@@ -373,7 +373,7 @@
       h += '<div class="ca-sec' + (s.conn ? " ca-csec" : "") + '" data-key="' + esc(s.key) + '"><div class="ca-sh ca-shx" data-fold="' + esc(s.key) + '" role="button" tabindex="0"><i class="ca-fchev">' + IC.down + "</i>" +
         '<span class="ca-shl">' + esc(s.label) + '</span><span class="ca-cnt">' + (only ? its.length + " / " + s.items.length : its.length) + '</span><span class="ca-fill"></span>' + add + "</div>" +
         '<div class="ca-sbody"><div class="ca-sbody-in">' + shown.map(function (x) { return row(x, curId(x)); }).join("") +
-        (hid ? '<div class="ca-smore" data-more="' + esc(s.key) + '" role="button">' + esc(tr("还有 " + hid + " 个", "Show " + hid + " more")) + "</div>"
+        (hid ? '<div class="ca-smore" data-more="' + esc(s.key) + '" role="button">' + esc(tr("另外 " + hid + " 个", "Show " + hid + " more")) + "</div>"
           : !searching && long ? '<div class="ca-smore" data-more="' + esc(s.key) + '" role="button">' + esc(tr("收起", "Show less")) + "</div>" : "") +
         rest.map(function (x) { return row(x, curId(x)); }).join("") + "</div></div></div>";
     });

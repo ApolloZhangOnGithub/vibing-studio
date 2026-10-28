@@ -3,6 +3,12 @@
 .dv-wrap { min-height: 100%; padding: 28px 32px 48px; box-sizing: border-box; }
 .dv-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 22px; }
 .dv-head h1 { margin: 0; font-size: 22px; font-weight: 650; color: var(--st-hi); }
+.dv-add { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg); color: var(--st-fg); font: inherit; font-size: 12.5px; cursor: pointer; align-self: center; }
+.dv-add:hover { background: var(--st-hover); }
+.dv-add svg { width: 13px; height: 13px; }
+.dv-cmd { margin: 12px 0 6px; padding: 9px 10px; border: 1px solid var(--st-line); border-radius: 8px; background: var(--st-bg); }
+.dv-cmd code { display: block; font: 12px/1.45 var(--st-mono, ui-monospace, Menlo, monospace); color: var(--st-hi); word-break: break-all; user-select: text; -webkit-user-select: text; }
+.dv-cmdnote { margin-bottom: 10px; color: var(--st-dim); font-size: 12px; }
 .dv-legend { display: flex; gap: 14px; margin-left: auto; color: var(--st-dim); font-size: 11.5px; }
 .dv-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dv-lg { display: inline-block; width: 22px; height: 0; border-top: 1.5px dashed var(--st-dim); }
