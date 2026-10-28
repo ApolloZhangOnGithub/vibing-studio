@@ -6017,6 +6017,8 @@
     if (!sc) return null;
     var moved = function () { if (P.onScroll) P.onScroll(true); }, span2 = function () { return Math.max(1, sc.scrollHeight - sc.clientHeight); }; // 拖缩略图是你自己滚的：往上拖就不再跟着到底
     return { key: sc, el: sc,
+      // 内容的「指纹」：块数 + 总高 + 主题——变了才重读整段（以前 700ms 一次把整段对话的字和颜色读一遍，大会话每次几十毫秒，一直在耗电）
+      ver: function () { var o = P.out; return (o ? o.childElementCount : 0) + ":" + sc.scrollHeight + ":" + sc.clientWidth + ":" + document.documentElement.className.length; },
       lines: function () { return String((prog && prog.page === "file" ? sc : P.term).innerText || "").split("\n"); },
       view: function () { return [sc.scrollTop / Math.max(1, sc.scrollHeight), sc.clientHeight / Math.max(1, sc.scrollHeight)]; },
       frac: function () { return Math.min(1, sc.scrollTop / span2()); },
@@ -6042,15 +6044,15 @@
     // 「- 列表」「2026-…」都当成 diff 的删除行画成红的；读不到的（别的页面）才照旧按字画
     if (full || !m.lines) {
       // 文件：内容没变（同一个编辑器、同样多的字、语法树没长）就不重算整篇的颜色（700ms 一次的那一下不能每次都走一遍几千行）
-      var sig = src.rich ? src.key && (fbSig(P)) : "";
-      if (src.rich && m.richSig === sig && m.lines) { /* 照旧 */ }
+      var sig = src.rich ? src.key && (fbSig(P)) : src.ver ? src.ver() : "";
+      if (sig && m.richSig === sig && m.lines) { /* 照旧 */ }
       else { var rich0 = src.rich ? src.rich() : window.TSU_GUIMAP && TSU_GUIMAP.richRows ? TSU_GUIMAP.richRows(P) : null; m.rich = !!rich0; m.lines = rich0 || src.lines(); m.richSig = sig; }
     }
     var lines = m.lines, rich = m.rich ? lines : null, cv = m.querySelector("canvas"), W = m.clientWidth, H = m.clientHeight, dpr = window.devicePixelRatio || 1;
     var total = lines.length * MAP_LH, off = total > H ? Math.round(src.frac() * (total - H)) : 0;
     if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px"; }
     var g = cv.getContext("2d");
-    if (full || !m.colors) { var cs = getComputedStyle(root), col = function (v) { return cs.getPropertyValue(v).trim() || "#888"; }; m.colors = { hi: col("--st-hi"), fg: col("--st-fg"), dim: col("--st-dim"), orange: col("--st-orange"), green: col("--st-green"), red: col("--st-red") }; }
+    if (!m.colors) { var cs = getComputedStyle(root), col = function (v) { return cs.getPropertyValue(v).trim() || "#888"; }; m.colors = { hi: col("--st-hi"), fg: col("--st-fg"), dim: col("--st-dim"), orange: col("--st-orange"), green: col("--st-green"), red: col("--st-red") }; } // 配色变了由 st-theme 清掉（见下面）：不每次都读一遍样式
     var C = m.colors;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);

@@ -66,6 +66,7 @@ TESTS = {
     "mac2mac": {"timeout": 240, "check": chk_mac},
     "idle": {"fixture": "ty", "timeout": 150, "check": chk_idle},
     "scroll": {"gen": "cc", "timeout": 400, "check": chk_scroll},
+    "energy": {"fixture": "ty", "timeout": 150, "check": lambda o: None if o.get("ok") else "energy probe failed: %s" % o.get("error"), "manual": True},
 }
 
 class Proc:
@@ -137,7 +138,7 @@ def save_shots(work, name, o, path=""):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if "--build" in sys.argv or not os.path.exists(APP): build_app()
-    names = args or list(TESTS)
+    names = args or [n for n in TESTS if not TESTS[n].get("manual")] # manual：只在点名时跑（测量用的，不算回归）
     bad = [n for n in names if n not in TESTS]
     if bad: sys.exit("unknown tests: %s (have: %s)" % (", ".join(bad), ", ".join(TESTS)))
     work = os.path.join(CACHE, "e2e", time.strftime("%Y%m%d-%H%M%S")); os.makedirs(work)

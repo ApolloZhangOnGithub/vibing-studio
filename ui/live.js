@@ -2222,9 +2222,13 @@
       V.key(e);
     };
     document.addEventListener("keydown", onDocKey, true);
+    // 设置、账号变了：以前一律整段重画——设置文件一被写（内容没变也算）、账号信息一刷新（Paimon 回一句、回顾）每个 agent 标签页都整段重画，
+    //   上千问的大会话一次几秒，一直在耗电（2026-10-28 能耗采样：主线程两成时间在这里）。现在设置真的变了才整段重画；账号只重画开头那块和状态
+    var cfgSig = JSON.stringify(cfg);
     var off2 = A.on(function (type) {
       if (P.closed) return;
-      if (type === "me" || type === "cfg") P.renderLater();
+      if (type === "cfg") { var cs = JSON.stringify(cfg); if (cs !== cfgSig) { cfgSig = cs; P.renderLater(); } }
+      else if (type === "me") { if (bannerEl && bannerEl.isConnected && !P.dirty) { bannerEl.innerHTML = P.rowsHtml(banner()); renderStatus(); } else P.renderLater(); }
       if (type === "agents" && panel && panel.kind === "agents") renderInput();
     });
     // 离开一阵再回到这个 agent（页面回到前台、窗口拿到焦点、刚打开它）：回顾一句（够不够久、最后一条是不是已经是回顾，agents.js 判断）
