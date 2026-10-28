@@ -449,7 +449,7 @@
       revV = dt > 0 && dt < 250 ? 0.5 * ((top - revTop) / dt) + 0.5 * revV : 0;
       revT = now; revTop = top;
       if (!revV) return; // 没在滚：交给 IntersectionObserver
-      var ahead = Math.min(25 * H, Math.abs(revV) * 700), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + top); // offsetTop ↔ 滚动内容里的位置
+      var ahead = Math.min(6 * H, Math.abs(revV) * 250), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + top); // offsetTop ↔ 滚动内容里的位置
       var lo = top - H - (revV < 0 ? ahead : 0) + base, hi = top + 2 * H + (revV > 0 ? ahead : 0) + base, a = 0, b = n - 1;
       while (a < b) { var m = (a + b) >> 1, km = kids[m]; if (km.offsetTop + km.offsetHeight < lo) a = m + 1; else b = m; }
       for (var i = a; i < n; i++) { var kb = kids[i]; if (kb.offsetTop > hi) break; if (kb.classList.contains("cvfar")) kb.classList.remove("cvfar"); }
@@ -2245,7 +2245,8 @@
     var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(P.rowH * 30, 12 * H, eaV < 0 ? -eaV * 1500 : 0); };
     function wantEarlier() {
       clearTimeout(earlierT);
-      if (P.program !== V || P.closed || !rt.earlier || !rt.more || !rt.more() || P.screen.scrollTop >= earlyPx()) { earlierN = 0; return; }
+      // 跟着最新的（在最底下、刚打开还在分段画）：不提前读——不然打开一个上百 MB 的会话就一路读到头
+      if (P.program !== V || P.closed || !rt.earlier || !rt.more || !rt.more() || P.screen.scrollTop >= earlyPx() || (P.following() && P.screen.scrollTop >= P.rowH * 30)) { earlierN = 0; return; }
       Promise.resolve(rt.earlier()).then(function (ok) {
         if (ok) { earlierN = 0; earlierT = setTimeout(wantEarlier, 30); return; } // 接上了还离顶近（滚得快）：接着读下一段
         if (++earlierN <= 20) earlierT = setTimeout(wantEarlier, 600);
@@ -2477,7 +2478,8 @@
       var running = !!pendTurns;
       pendTurns = ts.slice(0, k);
       var t0 = performance.now();
-      while (pendTurns.length && performance.now() - t0 < 40 && sc.scrollHeight - h0 < 6 * H + Math.max(0, 3 * H - top0)) { var t = pendTurns.pop(); if (!blocks.has(t)) firstBlk = placeTurn(t, firstBlk); }
+      // 同步只补眼前要用的（已经快到画出来的最顶上了）：平时提前十几屏就读进来了，交给后面一段段补，不在这一帧里卡一下
+      while (pendTurns.length && top0 < 3 * H && performance.now() - t0 < 30 && sc.scrollHeight - h0 < 4 * H) { var t = pendTurns.pop(); if (!blocks.has(t)) firstBlk = placeTurn(t, firstBlk); }
       var dh = sc.scrollHeight - h0;
       if (fol) P.stick(); else if (dh) sc.scrollTop = top0 + dh;
       if (!pendTurns.length) pendTurns = null;
