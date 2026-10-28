@@ -439,6 +439,21 @@
     // 按着拖选时：顶上盖着的那几层（吸顶那一行、上下两条遮挡、「Jump to bottom」）让鼠标穿过去——拖到边上自动滚时，选区接着往新露出来的字里长
     term.addEventListener("mousedown", function (e) { if (e.button === 0) { selDown = true; el.classList.add("tsel"); } }, true);
     document.addEventListener("mouseup", function () { if (selDown) { selDown = false; el.classList.remove("tsel"); } }, true);
+    // 快速滚动：离得远、没画的块（cvfar）在这一帧画之前就放出来——按现在的速度往要去的方向多放一段（滚得越快放得越远）。
+    //   只靠 IntersectionObserver（这一帧画完才回调）时，一下子滚过几屏，看得见的地方先是黑的、下一帧才有字（用户 2026-10-28）
+    var revV = 0, revT = 0, revTop = 0;
+    P.revealNear = function () {
+      var kids = P.out.children, n = kids.length;
+      if (!n || !farIO) return;
+      var top = screen.scrollTop, H = screen.clientHeight || 600, now = performance.now(), dt = now - revT;
+      revV = dt > 0 && dt < 250 ? 0.5 * ((top - revTop) / dt) + 0.5 * revV : 0;
+      revT = now; revTop = top;
+      if (!revV) return; // 没在滚：交给 IntersectionObserver
+      var ahead = Math.min(25 * H, Math.abs(revV) * 700), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + top); // offsetTop ↔ 滚动内容里的位置
+      var lo = top - H - (revV < 0 ? ahead : 0) + base, hi = top + 2 * H + (revV > 0 ? ahead : 0) + base, a = 0, b = n - 1;
+      while (a < b) { var m = (a + b) >> 1, km = kids[m]; if (km.offsetTop + km.offsetHeight < lo) a = m + 1; else b = m; }
+      for (var i = a; i < n; i++) { var kb = kids[i]; if (kb.offsetTop > hi) break; if (kb.classList.contains("cvfar")) kb.classList.remove("cvfar"); }
+    };
     P.block = function (html, before) {
       var b = document.createElement("span");
       b.className = "blk";
@@ -597,6 +612,7 @@
     //   不当成你往上翻了，接着贴底。往上翻只认你自己的操作：滚轮、触控板、手指、按键（都走 scrollByRows，在那里定）；
     //   别的路（图片上原生滚、拖着选字、拖缩略图）看 USER_AT——刚用指针、滚轮、手指动过；跳到某一问的传 onScroll(true)
     P.onScroll = function (intent) {
+      if (P.revealNear) P.revealNear();
       if (Math.abs(screen.scrollTop - ownTop) > 1) {
         if (following && intent !== true && performance.now() - USER_AT > 400 && !atBottom() && !P.off) { screen.scrollTop = screen.scrollHeight; }
         else following = atBottom();
@@ -2168,9 +2184,8 @@
         if (folR) P.toBottom(); else if (!anchored) { scR.scrollTop = Math.max(0, scR.scrollHeight - fbR); P.onScroll(true); }
         fillN = 0; fill();
       }
-      else if (type === "prepend") { // 前面接上了更早的：看着的那段不动（重画时以眼前那一问为锚，见 V.render）；没对上锚的照旧按高度差挪
-        var sc = P.screen, h0 = sc.scrollHeight, t0 = sc.scrollTop; P.renderNow();
-        if (!anchored) sc.scrollTop = t0 + (sc.scrollHeight - h0);
+      else if (type === "prepend") { // 前面接上了更早的：只把新的那几问补在最上面（prependInPlace）；补不了（后面那截还在分段画）才整段重画，看着的那段不动
+        if (!prependInPlace()) { var sc = P.screen, h0 = sc.scrollHeight, t0 = sc.scrollTop; P.renderNow(); if (!anchored) sc.scrollTop = t0 + (sc.scrollHeight - h0); }
         P.onScroll(); fill();
       }
       else if (type === "tick") tick();
@@ -2225,19 +2240,22 @@
     }
     // 往前读一段没成（正在重读、上一段还没读回来）：以前就这么算了——已经在最顶上、再往上滚也没有 scroll 事件，更早的永远出不来（「往上拉不动」）。
     //   没成就过一会儿再试（还在顶上附近才试，最多 20 次）；在最顶上接着往上滚（滚轮、手指）也再要一次
-    var earlierT = 0, earlierN = 0;
+    var earlierT = 0, earlierN = 0, eaV = 0, eaT = 0, eaTop = 0;
+    // 离顶多近就开始往前读：至少 12 屏；往上滚得快时按速度再多留 1.5 秒的路（读一段、解析、画上要几百毫秒——滚到顶之前就该接上了）
+    var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(P.rowH * 30, 12 * H, eaV < 0 ? -eaV * 1500 : 0); };
     function wantEarlier() {
       clearTimeout(earlierT);
-      if (P.program !== V || P.closed || !rt.earlier || !rt.more || !rt.more() || P.screen.scrollTop >= P.rowH * 30) { earlierN = 0; return; }
+      if (P.program !== V || P.closed || !rt.earlier || !rt.more || !rt.more() || P.screen.scrollTop >= earlyPx()) { earlierN = 0; return; }
       Promise.resolve(rt.earlier()).then(function (ok) {
-        if (ok) { earlierN = 0; return; }
+        if (ok) { earlierN = 0; earlierT = setTimeout(wantEarlier, 30); return; } // 接上了还离顶近（滚得快）：接着读下一段
         if (++earlierN <= 20) earlierT = setTimeout(wantEarlier, 600);
       });
     }
     var onSc = function () {
       if (P.program !== V || !rt.earlier) return;
-      var sc = P.screen;
-      if (sc.scrollTop < P.rowH * 30 && rt.more()) wantEarlier();
+      var sc = P.screen, now = performance.now(), dt = now - eaT;
+      eaV = dt > 0 && dt < 250 ? 0.5 * ((sc.scrollTop - eaTop) / dt) + 0.5 * eaV : 0; eaT = now; eaTop = sc.scrollTop;
+      if (sc.scrollTop < earlyPx() && rt.more()) wantEarlier();
       else if (rt.historical && rt.historical() && sc.scrollHeight - sc.scrollTop - sc.clientHeight < P.rowH * 30) rt.later();
     };
     P.screen.addEventListener("scroll", onSc, { passive: true });
@@ -2443,6 +2461,28 @@
       var dh = sc.scrollHeight - h0;
       if (fol) P.stick(); else if (dh) { sc.scrollTop = top0 + dh; if (P.onScroll) P.onScroll(); }
       if (pendTurns.length) setTimeout(function () { restTurns(gen); }, 0); else pendTurns = null;
+    }
+    // 往前接上了更早的一段：已经画好的一块都不动，新的那几问插在第一块前面——眼前离顶不远时先同步补够几屏（这一帧就有字），剩下的照旧一段段补（restTurns）。
+    //   以前整段重画：几百问拆掉重建，眼前那一问以上的要一段段补回来——快速往上滚时正好滚进还没补回来的空白里，等它画完（用户 2026-10-28：「往上滑快了变黑、要加载」）
+    function prependInPlace() {
+      if (P.footOnly || !blocks.size || pendTail) return false;
+      var ts = rt.session().turns, k = -1;
+      for (var i = 0; i < ts.length; i++) if (blocks.has(ts[i])) { k = i; break; }
+      if (k < 0) return false;
+      var sc = P.screen, h0 = sc.scrollHeight, top0 = sc.scrollTop, fol = P.following(), H = sc.clientHeight || 600;
+      idxOf = new Map(); ts.forEach(function (t, j) { idxOf.set(t, j); });
+      // 会话记录在一问中间切开的：原来的第一问并进了更早那一问（内容一起画在那一块里）——它自己那块拿掉
+      blocks.forEach(function (b, t) { if (!idxOf.has(t)) { if (b.parentNode) b.parentNode.removeChild(b); blocks.delete(t); } });
+      firstBlk = blocks.get(ts[k]);
+      var running = !!pendTurns;
+      pendTurns = ts.slice(0, k);
+      var t0 = performance.now();
+      while (pendTurns.length && performance.now() - t0 < 40 && sc.scrollHeight - h0 < 6 * H + Math.max(0, 3 * H - top0)) { var t = pendTurns.pop(); if (!blocks.has(t)) firstBlk = placeTurn(t, firstBlk); }
+      var dh = sc.scrollHeight - h0;
+      if (fol) P.stick(); else if (dh) sc.scrollTop = top0 + dh;
+      if (!pendTurns.length) pendTurns = null;
+      else if (!running) { var g0 = renderGen; setTimeout(function () { restTurns(g0); }, 0); }
+      return true;
     }
     V.flushTurns = function () { flushTurns(); }; // 要整段都在的时候（导出、测试）：没补画的马上全补上
     function flushTurns() {

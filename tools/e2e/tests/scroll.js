@@ -47,6 +47,7 @@ try {
   await tick(300);
   out.up1 = await pass(12000, -1);
   out.afterUp1 = { blocks: P.out.children.length, more: !!rt.more(), height: sc.scrollHeight, realTop: realTop() };
+  out.loads = rt.perf ? rt.perf() : null; // 往前读的每一段：读文件、解码、解析、画（同步那部分）各用了多少毫秒
   out.down = await pass(20000, 1);
   out.up2 = await pass(20000, -1);
   out.ok = true;
