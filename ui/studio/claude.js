@@ -18,6 +18,7 @@
   var LOC = window.TSU_LOCAL, A = window.TSU_AGENTS;
   if (!LOC || !A || !A.registerExternal) { window.TSU_CLAUDE = null; return; }
   var TAIL = 3 << 20, WINDOW = 16 << 20;
+  var CC_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
   // 心跳：这个页面还在（run/hb 里写「页面编号 时间」，5 秒一次）。后台起的长流（看 Claude Code 的屏幕，DAEMON_WATCH_PL）看它：
   //   页面刷新了、关了，旧页面起的流自己退出——不再把没人要的输出推给页面（以前一天下来攒二十多条，App 卡死）
   var HB = { id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), path: "" };
@@ -180,6 +181,10 @@
     // 模型：真在用的是它最近一次回答记下的（message.model——不带 [1m]）；选过的 / 记录里 /model 设的 / 默认设置里的，底子一样就用那个（带 [1m] = 1M 上下文）。
     // 这边选了还没轮到的（下一句才用上）：pending
     var modelSel = modelMap()[sid] || "", modelCmd = "", selAt = modelSel ? 0 : Infinity;
+    // 推理强度（Claude Code 的 --effort：low · medium · high · xhigh · max）：这边选的，下一次起 claude -p 时带上
+    var effortSel = "";
+    rt.efforts = function () { return CC_EFFORTS.slice(); };
+    rt.setEffort = function (v) { v = String(v || "").toLowerCase().trim(); if (CC_EFFORTS.indexOf(v) < 0) return false; effortSel = v; agent.effort = v; emit("config"); emit("status"); return true; };
     var baseOf = function (m) { return String(m || "").replace(/\[1m\]$/i, ""); };
     rt.model = function () {
       var real = agent.model || "", want = modelSel || modelCmd || CC.def || "", pending = !!modelSel && baseOf(modelSel) !== baseOf(real) && !!real;
@@ -2292,6 +2297,7 @@
         // 选过模型的带 --model（[1m] 原样）；它用的 agent（--agent）照带，换模型不丢
         var argv = ["claude", "-p", mk ? "--session-id" : "--resume", sid, "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"];
         if (modelSel) argv.push("--model", modelSel);
+        if (effortSel) argv.push("--effort", effortSel); // 推理强度（新会话草稿里选的、/effort 换的）
         if (modeSel) argv.push("--permission-mode", modeSel); // Shift+Tab 换过的权限模式
         if (info.agentSetting) argv.push("--agent", info.agentSetting);
         var mine = proc = LOC.proc({ argv: argv, cwd: info.cwd || "" }, function (s, isErr) {
@@ -2668,10 +2674,13 @@
   function modelKeep(sid, id) { var m = modelMap(); m[sid] = id; try { localStorage.setItem("tsu-cc-model", JSON.stringify(m)); } catch (e) { /* 满了 */ } }
   var uuid = function () { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, function (c) { return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16); }); };
   // 新会话（TSU_CONNECTORS.newSession("claude-code", 目录, 第一句?)）：先定好 id，开标签页；第一句用 claude -p --session-id <id> 在那个目录里建出来（同接着说的那条路）
-  function newSession(cwd, prompt) {
+  // opts：{ model, effort }——新会话那张草稿里选的（第一句话起就用：--model、--effort）
+  function newSession(cwd, prompt, opts) {
     var sid = uuid(), x = { cwd: cwd, title: tr("新会话"), fresh: true, mtime: Date.now() };
     freshKeep(sid, x);
     var rt = ensure(sid, x), tw = window.TSU_TERM && TSU_TERM.front ? TSU_TERM.front() : null;
+    if (opts && opts.model && rt.setModel) rt.setModel(opts.model);
+    if (opts && opts.effort && rt.setEffort) rt.setEffort(opts.effort);
     var p = tw && tw.side && tw.side.viewCC ? tw.side.viewCC(sid, x) : null;
     if (prompt) rt.send(prompt);
     return { id: sid, aid: "cc:" + sid, pane: p || null };
@@ -2792,7 +2801,8 @@
   }
   // 一打开就把后台服务里的 job（它们的名字）记上：列表还没读到的那几个也比得上
   (LOC.ready || Promise.resolve()).then(function () { if (LOC.list && LOC.info) setTimeout(function () { jobsNow().then(function (J) { seeNames((J.list || []).map(function (j) { return { id: j.sessionId, name: j.name }; }), true); }, function () {}); }, 2500); }, function () {});
-  var API = { ensure: ensure, openSub: openSub, subTasks: subTasks, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; },
+  var API = { efforts: function () { return CC_EFFORTS.slice(); }, modelList: function () { var mk = function (id, more) { return { id: id, name: ccName(id), more: more, def: !!CC.def && id === CC.def }; }; return CC.MODELS.map(function (id) { return mk(id, false); }).concat(CC.MORE.map(function (id) { return mk(id, true); })); }, defModel: function () { return CC.def || ""; },
+    ensure: ensure, openSub: openSub, subTasks: subTasks, id: function (sid) { return "cc:" + sid; }, newSession: newSession, titles: titles, cleanTitle: cleanTitle, limits: function () { return CC.limits; }, autoCompact: function () { return CC.autoCompact !== false; },
     dupTag: dupTag, seeNames: seeNames };
   if (window.TSU_CONNECTORS && TSU_CONNECTORS.provide) TSU_CONNECTORS.provide("claude-code", { newSession: newSession });
   A.setExternalResolver(function (aid) { return window.TSU_CLAUDE ? ensure(aid.slice(3)) : null; });

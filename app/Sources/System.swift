@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 enum SystemInfo {
-  static let commands = ["fs.thumb", "system.status", "system.load", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp"]
+  static let commands = ["fs.thumb", "system.status", "system.load", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp", "fs.chooseFolder"]
   private static var thumbs: [String: String] = [:] // path|size|mtime → data URL
   private static var sharing: NSSharingServicePicker?
 
@@ -103,6 +103,19 @@ enum SystemInfo {
       sharing = picker // 开着的时候要有人拿着
       picker.show(relativeTo: NSRect(x: x, y: v.isFlipped ? y : v.bounds.height - y, width: 1, height: 1), of: v, preferredEdge: .maxY)
       return nil
+    case "fs.chooseFolder":
+      // 选一个文件夹（新会话在哪干活、打开文件夹……）：系统的「打开」面板，只能选文件夹；从给的地方开始；取消了是 null（用户 2026-10-28：不要让人打路径）
+      let panel = NSOpenPanel()
+      panel.canChooseDirectories = true
+      panel.canChooseFiles = false
+      panel.canCreateDirectories = true
+      panel.allowsMultipleSelection = false
+      if let d = a["dir"] as? String, !d.isEmpty { panel.directoryURL = URL(fileURLWithPath: (d as NSString).expandingTildeInPath) }
+      if let m = a["message"] as? String { panel.message = m }
+      panel.prompt = (a["prompt"] as? String) ?? "选择"
+      let r: NSApplication.ModalResponse
+      if let win = NSApp.keyWindow { r = await panel.beginSheetModal(for: win) } else { r = panel.runModal() }
+      return r == .OK ? (panel.url?.path ?? NSNull()) : NSNull()
     case "fs.chooseApp":
       // 「打开方式 › 其他…」：系统的「选取应用程序」（从「应用程序」文件夹开始）→ 选中的 App 的路径；取消了是 null
       let panel = NSOpenPanel()

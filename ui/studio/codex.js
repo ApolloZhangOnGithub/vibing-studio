@@ -821,10 +821,13 @@
     return rts[aid];
   }
   // 新会话（TSU_CONNECTORS.newSession("codex", 目录, 第一句?)）：开标签页（用现在的外壳）；第一句 codex exec 在那个目录里建出来
-  function newSession(cwd, prompt) {
+  // opts：{ model, effort }——新会话那张草稿里选的（第一句话起就用：-m、-c model_reasoning_effort=）
+  function newSession(cwd, prompt, opts) {
     var nid = "new-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), x = { cwd: cwd, title: tr("新会话"), fresh: true, mtime: Date.now() };
     newKeep(nid, { cwd: cwd });
     var rt = ensure(nid, x), tw = window.TSU_TERM && TSU_TERM.front ? TSU_TERM.front() : null;
+    if (opts && opts.model && rt.setModel) rt.setModel(opts.model);
+    if (opts && opts.effort && rt.setEffort) rt.setEffort(opts.effort);
     var p = tw && tw.side && tw.side.viewCX ? tw.side.viewCX(nid, x) : null;
     if (prompt) rt.send(prompt);
     return { id: nid, aid: "cx:" + nid, pane: p || null };
@@ -832,6 +835,9 @@
   // 刷新后（布局里记着 cx:<会话>）、搜索、侧栏：第一次用到时现建（还没扫到的：先扫一遍再找它的文件）
   A.setExternalResolver(function (aid) { return on() ? ensure(aid.slice(3)) : null; }, "cx");
   var API = {
+    // 新会话草稿用：Codex 自己的模型目录（读不到就是默认设置里的、用过的）、推理强度
+    modelList: function () { var cat = CXCAT.list; if (cat && cat.length) return cat.map(function (m) { return { id: m.id, name: m.name, def: m.def }; }); var ids = []; [CXDEF.model].concat(LIST.map(function (x) { return x.model; })).forEach(function (x) { if (x && ids.indexOf(x) < 0) ids.push(x); }); return ids.map(function (id) { return { id: id, name: cxName(id), def: id === CXDEF.model }; }); },
+    efforts: function () { return ["minimal", "low", "medium", "high", "xhigh"]; }, defModel: function () { return CXDEF.model || ""; },
     list: function () { return LIST; }, refresh: scan, ensure: ensure, id: function (sid) { return "cx:" + sid; }, get: function (sid) { return byId[sid] || null; }, newSession: newSession,
     // 标签页里记着的 id（可能是 new-…）→ 现在的真 id
     real: function (sid) { var nw = /^new-/.test(sid) ? newMap()[sid] : null; return nw && nw.real || sid; },

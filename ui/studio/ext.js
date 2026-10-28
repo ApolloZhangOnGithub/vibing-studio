@@ -247,13 +247,13 @@
     // 返回 { id（会话 id；Codex 说第一句之前是临时的 new-…）, aid（agent id：cc:… / cx:…）, pane }，开不了是 null
     provide: function (id, o) { makers[id] = o; },
     canNew: function (id) { return !!(makers[id] && connOn(id)); },
-    newSession: function (id, cwd, prompt) {
+    newSession: function (id, cwd, prompt, opts) {
       var m = makers[id];
       if (!m || !connOn(id)) return null;
       var h = ((window.TSU_LOCAL && TSU_LOCAL.info && TSU_LOCAL.info()) || {}).home || "";
       cwd = String(cwd || "").trim();
       if (h && (cwd === "~" || cwd.indexOf("~/") === 0)) cwd = h + cwd.slice(1);
-      return m.newSession(cwd || h, String(prompt || "").trim());
+      return m.newSession(cwd || h, String(prompt || "").trim(), opts || null);
     },
   };
   if (window.nadosNative && nadosNative.local) setTimeout(detect, 1500);

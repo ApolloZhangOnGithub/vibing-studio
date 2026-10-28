@@ -824,3 +824,8 @@ html.termapp.st-os-claude:not(.light) .st-panel .st-pv, html.termapp.st-os-claud
   html.termapp.st-os-claude .ca-ttl { left: 48px; right: 52px; }
   html.termapp.st-os-claude .ca-ttl .ca-lap, html.termapp.st-os-claude .ca-ttl .ca-chip { display: none; }
 }
+
+/* 能滚的地方边上淡出（同对话区）：claudeapp.js 的 fadeMark 记着上 / 下还有没有内容 */
+html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-ft="1"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px); mask-image: linear-gradient(to bottom, transparent, #000 24px); }
+html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-fb="1"] { -webkit-mask-image: linear-gradient(to top, transparent, #000 24px); mask-image: linear-gradient(to top, transparent, #000 24px); }
+html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-ft="1"][data-fb="1"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent); }

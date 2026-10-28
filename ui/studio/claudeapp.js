@@ -898,7 +898,7 @@
 
   // ======== 新会话（同 Claude App 的 New session）：只是一张草稿——左上「✳ 接下来做什么，<名字>？」、用量卡片；下面：在哪跑、哪个文件夹、输入框、
   //   权限 / 模型 / 推理强度。点「新建会话」什么都不建（边栏不多一行）；说了第一句话才真的建一个会话（这时才出现在边栏），这句话发给它；没说话离开 = 什么都没有 ========
-  var DRAFT = { text: "", images: [], model: "", effort: "high", access: "read", dir: "" };
+  var DRAFT = { text: "", images: [], model: "", effort: "high", access: "read", dir: "", cm: {}, ce: {} }; // cm / ce：Claude Code、Codex 各自选的模型、推理强度
   var ACC_L = { none: ["仅自己的文件夹", "Own folder only"], read: ["只读", "Read-only"], rw: ["读写", "Read & write"] };
   var EFF_L = { off: ["关", "Off"], low: ["低", "Low"], high: ["高", "High"], max: ["最高", "Max"] };
   var homeDir = function () { var L = window.TSU_LOCAL, i = L && L.info ? L.info() : null; return (i && i.home) || ""; };
@@ -964,6 +964,9 @@
           if (c === "dir") return dirMenu(host, b);
           if (c === "conn") return connMenu(host, b);
           if (c === "access") return S.menu(Object.keys(ACC_L).map(function (k) { return { label: tr(ACC_L[k][0], ACC_L[k][1]), radio: true, close: true, checked: DRAFT.access === k, run: function () { DRAFT.access = k; paintDraft(host); } }; }), { el: b, side: "above" });
+          var dk0 = draftConn();
+          if (c === "effort" && (dk0 === "cc" || dk0 === "cx")) { var eAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, effs = eAPI && eAPI.efforts ? eAPI.efforts() : []; return S.menu([{ label: tr("默认", "Default"), radio: true, close: true, checked: !DRAFT.ce[dk0], run: function () { delete DRAFT.ce[dk0]; paintDraft(host); } }].concat(effs.map(function (v) { return { label: v, radio: true, close: true, checked: DRAFT.ce[dk0] === v, run: function () { DRAFT.ce[dk0] = v; paintDraft(host); } }; })), { el: b, side: "above" }); }
+          if (c === "model" && (dk0 === "cc" || dk0 === "cx")) { var mAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, ml = mAPI && mAPI.modelList ? mAPI.modelList() : [], cur0 = DRAFT.cm[dk0] || (mAPI && mAPI.defModel ? mAPI.defModel() : ""); var mi0 = function (x) { return { label: x.name || x.id, value: x.def ? tr("默认", "Default") : "", radio: true, close: true, checked: x.id === cur0, run: function () { DRAFT.cm[dk0] = x.id; paintDraft(host); } }; }; var main0 = ml.filter(function (x) { return !x.more; }).map(mi0), more0 = ml.filter(function (x) { return x.more; }).map(mi0); return S.menu(main0.concat(more0.length ? [{ sep: true }, { label: tr("更多模型", "More models"), items: more0 }] : []).concat(ml.length ? [] : [{ label: tr("没有可用的模型", "No models available"), disabled: true }]), { el: b, side: "above" }); }
           if (c === "effort") return S.menu(((Ag() && Ag().EFFORTS) || ["off", "low", "high", "max"]).map(function (k) { return { label: tr(EFF_L[k] ? EFF_L[k][0] : k, EFF_L[k] ? EFF_L[k][1] : k), radio: true, close: true, checked: DRAFT.effort === k, run: function () { DRAFT.effort = k; paintDraft(host); } }; }), { el: b, side: "above" });
           if (c === "model") return modelMenu(host, b);
         });
@@ -978,6 +981,8 @@
     var set = function (sel, html) { var e = host.querySelector(sel); if (e && e.dataset.h !== html) { e.dataset.h = html; e.innerHTML = html; } };
     set(".ca-new-q", esc(nm ? tr("接下来做什么，" + nm + "？", "What's up next, " + nm + "?") : tr("接下来做什么？", "What's up next?")));
     var local = A && A.local && A.local(), k = draftConn(), pm = k === "pm", dir = pm ? draftDir() : draftDirOf(k);
+    // 「接下来做什么」左边的图标：选的是哪个连接器就是哪个的（以前一律是 Claude 的星）
+    set(".ca-new-star", k ? ico(k) : STAR);
     // 在哪个连接器上开（图标 + 名字 ⌄）；Paimon：在哪儿跑（本机 / 云端）；Claude Code、Codex：在哪个目录（它们按目录找会话）
     var cb = host.querySelector(".ca-nconn");
     if (cb) { cb.hidden = !k; cb.title = tr("在哪个连接器上开这段会话", "Which connector runs this session"); set(".ca-nconn", k ? ico(k) + "<span>" + esc(CONN[k].name) + "</span>" + IC.down : ""); }
@@ -987,8 +992,10 @@
     dirB.hidden = addB.hidden = pm || !k; // Paimon 的 agent 没有「工作目录」：它自己的包就是它的家（不让选文件夹）
     set(".ca-ndir", SVG_FOLDER + "<span>" + esc(baseName(dir)) + "</span>");
     dirB.title = tildeOf(dir);
-    // 模型、推理强度、权限、图片只对 Paimon 的会话（Claude Code、Codex 用它们自己的设置）
-    ["attach", "access", "model", "effort"].forEach(function (c) { var e = host.querySelector('[data-c="' + c + '"]'); if (e) e.hidden = !pm; });
+    // 权限、图片只对 Paimon 的会话；模型、推理强度 Claude Code、Codex 也能选（第一句话起就用它们：--model / --effort、-m / model_reasoning_effort）
+    var cxk = k === "cc" || k === "cx";
+    ["attach", "access"].forEach(function (c) { var e = host.querySelector('[data-c="' + c + '"]'); if (e) e.hidden = !pm; });
+    ["model", "effort"].forEach(function (c) { var e = host.querySelector('[data-c="' + c + '"]'); if (e) e.hidden = !(pm || cxk); });
     var attE = host.querySelector(".ca-new-att"); if (attE && !pm) attE.hidden = true;
     set(".ca-naddf", SVG_FOLDER_ADD);
     addB.title = tr("选择文件夹", "Choose folder");
@@ -1001,9 +1008,15 @@
     set(".ca-new-send", SV('<path d="M8 12.6V3.6M4.2 7.2L8 3.4l3.8 3.8"/>'));
     host.querySelector('[data-c="attach"]').title = tr("添加图片", "Add images");
     set('[data-c="access"]', SVG_LOCK + "<span>" + esc(tr(ACC_L[DRAFT.access][0], ACC_L[DRAFT.access][1])) + "</span>" + IC.down);
-    var mid = draftModel(), m = A && A.modelOf ? A.modelOf(mid) : null;
-    set('[data-c="model"]', "<span>" + esc((m && (m.name || m.id)) || tr("模型", "Model")) + "</span>" + IC.down);
-    set('[data-c="effort"]', "<span>" + esc(tr("推理 ", "Effort ") + tr(EFF_L[DRAFT.effort][0], EFF_L[DRAFT.effort][1])) + "</span>" + IC.down);
+    if (cxk) {
+      var cAPI = k === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, cml = cAPI && cAPI.modelList ? cAPI.modelList() : [], cmid = DRAFT.cm[k] || (cAPI && cAPI.defModel ? cAPI.defModel() : ""), cmo = cml.filter(function (x) { return x.id === cmid; })[0];
+      set('[data-c="model"]', "<span>" + esc(cmo ? cmo.name || cmo.id : cmid || tr("默认模型", "Default model")) + "</span>" + IC.down);
+      set('[data-c="effort"]', "<span>" + esc(tr("推理 ", "Effort ") + (DRAFT.ce[k] || tr("默认", "Default"))) + "</span>" + IC.down);
+    } else {
+      var mid = draftModel(), m = A && A.modelOf ? A.modelOf(mid) : null;
+      set('[data-c="model"]', "<span>" + esc((m && (m.name || m.id)) || tr("模型", "Model")) + "</span>" + IC.down);
+      set('[data-c="effort"]', "<span>" + esc(tr("推理 ", "Effort ") + tr(EFF_L[DRAFT.effort][0], EFF_L[DRAFT.effort][1])) + "</span>" + IC.down);
+    }
     var att = host.querySelector(".ca-new-att"), ah = DRAFT.images.map(function (im, i) { return '<span class="ca-natt"><img src="data:' + im.media_type + ";base64," + im.data + '" alt=""><button data-i="' + i + '" title="' + esc(tr("移除", "Remove")) + '">×</button></span>'; }).join("");
     att.hidden = !DRAFT.images.length || !pm;
     if (att.dataset.h !== ah) { att.dataset.h = ah; att.innerHTML = ah; }
@@ -1045,7 +1058,13 @@
     var tilde = function (d) { return home && (d === home || d.indexOf(home + "/") === 0) ? "~" + d.slice(home.length) : d; };
     S.menu(list.slice(0, 12).map(function (d) { return { label: baseName(d), value: tilde(d), radio: true, close: true, checked: d === cur, run: function () { setDir(d); } }; }).concat([{ sep: true }, {
       label: tr("其他文件夹…", "Other folder…"), run: function () {
-        dialog({ title: tr("在哪个文件夹干活？", "Choose a working folder"), text: tr("输入这台 Mac 上一个文件夹的路径（~ 是主目录）", "Type the path of a folder on this Mac (~ is your home folder)"), value: tilde(cur), ok: tr("选择", "Choose") }).then(function (v) {
+        // 新版 App：系统的选文件夹面板（不用打路径）；老版本没有这条命令才退回输入路径
+        var N = window.nadosNative, cmds = N && N.commands ? N.commands : null;
+        if (N && N.call && !(N.remote) && (!cmds || cmds.indexOf("fs.chooseFolder") >= 0)) {
+          return N.call("fs.chooseFolder", { dir: cur, prompt: tr("选择", "Choose") }).then(function (p) { if (p) setDir(String(p)); }, function () { askPath(); });
+        }
+        askPath();
+        function askPath() { dialog({ title: tr("在哪个文件夹干活？", "Choose a working folder"), text: tr("输入这台 Mac 上一个文件夹的路径（~ 是主目录）", "Type the path of a folder on this Mac (~ is your home folder)"), value: tilde(cur), ok: tr("选择", "Choose") }).then(function (v) {
           if (v == null) return;
           var p = String(v).trim().replace(/\/+$/, "");
           if (p === "~" || p.indexOf("~/") === 0) p = home + p.slice(1);
@@ -1054,14 +1073,15 @@
             if (st && (st.dir || st.isDir || st.type === "dir" || st.kind === "dir")) setDir(p);
             else dialog({ title: tr("找不到这个文件夹", "Folder not found"), text: p, buttons: [{ label: tr("好", "OK"), value: true, primary: true }] });
           }, function () { dialog({ title: tr("找不到这个文件夹", "Folder not found"), text: p, buttons: [{ label: tr("好", "OK"), value: true, primary: true }] }); });
-        });
+        }); }
       },
     }]), { el: el, side: "above" });
   }
   // 在哪个连接器上开：开着的都列出来（图标、名字）；关着的灰着写明「未开启」（去「设置 › 连接器」开）
   function connMenu(host, el) {
     var cur = draftConn();
-    S.menu(["pm", "cc", "cx", "pi"].filter(function (k) { var C = window.TSU_CONNECTORS; return k === "pm" || !C || !C.get || C.get(CONN[k].id); }).map(function (k) {
+    // Paimon：边栏里不列它的会话时（它是内置的助手）这里也不列——以前列着、写「未开启」，可它明明开着（用户 2026-10-28）
+    S.menu(["pm", "cc", "cx", "pi"].filter(function (k) { var C = window.TSU_CONNECTORS; return k === "pm" ? pmOn() : !C || !C.get || C.get(CONN[k].id); }).map(function (k) {
       var ok = canNewIn(k);
       return { label: CONN[k].name, icon: ico(k), radio: true, close: true, checked: k === cur, disabled: !ok, value: ok ? "" : tr("未开启", "Off"),
         run: function () { DRAFT.conn = k; keep("st-claude-draft-conn", k); paintDraft(host); later(front()); var ta = host.querySelector(".ca-new-ta"); if (ta) ta.focus(); } };
@@ -1075,7 +1095,7 @@
     var ta = host && host.querySelector(".ca-new-ta"), text = String(ta ? ta.value : DRAFT.text).replace(/\s+$/, ""), k = draftConn();
     if (isConnK(k)) {
       if (!text.trim()) return;
-      var C = window.TSU_CONNECTORS, r = C && C.newSession ? C.newSession(CONN[k].id, draftDirOf(k), text) : null;
+      var C = window.TSU_CONNECTORS, r = C && C.newSession ? C.newSession(CONN[k].id, draftDirOf(k), text, { model: DRAFT.cm[k] || "", effort: DRAFT.ce[k] || "" }) : null;
       if (!r) return dialog({ title: tr("没能开始新会话", "Couldn't start a new session"), text: tr(CONN[k].name + " 连接器没有开启，或者这台 Mac 上没有找到它的命令。", "The " + CONN[k].name + " connector is off, or its command wasn't found on this Mac."), buttons: [{ label: tr("好", "OK"), value: true, primary: true }] });
       DRAFT.text = ""; if (ta) ta.value = "";
       if (P && P.program && P.program.page === "ca-new" && w.ws && w.ws.all && w.ws.all().indexOf(P) >= 0 && r.pane !== P) w.ws.closePane(P);
@@ -1134,7 +1154,7 @@
     // 收起来的边栏浮出来时（偷看）：指针在它上面就一直在；离开一会儿滑回去
     ca.side.addEventListener("pointerenter", function () { PEEK.inside = true; clearTimeout(PEEK.out); });
     ca.side.addEventListener("pointerleave", function () { PEEK.inside = false; if (PEEK.on) peekClose(); });
-    ca.nav.addEventListener("pointerover", function (e) { if (e.target.closest('[data-b="side"]') && sideHidden(w) && !PEEK.on) peekSoon(200); });
+    // 指着边栏按钮不再自己浮出边栏（用户 2026-10-28：收起后一指就弹出来，很怪）——点按钮才开
     ca.nav.addEventListener("pointerout", function (e) { var b = e.target.closest('[data-b="side"]'); if (b && !b.contains(e.relatedTarget)) { clearTimeout(PEEK.t); if (PEEK.on && !PEEK.inside) peekClose(); } });
     // 浮出来的边栏通到了窗口顶上：标题栏那一组按钮在它上面，指针在这组按钮上也算「在边栏里」（不收回去）
     ca.nav.addEventListener("pointerenter", function () { if (PEEK.on) { PEEK.inside = true; clearTimeout(PEEK.out); } });
@@ -1579,7 +1599,7 @@
   // 窗口最左边那一条（标题栏下面）：边栏收着时才有
   var EDGE = document.createElement("div");
   EDGE.className = "ca-edge";
-  EDGE.addEventListener("pointerenter", function () { var w = front(); if (on() && w && w.ca && sideHidden(w) && !PEEK.on) peekSoon(150); });
+  // 指到窗口左边缘也不再自己浮出边栏（同上：要看就点边栏按钮）
   EDGE.addEventListener("pointerleave", function () { if (!PEEK.on) clearTimeout(PEEK.t); });
   (document.body || document.documentElement).appendChild(EDGE);
   // ⌘B：边栏收起 / 打开（同 Claude App；自带侧栏的页上是这一次打开）。先接住，不让它去开关 VS Code 的主侧栏
@@ -1652,6 +1672,7 @@
   // ======== 刷新：卡片、边栏、标题栏；看得见的才画，画的东西没变就不动 DOM ========
   var raf = 0;
   function refresh(w, now) {
+    if (typeof fadeScan === "function") requestAnimationFrame(fadeScan); // 列表重画了：边上淡不淡重新量
     // 菜单开着（账户菜单、会话菜单……）：边栏、卡片先不重画，等菜单关了再画——一边重画一边指菜单，指到哪一行都要等一下才亮（卡）
     if (!now) { if (raf) return; raf = setTimeout(function go() { if (S.menuOpen && S.menuOpen()) { raf = setTimeout(go, 250); return; } raf = 0; refresh(front(), true); }, 16); return; } // 不用 requestAnimationFrame：窗口被挡住时它不跑
     w = w || front();
@@ -1733,7 +1754,20 @@
   window.addEventListener("resize", function () { var w = front(); if (w && w.ca) { reframe(w); refresh(w, true); } }); // 窗口变了：卡片那一列的宽度、太窄时边栏收起来都跟上
   // 表单开着、菜单弹出来时原生的网页视图让开
   setInterval(function () { var w = front(); if (w && w.ca && on()) placeWeb(w); }, 400);
-  window.TSU_CLAUDEAPP = { refresh: function () { refresh(null); }, dialog: dialog,
+  // 各处能滚的（会话列表、后台任务卡片、文件、设置目录……）边上同对话区一样淡出：上面还有内容时顶上淡、下面还有时底下淡（用户 2026-10-28：硬切一刀看着像被截断）。
+  //   滚动时、内容变了（大小变了）时量一下，记在 data-ft / data-fb 上，CSS 按它加渐隐；不轮询
+  var FADE_SEL = ".ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top";
+  function fadeMark(el) {
+    var t = el.scrollTop > 2 ? "1" : "0", b = el.scrollTop + el.clientHeight < el.scrollHeight - 2 ? "1" : "0";
+    if (el.dataset.ft !== t) el.dataset.ft = t;
+    if (el.dataset.fb !== b) el.dataset.fb = b;
+  }
+  document.addEventListener("scroll", function (e) { var el = e.target; if (el && el.matches && on() && el.matches(FADE_SEL)) fadeMark(el); }, true);
+  var fadeRO = window.ResizeObserver ? new ResizeObserver(function (es) { es.forEach(function (x) { fadeMark(x.target); }); }) : null, fadeSeen = new WeakSet();
+  var fadeScan = function () { if (!on() || !fadeRO) return; document.querySelectorAll(FADE_SEL).forEach(function (el) { if (!fadeSeen.has(el)) { fadeSeen.add(el); fadeRO.observe(el); if (el.firstElementChild) fadeRO.observe(el.firstElementChild); } fadeMark(el); }); };
+  new MutationObserver(function () { if (on()) requestAnimationFrame(fadeScan); }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  requestAnimationFrame(fadeScan);
+  window.TSU_CLAUDEAPP = { refresh: function () { refresh(null); }, dialog: dialog, fadeScan: fadeScan,
     open: function (u) { var w = front(); if (w && build(w)) { setCard(w, "web", true); var t = curTab(); if (t.url) t = addTab(); webGo(w, u, t); refresh(w, true); } }, // Agent 开网页：当前标签页有东西就开一个新的，不盖掉人正在看的
     web: function () { return { cur: WEB.cur, dev: WEB.dev, wide: WEB.wide, tabs: WEB.tabs.map(function (t) { return { id: t.id, url: t.url, title: t.title, loading: t.loading, err: t.err, frame: t.frame }; }) }; }, // 浏览器卡片现在开着哪些页（给 Agent、测试看）
     newSession: function () { var w = front(); return w && on() && build(w) ? openDraft(w) : null; } }; // 别处的「新建会话」在这个风格里也走草稿
