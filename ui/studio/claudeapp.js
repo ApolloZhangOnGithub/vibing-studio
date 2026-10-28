@@ -563,7 +563,8 @@
         box = pv._caActs = document.createElement("span");
         box.className = "ca-cardacts";
         // 没有 ✕（用户：卡片用标题栏上那几个开关管，不要 ✕）；⤢ 在松手时就算（按下和松手之间标题行被重画过，click 会丢——以前点了没反应）
-        box.innerHTML = '<button class="ca-ib ca-cmore" data-k="more">' + IC.more + '</button><button class="ca-ib" data-k="max">' + IC.expand + "</button>";
+        // 后台任务那张不要 ⤢（用户 2026-10-28：没用）——只有终端那张能全屏
+        box.innerHTML = '<button class="ca-ib ca-cmore" data-k="more">' + IC.more + "</button>" + (pv.dataset.v === "tasks" ? "" : '<button class="ca-ib" data-k="max">' + IC.expand + "</button>");
         var pressK = "";
         var act = function (k, bt) { var v = pv.dataset.v; if (k === "more") return cardMore(pv, bt); if (k === "max") { MAX = MAX === v ? "" : v; refresh(w, true); } };
         box.addEventListener("pointerdown", function (e) { e.stopPropagation(); var bt = e.target.closest("[data-k]"); pressK = bt ? bt.dataset.k : ""; }); // 不当成按住标题行拖动
@@ -573,7 +574,9 @@
       }
       tidyHead(head, box);
       tip(box.querySelector('[data-k="more"]'), tr("更多", "More"));
-      maxBtn(box.querySelector('[data-k="max"]'), MAX === pv.dataset.v);
+      var mb0 = box.querySelector('[data-k="max"]');
+      if (mb0) maxBtn(mb0, MAX === pv.dataset.v);
+      else if (MAX === pv.dataset.v) { MAX = ""; } // 以前记着后台任务全屏：放下来
     });
   }
   // 这个风格不讲快捷键：窗口里各处的提示（「发送 (↵)」「新建终端 (⌃⇧`)」……）去掉括号里的键，原来的记着，换风格时还原
