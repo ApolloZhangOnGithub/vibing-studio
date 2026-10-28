@@ -2420,12 +2420,14 @@
       });
     }
     var tickN = 0, lastCtx = -1;
+    var liveNext = 0; // 在跑的那一问下一次按秒刷新用时的时间（见 tick）
     function tick() {
       tickN++;
       renderStatus();
       if (rt.session().ctx !== lastCtx && !panel) { lastCtx = rt.session().ctx; renderInput(); }
       // 在跑的工具（Running 1 shell command · 5s…）每秒刷新一次时间
-      if (tickN % 8 === 0 && rt.stream && rt.stream.turn.parts.some(function (p) { return p.status === "running"; })) drawTurn(rt.stream.turn);
+      //   整问重画很贵时（一问几百次工具调用）按它的代价放慢：最多占一核的 5%（150 ms 一次 → 3 秒一次）；来了新内容照常马上画（turn 事件）
+      if (tickN % 8 === 0 && rt.stream && performance.now() >= liveNext && rt.stream.turn.parts.some(function (p) { return p.status === "running"; })) { var lt0 = performance.now(); drawTurn(rt.stream.turn); var lc = performance.now() - lt0; liveNext = performance.now() + Math.max(0, lc * 20 - 1000); }
       // Teyvat：等着的（Waiting… 44s/5m）、休眠的（Hibernating… 2m 30s）、转到后台还在跑的命令（Running · 12s）——那几问每秒重画（它在等 / 睡时是一秒一下的 tick）
       if (TY && (!rt.stream || tickN % 8 === 0)) rt.session().turns.slice(-40).forEach(function (t) { if ((t.parts || []).some(function (q) { return q.kind === "tool" && (((q.ty === "wait" || q.ty === "hibernate") && q.status === "running") || (q.ty === "execute" && q.status === "background" && !q.done && !q.lost)); })) drawTurn(t); });
       if (tickN % 8 === 0 && panel && (panel.kind === "tasks" || panel.kind === "agents")) renderInput();

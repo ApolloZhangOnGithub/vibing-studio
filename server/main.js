@@ -10,7 +10,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const cp = require("child_process");
-const { Local } = require("./local");
+const { Local } = (() => { try { return require("./local"); } catch (e) { if (e.code !== "MODULE_NOT_FOUND") throw e; return require("../linux/native/local"); } })(); // 程序包里在旁边；在仓库里跑（测试）用 Linux 版的那一份
 const { Host } = require("./host");
 
 const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8"));
