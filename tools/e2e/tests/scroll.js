@@ -32,7 +32,7 @@ try {
       sc.dispatchEvent(new WheelEvent("wheel", { deltaY: dir * speed * Math.min(gap0, 120) / 1000, deltaMode: 0, bubbles: true, cancelable: true }));
       await tick(16);
       var now = performance.now(), gap = now - prev; prev = now; gap0 = gap;
-      st.frames++; st.maxGap = Math.max(st.maxGap, Math.round(gap)); if (gap > 100) st.over100++;
+      st.frames++; st.maxGap = Math.max(st.maxGap, Math.round(gap)); if (gap > 100) { st.over100++; (st.long = st.long || []).push([Math.round(now - t0), Math.round(gap), Math.round(sc.scrollTop), P.out.children.length, renders.length]); }
       var b = blank();
       if (b) { st.blankFrames++; st.maxBlank = Math.max(st.maxBlank, b); }
       if (dir < 0 && sc.scrollTop <= rowH * 2 && !realTop()) st.edgeFrames++;
@@ -43,11 +43,15 @@ try {
     st.top = Math.round(sc.scrollTop);
     return st;
   }
+  // 整段重画（V.render）几次、各多久：快速滚动时不该有
+  var renders = [], rn0 = P.renderNow;
+  P.renderNow = function () { var t = performance.now(); var r = rn0.apply(this, arguments); renders.push(Math.round(performance.now() - t)); return r; };
   P.toBottom();
   await tick(300);
   out.up1 = await pass(12000, -1);
   out.afterUp1 = { blocks: P.out.children.length, more: !!rt.more(), height: sc.scrollHeight, realTop: realTop() };
   out.loads = rt.perf ? rt.perf() : null; // 往前读的每一段：读文件、解码、解析、画（同步那部分）各用了多少毫秒
+  out.renders = renders.slice();
   out.down = await pass(20000, 1);
   out.up2 = await pass(20000, -1);
   out.ok = true;

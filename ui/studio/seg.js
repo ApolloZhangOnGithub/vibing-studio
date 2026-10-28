@@ -92,7 +92,14 @@
       var m = ms[i];
       if (m.type === "attributes" && m.target === document.documentElement) { themeDirty = true; continue; } // 根上的 class / style 变了：可能换了主题，flush 里比一下
       if (m.type === "attributes") { var p = m.target.parentElement; if (p && p.classList.contains("st-seg")) dirty.push(p); else if (m.target.classList && m.target.classList.contains("st-seg")) dirty.push(m.target); }
-      else if (m.addedNodes.length) scanAll = true;
+      // 加进来的节点：只看它自己和它里面有没有分段控件——以前一有节点加进来（对话每秒刷新的一行、状态栏……）就把整个页面扫一遍，
+      //   长对话几万个元素，空闲时一直在扫（能耗：2026-10-28 采样里占了主线程的一成）
+      else for (var j = 0; j < m.addedNodes.length; j++) {
+        var nd = m.addedNodes[j];
+        if (nd.nodeType !== 1) continue;
+        if (nd.classList.contains("st-seg")) dirty.push(nd);
+        if (nd.firstElementChild) { var inner = nd.getElementsByClassName("st-seg"); for (var q = 0; q < inner.length; q++) dirty.push(inner[q]); }
+      }
     }
     if (dirty.length || scanAll || themeDirty) { themeDirty = false; soon(); }
   }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
