@@ -1416,6 +1416,8 @@
       return null;
     };
     // 回答它：经后台服务的 reply 送进去（它在等回答时，这句就是回答；同 claude agents 视图里回复）。几个问题的拼成一段（每行「问题 → 回答」），它读得懂
+    // 在这里能不能回答它的问题：经后台服务送得进去（后台会话）——在别的终端里跑的不行（那里自己会问）
+    rt.canAnswer = function () { return !!(rt.canInject() && !typable()); };
     rt.answerQuestion = function (text) {
       if (!rt.canInject() || typable()) return Promise.reject(new Error(tr("该会话未在后台运行，无法在此回答，请在其终端中回答")));
       return viaDaemon(text).then(function () { setTimeout(poll, 400); setTimeout(poll, 1500); emit("status"); });

@@ -76,6 +76,9 @@ final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
     //   有的站（learn.chatgpt.com）干脆一片白。版本号照这台 Mac 上的 Safari（读不到就 26.0）
     let sv = (Bundle(path: "/Applications/Safari.app")?.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "26.0"
     cfg.applicationNameForUserAgent = "Version/\(sv) Safari/605.1.15"
+    // 滚到最上、最下不再回弹（用户 2026-10-28：回弹太夸张）——每个网站一打开就带上这一条样式（只管整页的滚动，页面里自己的滚动区不动）
+    let noBounce = "(function(){var s=document.createElement('style');s.textContent='html,body{overscroll-behavior:none !important}';(document.head||document.documentElement).appendChild(s);})();"
+    cfg.userContentController.addUserScript(WKUserScript(source: noBounce, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     let v = WKWebView(frame: .zero, configuration: cfg)
     v.isInspectable = true // Safari › 开发 › 这台 Mac › 这一页：检查器
     v.allowsBackForwardNavigationGestures = true

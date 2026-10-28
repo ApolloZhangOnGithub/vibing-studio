@@ -337,6 +337,11 @@
   // 最近一次你自己用滚轮、触控板、指针（按下、按着拖）、手指动过的时间：对话区看到 scrollTop 变了时，分清是你翻的还是浏览器自己挪的（见 P.onScroll）。
   //   按键不算：回车发出去以后内容变了，那一下不能当成往上翻
   var USER_AT = 0, userNow = function () { USER_AT = performance.now(); };
+  // 输入法：选词那一下回车不能当「发送」——WebKit 里确认候选的那个回车有时在 compositionend 之后才来，isComposing 已经是 false（用户 2026-10-28：中文输入法回车选词直接发出去了）。
+  //   各处输入框（终端界面、图形界面、Claude App 风格）按回车发送前都问这一句
+  var IME_END = 0;
+  document.addEventListener("compositionend", function () { IME_END = performance.now(); }, true);
+  window.TSU_IME = function (e) { return !!(e && (e.isComposing || e.keyCode === 229 || performance.now() - IME_END < 80)); };
   ["wheel", "pointerdown", "touchstart", "touchmove"].forEach(function (t) { document.addEventListener(t, userNow, { capture: true, passive: true }); });
   document.addEventListener("pointermove", function (e) { if (e.buttons) userNow(); }, { capture: true, passive: true });
   // 全屏只看对话（手机上标签栏 ··· 旁边那个按钮）：活动栏、标题栏、标签栏、侧栏、面板都收起来，只剩当前这一格；右上角浮着一个「缩小」
@@ -4048,7 +4053,8 @@
       }
       // （rt.queued 也画在对话最后）
       var aq = agent.claude && rt.question ? rt.question() : null; // 它在问你、问答面板收起着：一行提示（↑ 或点它打开）
-      if (aq && !(panel && panel.kind === "ask")) out.push(indent + LAV + "? " + RESET + "Claude is asking: " + clip(String(aq.questions[0].question || ""), Math.max(10, fcols - 40)) + D + " · press ↑ to answer" + RESET);
+      // 在这里答不了（会话在别的终端里跑）：只写它在问什么，不写「press ↑ to answer」（以前写了，按了又说答不了）
+      if (aq && !(panel && panel.kind === "ask")) out.push(indent + LAV + "? " + RESET + "Claude is asking: " + clip(String(aq.questions[0].question || ""), Math.max(10, fcols - 40)) + (rt.canAnswer && !rt.canAnswer() ? "" : D + " · press ↑ to answer" + RESET));
       var g = agent.goal;
       if (g && agent.claude) { if (!goalHere()) g = null; } // Claude Code 的会话：/goal 在右侧栏最上面；右侧栏关着（看不见）时画在这里（同 Claude Code 输入框上面那句）
       if (g) out.push(indent + goalLine(g, fcols));
@@ -5058,7 +5064,7 @@
     //   下面当前这一问：❯ 1. 选项（后面淡的说明），多选的是 [ ] / [✔]；最后一项「Type something」自己写。↑↓ 选、回车定（多选是切换）、←→ / Tab 换问题、数字直接选、Esc 先收起（它还在等，底下点「回答」再打开）
     // 稍后再答：选了一半、写了一半的回答记着（同一问再打开时接着；问题卡片那边也用这一份）
     var askDrafts = window.TSU_ASKDRAFT = window.TSU_ASKDRAFT || {};
-    function openAsk(q) { if (!q) return; var d = askDrafts[q.id], st0 = P.ta.value || ""; if (st0) { P.ta.value = ""; draftSet(agentId, "", pastes); } openPanel({ kind: "ask", stash: st0, q: q, qi: d ? Math.min(d.qi || 0, q.questions.length - 1) : 0, sel: 0, ans: d && d.ans && d.ans.length === q.questions.length ? JSON.parse(JSON.stringify(d.ans)) : q.questions.map(function () { return { pick: [], text: "" }; }) }); }
+    function openAsk(q) { if (!q || (rt.canAnswer && !rt.canAnswer())) return; var d = askDrafts[q.id], st0 = P.ta.value || ""; if (st0) { P.ta.value = ""; draftSet(agentId, "", pastes); } openPanel({ kind: "ask", stash: st0, q: q, qi: d ? Math.min(d.qi || 0, q.questions.length - 1) : 0, sel: 0, ans: d && d.ans && d.ans.length === q.questions.length ? JSON.parse(JSON.stringify(d.ans)) : q.questions.map(function () { return { pick: [], text: "" }; }) }); }
     function askKeep() { if (!panel || panel.kind !== "ask") return; if (panel.typing) { var tv = String(P.ta.value || "").trim(); if (tv) panel.ans[panel.qi].text = tv; } askDrafts[panel.q.id] = { qi: panel.qi, ans: JSON.parse(JSON.stringify(panel.ans)) }; }
     function askDone(a) { return a.pick.length > 0 || !!a.text; }
     function askRows(fcols, indent) {

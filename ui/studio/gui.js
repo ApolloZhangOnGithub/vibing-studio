@@ -883,7 +883,7 @@
       if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "t" || e.key === "T") && window.STUDIO && STUDIO.toggleTodo) { e.preventDefault(); STUDIO.toggleTodo(agentId); status(); return; } // ⌃T：任务清单收起 / 展开（同终端界面；在哪都行）
       if (sug) {
         if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); sug.sel = (sug.sel + (e.key === "ArrowDown" ? 1 : -1) + sug.items.length) % sug.items.length; sugPaint(); return; }
-        if ((e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) || e.key === "Tab") { e.preventDefault(); sugPick(sug.sel); return; }
+        if ((e.key === "Enter" && !e.shiftKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing || e.keyCode === 229)) || e.key === "Tab") { e.preventDefault(); sugPick(sug.sel); return; }
         if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); sugClose(); return; }
       }
       // 排着的马上发：ctrl+x ctrl+s（同 Claude Code）、ctrl+enter（输入框空着时）；排着的拿回来改：空着按 ↑
@@ -892,7 +892,7 @@
       if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "s" || e.key === "S") && Date.now() - gCx < 2000) { gCx = 0; e.preventDefault(); if (hasQ && rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; }
       if (e.key === "Enter" && e.ctrlKey && !ta.value.trim() && !attach.length && hasQ && rt.sendNow) { e.preventDefault(); (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; }
       if (e.key === "ArrowUp" && !ta.value && rt.takeQueued && (rt.queued || (rt.localQueued && rt.localQueued()))) { var q0 = rt.takeQueued(); if (q0) { e.preventDefault(); ta.value = q0.text; attach = (q0.images || []).concat(attach); atts(); grow(); status(); return; } }
-      if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submit(); return; }
+      if (e.key === "Enter" && !e.shiftKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing || e.keyCode === 229)) { e.preventDefault(); submit(); return; }
       if (e.key === "Escape") {
         if (rt.queued && rt.takeQueued) { e.preventDefault(); var q = rt.takeQueued(); ta.value = q.text + (ta.value ? "\n" + ta.value : ""); attach = (q.images || []).concat(attach); atts(); grow(); status(); return; }
         if (rt.stream && rt.interrupt && rt.interrupt()) { e.preventDefault(); return; }

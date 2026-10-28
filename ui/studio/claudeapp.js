@@ -947,7 +947,7 @@
         var grow = function () { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 280) + "px"; };
         ta.addEventListener("input", function () { DRAFT.text = ta.value; grow(); paintDraft(host); });
         ta.addEventListener("keydown", function (e) {
-          if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); sendDraft(P); }
+          if (e.key === "Enter" && !e.shiftKey && !e.altKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing)) { e.preventDefault(); e.stopPropagation(); sendDraft(P); }
         });
         ta.addEventListener("paste", function (e) { var fs = e.clipboardData && e.clipboardData.files; if (fs && fs.length) { e.preventDefault(); Array.prototype.forEach.call(fs, function (f) { addDraftImage(f, host); }); } });
         file.addEventListener("change", function () { Array.prototype.forEach.call(file.files || [], function (f) { addDraftImage(f, host); }); file.value = ""; });
