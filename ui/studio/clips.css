@@ -6,7 +6,7 @@
 html.light .fv { --gv-box: color-mix(in srgb, var(--st-fg) 4%, var(--st-bg)); --gv-code: #c4372b; }
 .fv-nav { display: flex; flex-direction: column; min-height: 0; padding: 18px 10px 12px; border-right: 1px solid var(--st-line); background: var(--st-bg2, transparent); overflow: auto; }
 .fv-nav h1 { margin: 0 6px 12px; font-size: 20px; font-weight: 650; color: var(--st-hi); }
-.fv-q { height: 28px; margin: 0 4px 12px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg); color: var(--st-fg); font: inherit; outline: 0; }
+.fv-q { position: relative; z-index: 2; height: 28px; margin: 0 4px 12px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--st-line); border-radius: 7px; background: var(--st-bg); color: var(--st-fg); font: inherit; outline: 0; }
 .fv-q:focus { border-color: var(--st-accent, #0a84ff); }
 .fv-nvs { display: flex; flex-direction: column; gap: 1px; }
 .fv-nvh { margin: 12px 8px 4px; font-size: 11px; color: var(--st-dim); }
@@ -28,7 +28,8 @@ html.light .fv { --gv-box: color-mix(in srgb, var(--st-fg) 4%, var(--st-bg)); --
 .fv-lg:empty { display: none; }
 .fv-lg svg { width: 14px; height: 14px; }
 .fv-who { margin-bottom: 4px; font-size: 11px; color: var(--st-dim); }
-.fv-prev { max-height: 9.6em; overflow: hidden; line-height: 1.6; font-size: 13px; -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent); mask-image: linear-gradient(to bottom, #000 72%, transparent); }
+.fv-prev { max-height: 10.5em; overflow: hidden; line-height: 1.6; font-size: 13px; -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent); mask-image: linear-gradient(to bottom, #000 78%, transparent); }
+.fv-prev .fv-term { font-size: 12px; }
 .fv-prev.gv-md p { margin-bottom: 4px; }
 .fv-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .fv-cnote { margin-top: 6px; padding: 4px 8px; border-radius: 6px; background: var(--st-hover); color: var(--st-fg); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -61,6 +62,12 @@ html.light .fv { --gv-box: color-mix(in srgb, var(--st-fg) 4%, var(--st-bg)); --
 .fv-fill { flex: 1; }
 .fv-full { line-height: 1.65; font-size: 14px; }
 .fv-full.fv-plain { padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--st-fg) 7%, var(--st-bg)); }
+/* agent 的回答按对话的样子画（clips.js 的 termMd）：同标签页里的终端——代码块上色、折行对齐、中文每字一格 */
+.fv-term { font-family: var(--st-mono, Monaco, Menlo, "PingFang SC", monospace); background: var(--st-bg); color: var(--st-fg); border-radius: 8px; }
+.fv-term .term { --ttu-font-size: 12.5px; margin: 0; padding: 8px 10px; white-space: pre; font-family: inherit; font-size: var(--ttu-font-size); line-height: 1.45; overflow: auto; }
+.fv-term .term .ask { display: block; white-space: pre-wrap; margin: -8px -10px; padding: 8px 10px; background: var(--st-ask, #373737); color: #fff; }
+.fv-term.tl .term .ask { background: var(--st-ask, #ececec); color: #000; }
+.fv-term .term a { color: inherit; text-decoration: none; }
 .fv-note { min-height: 20px; margin: 16px 0 0; padding: 6px 10px; border: 1px dashed var(--st-line); border-radius: 8px; outline: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .fv-note:empty::before { content: attr(data-ph); color: var(--st-dim); }
 .fv-note:focus { border-style: solid; border-color: var(--st-accent, #0a84ff); }
@@ -87,7 +94,8 @@ html.light .fv { --gv-box: color-mix(in srgb, var(--st-fg) 4%, var(--st-bg)); --
   .fv-list { border-right: 0; }
   .fv-dt { padding: 14px 16px 40px; }
 }
-/* 对话里被标记的那一问：左边一道橙线 */
-.tpane .term .out > .blk.vs-flag::before { content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: #ff9f0a; pointer-events: none; }
+/* 对话里被标记的那一问：左边一道细橙线（贴着那一问，不占整格；.blk 得是 relative，不然 ::before 会挂到整个 term 上、画成一道通天的大条） */
+.tpane .term .out > .blk.vs-flag { position: relative; }
+.tpane .term .out > .blk.vs-flag::before { content: ""; position: absolute; left: -10px; top: 3px; bottom: 3px; width: 2px; border-radius: 1px; background: rgba(255, 159, 10, 0.75); pointer-events: none; }
 .gv-turn.vs-flag { position: relative; }
-.gv-turn.vs-flag::before { content: ""; position: absolute; left: -12px; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: #ff9f0a; pointer-events: none; }
+.gv-turn.vs-flag::before { content: ""; position: absolute; left: -12px; top: 4px; bottom: 4px; width: 2px; border-radius: 1px; background: rgba(255, 159, 10, 0.75); pointer-events: none; }

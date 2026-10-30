@@ -646,7 +646,22 @@
   //   样式也是那两套（.term .ask / .tdot、.gv-*）。静态的 HTML：不开终端、不订阅事件；按 agent（会话）缓存，会话、最后一问、界面风格、深浅色变了才重画 ========
   var E = "\x1b", RST = E + "[0m", BLD = E + "[1m", DOTC = "\uE017"; // DOTC：同 live.js 的状态点记号（TTU 给一格宽的框，里面换成 .tdot 圆点）
   var C24 = function (c) { return E + "[38;2;" + c + "m"; };
-  var VERB_T = { Bash: ["Ran", "shell command", "shell commands"], Read: ["read", "file", "files"], Glob: ["searched for", "pattern", "patterns"], TaskOutput: ["checked", "task", "tasks"], TaskCreate: ["created", "task", "tasks"], TaskUpdate: ["updated", "task", "tasks"], TaskList: ["listed", "task list", "task lists"] };
+  var VERB_T = { Bash: ["Ran", "shell command", "shell commands"], Read: ["read", "file", "files"], Glob: ["searched for", "pattern", "patterns"], search: ["searched for", "pattern", "patterns"], read: ["read", "file", "files"], list: ["listed", "directory", "directories"], TaskOutput: ["checked", "task", "tasks"], TaskCreate: ["created", "task", "tasks"], TaskUpdate: ["updated", "task", "tasks"], TaskList: ["listed", "task list", "task lists"] };
+  // Bash 命令按第一个词分到「搜索 / 读 / 列目录」还是「shell 命令」（同 live.js 的 bashKind、同 Claude Code：grep、find 算搜，cat、head 算读……）
+  var BASH_KIND_T = { search: /^(find|grep|rg|ag|ack|locate|which|whereis)$/, read: /^(cat|head|tail|less|more|wc|stat|file|strings|jq|awk|cut|sort|uniq|tr)$/, list: /^(ls|tree|du)$/, neutral: /^(echo|printf|true|false|:)$/ };
+  var bashKindT = function (cmd) {
+    var c = String(cmd || ""), fs0 = false, rd = false, ls0 = false, any = false, first = (/^\s*(?:(?:#[^\n]*|\\)\n\s*)*([^\s|&;()<>]+)/.exec(c) || [])[1];
+    var known = function (w) { return BASH_KIND_T.search.test(w) || BASH_KIND_T.read.test(w) || BASH_KIND_T.list.test(w) || BASH_KIND_T.neutral.test(w); };
+    if (!first || !known(first)) return "bash";
+    var segs = c.split(/\|\|?|&&|;|\n/);
+    for (var i = 0; i < segs.length; i++) {
+      var w = segs[i].trim().split(/\s+/)[0];
+      if (!w || BASH_KIND_T.neutral.test(w)) continue;
+      if (!known(w)) return "bash";
+      any = true; if (BASH_KIND_T.search.test(w)) fs0 = true; if (BASH_KIND_T.read.test(w)) rd = true; if (BASH_KIND_T.list.test(w)) ls0 = true;
+    }
+    return !any ? "bash" : ls0 ? "list" : fs0 ? "search" : "read";
+  };
   var TNAME = { web_search: "Web Search", WebFetch: "Fetch", SendMessage: "Social", ListAgents: "Social", help: "Help" };
   var vwid = function (s) { return window.TTU && TTU.visibleWidth ? TTU.visibleWidth(s) : String(s).length; };
   var padW = function (s, w) { var n = w - vwid(s); return n > 0 ? s + " ".repeat(n) : s; };
@@ -677,9 +692,11 @@
     while (ls.length && blank(ls[ls.length - 1])) ls.pop();
     return ls;
   }
-  function describeT(list, tone) { // 「Read 2 files, ran 1 shell command」：数字加粗（同 live.js 的 describe）
-    var by = {}, order = [];
-    list.forEach(function (p) { var k = p.name === "Grep" ? "Glob" : p.name; if (!by[k]) { by[k] = 0; order.push(k); } by[k]++; });
+  function describeT(list, tone) { // 「searched for 2 patterns, read 3 files, ran 1 shell command」：数字加粗（同 live.js 的 describe / Claude Code）
+    var by = {}, order = [], kind = function (p) { if (p.name === "Bash") { var k = bashKindT(p.input && p.input.command); return k === "bash" ? "Bash" : k; } return p.name === "Grep" ? "Glob" : p.name; };
+    list.forEach(function (p) { var k = kind(p); if (!by[k]) { by[k] = 0; order.push(k); } by[k]++; });
+    var PRIO = { search: 1, read: 2, list: 3 }; // 顺序同 Claude Code：searched → read → listed → 别的 → ran shell commands
+    order.sort(function (a, b) { var pa = PRIO[a] || 9, pb = PRIO[b] || 9; if (pa !== pb) return pa - pb; return (a === "Bash" ? 1 : 0) - (b === "Bash" ? 1 : 0); });
     return order.map(function (k, i) { var v = VERB_T[k] || [k, "call", "calls"], n = by[k], verb = i ? v[0].charAt(0).toLowerCase() + v[0].slice(1) : v[0].charAt(0).toUpperCase() + v[0].slice(1); return tone + (i ? ", " : "") + verb + " " + BLD + n + RST + tone + " " + (n === 1 ? v[1] : v[2]) + RST; }).join("");
   }
   // 一次工具调用（同 live.js 的 toolRows）：调用一行 + 结果——lvl：call 一行摘要 / preview 前几行 / full 更多（缩略图里也就十来行）

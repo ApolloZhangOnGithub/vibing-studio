@@ -99,52 +99,67 @@
     jump: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L7.8 8.2M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>',
     back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>',
   };
+  var KINDS = ["cc", "cx", "pi", "ty", "pm"];
   var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : ""; };
-  var md = function (s) { try { return window.TSU_GUI && TSU_GUI.md ? TSU_GUI.md(String(s || "")) : "<p>" + esc(s) + "</p>"; } catch (e) { return "<p>" + esc(s) + "</p>"; } };
   var roleOf = function (r) { return r.type === "flag" ? "flag" : (r.src && r.src.role) === "user" ? "user" : "reply"; };
-  var Q = { q: "", f: "", sel: "" }; // f：全部 "" / user / reply / flag / kind:cc …；sel：选中的那一条
+  // agent 的回答：同对话里那样画（终端的样子：代码块上色、折行对齐），用对话的 Markdown 渲染（同 live.js / dash.js），不自己糊一套 HTML
+  var termLight = function () { try { return !!(window.TSU_TERM && TSU_TERM.termLight && TSU_TERM.termLight()); } catch (e) { return false; } };
+  var termMd = function (md, width) {
+    var light = termLight(), theme = light ? "light" : "dark", w = width || 84, lines;
+    try { lines = window.TSU_MD && TSU_MD.lines ? TSU_MD.lines(md, { width: w, theme: theme }) : (window.TTU && TTU.markdownLines ? TTU.markdownLines(md, { width: w, theme: theme }) : String(md || "").split("\n")); }
+    catch (e) { lines = String(md || "").split("\n"); }
+    var h = window.TTU && TTU.ansiToHtml ? TTU.ansiToHtml(lines.join("\n"), theme, { widthOf: TTU.visibleWidth, links: true }) : esc(md);
+    return '<div class="fv-term' + (light ? " tl" : "") + '"><pre class="term terminal-style-ui">' + h + "</pre></div>";
+  };
+  var termAsk = function (text) { // 你说的话：同对话里（灰底，字白）
+    return '<div class="fv-term"><pre class="term terminal-style-ui"><span class="ask">' + esc(text) + "</span></pre></div>";
+  };
+  var Q = { q: "", f: "", sel: "" }; // f：全部 "" / user / reply / flag / kind:cc …（来源）；sel：选中的那一条
   var hosts = [];
   function filtered() {
     var q = Q.q.trim().toLowerCase();
     return list().filter(function (r) {
       var s = r.src || {};
       if (Q.f === "user" || Q.f === "reply" || Q.f === "flag") { if (roleOf(r) !== Q.f) return false; }
-      else if (/^kind:/.test(Q.f) && s.kind !== Q.f.slice(5)) return false;
+      else if (/^kind:/.test(Q.f)) { var k = Q.f.slice(5); if (k === "other") { if (!s.kind || KINDS.indexOf(s.kind) >= 0) return false; } else if (s.kind !== k) return false; }
       return !q || [r.text, r.note, s.title, s.cwd, s.label].join(" ").toLowerCase().indexOf(q) >= 0;
     });
   }
   function navHtml() {
     var L = list(), n = function (f) { return L.filter(f).length; };
     var row = function (f, ic, label, c) { return c || !f || /^(user|reply|flag)$/.test(f) ? '<button type="button" class="fv-nv' + (Q.f === f ? " on" : "") + '" data-f="' + f + '"><i>' + ic + "</i><span>" + esc(label) + "</span><em>" + c + "</em></button>" : ""; };
-    var kinds = ["cc", "cx", "pi", "ty", "pm"].map(function (k) { var c = n(function (r) { return (r.src || {}).kind === k; }); return c ? row("kind:" + k, logoOf(k) || IC.reply, KIND[k], c) : ""; }).join("");
-    return row("", IC.all, t("全部收藏", "All"), L.length) + row("user", IC.user, t("你说的", "Your Messages"), n(function (r) { return roleOf(r) === "user"; })) +
-      row("reply", IC.reply, t("回答", "Replies"), n(function (r) { return roleOf(r) === "reply"; })) + row("flag", IC.flag, t("标记", "Flags"), n(function (r) { return r.type === "flag"; })) +
+    var rows = KINDS.map(function (k) { var c = n(function (r) { return (r.src || {}).kind === k; }); return c ? row("kind:" + k, logoOf(k) || IC.reply, KIND[k], c) : ""; });
+    var other = n(function (r) { var k = (r.src || {}).kind; return k && KINDS.indexOf(k) < 0; }); // 不认识的新连接器：归到「其他」
+    if (other) rows.push(row("kind:other", IC.reply, t("其他", "Other"), other));
+    var kinds = rows.join("");
+    return row("", IC.all, t("全部", "All"), L.length) + row("user", IC.user, t("你的消息", "Your messages"), n(function (r) { return roleOf(r) === "user"; })) +
+      row("reply", IC.reply, t("回复", "Replies"), n(function (r) { return roleOf(r) === "reply"; })) + row("flag", IC.flag, t("标记", "Flags"), n(function (r) { return r.type === "flag"; })) +
       (kinds ? '<div class="fv-nvh">' + esc(t("来源", "Sources")) + "</div>" + kinds : "");
   }
+  var kindName = function (s) { return KIND[s.kind] || (s.kind ? s.kind : t("其他", "Other")); };
   function cardHtml(r) {
     var s = r.src || {}, ro = roleOf(r);
     var body = ro === "flag" ? '<div class="fv-flag"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || t("一处标记", "A flag")) + "</span></div>" :
-      r.md ? '<div class="fv-prev gv-md">' + md(r.text) + "</div>" : '<div class="fv-prev fv-plain">' + esc(r.text) + "</div>";
+      ro === "user" ? termAsk(r.text) : termMd(r.text, 40);
     return '<article class="fv-card' + (Q.sel === r.id ? " on" : "") + '" data-id="' + esc(r.id) + '" tabindex="-1">' +
-      '<header><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><b>' + esc(s.title || KIND[s.kind] || t("一段对话", "A conversation")) + "</b><time>" + esc(when(r.created)) + "</time></header>" +
-      '<div class="fv-who">' + esc(ro === "user" ? t("你说的", "You said") : ro === "flag" ? t("标记", "Flag") : t("回答", "Reply")) + "</div>" + body +
+      '<header><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><b>' + esc(s.title || kindName(s)) + "</b><time>" + esc(when(r.created)) + "</time></header>" +
+      '<div class="fv-who">' + esc(ro === "user" ? t("你", "You") : ro === "flag" ? t("标记", "Flag") : t("回复", "Reply")) + "</div>" + '<div class="fv-prev">' + body + "</div>" +
       (r.note ? '<div class="fv-cnote">' + esc(r.note) + "</div>" : "") + "</article>";
   }
   function detailHtml(r) {
-    if (!r) return '<div class="fv-none">' + esc(t("选一条收藏查看", "Select an item")) + "</div>";
+    if (!r) return '<div class="fv-none">' + esc(t("选择一条", "Select an item")) + "</div>";
     var s = r.src || {}, ro = roleOf(r);
     var row = function (k, v) { return v ? "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>" : ""; };
     var body = ro === "flag" ? '<div class="fv-flag big"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || "") + "</span></div>" :
-      r.md ? '<div class="fv-full gv-md">' + md(r.text) + "</div>" : '<div class="fv-full fv-plain">' + esc(r.text) + "</div>";
+      '<div class="fv-full">' + (ro === "user" ? termAsk(r.text) : termMd(r.text, 84)) + "</div>";
     return '<div class="fv-dt"><button type="button" class="fv-back" data-a="back">' + IC.back + "<span>" + esc(t("收藏", "Favorites")) + "</span></button>" +
-      '<div class="fv-dh"><span class="fv-lg">' + (logoOf(s.kind) || "") + "</span><div><b>" + esc(s.title || KIND[s.kind] || "") + "</b><span>" +
-      esc([ro === "user" ? t("你说的", "You said") : ro === "flag" ? t("标记", "Flag") : t("回答", "Reply"), s.at ? when(s.at) : ""].filter(Boolean).join(" · ")) + "</span></div></div>" +
-      '<div class="fv-acts"><button type="button" data-a="jump" class="fv-primary">' + IC.jump + "<span>" + esc(t("跳到原处", "Go to Source")) + '</span></button><button type="button" data-a="insert">' + esc(t("插入到输入框", "Insert into Input")) +
-      '</button><button type="button" data-a="copy">' + esc(t("复制", "Copy")) + '</button><button type="button" data-a="ref">' + esc(t("复制为引用", "Copy as Quote")) + '</button><span class="fv-fill"></span><button type="button" data-a="del" class="fv-del">' +
-      esc(ro === "flag" ? t("取消标记", "Remove Flag") : t("取消收藏", "Remove")) + "</button></div>" + body +
+      '<div class="fv-dh"><span class="fv-lg">' + (logoOf(s.kind) || "") + "</span><div><b>" + esc(s.title || kindName(s)) + "</b><span>" +
+      esc([kindName(s), s.at ? when(s.at) : ""].filter(Boolean).join(" · ")) + "</span></div></div>" +
+      '<div class="fv-acts"><button type="button" data-a="jump" class="fv-primary">' + IC.jump + "<span>" + esc(t("跳到原处", "Go to source")) + '</span></button><button type="button" data-a="ref">' + esc(t("复制为引用", "Copy as quote")) +
+      '</button><button type="button" data-a="copy">' + esc(t("复制", "Copy")) + '</button><button type="button" data-a="insert">' + esc(t("插入到输入框", "Insert")) + '</button><span class="fv-fill"></span><button type="button" data-a="del" class="fv-del">' +
+      esc(ro === "flag" ? t("取消标记", "Remove flag") : t("取消收藏", "Remove")) + "</button></div>" + body +
       '<div class="fv-note" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("备注", "Note")) + '">' + esc(r.note || "") + "</div>" +
-      '<dl class="fv-meta">' + row(t("连接器", "Connector"), KIND[s.kind]) + row(t("会话", "Session"), s.title) + row(t("目录", "Folder"), s.cwd) + row(t("消息时间", "Message Time"), s.at ? when(s.at) : "") +
-      row(t("第几问", "Turn"), s.turn != null && s.turn >= 0 ? String(s.turn + 1) : "") + row(t("会话 ID", "Session ID"), s.session) + row(t("设备", "Device"), r.dev) + row(t("收藏于", "Saved"), when(r.created)) + "</dl></div>";
+      '<dl class="fv-meta">' + row(t("会话", "Session"), s.title) + row(t("目录", "Folder"), s.cwd) + row(t("时间", "Time"), s.at ? when(s.at) : "") + row(t("收藏于", "Saved"), when(r.created)) + "</dl></div>";
   }
   function paint(host) {
     var items = filtered();
@@ -153,7 +168,7 @@
     var empty = !list().length;
     var html = '<div class="fv' + (sel ? " has-sel" : "") + '"><aside class="fv-nav"><h1>' + esc(t("收藏", "Favorites")) + '</h1><input class="fv-q" type="search" placeholder="' + esc(t("搜索", "Search")) + '" value="' + esc(Q.q) + '">' +
       '<nav class="fv-nvs">' + navHtml() + "</nav></aside>" +
-      '<section class="fv-list">' + (empty ? '<div class="fv-empty"><i>' + LOGO + "</i><b>" + esc(t("还没有收藏", "No Favorites Yet")) + "</b><span>" + esc(t("在对话里右键一条消息，选「收藏」", "Right-click a message in a conversation and choose Favorite")) + "</span></div>" :
+      '<section class="fv-list">' + (empty ? '<div class="fv-empty"><i>' + LOGO + "</i><b>" + esc(t("暂无收藏", "No favorites yet")) + "</b><span>" + esc(t("在对话里右键一条消息，选「收藏」", "Right-click a message → Favorite")) + "</span></div>" :
         !items.length ? '<div class="fv-empty"><span>' + esc(t("没有符合的", "Nothing matches")) + "</span></div>" : items.map(cardHtml).join("")) + "</section>" +
       '<section class="fv-detail">' + (empty ? "" : detailHtml(sel)) + "</section></div>";
     if (host.dataset.h === html) return;
@@ -166,7 +181,7 @@
     if (had) { var qi = host.querySelector(".fv-q"); qi.focus(); qi.setSelectionRange(pos, pos); }
   }
   function wire(host, P) {
-    host.addEventListener("input", function (e) { if (e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
+    host.addEventListener("input", function (e) { if (e.target.classList && e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
     host.addEventListener("focusout", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n) { var r = all[n.dataset.note]; if (r && (r.note || "") !== n.textContent) window.TSU_CLIPS.setNote(r.id, n.textContent); setTimeout(function () { paint(host); }, 0); } });
     host.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest("[data-note]");

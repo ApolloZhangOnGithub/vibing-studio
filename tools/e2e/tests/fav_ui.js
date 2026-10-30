@@ -60,7 +60,17 @@ try {
   out.cards = document.querySelectorAll(".fv-card").length;
   out.nav = Array.prototype.map.call(document.querySelectorAll(".fv-nv"), function (x) { return x.innerText.replace(/\s+/g, " "); });
   out.s1 = await shot();
-  var card = Array.prototype.filter.call(document.querySelectorAll(".fv-card"), function (x) { return /回答/.test(x.innerText); })[0] || document.querySelector(".fv-card");
+  // 搜索框：点一下能聚焦、打字能过滤（用户 2026-10-30：搜索框是假的、点不了）
+  var q = document.querySelector(".fv-q"), qr = q.getBoundingClientRect(), cx = qr.left + 6, cy = qr.top + qr.height / 2;
+  out.qTop = document.elementFromPoint(cx, cy) === q || (document.elementFromPoint(cx, cy) || {}).className;
+  ["mousedown", "mouseup", "click"].forEach(function (t) { q.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, clientX: cx, clientY: cy })); });
+  out.qFocused = document.activeElement === q;
+  q.value = "zzzz_no_match"; q.dispatchEvent(new Event("input", { bubbles: true }));
+  await waitMs(250);
+  out.qFiltered = document.querySelectorAll(".fv-card").length; // 0 = 过滤生效
+  var q2 = document.querySelector(".fv-q"); q2.value = ""; q2.dispatchEvent(new Event("input", { bubbles: true })); // paint 换过 input 了，重新拿
+  await waitMs(250);
+  var card = Array.prototype.filter.call(document.querySelectorAll(".fv-card"), function (x) { return /回复|回答/.test(x.innerText); })[0] || document.querySelector(".fv-card");
   card.click();
   await whenDom(function () { return document.querySelector(".fv-dt .fv-full"); });
   await waitMs(300);

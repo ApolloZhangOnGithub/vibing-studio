@@ -800,12 +800,16 @@
       if (html === lastSelHtml && !blocks.length && !marked.length) return;
       lastSelHtml = html;
       if (selLayer.innerHTML !== html) selLayer.innerHTML = html;
-      marked.forEach(function (x) { x.classList.remove("tsb"); });
+      marked.forEach(function (x) { x.classList.remove("tsb", "tsd"); });
       marked = [];
       if (blocks.length) {
         var range = sel.getRangeAt(0), scope = range.commonAncestorContainer;
         if (scope.nodeType !== 1) scope = scope.parentElement;
         Array.prototype.forEach.call(scope.querySelectorAll(".ttu-box"), function (x) { if (range.intersectsNode(x)) { x.classList.add("tsb"); marked.push(x); } });
+        // diff 的红绿行整行都选中了：底色拿掉，露出下面的选区（同 iTerm：选中的格子是选区的颜色，不再是红绿）；只选了一半的那行由浏览器在选中的字后面画（panes.css）
+        var whole = function (x) { var er = document.createRange(); er.selectNodeContents(x); return range.compareBoundaryPoints(Range.START_TO_START, er) <= 0 && range.compareBoundaryPoints(Range.END_TO_END, er) >= 0; };
+        var drs = scope.classList && scope.classList.contains("drow") ? [scope] : scope.querySelectorAll(".drow");
+        Array.prototype.forEach.call(drs, function (x) { if (range.intersectsNode(x) && whole(x)) { x.classList.add("tsd"); marked.push(x); } });
       }
     }
     document.addEventListener("selectionchange", paintSelection);
@@ -3321,7 +3325,8 @@
       var res = null;
       try {
         var run = (lines.join("\n").match(/`+/g) || []).reduce(function (mx, t) { return Math.max(mx, t.length); }, 0), fence = "`".repeat(Math.max(3, run + 1));
-        var out = mdLines(fence + lang + "\n" + lines.join("\n") + "\n" + fence, { width: 100000, theme: P.theme });
+        // 带行号排（下面按行号认出每一行、去掉行号）——不跟着「代码块行号」那个设置：关着时排出来没有行号，一行都认不出，整块不上色（2026-10-30 高亮全没了）
+        var out = mdLines(fence + lang + "\n" + lines.join("\n") + "\n" + fence, { width: 100000, theme: P.theme, lineNumbers: true });
         res = [];
         for (var i = 0; i < out.length && res.length < lines.length; i++) {
           var m = /^(\s*(?:\x1b\[[\d;]*m)?\s*\d+(?:\x1b\[[\d;]*m)? ?)/.exec(out[i]);
@@ -4654,11 +4659,18 @@
       return on ? { text: left + "% until auto-compact", err: false } : { text: "Context low (" + left + "% remaining) · Run /compact to compact & continue", err: true };
     }
     // 到了用量上限、还没过（记录最后是 Claude Code 写的「You've hit your limit · resets 7:20pm」，后面没有新的话）：
-    //   同 Claude Code 状态行上面那一行「⚠ Usage limit reached · continuing automatically at 7:20pm」——它到点自己接着跑；这里没法替它按 Esc，不写「esc to cancel」
+    //   同 Claude Code 状态行上面那一行「⚠ Usage limit reached · continuing automatically at 7:20pm」——它到点自己接着跑；这里没法替它按 Esc，不写「esc to cancel」。
+    //   几种情况都给（同 Claude Code 那几句）：等重置、重置好了、继续后又到了、正在重置、这个登录重置不了
     function limitLine() {
       var ts = rt.session().turns, t = ts[ts.length - 1], ps = t && t.parts || [], p = ps[ps.length - 1];
-      if (!p || p.kind !== "apinote" || !/limit|上限|限制/i.test(p.text || "")) return "";
-      var m = /resets?\s+([0-9][0-9:]*\s*(?:[ap]m)?)/i.exec(p.text) || /将于\s*([0-9][0-9:]*)/.exec(p.text);
+      if (!p || p.kind !== "apinote") return "";
+      var x = String(p.text || "");
+      if (!/limit|上限|限制|rate limited|已用尽/i.test(x)) return "";
+      if (/usage limit has reset|已重置|已恢复/.test(x)) return "⚠ Your usage limit has reset · press enter to continue";
+      if (/already being reset|正在重置/.test(x)) return "⚠ Your session limit is already being reset · one moment";
+      if (/couldn'?t reset|could not reset|无法重置|重置失败/.test(x)) return "⚠ Couldn't reset your limits with this login · run /login, then try again";
+      if (/again after you continued/.test(x)) return "⚠ Usage limit reached again after you continued · continuing automatically";
+      var m = /resets?\s+([0-9][0-9:]*\s*(?:[ap]m)?)/i.exec(x) || /将于\s*([0-9][0-9:]*)/.exec(x);
       return "⚠ Usage limit reached · " + (m ? "continuing automatically at " + m[1].replace(/\s+/g, "").toLowerCase() : "continuing automatically when it resets");
     }
     function connFoot(indent, fcols) {
