@@ -521,8 +521,9 @@
         });
       }).catch(function () {}).then(function () { pollBusy = false; if (pollAgain) { pollAgain = false; setTimeout(poll, 0); } });
     }
-    function start() { if (!loading) load(); clearInterval(pollT); pollT = setInterval(poll, 700); }
-    function stop() { clearInterval(pollT); pollT = 0; }
+    // 在跑时读得勤（120ms）、闲着读得慢（700ms）——streaming 时才是一行一行地出来，不是 700ms 一整块（用户 2026-10-30：「block 一个 block 返回」）
+    function start() { if (!loading) load(); clearTimeout(pollT); pollT = 0; var loop = function () { pollT = setTimeout(function () { loop(); }, busy ? 120 : 700); poll(); }; loop(); }
+    function stop() { clearTimeout(pollT); pollT = 0; }
 
     // ---- 在跑吗：自己起的进程；或者记录里有一问开了头还没结束、文件刚写过（在 Codex 里跑着）----
     var busy = false, proc = null, outBuf = "", sentAt = 0, deciding = false;
