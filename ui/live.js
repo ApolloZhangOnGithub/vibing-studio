@@ -2181,7 +2181,7 @@
       };
       var cxs = function (v) { return function () { localStorage.setItem("tsu-cx-center", v); if (panel && panel.kind === "island") renderInput(); }; }, cxOn0 = localStorage.getItem("tsu-cx-center") !== "claude";
       return [
-        { label: "添加图片…", icon: MI.image, run: pickImages }, { sep: true }, // 手机、iPad 上没法拖、不好粘：从相册选、拍照（长按输入框也是这个菜单）
+        { label: "添加图片…", icon: MI.image, gesture: true, run: pickImages }, { sep: true }, // 手机、iPad 上没法拖、不好粘：从相册选、拍照（长按输入框也是这个菜单）
         { label: "运行状态行", icon: MI.workline || MI.status, checked: wOn, run: setWork },
         { label: "状态信息", icon: MI.info || MI.eye, checked: iOn, run: set("footInfo", !iOn) },
       ].concat(/^cx:/.test(agentId) ? [{ sep: true }, { header: true, label: "← 会话列表的样子" }, { label: "Codex", checked: cxOn0, radio: true, run: cxs("codex") }, { label: "Claude Code", checked: !cxOn0, radio: true, run: cxs("claude") }] : []);
@@ -5402,10 +5402,12 @@
     // 在光标处插「[Image #N]」（同 Claude Code：图就在你粘贴的那个位置，字里删掉这几个字就是不要这张图）；图解出来、缩好了再跟上
     // 选图（系统的选取器：相册、拍照、文件）：选好的一张张按粘贴进来的那样插在光标处（[Image #N]）
     function pickImages() {
+      var add = function (fs) { (fs || []).forEach(function (f) { addImage(f); }); if (P.focus) P.focus(); };
+      if (window.STUDIO && STUDIO.pickFiles) return STUDIO.pickFiles({ types: ["public.image"], accept: "image/*" }).then(add);
       var inp = document.createElement("input");
       inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
       inp.style.cssText = "position:fixed;left:-1000px;top:0;opacity:0";
-      inp.addEventListener("change", function () { Array.prototype.forEach.call(inp.files || [], function (f) { addImage(f); }); inp.remove(); });
+      inp.addEventListener("change", function () { add(Array.prototype.slice.call(inp.files || [])); inp.remove(); });
       document.body.appendChild(inp);
       inp.click();
     }
@@ -7593,7 +7595,8 @@
     ws.tab = function () { return ws.active ? tabOf(ws.active) : null; };
     ws.leaves = function (node, o) { o = o || []; if (!node) return o; if (node.pane) o.push(node); else if (node.a) { ws.leaves(node.a, o); ws.leaves(node.b, o); } return o; };
     // 新开的默认是 Paimon 的主页（同浏览器的新标签页）：编辑区里不再开终端，终端在底下的面板里
-    ws.newPane = function (spec) { return Pane(tw, spec || { page: "history" }); }; // 没说开什么：空白页（历史记录）——不再是仪表盘
+    // 没说开什么：新会话（选连接器、目录、说第一句）——不再是历史记录页（用户 2026-10-28：一打开就是历史记录，没意义；设置 › 通用 › 空白标签页 里能换回来）
+    ws.newPane = function (spec) { var hist = window.STUDIO && STUDIO.get && STUDIO.get("blankPage") === "history"; return Pane(tw, spec || { page: hist || !(window.STUDIO && STUDIO.pages && STUDIO.pages["ca-new"]) ? "history" : "ca-new" }); };
     // ======== Pure Terminal（同 iTerm）：窗口顶上一排标签页，每个标签页里是自己的分屏（每格一个会话，分屏时每格上面一条小标题）；
     //          VS Code 的是「每一格一组标签页」。换应用风格时两种互相转：组里没显示的各成一个标签页；换回去全并进当前组 ========
     var PT = function () { return !!(window.STUDIO && STUDIO.get && STUDIO.get("os") === "terminal"); };

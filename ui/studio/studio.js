@@ -3599,7 +3599,7 @@
   }
   // 发布的默认值 = 作者自己用着的那一套（2026-09-29 照 ~/.paimon/studio.json 抄的）：做完通知、界面用系统字、活动栏精致、布局紧凑、标题栏不放地址放总览、
   //   不要状态栏 / 缩略图 / 路径导航。名字、头像、语言这些个人的不抄
-  var SET_DEF = { guiDetail: "standard", mdLineNumbers: false, linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
+  var SET_DEF = { blankPage: "new", guiDetail: "standard", mdLineNumbers: false, linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
   var SET_ABOUT = {
     colorScheme: "配色方案：auto（跟随系统）或方案 ID（paimon-dark、paimon-light、dark-gray、solarized-dark、solarized-light），也可以自定义：{ \"type\": \"dark\", \"colors\": {…}, \"terminal\": {…} }",
     highlightScheme: "（旧的，只认自定义颜色 { \"k\": \"#…\" }）代码高亮现在分浅色、深色两套：见 highlightLight、highlightDark",
@@ -3610,7 +3610,7 @@
     extensions: "已安装的扩展（在「扩展」视图中勾选安装）：{ \"claude-code\": true }",
     titleBar: "顶栏上显示哪些（顶栏右键可改）：address 地址栏、layout 布局控件、newTab 新建标签页、overview 标签页概览",
     activityItems: "活动栏上显示哪些图标（活动栏右键可改）：agents、search、extensions、manage",
-    codeLineNumbers: "代码文件左侧的行号", guiDetail: "图形界面对话的详细程度：brief（简洁，只看最后的回答）、standard（标准）、full（最详细，全部展开）", mdLineNumbers: "对话里代码块左侧的行号（默认不显示，同 Claude Code）", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
+    codeLineNumbers: "代码文件左侧的行号", blankPage: "新开的窗口、标签页什么都没指定时打开什么：new（新会话）、history（历史记录）", guiDetail: "图形界面对话的详细程度：brief（简洁，只看最后的回答）、standard（标准）、full（最详细，全部展开）", mdLineNumbers: "对话里代码块左侧的行号（默认不显示，同 Claude Code）", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
     fontSize: "终端与对话的字号（px）", statusBar: "窗口底部的状态栏", minimap: "对话、终端与文件右侧的缩略图：show（始终显示）、scroll（仅手动滚动时浮现）、transparent（透明：无背景与边框，悬停时显示滑块）、hide（隐藏）", activityBar: "窗口最左侧的活动栏（左下角 ⚙ 为管理菜单）", breadcrumbs: "标签栏下方的路径导航（现在在哪：Agent › 会话、文件夹 › 文件）",
   };
   var SET = Object.assign({}, SET_DEF, store("st-settings", {}));
@@ -5574,9 +5574,9 @@
     tm = setTimeout(done, 1500);
   }
   // ---- App 里：菜单交给系统的菜单画（menu.popup，同 VS Code 在 macOS 上的右键菜单）；指着哪一项原生告诉这边（menu.highlight）→ 照样预览 ----
-  var NM = { ok: false, hl: null };
+  var NM = { ok: false, hl: null, cmds: [] };
   if (window.nadosNative) {
-    nadosNative.call("info").then(function (i) { NM.ok = ((i && i.commands) || []).indexOf("menu.popup") >= 0; }).catch(function () {});
+    nadosNative.call("info").then(function (i) { NM.cmds = (i && i.commands) || []; NM.ok = NM.cmds.indexOf("menu.popup") >= 0; }).catch(function () {});
     if (nadosNative.on) nadosNative.on("menu.highlight", function (d) {
       var st = NM.hl, it = st && d && d.id ? st.byId[d.id] : null;
       if (!st) return;
@@ -5663,10 +5663,35 @@
     }, function () { NM.hl = null; });
     return { el: null, first: function () {}, unprev: function () {} };
   }
+  // 选文件（图片……）→ Promise<File[]>（取消了是空的）。App 里用系统的「打开」面板（fs.chooseFiles）：
+  //   页面的 <input type=file> 只在点按的那一下里开得出来，系统菜单选完再开已经不算（用户 2026-10-30：「添加图片…」点了没反应）。
+  //   o = { types: ["public.image"]（UTType）, accept: "image/*"（网页里）, multiple }
+  var MIME_EXT = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic", heif: "image/heif", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp", svg: "image/svg+xml", pdf: "application/pdf" };
+  var nativePick = function () { var N = window.nadosNative; return !!(N && N.call && !N.remote && NM.cmds.indexOf("fs.chooseFiles") >= 0 && window.TSU_LOCAL && TSU_LOCAL.read); };
+  function pickFiles(o) {
+    o = o || {};
+    if (nativePick()) return nadosNative.call("fs.chooseFiles", { types: o.types || [], multiple: o.multiple !== false, prompt: enUI() ? "Open" : "打开" }).then(function (ps) {
+      return Promise.all((ps || []).map(function (p) {
+        var name = String(p).split("/").pop(), ext = (name.split(".").pop() || "").toLowerCase();
+        return TSU_LOCAL.read(p).then(function (b) { return new File([b], name, { type: MIME_EXT[ext] || "" }); }, function () { return null; });
+      }));
+    }).then(function (fs) { return (fs || []).filter(Boolean); }, function () { return []; });
+    return new Promise(function (res) {
+      var inp = document.createElement("input");
+      inp.type = "file"; if (o.accept) inp.accept = o.accept; inp.multiple = o.multiple !== false;
+      inp.style.cssText = "position:fixed;left:-1000px;top:0;opacity:0";
+      var done = function () { res(Array.prototype.slice.call(inp.files || [])); inp.remove(); };
+      inp.addEventListener("change", done); inp.addEventListener("cancel", done);
+      document.body.appendChild(inp);
+      inp.click();
+    });
+  }
   function menu(items, at, level) {
     level = level || 0;
-    // App 里：系统的菜单——Claude App 风格除外（沉浸式的图形界面：菜单都是自己画的 Claude 的样子，见 claudeapp.css）
-    if (!level && NM.ok && window.nadosNative && getv("nativeMenus") !== false && !root.classList.contains("st-os-claude")) return nativeMenu(items, at);
+    // App 里：系统的菜单——Claude App 风格除外（沉浸式的图形界面：菜单都是自己画的 Claude 的样子，见 claudeapp.css）；
+    //   有要在点按那一下里开的项（gesture：选文件……）而 App 还不会自己开「打开」面板（旧版）：这一回用页面自己的菜单
+    var needG = !level && !nativePick() && (typeof items === "function" ? items() || [] : items || []).some(function (x) { return x && x.gesture; });
+    if (!level && !needG && NM.ok && window.nadosNative && getv("nativeMenus") !== false && !root.classList.contains("st-os-claude")) return nativeMenu(items, at);
     closeMenus(level);
     var src0 = typeof items === "function" ? items : null, src = src0 ? function () { return (src0() || []).filter(Boolean); } : null; // 空的项（null）不画
     items = src ? src() : (items || []).filter(Boolean);
@@ -6193,7 +6218,7 @@
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
     modal: { open: modalOpen, close: modalClose, top: function () { return MODALS[MODALS.length - 1] || null; } }, // 模态层：open(窗口元素, { cls, onBackdrop, onClose }) → M；close(M)
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
-    command: command, palette: palette, quickPick: quickPick, menu: menu, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
+    command: command, palette: palette, quickPick: quickPick, menu: menu, pickFiles: pickFiles, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; }, checkVersion: function () { checkVersion(true); },
     embed: function (name, fn) { EMBEDS[name] = fn; }, // 设置页里一整块交给别的文件画（kind: "embed"）

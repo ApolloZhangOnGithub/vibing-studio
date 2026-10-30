@@ -77,6 +77,9 @@ html.termapp .tpane.agentfoot:not(.tl) .term, html.termapp .tpane.agentfoot:not(
 /* 选区自己画（同 iTerm：浅蓝底、黑字）；制表符选中后跟着变黑 */
 .tpane .term::selection, .tpane .term ::selection { background: transparent; color: #000; }
 .tpane .term .ttu-box::selection { color: transparent; -webkit-text-fill-color: transparent; }
+/* 自己有底色的字（diff 的红绿行、改动的那几个字、行内代码）：底色盖在选区那一层上面，选中了还是红绿、只有字变黑——
+   这几处让浏览器自己在字后面画选区（同 iTerm：选中的格子换成选区的底色），整行、一半都对得上 */
+.tpane .term [style*="background-color"]::selection, .tpane .term [style*="background-color"] ::selection { background: #b5d5ff; }
 .tpane .term .ttu-box.tsb { filter: brightness(0); } /* 选中的表格线跟选中文字一样变黑（tsb：不能叫 sel——下面选区那一层的规则会把它们挪到左上角，选区的框跟着从最上面画到最下面，整片变蓝） */
 .tpane .term > .sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .tpane .term > .sel > div { position: absolute; background: #b5d5ff; }

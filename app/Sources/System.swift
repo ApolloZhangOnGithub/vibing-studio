@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 enum SystemInfo {
-  static let commands = ["fs.thumb", "system.status", "system.load", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp", "fs.chooseFolder"]
+  static let commands = ["fs.thumb", "system.status", "system.load", "fs.apps", "fs.openWith", "fs.trash", "fs.tags", "fs.share", "fs.chooseApp", "fs.chooseFolder", "fs.chooseFiles"]
   private static var thumbs: [String: String] = [:] // path|size|mtime → data URL
   private static var sharing: NSSharingServicePicker?
 
@@ -116,6 +116,20 @@ enum SystemInfo {
       let r: NSApplication.ModalResponse
       if let win = NSApp.keyWindow { r = await panel.beginSheetModal(for: win) } else { r = panel.runModal() }
       return r == .OK ? (panel.url?.path ?? NSNull()) : NSNull()
+    case "fs.chooseFiles":
+      // 选文件（输入框 ··· 里的「添加图片…」……）：系统的「打开」面板 → 选中的路径。
+      //   页面自己的 <input type=file> 只在点按的那一下里才开得出来；菜单是系统的菜单时，选完那一项已经不算「点按的那一下」，什么都不出来
+      let panel = NSOpenPanel()
+      panel.canChooseDirectories = false
+      panel.canChooseFiles = true
+      panel.allowsMultipleSelection = (a["multiple"] as? Bool) ?? true
+      let types = ((a["types"] as? [String]) ?? []).compactMap { UTType($0) }
+      if !types.isEmpty { panel.allowedContentTypes = types }
+      if let d = a["dir"] as? String, !d.isEmpty { panel.directoryURL = URL(fileURLWithPath: (d as NSString).expandingTildeInPath) }
+      panel.prompt = (a["prompt"] as? String) ?? "打开"
+      let r: NSApplication.ModalResponse
+      if let win = NSApp.keyWindow { r = await panel.beginSheetModal(for: win) } else { r = panel.runModal() }
+      return r == .OK ? panel.urls.map { $0.path } : []
     case "fs.chooseApp":
       // 「打开方式 › 其他…」：系统的「选取应用程序」（从「应用程序」文件夹开始）→ 选中的 App 的路径；取消了是 null
       let panel = NSOpenPanel()

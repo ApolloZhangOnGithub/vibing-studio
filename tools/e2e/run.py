@@ -66,6 +66,7 @@ TESTS = {
     "mac2mac": {"timeout": 240, "check": chk_mac},
     "idle": {"fixture": "ty", "timeout": 150, "check": chk_idle},
     "scroll": {"gen": "cc", "timeout": 400, "check": chk_scroll},
+    "seldiff": {"gen": "ccdiff", "timeout": 120, "check": lambda o: None if o.get("ok") else "selection probe failed: %s" % o.get("error"), "manual": True}, # 选中 diff 的几行：截图看选区盖不盖得住红绿底
     "energy": {"fixture": "ty", "timeout": 150, "check": lambda o: None if o.get("ok") else "energy probe failed: %s" % o.get("error"), "manual": True},
 }
 
@@ -111,6 +112,7 @@ def make_home(work, name, fixture):
 
 def gen_home(home, gen):
     if gen == "cc": subprocess.run([sys.executable, os.path.join(HERE, "gen_cc.py"), home], check=True, capture_output=True) # 很长的 Claude Code 会话（滚动测试）
+    if gen == "ccdiff": subprocess.run([sys.executable, os.path.join(HERE, "gen_ccdiff.py"), home], check=True, capture_output=True) # 有一次 Edit 的短会话（选区测试）
 
 def run_app(work, name, js, home, timeout, extra_env=None, background=False):
     out = os.path.join(work, name + ".json")

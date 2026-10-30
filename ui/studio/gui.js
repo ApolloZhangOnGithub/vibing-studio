@@ -915,6 +915,7 @@
       var c = sug && sug.items[i];
       sugClose();
       if (!c) return;
+      if (c.conn) { ta.value = c.name + " "; grow(); sendB.classList.add("ready"); draftSave(); ta.focus(); return; } // 连接器的命令：填进输入框（有的要带参数），回车再发
       ta.value = ""; grow(); sendB.classList.remove("ready");
       if (drafts) drafts(agentId, ""); if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, []); // 发出去了：共享的图也清掉
       c.run();

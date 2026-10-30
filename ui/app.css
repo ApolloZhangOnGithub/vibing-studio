@@ -127,6 +127,7 @@ html.light .bar { background: #ececec; border-bottom-color: #d4d4d4; color: #666
 /* 选区自己画（同 iTerm：浅蓝底、黑字）：#sel 在 #term 里，与文字、灰底同一层叠上下文；制表符的透明字形选中后仍透明 */
 #term::selection, #term ::selection { background: transparent; color: #000; }
 #term .ttu-box::selection { color: transparent; -webkit-text-fill-color: transparent; }
+#term [style*="background-color"]::selection, #term [style*="background-color"] ::selection { background: #b5d5ff; }
 #sel { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; user-select: none; -webkit-user-select: none; }
 #sel > div { position: absolute; background: #b5d5ff; }
 .noscript { position: fixed; bottom: 20px; color: #ddd; font: 14px sans-serif; }
