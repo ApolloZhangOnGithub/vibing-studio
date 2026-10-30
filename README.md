@@ -4,6 +4,16 @@
 **Visual Studio Code + Claude Code 的终端界面（TUI）**，也可以是 **Claude Desktop** 的样子；自带访达式的文件 / Agent 浏览器、
 活动监视器、内置浏览器，还有一个内置的助手 Paimon（帮你看着正在干活的 Agent）。
 
+## 截图 · Screenshots
+
+| Claude Code 的终端界面（diff、代码块同 Claude Code 自己的样子）<br>Terminal UI | Claude Desktop 风格<br>Claude Desktop style |
+|---|---|
+| ![终端界面](docs/screenshot-tui.jpg) | ![Claude Desktop 风格](docs/screenshot-gui.jpg) |
+
+| 访达式的文件 / Agent 浏览器<br>Finder-style files & agents | Claude App 风格的新会话<br>New session |
+|---|---|
+| ![访达](docs/screenshot-dash.jpg) | ![新会话](docs/screenshot-ca.jpg) |
+
 ## 目录
 
 | 目录 | 是什么 |
