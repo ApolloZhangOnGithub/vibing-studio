@@ -1522,6 +1522,23 @@
   }
 
   // ======== agent 的界面（同 Claude Code 全屏模式）：接上一个 agent；关掉 / 退出只是不看了，agent 照样跑 ========
+  var CC_CMDS = [["add-dir", "Add a new working directory"], ["agents", "Manage agent configurations"], ["branch", "Create a branch of the current conversation at this point"], ["btw", "Ask a quick side question without interrupting the main conversation"],
+    ["clear", "Clear conversation history and free up context"], ["compact", "Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]"], ["config", "Open config panel"], ["context", "Show current context usage"],
+    ["copy", "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)"], ["cost", "Show the total cost and duration of the current session"], ["diff", "View uncommitted changes and per-turn diffs"], ["doctor", "Diagnose and verify your Claude Code installation and settings"],
+    ["effort", "Set effort level for model usage"], ["exit", "Exit the REPL"], ["export", "Export the current conversation to a file or clipboard"], ["files", "List all files currently in context"], ["goal", "Set a goal: keep working until the condition is met"],
+    ["help", "Show help and available commands"], ["hooks", "View hook configurations for tool events"], ["init", "Initialize a new CLAUDE.md file with codebase documentation"], ["mcp", "Manage MCP servers"], ["memory", "Edit Claude memory files"],
+    ["model", "Set the AI model for Claude Code"], ["permissions", "Manage allow & deny tool permission rules"], ["plan", "Enable plan mode or view the current session plan"], ["plugin", "Manage Claude Code plugins"], ["pr-comments", "Get comments from a GitHub pull request"],
+    ["release-notes", "View release notes"], ["rename", "Rename the current conversation"], ["resume", "Resume a previous conversation"], ["review", "Review a pull request"], ["rewind", "Restore the code and/or conversation to a previous point"],
+    ["security-review", "Complete a security review of the pending changes on the current branch"], ["skills", "List available skills"], ["stats", "Show your Claude Code usage statistics and activity"], ["status", "Show Claude Code status including version, model, account, API connectivity, and tool statuses"],
+    ["statusline", "Set up Claude Code's status line UI"], ["tasks", "List and manage background tasks"], ["todos", "List current todo items"], ["usage", "Show plan usage limits"], ["vim", "Toggle between Vim and Normal editing modes"]];
+  // Codex 的会话：斜杠菜单是 Codex 自己的命令（说明照它 TUI 的）+ 你的提示词（~/.codex/prompts/*.md → /prompts:名字）
+  // pi 的会话里能用的：这边做得了的几个（别的只在 pi 自己的终端界面里有）
+  var PI_CMDS = [["new", "Start a new session"], ["name", "Set the session display name, or show the current name when omitted"], ["model", "Show or set the model (provider/model)"], ["session", "Show session info and statistics"]];
+  var CX_CMDS = [["model", "choose what model and reasoning effort to use"], ["effort", "set reasoning effort: minimal / low / medium / high / xhigh"], ["review", "review my current changes and find issues"],
+    ["rename", "rename the current thread"], ["new", "start a new chat during a conversation"], ["fork", "fork the current chat"], ["init", "create an AGENTS.md file with instructions for Codex"],
+    ["compact", "summarize conversation to prevent hitting the context limit"], ["goal", "set a goal for this thread (/goal clear to clear)"], ["diff", "show git diff (including untracked files)"],
+    ["status", "show current session configuration and token usage"], ["mcp", "list configured MCP tools"], ["quit", "exit Codex"]];
+  window.TSU_CONNCMDS = function (conn) { return conn === "codex" ? CX_CMDS : conn === "pi" ? PI_CMDS : CC_CMDS; }; // 连接器会话的斜杠菜单（图形界面也用）
   var COMMANDS = [
     { name: "/model", desc: "切换此 Agent 的模型" },
     { name: "/effort", desc: "推理强度：off / low / high / max" },
@@ -1577,6 +1594,13 @@
     draftsT = setTimeout(saveDrafts, 120); // 很快就记下：App 退出时页面不一定等得到 pagehide（写了一半的话不能丢）
   }
   window.addEventListener("pagehide", function () { if (draftsT) saveDrafts(); });
+  // 输入框里附的图（还没发出去的）：按 agent 放在内存里（图大，不写 localStorage），终端界面、图形界面（Claude App 风格）都从这里拿——
+  //   换界面风格时图跟着走（用户 2026-10-30：以前切过去只剩一个「[Image #1」）。字里的「[Image #N]」对着这里的 no
+  var DIMG = {};
+  window.TSU_DRAFTIMG = {
+    get: function (id) { return (DIMG[id] || []).slice(); },
+    set: function (id, l) { l = (l || []).filter(function (x) { return x && x.data; }); if (l.length) DIMG[id] = l.map(function (x) { return { no: x.no, media_type: x.media_type, data: x.data, path: x.path || "" }; }); else delete DIMG[id]; },
+  };
   // App 退出前（原生的 applicationShouldTerminate 叫它）：写了一半的话马上记下；正在送的那一句本来就随时记着（claude.js 的 lqSave）
   window.TSU_FLUSH = function () { try { if (draftsT) { clearTimeout(draftsT); saveDrafts(); } } catch (e) { /* 记不了就算了 */ } };
   document.addEventListener("visibilitychange", function () { if (document.hidden && draftsT) saveDrafts(); });
@@ -1859,7 +1883,13 @@
     //   跟随设置 / 自己调过的：照旧每项都在。翻译回复是全局的，一直在外面
     var kinds = convItems(MI, agentId, x && x.acc), trI = kinds.filter(function (it) { return it && it.label === "翻译回复"; });
     if (x && x.preset) kinds = [{ label: "自定义", icon: MI.sliders || MI.filter, items: function () { var l = convItems(MI, agentId, x && x.acc).filter(function (it) { return !(it && it.label === "翻译回复"); }); while (l.length && l[l.length - 1] && l[l.length - 1].sep) l.pop(); return l; } }, { sep: true }].concat(trI);
-    return (ui ? [ui, { sep: true }] : []).concat(x && x.items.length ? x.items.concat([{ sep: true }]) : [], kinds, window.STUDIO && STUDIO.agentMenuItems ? STUDIO.agentMenuItems(MI, agentId) : []); // 显示 ›（任务清单 ⌃T、后台任务、子 Agent、状态信息）；在跑的时候还有「停止」
+    // 图形界面（Claude App 风格等）：对话的详细程度——简洁（只看最后的回答）· 标准 · 最详细（全部展开）
+    var dtl = null;
+    if (P && P.program && P.program.gui && window.STUDIO && STUDIO.get && STUDIO.setv) {
+      var DL = [["brief", "简洁"], ["standard", "标准"], ["full", "最详细"]], dNow = STUDIO.get("guiDetail") || "standard";
+      dtl = { label: "详细程度", icon: MI.sliders || MI.filter, value: (DL.filter(function (d) { return d[0] === dNow; })[0] || DL[1])[1], items: function () { return DL.map(function (d) { return { label: d[1], radio: true, checked: dNow === d[0], run: function () { STUDIO.setv("guiDetail", d[0]); allPanes().forEach(function (p) { if (p.program && p.program.gui && p.renderNow) p.renderNow(); }); } }; }); } };
+    }
+    return (ui ? [ui, { sep: true }] : []).concat(dtl ? [dtl, { sep: true }] : [], x && x.items.length ? x.items.concat([{ sep: true }]) : [], kinds, window.STUDIO && STUDIO.agentMenuItems ? STUDIO.agentMenuItems(MI, agentId) : []); // 显示 ›（任务清单 ⌃T、后台任务、子 Agent、状态信息）；在跑的时候还有「停止」
   }
   function convItems(MI, agentId, acc) {
     acc = acc || accGlobal;
@@ -2168,9 +2198,17 @@
     var vflag = function (k) { return vcv(P.view, k); }; // 子 Agent 的几块、合并读取、按工具：一格自己的筛选有就按它的
     var amode = function (k) { return agentModeIn(P.view, k); }; // Agent 消息的一种按哪一档：full / line / hidden
     // 输入框换了地方（右侧栏 ↔ 这里）：接着那边没发出去的字
-    V.syncDraft = function () { var d = draftsMap()[agentId]; P.ta.value = d ? d.text : ""; pastes = d ? (d.pastes || []).slice() : []; renderInput(); };
+    // 附的图：字里每个「[Image #N]」对着共享的那份里 no 一样的图；字里没有的图（从图形界面过来、那边没写进字里的）补在最前面
+    var imgsFromShared = function () {
+      var l = window.TSU_DRAFTIMG ? TSU_DRAFTIMG.get(agentId) : [], ta = P.ta;
+      attach = l.map(function (x) { return { no: x.no, tag: "[Image #" + x.no + "]", media_type: x.media_type, data: x.data, path: x.path || "" }; });
+      var miss = attach.filter(function (a) { return ta.value.indexOf(a.tag) < 0; }).map(function (a) { return a.tag; });
+      if (miss.length) ta.value = miss.join(" ") + " " + ta.value;
+    };
+    var imgsToShared = function () { if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, attach.filter(function (a) { return P.ta.value.indexOf(a.tag) >= 0; })); };
+    V.syncDraft = function () { var d = draftsMap()[agentId]; P.ta.value = d ? d.text : ""; pastes = d ? (d.pastes || []).slice() : []; imgsFromShared(); renderInput(); };
     var d0 = draftsMap()[agentId];
-    if (d0 && !P.ta.value) { P.ta.value = d0.text; pastes = (d0.pastes || []).slice(); } // 上次没发出去的
+    if (!P.ta.value) { if (d0) { P.ta.value = d0.text; pastes = (d0.pastes || []).slice(); } imgsFromShared(); } // 上次没发出去的（连同附的图）
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
@@ -3908,7 +3946,12 @@
       else if (g.classList.contains("open")) { if (g.dataset.def && g.dataset.def !== "full") delete open[g.dataset.key]; else open[g.dataset.key] = false; } // 收起：回到设置的样子（预览就回到预览的那几行，不是收成只剩一行）；设置本来就是完整结果的才收成只看调用
       else open[g.dataset.key] = true; // 展开：完整
       var ti = parseInt(g.dataset.key, 10), t = rt.session().turns[ti];
-      if (t) drawTurn(t);
+      if (!t) return;
+      // 点的那一行留在原处，内容往下展开 / 收起（用户 2026-10-28：有的展开时整块往上跑）——以前贴着底的时候按「跟着到底」挪，标题被顶上去
+      var gk = g.dataset.key, y0 = g.getBoundingClientRect().top;
+      drawTurn(t);
+      var g2 = P.out.querySelector('.grp[data-key="' + (window.CSS && CSS.escape ? CSS.escape(gk) : gk) + '"]');
+      if (g2) { var dy = g2.getBoundingClientRect().top - y0; if (Math.abs(dy) >= 1) P.screen.scrollTop += dy; P.onScroll(true); }
     });
 
     // ---- 状态（对话末尾）：转圈、后台任务、排队的消息。末尾一行空行（与输入栏隔开，同 Claude Code）----
@@ -4142,22 +4185,7 @@
       return out.join(" | ");
     }
     // Claude Code 的会话：斜杠菜单是 Claude Code 自己的命令（名字、说明照它的；commands/ 里抄的）+ 你的技能（~/.claude/skills）——不列 Paimon 的 agent
-    var CC_CMDS = [["add-dir", "Add a new working directory"], ["agents", "Manage agent configurations"], ["branch", "Create a branch of the current conversation at this point"], ["btw", "Ask a quick side question without interrupting the main conversation"],
-      ["clear", "Clear conversation history and free up context"], ["compact", "Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]"], ["config", "Open config panel"], ["context", "Show current context usage"],
-      ["copy", "Copy Claude's last response to clipboard (or /copy N for the Nth-latest)"], ["cost", "Show the total cost and duration of the current session"], ["diff", "View uncommitted changes and per-turn diffs"], ["doctor", "Diagnose and verify your Claude Code installation and settings"],
-      ["effort", "Set effort level for model usage"], ["exit", "Exit the REPL"], ["export", "Export the current conversation to a file or clipboard"], ["files", "List all files currently in context"], ["goal", "Set a goal: keep working until the condition is met"],
-      ["help", "Show help and available commands"], ["hooks", "View hook configurations for tool events"], ["init", "Initialize a new CLAUDE.md file with codebase documentation"], ["mcp", "Manage MCP servers"], ["memory", "Edit Claude memory files"],
-      ["model", "Set the AI model for Claude Code"], ["permissions", "Manage allow & deny tool permission rules"], ["plan", "Enable plan mode or view the current session plan"], ["plugin", "Manage Claude Code plugins"], ["pr-comments", "Get comments from a GitHub pull request"],
-      ["release-notes", "View release notes"], ["rename", "Rename the current conversation"], ["resume", "Resume a previous conversation"], ["review", "Review a pull request"], ["rewind", "Restore the code and/or conversation to a previous point"],
-      ["security-review", "Complete a security review of the pending changes on the current branch"], ["skills", "List available skills"], ["stats", "Show your Claude Code usage statistics and activity"], ["status", "Show Claude Code status including version, model, account, API connectivity, and tool statuses"],
-      ["statusline", "Set up Claude Code's status line UI"], ["tasks", "List and manage background tasks"], ["todos", "List current todo items"], ["usage", "Show plan usage limits"], ["vim", "Toggle between Vim and Normal editing modes"]];
-    // Codex 的会话：斜杠菜单是 Codex 自己的命令（说明照它 TUI 的）+ 你的提示词（~/.codex/prompts/*.md → /prompts:名字）
-    // pi 的会话里能用的：这边做得了的几个（别的只在 pi 自己的终端界面里有）
-    var PI_CMDS = [["new", "Start a new session"], ["name", "Set the session display name, or show the current name when omitted"], ["model", "Show or set the model (provider/model)"], ["session", "Show session info and statistics"]];
-    var CX_CMDS = [["model", "choose what model and reasoning effort to use"], ["effort", "set reasoning effort: minimal / low / medium / high / xhigh"], ["review", "review my current changes and find issues"],
-      ["rename", "rename the current thread"], ["new", "start a new chat during a conversation"], ["fork", "fork the current chat"], ["init", "create an AGENTS.md file with instructions for Codex"],
-      ["compact", "summarize conversation to prevent hitting the context limit"], ["goal", "set a goal for this thread (/goal clear to clear)"], ["diff", "show git diff (including untracked files)"],
-      ["status", "show current session configuration and token usage"], ["mcp", "list configured MCP tools"], ["quit", "exit Codex"]];
+    // Claude Code、Codex、pi 的斜杠命令：CC_CMDS、CX_CMDS、PI_CMDS 在最外层（图形界面的输入框也用，见 TSU_CONNCMDS）
     var cxPrompts = null;
     function loadCxPrompts() {
       if (cxPrompts || !window.TSU_LOCAL || !TSU_LOCAL.list) return;
@@ -4336,7 +4364,7 @@
       panel.sel = (x0.options || []).length; panel.typing = true;
       return true;
     }
-    V.inputChanged = function (t) { if (t === "input" && P.ta.value.length > 10000) truncLong(); if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
+    V.inputChanged = function (t) { if (t === "input") imgsToShared(); if (t === "input" && P.ta.value.length > 10000) truncLong(); if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
 
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
     function openPanel(p) {
@@ -4625,9 +4653,19 @@
       var left = Math.max(0, Math.round((ref - c.tokens) / ref * 100));
       return on ? { text: left + "% until auto-compact", err: false } : { text: "Context low (" + left + "% remaining) · Run /compact to compact & continue", err: true };
     }
+    // 到了用量上限、还没过（记录最后是 Claude Code 写的「You've hit your limit · resets 7:20pm」，后面没有新的话）：
+    //   同 Claude Code 状态行上面那一行「⚠ Usage limit reached · continuing automatically at 7:20pm」——它到点自己接着跑；这里没法替它按 Esc，不写「esc to cancel」
+    function limitLine() {
+      var ts = rt.session().turns, t = ts[ts.length - 1], ps = t && t.parts || [], p = ps[ps.length - 1];
+      if (!p || p.kind !== "apinote" || !/limit|上限|限制/i.test(p.text || "")) return "";
+      var m = /resets?\s+([0-9][0-9:]*\s*(?:[ap]m)?)/i.exec(p.text) || /将于\s*([0-9][0-9:]*)/.exec(p.text);
+      return "⚠ Usage limit reached · " + (m ? "continuing automatically at " + m[1].replace(/\s+/g, "").toLowerCase() : "continuing automatically when it resets");
+    }
     function connFoot(indent, fcols) {
       var D = P.DIM, out = [], L = rt.limits ? rt.limits() : null, c = rt.ctx ? rt.ctx() : null;
       var pcs = function (v) { return v === null || v === undefined ? "n/a" : v + "%"; };
+      var lim = agent.connector !== "teyvat" ? limitLine() : "";
+      if (lim) out.push(indent + "  " + clip(lim, Math.max(20, fcols - 4)));
       if (agent.connector === "teyvat") { // Teyvat：它在哪儿跑（前台 / 后台 / 没在跑）、在做什么（同它状态栏的 Working… / Waiting… / Hibernating… / Paused）、模型
         var ti0 = rt.info || {}, en0 = enLang(), wk = ti0.wakeAt ? new Date(ti0.wakeAt).toLocaleTimeString(en0 ? "en-US" : "zh-CN", { hour: "numeric", minute: "2-digit" }) : "";
         // 在做什么（Working… / Waiting… / Hibernating…）写在上面那一行（它的状态栏）；这里只写模型。在终端里（前台）跑的这里只能看：写一句「在终端里运行」
@@ -5377,6 +5415,7 @@
       ta.setRangeText(a.tag, ta.selectionStart, ta.selectionEnd, "end");
       attach.push(a);
       draftSet(agentId, ta.value, pastes);
+      imgsToShared();
       renderInput();
       var img = new Image(), url = URL.createObjectURL(file);
       img.onerror = function () { // 解不开的（有的 HEIC、TIFF）：拿掉这个号，交回去插路径
@@ -5395,6 +5434,7 @@
         var type = file.type === "image/png" ? "image/png" : "image/jpeg", data = c.toDataURL(type, 0.9);
         a.media_type = type; a.data = data.slice(data.indexOf(",") + 1);
         URL.revokeObjectURL(url);
+        imgsToShared();
         renderInput();
       };
       img.src = url;
@@ -5636,7 +5676,7 @@
         // 正在别的设备上跑（账号里的租约在那台）：这台不插进去，输入留着；ctrl+enter = 接管到这台
         var far = A.elsewhere && A.elsewhere(agentId);
         if (far && !now && (v.trim() || imgs.length) && !/^[\/!]/.test(v.trim())) { P.flash(agent.name + " is running on " + far.device + " · ctrl+enter to take over here", 3500); return; }
-        ta.value = ""; attach = []; pastes = []; histIdx = -1;
+        ta.value = ""; attach = []; pastes = []; histIdx = -1; imgsToShared();
         draftSet(agentId, "");
         renderInput();
         if (now && !v.trim() && !imgs.length && rt.queued && me.allowed) { rt.sendNow("", []); P.toBottom(); return; } // 空输入：把排着的那条马上发
@@ -5669,7 +5709,7 @@
       // Ctrl+C：选着字就照常复制；没选：清空输入；空输入连按两次回到 shell
       if (e.ctrlKey && (k === "c" || k === "C") && !String(document.getSelection()) && ta.selectionStart === ta.selectionEnd) {
         e.preventDefault();
-        if (ta.value || attach.length) { ta.value = ""; pastes = []; attach = []; draftSet(agentId, ""); renderInput(); return; }
+        if (ta.value || attach.length) { ta.value = ""; pastes = []; attach = []; draftSet(agentId, ""); imgsToShared(); renderInput(); return; }
         return ctrlC();
       }
       // Esc 只做一件事，按优先级：关命令菜单 > 把排队的消息拿回输入框 > 打断

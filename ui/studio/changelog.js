@@ -11,6 +11,27 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-30", ver: "0.2.1.471", items: {
+      new: [
+        ["Claude App 风格的新会话：Claude Code、Codex 也能先选模型和推理强度（第一句话起就用）；「其他文件夹…」用系统的选文件夹面板，不用打路径（需要 App 309）。", "New sessions in the Claude App style: Claude Code and Codex can now pick the model and reasoning effort up front (used from the first message), and Other Folder… opens the system folder picker instead of asking for a path (needs App 309)."],
+        ["Claude App 风格的会话列表最后一行「已归档」：点进去看归档了的会话，顶上「返回全部会话」回来。", "The Claude App style session list now ends with Archived: open it to see archived sessions, and use Back to All Sessions at the top to return."],
+      ],
+      improved: [
+        ["代码块的样子同 Claude Code：没写语言的代码块用它那种淡蓝紫色，不缩进、不带行号（以前是绿色）；行内代码也是同一种颜色。", "Code blocks now look like Claude Code’s: blocks without a language use its periwinkle color, with no indent or line numbers (they used to be green); inline code uses the same color."],
+        ["到了用量上限：同 Claude Code，状态行上面一行「⚠ Usage limit reached · continuing automatically at 7:20pm」；它写进记录的那句提示画成上一步下面一行淡字（不再像它说的话），一遍遍重试的同一句并成一行写「×3」。", "When the usage limit is reached, a line above the status line reads “⚠ Usage limit reached · continuing automatically at 7:20pm”, as in Claude Code; the notice it records appears as a dim note under the previous step instead of looking like a reply, and repeated retries collapse into one line with “×3”."],
+        ["「Thought for 5s」那一行能点开：想的全文就在它下面，再点收起。", "The “Thought for 5s” line can be clicked to show the full thinking below it; click again to hide it."],
+        ["展开、收起时点的那一行留在原处，内容往下展开（贴着底时以前会整块往上跑）；任务清单、后台任务那几块快速连点也跟手（以前每点一下整块重建，动画从头来）。", "Expanding or collapsing keeps the row you clicked in place and opens downward (at the bottom it used to jump up), and the task and background-task sections now keep up with quick repeated clicks (each click used to rebuild the section and restart the animation)."],
+        ["Claude App 风格：运行状态行左边是这个会话的连接器图标（不再是转着的字，和字对齐），闲着时写「Worked for 43s · done 2:45 PM」；输入框更圆、两边有空地时比对话稍宽；会话列表、后台任务、文件、设置目录滚动时边上淡出，同对话区；边栏收起后指着不再自己弹出来；后台任务卡片去掉了没用的全屏按钮；新会话「接下来做什么」左边的图标跟着选的连接器；Paimon 不再在连接器里写「未开启」。", "Claude App style: the status line shows the session’s connector icon (no more spinning character, and it lines up with the text) and, when idle, “Worked for 43s · done 2:45 PM”; the input box is rounder and slightly wider than the conversation when there’s room; the session list, background tasks, files and settings fade at the edges while scrolling, like the conversation; the collapsed sidebar no longer pops out on hover; the background tasks card no longer has a useless full-screen button; the icon next to “What’s up next?” follows the chosen connector; and Paimon is no longer listed as “Off”."],
+        ["Teyvat 右侧栏的「意图」照样子排：粗体、行内代码不再露出星号、反引号，标题、编号的待办、接在下面的说明分得清。", "Teyvat’s Intentions in the side bar now render properly: bold and inline code no longer show raw asterisks and backticks, and headings, numbered to-dos and their notes are clearly separated."],
+        ["说法：「另外 26 个」，不再是「还有 26 个」。", "Wording: counts now read “另外 26 个” instead of “还有 26 个”."],
+        ["内嵌浏览器滚到最上、最下不再回弹（需要 App 309）。", "The built-in browser no longer bounces at the top and bottom of a page (needs App 309)."],
+      ],
+      fixed: [
+        ["用中文输入法打字，回车选词时把消息直接发了出去（Claude App 风格、图形界面的输入框）。", "Pressing Return to pick a candidate in a Chinese input method sent the message (Claude App style and graphical input boxes)."],
+        ["在别的终端里跑的会话问你问题时，下面写着「press ↑ to answer」，按了又说答不了：在这里答不了的不再提示。", "When a session running in another terminal asked a question, the footer said “press ↑ to answer”, which then failed; it no longer offers to answer where it can’t."],
+        ["「显示」菜单里有两个「状态栏」。", "The View menu listed Status Bar twice."],
+      ],
+    } },
     { date: "2026-10-28", ver: "0.2.1.470", items: {
       new: [
         ["Linux 服务器版（不需要桌面）：「设备」右上角「添加服务器」给一条命令，在服务器上运行（curl … | sh，不用 root、不用装别的）——自己下载、配对到你的账号（不输密码、不输代码）、装成开机自己起来的服务、以后自己更新。之后它出现在「设备」里，连按两下在新窗口中打开：终端、文件、上面的 Teyvat agent 都在那台上。支持 x86_64、arm64（glibc 2.28 以上的发行版）。", "Linux server edition (no desktop needed): Devices › Add Server gives you one command to run on the server (curl … | sh, no root, nothing else to install). It downloads, pairs with your account (no password, no code), installs itself as a service that starts at boot and updates itself. It then appears in Devices; double-click to open it in a new window with its terminals, files and Teyvat agents. Supports x86_64 and arm64 (distributions with glibc 2.28 or later)."],

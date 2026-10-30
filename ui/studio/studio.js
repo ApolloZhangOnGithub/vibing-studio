@@ -221,7 +221,7 @@
     if (!rt || !rt.tyPanel) return "";
     var d = rt.tyPanel(), st = d.state || {}, now = Date.now();
     var sec = function (k, title, extra, body) {
-      return '<div class="st-fsec' + (famFolded(aid, k) ? " folded" : "") + '" data-aid="' + esc(aid) + '" data-sec="' + k + '"><div class="st-fh" data-st="fam-fold" title="收起 / 展开"><i class="st-fchev"></i><span class="st-ft">' + esc(title) + "</span>" + (extra || "") +
+      return '<div class="st-fsec" data-aid="' + esc(aid) + '" data-sec="' + k + '"><div class="st-fh" data-st="fam-fold" title="收起 / 展开"><i class="st-fchev"></i><span class="st-ft">' + esc(title) + "</span>" + (extra || "") +
         '</div><div class="st-fb"><div class="st-fbi">' + body + "</div></div></div>";
     };
     var fe = function (ms) { var s0 = Math.floor(Math.max(0, ms) / 1000); if (s0 < 60) return s0 + "s"; if (s0 < 3600) { var m0 = Math.floor(s0 / 60), r0 = s0 % 60; return r0 ? m0 + "m " + r0 + "s" : m0 + "m"; } return Math.floor(s0 / 3600) + "h " + Math.floor(s0 % 3600 / 60) + "m"; };
@@ -293,7 +293,7 @@
     var goalHtml = gl ? '<div class="st-fgoal' + (TWRAP[gk] ? " wrap" : "") + '" data-st="todo-wrap-' + esc(gk) + '"><i class="st-tg st-fgi">◎</i><span class="st-cut" title="' + esc(gl.text) + '"><b>Goal</b> ' + esc(trT(gl.text, aid)) + '</span><span class="st-fill"></span><span class="st-dim">' + (gl.checking ? "checking…" : "active" + (gAge >= 864e5 ? " " + Math.floor(gAge / 864e5) + "d" : gAge >= 36e5 ? " " + Math.floor(gAge / 36e5) + "h" : gAge >= 6e4 ? " " + Math.floor(gAge / 6e4) + "m" : "")) + "</span></div>" : "";
     var sec = function (k, title, extra, body) {
       // 收着的直接画成收着的（class 在字符串里）：重画时不会先展开再收一遍（那样看着是上下跳）；只有点标题行才有往上收 / 往下展开的动画
-      return '<div class="st-fsec' + (famFolded(aid, k) ? " folded" : "") + '" data-aid="' + esc(aid) + '" data-sec="' + k + '"><div class="st-fh" data-st="fam-fold" title="收起 / 展开"><i class="st-fchev"></i><span class="st-ft">' + esc(title) + "</span>" + (extra || "") +
+      return '<div class="st-fsec" data-aid="' + esc(aid) + '" data-sec="' + k + '"><div class="st-fh" data-st="fam-fold" title="收起 / 展开"><i class="st-fchev"></i><span class="st-ft">' + esc(title) + "</span>" + (extra || "") +
         '</div><div class="st-fb"><div class="st-fbi">' + body + "</div></div></div>";
     };
     // 点开看详情的：那一行也换行显示全文。子 Agent：Claude Code 的会话里点一下进去看它自己的记录（只读的标签页）；Paimon 的就地看详情
@@ -3599,7 +3599,7 @@
   }
   // 发布的默认值 = 作者自己用着的那一套（2026-09-29 照 ~/.paimon/studio.json 抄的）：做完通知、界面用系统字、活动栏精致、布局紧凑、标题栏不放地址放总览、
   //   不要状态栏 / 缩略图 / 路径导航。名字、头像、语言这些个人的不抄
-  var SET_DEF = { mdLineNumbers: false, linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
+  var SET_DEF = { guiDetail: "standard", mdLineNumbers: false, linkOpen: "builtin", chatWidth: "efficient", agentNotify: "done", lang: "auto", ui: "tui", os: "vscode", devFeatures: false, claudeTheme: "system", claudeChatFont: "system", claudeMotion: "system", settingsDesc: "key", callMe: "", fullName: "", avatar: "github", statusLine: "global", defaultShell: "zsh", macDock: "bottom", macDockSize: 52, macMagnify: true, macAutoHide: false, macWidgets: true, macWall: "pub-sunset", claudeGroupByDate: true, claudeGroupBy: "connector", claudeStatus: "active", claudeEnv: [], claudeSort: "activity", claudeDots: true, claudeTime: false, claudeGroupOf: {}, claudeGroupOrder: [], claudeCards: "auto", ptTabBar: "auto", ptTitle: true, uiFont: "system", agentFont: "auto", codeFont: "", transcriptSize: "medium", tabBar: "multiple", tabBarPos: "top", editorActions: "tabbar", toolbarHidden: {}, toolbarShown: {}, codeLineNumbers: true, codeScroll: "line", activityPos: "side", activitySize: "compact", sideBarPos: "left", panelAlign: "center", quickInput: "top", density: "compact", activityItems: { agents: true, search: true, extensions: true, manage: true }, appLauncher: "menu", extensions: {}, connectors: {}, uiTui: "claude-code", uiGui: "claude-app", titleBar: { address: false, layout: true, newTab: false, overview: true }, colorScheme: "auto", highlightScheme: "auto", highlightLight: "auto", highlightDark: "auto", fontSize: 12, statusBar: true, minimap: "hide", activityBar: true, breadcrumbs: false, fullAddress: false };
   var SET_ABOUT = {
     colorScheme: "配色方案：auto（跟随系统）或方案 ID（paimon-dark、paimon-light、dark-gray、solarized-dark、solarized-light），也可以自定义：{ \"type\": \"dark\", \"colors\": {…}, \"terminal\": {…} }",
     highlightScheme: "（旧的，只认自定义颜色 { \"k\": \"#…\" }）代码高亮现在分浅色、深色两套：见 highlightLight、highlightDark",
@@ -3610,7 +3610,7 @@
     extensions: "已安装的扩展（在「扩展」视图中勾选安装）：{ \"claude-code\": true }",
     titleBar: "顶栏上显示哪些（顶栏右键可改）：address 地址栏、layout 布局控件、newTab 新建标签页、overview 标签页概览",
     activityItems: "活动栏上显示哪些图标（活动栏右键可改）：agents、search、extensions、manage",
-    codeLineNumbers: "代码文件左侧的行号", mdLineNumbers: "对话里代码块左侧的行号（默认不显示，同 Claude Code）", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
+    codeLineNumbers: "代码文件左侧的行号", guiDetail: "图形界面对话的详细程度：brief（简洁，只看最后的回答）、standard（标准）、full（最详细，全部展开）", mdLineNumbers: "对话里代码块左侧的行号（默认不显示，同 Claude Code）", codeScroll: "代码文件的滚动：line（按行，同终端里的对话）、smooth（平滑）",
     fontSize: "终端与对话的字号（px）", statusBar: "窗口底部的状态栏", minimap: "对话、终端与文件右侧的缩略图：show（始终显示）、scroll（仅手动滚动时浮现）、transparent（透明：无背景与边框，悬停时显示滑块）、hide（隐藏）", activityBar: "窗口最左侧的活动栏（左下角 ⚙ 为管理菜单）", breadcrumbs: "标签栏下方的路径导航（现在在哪：Agent › 会话、文件夹 › 文件）",
   };
   var SET = Object.assign({}, SET_DEF, store("st-settings", {}));
@@ -3634,9 +3634,14 @@
   var setMtime = 0;
   var SETP = {}; // 预览：菜单里指着的那一种（缩略图的样子）临时用上
   var OS_UI = { claude: "gui", terminal: "tui" }; // 应用风格定了 Agent 显示风格的：Claude App 只有 GUI，Pure Terminal 只有 TUI
+  // 应用风格、Agent 显示风格：每个窗口各管各的（用户 2026-10-28：换一个窗口的风格，别的开着的窗口不跟着变）——这个窗口换过就记在它自己这里（按窗口号），
+  //   设置里的那一份是「新开的窗口用哪种」（换的时候也一起改）。别的窗口改了设置文件里的这一项，这个窗口换过的照旧
+  var WIN_KEYS = { os: 1, ui: 1 }, winK = function (k) { return "st-win" + ((window.TSU_WIN && TSU_WIN.id) || 1) + "-" + k; };
+  var winOwn = function (k) { if (!WIN_KEYS[k]) return undefined; try { var v = sessionStorage.getItem(winK(k)); return v === null ? undefined : v; } catch (e) { return undefined; } };
   function getv(k, real) {
     if (k === "ui") { var os0 = getv("os", real); if (OS_UI[os0]) return OS_UI[os0]; }
-    var v = !real && k in SETP ? SETP[k] : SET[k] === undefined ? SET_DEF[k] : SET[k];
+    var wo = winOwn(k);
+    var v = !real && k in SETP ? SETP[k] : wo !== undefined ? wo : SET[k] === undefined ? SET_DEF[k] : SET[k];
     if (k === "minimap" && typeof v === "boolean") v = v ? "show" : "hide"; // 以前是开 / 关
     if (k === "minimap" && v === "transparent") v = "show"; // 以前的「透明」
     if (k === "settingsDesc" && v !== "all") v = "key"; // 以前还有「跟随应用风格」：现在默认只显示必要的
@@ -3649,6 +3654,7 @@
   function setv(k, v, sure) {
     if (k === "os" && OS_FROZEN[v] && !sure && (getv("os", true) || "vscode") !== v) return frozenAsk(v); // 暂停开发的风格：先问一句
     if (k === "fontSize") fontAt = Date.now();
+    if (WIN_KEYS[k]) { try { sessionStorage.setItem(winK(k), String(v)); } catch (e) { /* 存不了：照全局的 */ } }
     SET[k] = v;
     keep("st-settings", SET);
     applySettings();
@@ -3683,7 +3689,9 @@
   // 文件在别处改了（在编辑器里改、agent 改）：读回来，马上用上
   // 第一次读设置文件：页面一起来就读（以前等 2 秒一次的定时器——界面已经露出来了才换成你的字号，看得见跳一下）；读完了界面才露出来（live.js 等 settingsReady）
   var setReadyRes = null, setReady = new Promise(function (r) { setReadyRes = r; });
-  var markReady = function () { if (setReadyRes) { var r = setReadyRes; setReadyRes = null; r(); } };
+  // 设置读到以后：这个窗口的风格定下来（之后别的窗口换风格，这个窗口不跟着变；它自己换过的照它自己的）
+  var winPin = function () { Object.keys(WIN_KEYS).forEach(function (k) { if (winOwn(k) === undefined && SET[k] !== undefined) { try { sessionStorage.setItem(winK(k), String(SET[k])); } catch (e) { /* 存不了就算了 */ } } }); };
+  var markReady = function () { if (setReadyRes) { var r = setReadyRes; setReadyRes = null; r(); winPin(); } };
   setTimeout(function () { loadSettingsFile(); }, 0); // local.js 在前面，TSU_LOCAL 这时已经有了
   // 新设备借 Mac 用（iPhone、iPad）：第一次照那台 Mac 的设置整份抄一份（全名、头像、风格、布局……同 clone），之后各管各的（这边改的不回写 Mac，Mac 改的也不再抄过来）。
   //   抄过的记在 vs-cloned-mac（哪台 Mac）；最多等 4 秒（Mac 一时连不上就先用自己的，下次打开再抄）
@@ -4187,6 +4195,7 @@
         { key: "claudeChatFont", label: "对话字体", kind: "seg", options: [["system", "系统"], ["serif", "衬线"], ["sans", "无衬线"], ["dyslexic", "OpenDyslexic"]], value: getv("claudeChatFont"), def: SET_DEF.claudeChatFont, fontOf: function (v) { return CHAT_FONTS[v] || ""; } },
         { key: "claudeMotion", label: "动画", desc: "减少流式输出和界面中的动画效果", must: true, kind: "seg", options: [["system", "跟随系统"], ["reduced", "减少"]], value: getv("claudeMotion"), def: SET_DEF.claudeMotion },
         CHAT_W(),
+        { key: "guiDetail", label: "详细程度", desc: "简洁：每一问只露出最后的回答，中间的步骤收成一行；标准：话和工具调用交替着；最详细：全部展开", kind: "seg", options: [["brief", "简洁"], ["standard", "标准"], ["full", "最详细"]], value: getv("guiDetail") || "standard", def: "standard" },
       ] : [
         { head: osName },
         { key: "colorScheme", label: "配色方案", desc: "应用于整个窗口", kind: "seg", options: [["auto", "跟随系统"]].concat(Object.keys(SCHEMES).map(function (id) { return [id, SCHEMES[id].name]; })), value: typeof getv("colorScheme") === "object" ? "custom" : getv("colorScheme"), def: SET_DEF.colorScheme },

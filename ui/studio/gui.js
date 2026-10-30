@@ -218,6 +218,9 @@
     var vm = function (k) { return TT().viewMode ? TT().viewMode(k, P.view) : cfg[k]; }; // 同一个标签页拆成几格：每格按它自己的筛选（P.view，vsplit.js 给）
     var on = function (k) { var v = vm(k); return v !== false && v !== "hidden"; };
     var modeOf = function (p) { return TT().toolMode ? TT().toolMode(p, P.view) : A.toolMode(p); };
+    // 对话的详细程度（同 Claude App 对话记录的「普通 / 思考 / 详细」；用户 2026-10-28）：简洁——每一问只露出最后的回答，中间的话、工具调用收成一行；
+    //   标准——现在这样，一段话一组工具交替着；最详细——所有的都展开。默认标准（设置 › 对话、对话 ··· 里改）
+    var detail = function () { var d = window.STUDIO && STUDIO.get ? STUDIO.get("guiDetail") : ""; return d === "brief" || d === "full" ? d : "standard"; };
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（同终端界面，见 live.js titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
@@ -331,9 +334,10 @@
         h += '<div class="gv-user">' + tsEl(t.at) + '<div class="gv-bubble">' + imh + esc(ask).replace(/\n/g, "<br>") + "</div></div>";
       }
       var ai = "";
-      var tm = vm("thinking") || "hidden";
+      var tm = vm("thinking") || "hidden", dl = detail();
+      if (dl === "full" && tm === "hidden") tm = "collapsed";
       if (t.thought && tm !== "hidden") { // 思考：一行（点开看）/ 展开
-        var k0 = ti + ":th", o0 = k0 in open ? open[k0] : tm === "expanded";
+        var k0 = ti + ":th", o0 = k0 in open ? open[k0] : tm === "expanded" || dl === "full";
         ai += '<div class="gv-think' + (o0 ? " open" : "") + '" data-k="' + k0 + '"><button class="gv-sum">思考了 ' + t.thought + " 秒<i></i></button>" + (o0 && t.thinking ? '<div class="gv-det gv-thought">' + md(t.thinking) + "</div>" : "") + "</div>";
       }
       var parts = t.parts || [{ kind: "text", text: t.answer || "" }], group = [], gi = 0, merge = vm("mergeReads") !== false, live = !!(rt.stream && rt.stream.turn === t), lastTool = -1;
@@ -341,7 +345,7 @@
       // 最新的：最后一问（有工具调用的那一问里最后的那一次）——它所在的那一组展开、它露出结果的前几行
       var tsAll = rt.session().turns, latestTi = -1;
       for (var q = tsAll.length - 1; q >= 0 && q >= tsAll.length - 6; q--) { if ((tsAll[q].parts || []).some(function (x) { return x.kind === "tool"; })) { latestTi = q; break; } }
-      var lastEnd = t.at || 0; // 没记时间的那段话：用前一个工具跑完的时候
+      var lastEnd = t.at || 0, finalA = ""; // 没记时间的那段话：用前一个工具跑完的时候；finalA：简洁时单独放在最后的回答
       // 连着的工具调用（中间没说话）并成一组（设置「合并连续的读取」关了：只有一条一条）；一条的就是它自己
       var flushG = function () {
         if (!group.length) return;
@@ -376,8 +380,8 @@
         var mdT = function (x) { var h0 = md(x); return trd ? '<div class="gv-tr' + (showO ? " on" : "") + '" data-tr="' + trk + '">' + h0 + "</div>" : h0; };
         // 最后一次调用工具之后的话是最终回复；夹在工具调用之间的是过程说明（完整 / 一行：灰的第一句，点开看全 / 隐藏；在跑的这一问，最后那段也先算过程说明）
         var tAt = p.at || (!live && i > lastTool && t.stats && t.stats.at) || lastEnd;
-        if (!live && i > lastTool) { if (on("answers")) ai += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); return; }
-        var pm = vm("progress") || "full", xk = ti + ":x" + i, po = xk in open ? !!open[xk] : pm === "full";
+        if (!live && i > lastTool) { if (on("answers")) { if (dl === "brief") finalA += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); else ai += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); } return; }
+        var pm = vm("progress") || "full", xk = ti + ":x" + i, po = xk in open ? !!open[xk] : pm === "full" || dl === "full";
         if (pm === "hidden") return;
         if (po && !(xk in open)) { ai += tsw(tAt, '<div class="gv-md gv-prog">' + mdT(ptx) + "</div>"); return; }
         var first = String(ptx).trim().split("\n")[0].replace(/^[#>*\-\s]+/, "").replace(/[*`_]/g, "");
@@ -386,6 +390,12 @@
         if (tsEl(tAt)) ai += "</div>"; // 时间戳那层
       });
       flushG();
+      // 简洁：这一问中间的话、工具调用、思考收成一行（「12 个步骤」，点开看全），下面是最后的回答；在跑的这一问照常（看得到它在干什么）
+      if (dl === "brief" && !live && ai) {
+        var sk = ti + ":steps", so = !!open[sk], nSteps = parts.filter(function (x) { return x.kind === "tool" || (x.kind === "text" && String(x.text || "").trim()); }).length - (finalA ? 1 : 0);
+        var stl = (window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en") ? nSteps + (nSteps === 1 ? " step" : " steps") : nSteps + " 个步骤";
+        ai = '<div class="gv-steps' + (so ? " open" : "") + '" data-k="' + sk + '"><button class="gv-sum"><span class="gv-st">' + esc(stl) + "</span><i></i></button>" + (so ? '<div class="gv-det">' + ai + "</div>" : "") + "</div>" + finalA;
+      } else ai += finalA;
       if (ai) h += '<div class="gv-ai">' + ai + "</div>";
       // 系统错误（API 出错、网络、登录、沙盒、中断、模型什么都没回……）：不是 Agent 说的，不放进回答里——单独一条紧凑的条（出错红、中断灰）；
       // 按「系统错误」的档位：完整 / 一行（点一下看全）/ 隐藏
@@ -433,7 +443,7 @@
     //   在跑的那条自动展开（跑完收回）；最新的那一条（最后一问里最后一次调用）露出结果的前几行；别的只有一行，点一下看卡片、再点收起。
     //   卡片里的输出先给 40 行，「… 另外 N 行」点开看全，最后「收起」。档位「只看调用」：只有这一行（点开照样看）；「隐藏」：不画（在跑的除外）
     function toolOne(p, k, m, hot) {
-      var run = running(p), auto = run || (hot && m !== "call"), o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
+      var run = running(p), auto = run || (hot && m !== "call") || detail() === "full", o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
       // 在跑的：用时不写进 HTML（每秒一变，整问重画一遍，看着的那一块就跳）——空的 span 带起点，旁边每秒填一次（tickTm）
       var ms = p.t0 && p.t1 ? p.t1 - p.t0 : (p.secs || 0) * 1000, tm = run && p.t0 ? '<span class="gv-tm gv-tick" data-t0="' + p.t0 + '"></span>' : ms >= 1000 ? '<span class="gv-tm">' + esc(durC(ms)) + "</span>" : "";
       return '<div class="gv-tool' + (o ? " open" : "") + (o && lvl === "peek" ? " peek" : "") + (run ? " run" : "") + '" data-k="' + k + '" data-kind="' + kindOf(p.name) + '"><button class="gv-sum"><span class="gv-st">' + esc(t) + "</span>" + (run ? '<span class="gv-dots"></span>' : "") + tm + "<i></i></button>" +
@@ -442,7 +452,7 @@
     // 连着的几次工具调用（中间没说话）：一行汇总「运行了 12 条命令、读取了 3 个文件 · 6 分 3 秒」（这一组从第一条开始的总时长），点开是每一条一行；
     //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 另外 N 条」点开，再点收起）；别的组收着
     function toolGroup(g, key, hot, rowKey) {
-      var live = g.some(running), o = key in open ? !!open[key] : live || hot, allR = !!open[key + ":more"], MAXR = 4;
+      var live = g.some(running), o = key in open ? !!open[key] : live || hot || detail() === "full", allR = !!open[key + ":more"] || detail() === "full", MAXR = 4;
       var t0 = g.reduce(function (m0, p) { return p.t0 && (!m0 || p.t0 < m0) ? p.t0 : m0; }, 0), t1 = live ? 0 : g.reduce(function (m0, p) { return Math.max(m0, p.t1 || (p.t0 ? p.t0 + (p.secs || 0) * 1000 : 0)); }, 0);
       var bad = 0, head = sumText(g, live); // 失败的不单独标（同 Claude Code：组的那一行不写几个失败、不变红；点开那一条自己看）
       var rows = "";
@@ -570,9 +580,14 @@
       var s = e.target.closest(".gv-sum"), box = s && s.parentNode;
       if (!s || !box.dataset.k) return;
       open[box.dataset.k] = !box.classList.contains("open"); // 开着（设置是完整、或点开过）就收起，反之展开
-      var tEl = box.closest(".gv-turn"), t = null;
+      var tEl = box.closest(".gv-turn"), t = null, bk = box.dataset.k, y0 = s.getBoundingClientRect().top;
       blocks.forEach(function (el, k) { if (el === tEl) t = k; });
-      if (t) paintTurn(t, tEl);
+      if (!t) return;
+      follow = false; // 这一下是你点的：不再贴着底（不然变高以后 ResizeObserver 又把它顶上去）；滚到底时自己再跟上
+      paintTurn(t, tEl);
+      // 点的那一行留在原处、内容往下展开（贴着底时以前是往上顶）
+      var b2 = tEl.querySelector('[data-k="' + (window.CSS && CSS.escape ? CSS.escape(bk) : bk) + '"] > .gv-sum');
+      if (b2) { var dy = b2.getBoundingClientRect().top - y0; if (Math.abs(dy) >= 1) scroll.scrollTop += dy; }
     });
 
     // ---- 在跑：输入框上面那一行（转着的点 · 在做什么 · 用时 · token · 不显眼的「停止」）；排着的那条也在输入框上面 ----
@@ -792,12 +807,28 @@
       ta.style.height = h;
       if (pin) { follow = true; scroll.scrollTop = scroll.scrollHeight; }
     }
+    // 草稿（同终端界面那一份）：字里不放「[Image #N]」，图在上面一排缩略图；记下去时图的号跟在字后面——换回终端界面，字和图都在（用户 2026-10-30）
+    var TAG_RE = /\[Image #(\d+)\]\s?/g;
+    function draftSave() {
+      if (!drafts) return;
+      var nx = 0; attach.forEach(function (a) { if (a.no > nx) nx = a.no; });
+      attach.forEach(function (a) { if (!a.no) a.no = ++nx; });
+      var tags = attach.map(function (a) { return "[Image #" + a.no + "]"; }).join(" ");
+      drafts(agentId, (tags ? tags + " " : "") + ta.value);
+      if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, attach);
+    }
+    function draftLoad() {
+      var d = drafts ? drafts(agentId) || "" : "", l = window.TSU_DRAFTIMG ? TSU_DRAFTIMG.get(agentId) : [];
+      ta.value = String(d).replace(TAG_RE, "");
+      attach = l.map(function (x) { return { no: x.no, media_type: x.media_type, data: x.data }; });
+      atts(); grow();
+    }
     function atts() {
       attEl.hidden = !attach.length;
       sendB.classList.toggle("ready", !!(ta.value.trim() || attach.length));
       attEl.innerHTML = attach.map(function (im, i) { return '<span class="gv-attimg"><img src="data:' + im.media_type + ";base64," + im.data + '" alt=""><button data-i="' + i + '" title="移除">×</button></span>'; }).join("");
     }
-    attEl.addEventListener("click", function (e) { var b = e.target.closest("button[data-i]"); if (b) { attach.splice(+b.dataset.i, 1); atts(); } });
+    attEl.addEventListener("click", function (e) { var b = e.target.closest("button[data-i]"); if (b) { attach.splice(+b.dataset.i, 1); atts(); draftSave(); } });
     function addImage(file) {
       if (!file || !/^image\//.test(file.type)) return;
       var img = new Image(), url = URL.createObjectURL(file);
@@ -808,7 +839,7 @@
         var type = file.type === "image/png" ? "image/png" : "image/jpeg", data = c.toDataURL(type, 0.9);
         attach.push({ media_type: type, data: data.slice(data.indexOf(",") + 1) });
         URL.revokeObjectURL(url);
-        atts();
+        atts(); draftSave();
       };
       img.src = url;
     }
@@ -836,7 +867,7 @@
     ta.addEventListener("paste", function (e) { Array.prototype.forEach.call((e.clipboardData && e.clipboardData.items) || [], function (it) { if (it.kind === "file" && /^image\//.test(it.type)) { e.preventDefault(); addImage(it.getAsFile()); } }); });
     host.addEventListener("dragover", function (e) { if (e.dataTransfer && Array.prototype.some.call(e.dataTransfer.items || [], function (x) { return x.kind === "file"; })) e.preventDefault(); });
     host.addEventListener("drop", function (e) { var fs = e.dataTransfer && e.dataTransfer.files; if (fs && fs.length) { e.preventDefault(); e.stopPropagation(); Array.prototype.forEach.call(fs, addImage); } });
-    ta.addEventListener("input", function () { grow(); sendB.classList.toggle("ready", !!(ta.value.trim() || attach.length)); if (drafts) drafts(agentId, ta.value); sugUpdate(); });
+    ta.addEventListener("input", function () { grow(); sendB.classList.toggle("ready", !!(ta.value.trim() || attach.length)); draftSave(); sugUpdate(); });
     // / 命令（Paimon Code）：常用的几个；Claude Code 的会话里 / 命令交给 Claude Code 自己
     var CMDS = [
       { name: "/model", label: "切换模型", run: function () { inCol('[data-c="model"]').click(); } },
@@ -850,8 +881,14 @@
     // 打 / 的时候输入框上面出一小列命令（同 Claude App）：不抢键盘，接着打字就是在筛选；↑↓ 选，回车 / Tab 选定，Esc 收起
     var sug = null, compEl = host.querySelector(".gv-comp");
     function sugList() {
-      var m = !V.claude && /^\/(\S*)$/.exec(ta.value);
+      var m = /^\/(\S*)$/.exec(ta.value);
       if (!m) return [];
+      // Claude Code、Codex、pi 的会话：它们自己的斜杠命令（同终端界面的菜单）——以前图形界面里这些会话打 / 什么都不出（用户 2026-10-28：Codex 的 / 没反应）
+      if (V.claude) {
+        var conn = (rt.agent && rt.agent.connector) || (/^cx:/.test(agentId) ? "codex" : /^pi:/.test(agentId) ? "pi" : "claude-code"), cl = window.TSU_CONNCMDS ? TSU_CONNCMDS(conn) : [], q0 = m[1].toLowerCase();
+        var hit = cl.filter(function (c) { return c[0].toLowerCase().indexOf(q0) === 0; }).concat(q0 ? cl.filter(function (c) { return c[0].toLowerCase().indexOf(q0) > 0; }) : []);
+        return hit.map(function (c) { return { name: "/" + c[0], label: c[1], conn: true }; });
+      }
       var q = m[1].toLowerCase(), rank = function (c) { var n = c.name.slice(1); return n.indexOf(q) === 0 ? 0 : n.indexOf(q) > 0 || c.label.indexOf(q) >= 0 ? 1 : -1; };
       return CMDS.filter(function (c) { return !c.admin || isAdmin(); }).map(function (c) { return [rank(c), c]; }).filter(function (x) { return x[0] >= 0; }).sort(function (a, b) { return a[0] - b[0]; }).map(function (x) { return x[1]; });
     }
@@ -879,7 +916,7 @@
       sugClose();
       if (!c) return;
       ta.value = ""; grow(); sendB.classList.remove("ready");
-      if (drafts) drafts(agentId, "");
+      if (drafts) drafts(agentId, ""); if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, []); // 发出去了：共享的图也清掉
       c.run();
     }
     ta.addEventListener("blur", sugClose);
@@ -888,10 +925,12 @@
       if (!v.trim() && !imgs.length) { if ((rt.queued || (rt.pending && rt.pending().some(function (q) { return q.local; }))) && rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; } // 空着回车：排着的马上发（同 Claude Code 的「Enter to send them now」）
       var w = v.trim().split(/\s+/)[0], c = !V.claude && CMDS.filter(function (x) { return x.name === w; })[0];
       ta.value = ""; attach = []; atts(); grow();
-      if (drafts) drafts(agentId, "");
+      if (drafts) drafts(agentId, ""); if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, []); // 发出去了：共享的图也清掉
       if (!V.claude && w === "/admin" && A && A.adminCommand) { A.adminCommand(v.trim().slice(6)).then(function (msg) { if (rt.record) rt.record(v.trim(), msg); toBottom(); }); return; } // 带参数的：直接办，不发给模型
       if (c) return c.run();
       if (!V.claude && v.trim()[0] === "!" && rt.bang) { rt.bang(v.trim().slice(1).trim()); toBottom(); return; }
+      // 连接器自己的斜杠命令（Codex 的 /model、/effort、/new……，pi 的）：交给它的命令处理（同终端界面）；它不认的照常当话发
+      if (V.claude && rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { toBottom(); return; }
       rt.send(v, imgs);
       toBottom();
     }
@@ -950,7 +989,8 @@
     V.refreshStatus = function () { status(); }; // 任务清单换了位置、⌃T（studio.js）：输入框上方那一块重画
     V.render = function () {
       host.hidden = false;
-      if (!shown) { shown = true; var d = drafts ? drafts(agentId) : ""; if (d && !ta.value) ta.value = d; grow(); }
+      if (!shown) { shown = true; draftLoad(); }
+      else if (document.activeElement !== ta) draftLoad(); // 又露出来（换回这个风格、别处改过草稿）：照共享的那份
       renderAll();
     };
     // 换标签页时这一格被从页面上拿下来再放回去（live.js P.park / P.reshow）：不整段重画，回到离开时看着的地方（贴底的接着贴底）

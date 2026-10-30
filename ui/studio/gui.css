@@ -109,6 +109,10 @@ button.gv-more:hover, .gv-gmore:hover { color: var(--st-fg); text-decoration: un
 .gv-progl > .gv-sum { width: 100%; }
 .gv-progl > .gv-sum > .gv-st { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gv-progl > .gv-prog { margin-top: 4px; }
+/* 简洁（详细程度）：一问中间的步骤收成一行，点开看全 */
+.gv-steps { width: 100%; margin-bottom: 8px; }
+.gv-steps > .gv-sum { width: 100%; color: var(--st-dim); }
+.gv-steps > .gv-det { margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--st-line); }
 /* Agent 消息：别的 agent 发来的（名字加粗）、子 agent 跑完的（✓ 绿、✗ 红、■ 灰；完整时下面是报告） */
 .gv-amsg .gv-st b { font-weight: 600; color: var(--st-fg); }
 .gv-amsg, .gv-rep { margin-top: 8px; }
