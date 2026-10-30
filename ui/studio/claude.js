@@ -40,7 +40,8 @@
   // Claude Code 的模型（全名；带 [1m] 的是 1M 上下文那种，原样传给 --model）。def：~/.claude/settings.json 里的默认模型
   // 模型：同 Claude Desktop 的选择器——上面常用的四个（最新的每家一个），「更多模型」里是 1M 上下文的和上一代的（这一版 Claude Code 认得的）
   var CC = { MODELS: ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5", "claude-haiku-4-5-20251001"], MORE: ["claude-opus-5-5[1m]", "claude-sonnet-5[1m]", "claude-opus-5", "claude-fable-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"], def: "" };
-  (LOC.ready || Promise.resolve()).then(function () { return LOC.read(LOC.info().home + "/.claude/settings.json"); }).then(function (b) { try { var sj = JSON.parse(new TextDecoder().decode(new Uint8Array(b))); CC.def = String(sj.model || ""); CC.defMode = String((sj.permissions && sj.permissions.defaultMode) || ""); CC.autoCompact = sj.autoCompactEnabled !== false; } catch (e) { /* 没设 */ } }, function () {}); // autoCompact：它的自动压缩开着没（/config 里那一项；没设就是开）
+  (LOC.ready || Promise.resolve()).then(function () { return LOC.read(LOC.info().home + "/.claude/settings.json"); }).then(function (b) { try { var sj = JSON.parse(new TextDecoder().decode(new Uint8Array(b))); CC.def = String(sj.model || ""); CC.defMode = String((sj.permissions && sj.permissions.defaultMode) || ""); CC.autoCompact = sj.autoCompactEnabled !== false; var en = sj.env || {}; CC.tier = {}; ["opus", "sonnet", "haiku"].forEach(function (k) { var v = String(en["ANTHROPIC_DEFAULT_" + k.toUpperCase() + "_MODEL"] || "").replace(/\[1M\]/i, "[1m]"); if (v) CC.tier[k] = v; }); } catch (e) { /* 没设 */ } }, function () {}); // autoCompact：它的自动压缩开着没（/config 里那一项；没设就是开）。tier：这一版 Claude Code 的默认模型（opus/sonnet/haiku），模型列表照它跟新
+
   // 5 小时、7 天的限额用了多少：Claude Code 不写到本机文件里，只在它自己的输出里报（stream-json 的 rate_limit_event）——
   // 这边起的 claude -p 每次报了就记下来（带时间），状态行、设置 › 用量都用这一份；从没报过就是 n/a
   CC.limits = (function () { try { return JSON.parse(localStorage.getItem("tsu-cc-limits") || "null"); } catch (e) { return null; } })();
@@ -196,6 +197,7 @@
     rt.models = function () {
       var ids = CC.MODELS.slice(), more = CC.MORE.slice(), add = function (x) { if (x && ids.indexOf(x) < 0 && more.indexOf(x) < 0) more.unshift(x); };
       add(CC.def); add(agent.model); add(modelCmd); add(modelSel); // 默认设置里的、这段会话在用的：不在表里就放进「更多模型」
+      if (CC.tier) { add(CC.tier.opus); add(CC.tier.sonnet); add(CC.tier.haiku); } // 这一版 Claude Code 的默认模型（settings.json 的 ANTHROPIC_DEFAULT_*_MODEL）：出了新模型这里自动跟上
       var mk = function (id, m) { return { id: id, name: ccName(id), desc: id, ctx: /\[1m\]$/i.test(id) ? 1e6 : 2e5, more: !!m, def: !!CC.def && id === CC.def }; };
       return ids.map(function (id) { return mk(id, false); }).concat(more.map(function (id) { return mk(id, true); }));
     };
