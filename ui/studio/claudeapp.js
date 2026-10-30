@@ -378,6 +378,9 @@
         rest.map(function (x) { return row(x, curId(x)); }).join("") + "</div></div></div>";
     });
     if (!R.total) h += '<div class="ca-none">' + esc(R.filtered ? tr("没有匹配的会话", "No matching sessions") : tr("还没有会话", "No sessions yet")) + "</div>";
+    // 归档了的会话：列表最后一行「已归档」点进去看（同 Claude App 边栏最下面那一项）；看着已归档时，顶上一行「全部会话」回来（用户 2026-10-28：看不到归档的）
+    if (!searching && st === "active") h += '<div class="ca-smore ca-archl" data-arch="1" role="button">' + esc(tr("已归档", "Archived")) + "</div>";
+    if (st === "archived") h = '<div class="ca-smore ca-archl" data-arch="0" role="button">' + esc(tr("返回全部会话", "Back to all sessions")) + "</div>" + h;
     var list = side.querySelector(".ca-list");
     if (list.dataset.h !== h) { list.dataset.h = h; list.innerHTML = h; }
     // 收起来的段：元素不重建，只换 class——箭头转过去、下面那一段滑上去（看得见动画）；搜的时候都展开
@@ -1134,6 +1137,8 @@
         return location.reload();
       }
       // 分段：标题上的 +（在这个连接器上开新会话）、点标题收起 / 展开、「还有 N 个」/「收起」
+      var arL = e.target.closest("[data-arch]");
+      if (arL) { e.stopPropagation(); setK("claudeStatus", arL.dataset.arch === "1" ? "archived" : "active"); return refresh(w, true); }
       var sa = e.target.closest(".ca-shadd"), sf = e.target.closest(".ca-shx"), sm = e.target.closest(".ca-smore"), so = e.target.closest(".ca-shflt");
       if (sa) { e.stopPropagation(); peekClose(true); return newIn(w, sa.dataset.new); }
       if (so) { e.stopPropagation(); setSec(so.dataset.only, { only: !secSt(so.dataset.only).only }); return refresh(w, true); } // 漏斗：仅显示运行中 ↔ 全部
@@ -1767,7 +1772,9 @@
   var fadeScan = function () { if (!on() || !fadeRO) return; document.querySelectorAll(FADE_SEL).forEach(function (el) { if (!fadeSeen.has(el)) { fadeSeen.add(el); fadeRO.observe(el); if (el.firstElementChild) fadeRO.observe(el.firstElementChild); } fadeMark(el); }); };
   new MutationObserver(function () { if (on()) requestAnimationFrame(fadeScan); }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   requestAnimationFrame(fadeScan);
-  window.TSU_CLAUDEAPP = { refresh: function () { refresh(null); }, dialog: dialog, fadeScan: fadeScan,
+  // 某个 agent 是哪个连接器的（cc:… Claude Code、cx:… Codex、pi:…、ty:… Teyvat；别的是 Paimon）：它的图标（图形界面运行状态行左边用）
+  var connIcon = function (aid) { var a = String(aid || ""), k = /^cc:/.test(a) ? "cc" : /^cx:/.test(a) ? "cx" : /^pi:/.test(a) ? "pi" : /^ty:/.test(a) ? "ty" : "pm"; return CONN[k] ? ico(k) : ""; };
+  window.TSU_CLAUDEAPP = { refresh: function () { refresh(null); }, dialog: dialog, fadeScan: fadeScan, connIcon: connIcon,
     open: function (u) { var w = front(); if (w && build(w)) { setCard(w, "web", true); var t = curTab(); if (t.url) t = addTab(); webGo(w, u, t); refresh(w, true); } }, // Agent 开网页：当前标签页有东西就开一个新的，不盖掉人正在看的
     web: function () { return { cur: WEB.cur, dev: WEB.dev, wide: WEB.wide, tabs: WEB.tabs.map(function (t) { return { id: t.id, url: t.url, title: t.title, loading: t.loading, err: t.err, frame: t.frame }; }) }; }, // 浏览器卡片现在开着哪些页（给 Agent、测试看）
     newSession: function () { var w = front(); return w && on() && build(w) ? openDraft(w) : null; } }; // 别处的「新建会话」在这个风格里也走草稿

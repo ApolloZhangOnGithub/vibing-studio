@@ -580,7 +580,20 @@
     var trG = function (x) { return x && window.TSU_TRANSLATE ? TSU_TRANSLATE.text(x, agentId) : x; }; // 任务翻译（translate.js）：运行状态行那一句、任务标题
     // 转着的那个字：同终端界面那一套（· ✢ ✳ ✶ ✻ ✽ 来回换，每 120ms 一帧），不是一颗转圈的星；只在跑着、看得见时走
     var SPIN_G = ["·", "✢", "✳\uFE0E", "✶", "✻", "✽", "✽", "✻", "✶", "✳\uFE0E", "✢", "·"], spinT = 0, spinN = 0; // ✳ 后面带 U+FE0E（文字样式）：iPad、iPhone 上不带的话它画成绿底的 emoji ✳️
+    // Claude App 风格：左边是这个会话的连接器图标（Claude Code、Codex、Teyvat……）慢慢闪，不用转着的字（用户 2026-10-28：那个字不对、也没对齐）
+    var appLogo = function () { return document.documentElement.classList.contains("st-os-claude") && window.TSU_CLAUDEAPP && TSU_CLAUDEAPP.connIcon ? TSU_CLAUDEAPP.connIcon(agentId) : ""; };
+    // 闲着：同终端界面输入框下面那行——这一问用了多久、几点做完（Worked for 43s · done 2:45 PM）
+    function doneHtml() {
+      var ts = rt.session ? rt.session().turns : [], lt = null;
+      for (var j = ts.length - 1; j >= 0 && j >= ts.length - 6; j--) if (ts[j] && ts[j].stats) { lt = ts[j]; break; }
+      if (!lt) return "";
+      var st = lt.stats, secs = st.secs || 0, tx = (st.verb || "Worked") + " for " + (secs >= 3600 ? Math.floor(secs / 3600) + "h " + Math.floor(secs % 3600 / 60) + "m" : secs >= 60 ? Math.floor(secs / 60) + "m " + (secs % 60) + "s" : secs + "s");
+      var at = st.at ? new Date(st.at) : null;
+      if (at && !isNaN(at.getTime())) tx += " · done " + at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      return '<div class="gv-spin gv-donel"><span class="gv-dim">' + esc(tx) + "</span></div>";
+    }
     function spinGo() {
+      if (appLogo()) return; // 图标是 CSS 在闪，不用换字
       var i0 = liveEl.querySelector(".gv-spin > i");
       if (i0) i0.textContent = SPIN_G[spinN % SPIN_G.length];
       if (spinT) return;
@@ -595,12 +608,14 @@
       var s = rt.stream, wl = vm("workLine") || "full"; // 运行状态行：完整 / 简洁（转圈和用时）/ 隐藏（Esc、对话 ··· 照样能停）
       var STOPB = ""; // 不再画「■ 停止」（用户不要：跑着的时候没事不打断；要停用 Esc、对话 ···）。以前还和强度滑条的刻度撞了类名，跑到输入框下面压着 +
       liveEl.hidden = !s || wl === "hidden";
-      if (s && wl === "brief") { var hb = '<div class="gv-spin brief"><i>·</i><span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + dur(Date.now() - s.t0) + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
+      if (!s && wl !== "hidden" && appLogo()) { var dh = doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
+      var lg = s ? appLogo() : "", ic0 = lg ? '<i class="gv-logo">' + lg + "</i>" : "<i>·</i>";
+      if (s && wl === "brief") { var hb = '<div class="gv-spin brief">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + dur(Date.now() - s.t0) + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
       else if (s && wl !== "hidden") {
         var act = (rt.todo ? rt.todo() : []).filter(function (x) { return x.status === "in_progress" && x.activeForm; })[0];
         // 同终端界面（Claude Code）：在做的任务的 activeForm，没有就是这一问随机的那个词（Concocting… Swirling…）；等模型、思考中写在后面淡的那段
         var label = s.wait ? "等待重试" : act ? trG(act.activeForm) : s.verb || "Working", phase = s.wait ? "" : !s.firstAt ? "等待模型" : s.thinking ? "思考中" : "";
-        var h = '<div class="gv-spin"><i>·</i><span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + dur(Date.now() - s.t0) + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
+        var h = '<div class="gv-spin">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + dur(Date.now() - s.t0) + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
         if (liveEl.dataset.h !== h) { liveEl.dataset.h = h; liveEl.innerHTML = h; }
         spinGo();
       }

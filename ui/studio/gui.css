@@ -159,6 +159,12 @@ pre.gv-out.err { color: var(--st-red); }
 .gv-live { min-width: 0; flex: 0 1 auto; padding: 0 0 0 10px; overflow: hidden; } /* 在输入框下面那一排的左边：和右边的模型、推理强度同一行（用户：两处要对齐）；左边对着输入框里的字 */
 .gv-live[hidden] { display: none; }
 .gv-spin { display: flex; align-items: baseline; gap: 7px; min-width: 0; color: var(--st-fg); font-size: 13.5px; }
+/* Claude App 风格：左边是连接器的图标，慢慢闪；和字的中线对齐 */
+.gv-spin:has(> .gv-logo) { align-items: center; }
+.gv-spin > .gv-logo { flex: none; display: inline-flex; width: 15px; height: 15px; font-style: normal; animation: ts-ccl-pulse 1.4s ease-in-out infinite; }
+.gv-spin > .gv-logo :is(svg, img, .ca-ico) { width: 15px; height: 15px; display: block; }
+html.st-reduced .gv-spin > .gv-logo { animation: none; }
+.gv-spin.gv-donel { opacity: .9; }
 .gv-spin > .gv-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gv-spin > .gv-dim { flex: none; }
 .gv-stop { flex: none; margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--st-dim); font: inherit; font-size: 12px; opacity: 0; cursor: pointer; transition: opacity 0.15s, background 0.12s, color 0.12s; }

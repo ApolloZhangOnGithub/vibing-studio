@@ -829,3 +829,7 @@ html.termapp.st-os-claude:not(.light) .st-panel .st-pv, html.termapp.st-os-claud
 html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-ft="1"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px); mask-image: linear-gradient(to bottom, transparent, #000 24px); }
 html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-fb="1"] { -webkit-mask-image: linear-gradient(to top, transparent, #000 24px); mask-image: linear-gradient(to top, transparent, #000 24px); }
 html.st-os-claude :is(.ca-list, .st-panel .st-pv > .st-pvb, .fp-list, .ss-toc, .ca-new-top)[data-ft="1"][data-fb="1"] { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+
+/* 输入框（Claude App 风格）：更圆的平滑圆角；比上面的对话稍宽一点（左右各最多 14px）——只在两边有空地时（边栏没都开、对话没撑满）；已经撑满就不动（用户 2026-10-28） */
+html.termapp.st-os-claude .gv .gv-comp { border-radius: 20px; padding-left: 14px; margin-left: calc(-1 * clamp(0px, (100cqw - var(--gv-colw, 880px) - 2 * clamp(14px, 4cqw, 28px)) / 2, 14px)); margin-right: calc(-1 * clamp(0px, (100cqw - var(--gv-colw, 880px) - 2 * clamp(14px, 4cqw, 28px)) / 2, 14px)); }
+html.termapp.st-os-claude .gv .gv-comp .gv-send { border-radius: 50%; }
