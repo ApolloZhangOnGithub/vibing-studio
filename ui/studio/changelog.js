@@ -11,6 +11,14 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-10-30", ver: "0.2.1.472", items: {
+      new: [],
+      improved: [
+        ["Codex 在跑时，新的话一行行地出来（读得勤），不再是 700ms 一整块地冒出来。", "While a Codex session is running, new output now streams in line by line (it polls more often) instead of appearing as a 700 ms block."],
+        ["模型列表跟着 Claude Code 的默认模型自动更新（读 settings.json 的 ANTHROPIC_DEFAULT_*_MODEL）：出了新模型不用改代码就出现在「更多模型」里。", "The model list now follows Claude Code’s default models (the ANTHROPIC_DEFAULT_*_MODEL values in settings.json), so new models appear under More Models without a code change."],
+      ],
+      fixed: [],
+    } },
     { date: "2026-10-30", ver: "0.2.1.471", items: {
       new: [
         ["Claude App 风格的新会话：Claude Code、Codex 也能先选模型和推理强度（第一句话起就用）；「其他文件夹…」用系统的选文件夹面板，不用打路径（需要 App 309）。", "New sessions in the Claude App style: Claude Code and Codex can now pick the model and reasoning effort up front (used from the first message), and Other Folder… opens the system folder picker instead of asking for a path (needs App 309)."],
