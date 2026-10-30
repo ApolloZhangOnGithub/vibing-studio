@@ -66,6 +66,7 @@ TESTS = {
     "mac2mac": {"timeout": 240, "check": chk_mac},
     "idle": {"fixture": "ty", "timeout": 150, "check": chk_idle},
     "scroll": {"gen": "cc", "timeout": 400, "check": chk_scroll},
+    "screens": {"gen": "ccdiff", "timeout": 180, "check": lambda o: None if o.get("ok") else "screens failed: %s" % o.get("error"), "manual": True}, # 截 README 用的图（tui/gui/dash/ca）
     "seldiff": {"gen": "ccdiff", "timeout": 120, "check": lambda o: None if o.get("ok") else "selection probe failed: %s" % o.get("error"), "manual": True}, # 选中 diff 的几行：截图看选区盖不盖得住红绿底
     "energy": {"fixture": "ty", "timeout": 150, "check": lambda o: None if o.get("ok") else "energy probe failed: %s" % o.get("error"), "manual": True},
 }
