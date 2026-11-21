@@ -21,7 +21,7 @@
   // Teyvat：提瓦特这颗星球（用户给的图，裁成圆、透明底，256×256；暂用）——同派蒙的头像一样是图（class 同 pm-av：各处给派蒙头像定的大小、灰掉照样适用）
   var TY_PATH = "img/teyvat.png", TY_SRC = TY_PATH;
   var OAI_D = "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z";
-  window.TSU_LOGOS = { claudePath: CLAUDE_D, claude: '<svg class="cc-logo-svg" viewBox="0 0 100 101" aria-hidden="true"><path fill="currentColor" d="' + CLAUDE_D + '"/></svg>',
+  window.TSU_LOGOS = { agy: '<svg class="agy-logo" viewBox="0 0 6 6" aria-hidden="true"><g transform="translate(0 .5)"><path fill="#e49746" d="M2 0h1v1h-1z"/><path fill="#e17946" d="M3 0h1v1h-1z"/><path fill="#a6c259" d="M1 1h1v1h-1z"/><path fill="#d79d4f" d="M2 1h1v1h-1z"/><path fill="#e68246" d="M3 1h1v1h-1z"/><path fill="#dd604b" d="M4 1h1v1h-1z"/><path fill="#8cc060" d="M1 2h1v1h-1z"/><path fill="#6fa690" d="M2 2h1v1h-1z"/><path fill="#7370bd" d="M3 2h1v1h-1z"/><path fill="#9160a4" d="M4 2h1v1h-1z"/><path fill="#7ac183" d="M1 3h1v1h-1z"/><path fill="#577fe2" d="M4 3h1v1h-1z"/><path fill="#7ab7ef" d="M0 4h1v1h-1z"/><path fill="#78b4f1" d="M1 4h1v1h-1z"/><path fill="#4d81f1" d="M4 4h1v1h-1z"/><path fill="#5083f4" d="M5 4h1v1h-1z"/></g></svg>', claudePath: CLAUDE_D, claude: '<svg class="cc-logo-svg" viewBox="0 0 100 101" aria-hidden="true"><path fill="currentColor" d="' + CLAUDE_D + '"/></svg>',
     paimonSrc: PM_SRC, paimon: '<img class="pm-av" src="' + PM_SRC + '" alt="" draggable="false">',
     // Codex：ChatGPT / OpenAI 的结（Codex 自己那朵紫蓝的云不好看；用户定的），单色跟着字色；oaiPath 给别处画大图标用
     oaiPath: OAI_D,
@@ -124,6 +124,7 @@
         commands: [{ zh: "新建 pi 会话", en: "New pi Session", where: "主侧栏「pi」一组的标题行", whereEn: "pi group header in the Primary Side Bar" }],
         views: [{ zh: "pi 会话目录树", en: "pi session tree", where: "主侧栏", whereEn: "Primary Side Bar" }],
       } },
+    { id: "agy", name: "Google Antigravity", cmd: "agy", readme: { zh: "在左侧 Agents 中展开 Google Antigravity，点击会话标题即可查看对话。会话从本机 JSONL 记录加载。", en: "Expand Google Antigravity in Agents and select a session to read its transcript from local JSONL files." }, settings: "connectors/agy", version: "0.1.0", logo: window.TSU_LOGOS.agy, third: true, desc: "查看本机会话记录", descEn: "Read local session transcripts", homepage: "https://antigravity.google/", publisher: "Vibing Studio" },
     { id: "teyvat", name: "Teyvat", icon: "", cmd: "genshin", third: true, desc: "在 Vibing Studio 中使用 Teyvat：这台电脑上的 Teyvat agent 都能看，后台运行的能直接对话", descEn: "Work with Teyvat in Vibing Studio: see every Teyvat agent on this computer and talk to the ones running in the background",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "paimon.beer", homepage: "https://paimon.beer", version: "0.1.0", updated: "2026-10-13", builtin: false, files: ["studio/teyvat.js"],
       logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#0a1424"/><image href="' + TY_SRC + '" x="7" y="7" width="50" height="50"/></svg>', // 深蓝底上一颗提瓦特
@@ -210,7 +211,7 @@
   function detect() {
     var L = window.TSU_LOCAL;
     if (!L || !L.exec) return Promise.resolve(found);
-    var sh = "for c in claude codex pi; do p=$(command -v $c 2>/dev/null); if [ -n \"$p\" ]; then v=$($c --version 2>/dev/null | head -1); echo \"$c|$p|$v\"; else echo \"$c||\"; fi; done; " +
+    var sh = "for c in claude codex pi agy; do p=$(command -v $c 2>/dev/null); if [ -n \"$p\" ]; then v=$($c --version 2>/dev/null | head -1); echo \"$c|$p|$v\"; else echo \"$c||\"; fi; done; " +
       // Teyvat：genshin 不问 --version（它的 launcher 会做别的事）——版本读它自己记的 ~/.teyvat/agent/version.json
       "p=$(command -v genshin 2>/dev/null); [ -z \"$p\" ] && [ -x \"$HOME/.local/bin/genshin\" ] && p=\"$HOME/.local/bin/genshin\"; v=$(sed -n 's/.*\"genshin\" *: *\"\\([^\"]*\\)\".*/\\1/p' \"$HOME/.teyvat/agent/version.json\" 2>/dev/null | head -1); echo \"genshin|$p|$v\"";
     return (L.ready || Promise.resolve()).then(function () { return L.exec({ cmd: sh }); }).then(function (r) {
@@ -262,6 +263,171 @@
     var ST = window.STUDIO;
     if (!ST || !ST.addSettings) return;
     var C = window.TSU_CONNECTORS, local = function () { return !!(window.nadosNative && nadosNative.local); };
+      var quote = function (v) { return "'" + String(v).replace(/'/g, "'\\''") + "'"; };
+      async function readAgy(args) {
+        var dir = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir;
+        if (!dir || !C.on("agy") || nadosNative.remote) throw new Error("请在本机 App 中启用连接器");
+        var cmd = ["python3", dir + "/studio/agy_sessions.py"].concat(args).map(quote).join(" ");
+        var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 45000);
+        try {
+          var result = await TSU_LOCAL.exec({ cmd: cmd }, controller.signal);
+          if (result.code || !result.out.trim()) throw new Error(result.err.trim() || "agy 未返回会话数据");
+          return JSON.parse(result.out);
+        } finally { clearTimeout(timer); }
+      }
+    var sessions = [], pending, loadedAt = 0, listError = "";
+    async function refreshAgy() {
+      if (!pending) pending = (async function () {
+        try {
+          sessions = (await readAgy([])).sessions; listError = "";
+        } catch (e) { listError = e.message; }
+        finally {
+          loadedAt = Date.now(); pending = null;
+          document.dispatchEvent(new Event("tsu-agy"));
+        }
+      })();
+      return pending;
+    }
+    window.TSU_AGY = {
+      enabled: function () { return local() && !nadosNative.remote && C.on("agy"); },
+      list: function () {
+        if (Date.now() - loadedAt > 120000) refreshAgy();
+        return sessions;
+      },
+      status: function () { return listError || (pending ? "正在读取会话…" : "没有会话"); },
+      refresh: refreshAgy
+    };
+    setInterval(function () {
+      if (!document.hidden && TSU_AGY.enabled() && loadedAt && !pending) refreshAgy();
+    }, 5000);
+    function findSession(id) { return sessions.find(function (s) { return s.sessionId === id; }); }
+    TSU_AGY.ensure = function (id) {
+      var A = window.TSU_AGENTS, aid = "agy:" + id;
+      if (!A || !TSU_AGY.enabled()) return null;
+      if (A.get(aid)) return A.runtime(aid);
+      var info = findSession(id) || {}, listeners = new Set(), loading;
+      var session = { id: id, title: info.title || "Google Antigravity", turns: [], todo: { items: [] } };
+      var agent = { id: aid, current: id, name: session.title, connector: "agy", claude: true, access: "ro" };
+      var no = function () { return false; };
+      function addEvent(turn, event) {
+        if (event.role === "tool") {
+          var tool = turn.parts.find(function (p) { return p.kind === "tool" && p.id === event.id; });
+          if (!tool) {
+            tool = { kind: "tool", id: event.id, name: "Antigravity", input: {}, status: "running" };
+            turn.parts.push(tool);
+          }
+          if (event.title) tool.input.description = event.title;
+          if (event.kind === "execute") { tool.name = "Bash"; tool.input.command = tool.input.description; }
+          if (event.status === "failed") { tool.status = "error"; tool.out = "Antigravity 报告工具执行失败"; }
+          if (event.status === "completed") tool.status = "done";
+          if (event.output) tool.out = event.output;
+        } else if (event.role === "thinking") {
+          turn.thinking = turn.thinking ? turn.thinking + "\n\n" + event.text : event.text;
+        } else if (event.role === "agent_message_chunk") {
+          var last = turn.parts[turn.parts.length - 1];
+          if (!last || last.kind !== "text") { last = { kind: "text", text: "", whole: true }; turn.parts.push(last); }
+          last.text += event.text;
+          turn.answer = (turn.answer || "") + event.text;
+          var at = event.end_ms;
+          if (Number.isFinite(at) && Number.isFinite(turn.at) && at >= turn.at) turn.stats = { ms: at - turn.at, at: at };
+          else delete turn.stats;
+        }
+      }
+      var revision = "", followTimer, checking = false;
+      var screenBusy = false, nextScreen = 0;
+      async function updateScreen() {
+        if (screenBusy || Date.now() < nextScreen) return;
+        var current = findSession(id);
+        var active = current && current.tty && current.tty !== "??";
+        nextScreen = Date.now() + 1000;
+        screenBusy = true;
+        var screen = {};
+        try { if (active) screen = await readAgy(["--screen", id]); }
+        catch (e) { nextScreen = Date.now() + 10000; }
+        finally { screenBusy = false; }
+        var status = screen.status || "";
+        if (rt.liveStatus === status && rt.liveFooter === screen.footer) return;
+        rt.liveStatus = status; rt.liveFooter = screen.footer;
+        listeners.forEach(function (fn) { fn("status"); });
+      }
+      async function fileRevision(path) {
+        var full = path.replace(/transcript\.jsonl$/, "transcript_full.jsonl");
+        var stats = await Promise.all([TSU_LOCAL.stat(path), TSU_LOCAL.stat(full)]);
+        return stats.map(function (st) { return st ? st.size + ":" + st.mtime : "-"; }).join("/");
+      }
+      async function follow() {
+        if (!info.path || loading || checking || !TSU_AGY.enabled()) return;
+        updateScreen();
+        checking = true;
+        try {
+          var current = await fileRevision(info.path);
+          if (listeners.size && !loading && current !== revision) await (loading = load());
+        } catch (e) { console.warn("agy transcript refresh", e); }
+        finally { checking = false; }
+      }
+      async function load() {
+        try {
+          if (!findSession(id)) await refreshAgy();
+          info = findSession(id);
+          if (!info) throw new Error(listError || "找不到该会话");
+          session.title = agent.name = info.title || id;
+          var before = await fileRevision(info.path);
+          var messages = await readAgy(["--session", id]);
+          var turns = [], turn;
+          var model = messages.model || "";
+          var effort = /-(low|medium|high|xhigh|max)$/.exec(model);
+          var display = model.replace(/-(low|medium|high|xhigh|max)$/, "").replace(/(\d)-(\d)/g, "$1.$2").split("-").map(function (word) { return word.charAt(0).toUpperCase() + word.slice(1); }).join(" ");
+          var selected = typeof messages.selectedModel === "string" && /^(.*?) (?:\((low|medium|high|xhigh|max)\))$/i.exec(messages.selectedModel);
+          if (messages.selectedModel) display = selected ? selected[1] : messages.selectedModel;
+          if (messages.selectedModel) effort = selected ? [null, selected[2].toLowerCase()] : null;
+          session.mode = messages.mode;
+          session.statusLabel = [display, effort && effort[1]].filter(Boolean).join(" · ");
+          messages.events.forEach(function (message) {
+            if (!turn || message.role === "user_message_chunk") {
+              turn = { ask: "", parts: [] }; turns.push(turn);
+            }
+            if (message.role === "user_message_chunk") {
+              turn.ask = message.text;
+              var start = Number.isFinite(message.start_ms) ? message.start_ms : Date.parse(message.created_at);
+              if (Number.isFinite(start)) turn.at = start;
+            }
+            else addEvent(turn, message);
+          });
+          session.turns = turns;
+          revision = before;
+        } catch (e) { if (!session.turns.length) session.turns = [{ note: e.message, parts: [] }]; }
+        finally { loading = null; listeners.forEach(function (f) { try { f("reset"); } catch (e) { console.error(e); } }); }
+      }
+      var rt = {
+        agent: agent, sid: id, label: "Google Antigravity", tasks: [], stream: null,
+        session: function () { return session; },
+        on: function (fn) {
+          listeners.add(fn);
+          if (!followTimer) followTimer = setInterval(follow, 400);
+          if (!session.turns.length && !loading) loading = load();
+          return function () { listeners.delete(fn); if (!listeners.size) { clearInterval(followTimer); followTimer = null; } };
+        },
+        ready: function () { return loading || (loading = load()); },
+        hideInputHint: true,
+        more: no, historical: no,
+        model: function () { return { id: "", name: "Antigravity" }; },
+        state: function () { return "idle"; },
+        detachBash: no, takeQueued: function () { return null; },
+        ctx: function () { return { tokens: 0, window: 0, pct: 0 }; },
+        cwd: function () { return info && info.cwd || ""; },
+        todo: function () { return []; },
+        pendingMsgs: function () { return 0; },
+        cost: function () { return 0; },
+        tail: function () { return ""; },
+        readOnly: true, send: no, sendNow: no, interrupt: no, canInject: no, canSendNow: no,
+        canInterrupt: no, canCycle: no, maybeRecap: no, recap: no,
+        record: no, setGoal: no, clearGoal: no, clear: no, bang: no, wakeUp: no,
+        setAccess: no, setEffort: no, setModel: no, resume: no, afterReload: no
+      };
+      rt.home = rt.cwd;
+      A.registerExternal(aid, rt);
+      return rt;
+    };
     var status = function (c) {
       if (c.core) return connOn(c.id) ? "内置" : "已关闭";
       if (!local()) return "只能在 Vibing Studio App 中使用";
@@ -292,6 +458,8 @@
           var where = c.core ? "内置" : !local() ? "只能在 App 中使用" : !fd ? "正在检测…" : !fd.found ? "未检测到" : home0 && fd.path.indexOf(home0 + "/") === 0 ? "~" + fd.path.slice(home0.length) : fd.path;
           out.push({ key: c.id + ".st", label: "安装位置", kind: "info", value: where, cls: !c.core && local() && fd && !fd.found ? "neg" : "" });
           // 它装的钩子、MCP 服务器、插件、技能……（eco.js）：就在它自己这一页里
+          if (c.id === "agy" && local() && !nadosNative.remote && fd && fd.found && C.on("agy"))
+            out.push({ key: "agy.sessions", kind: "info", label: "查看会话", value: "左侧 Agents → Google Antigravity" });
           var ek = { "claude-code": "cc", codex: "cx", pi: "pi" }[c.id];
           if (ek && local() && fd && fd.found) out.push({ key: c.id + ".eco", kind: "embed", embed: "eco", arg: ek });
         });

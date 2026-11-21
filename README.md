@@ -36,7 +36,7 @@
 ## 常用命令
 
 ```sh
-# 编 App（装到 ~/Applications；APP_DIR=<目录> 放到别处；DEV=1 编测试用的那份，bundle id 带 .dev）
+# 编 App（生成在项目根目录；APP_DIR=<目录> 放到别处；DEV=1 编测试用的那份，bundle id 带 .dev）
 tools/build-app.sh
 
 # 只改了界面：装成 App 读的本地界面，App 里「重新载入以更新」就用上（不用重新编 App）

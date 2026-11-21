@@ -3,6 +3,7 @@
 *.swp
 # 编译产物、依赖、缓存（不进仓库；Linux 版的依赖和产物在 ~/Library/Caches/VibingStudio/linux*）
 node_modules/
+/Vibing Studio.app/
 app/build/
 ios/build/
 ios/DerivedData/

@@ -741,6 +741,15 @@
       if (ss.height !== hv) ss.height = hv;
       if (ss.marginTop !== mt) ss.marginTop = mt;
       if (ss.marginBottom !== mb) ss.marginBottom = mb;
+      if (!P.side && tw.ws && tw.ws.active === P && el.offsetHeight && window.nadosNative && root.classList.contains("termapp")) {
+        var gridRow = !vg && h && !(P.program && P.program.gui) ? P.rowH : 0;
+        var chromeHeight = innerHeight - avail;
+        var key = gridRow + ":" + chromeHeight;
+        if (tw.nativeRowGrid !== key) {
+          tw.nativeRowGrid = key;
+          nadosNative.call("window.rowGrid", {row: gridRow, chrome: chromeHeight, viewport: innerHeight}).catch(function () {});
+        }
+      }
       lastH = el.clientHeight;
     };
     // 右侧栏只有输入框时，对话区按内容定高：内容（状态、任务清单）一变就重新量
@@ -915,6 +924,7 @@
     else P.shell = window.Terminal && (window.TSU_LOCAL || (me0 && me0.sandbox)) ? new PtyView(P, spec.sh || {}) : new ShellView(P, spec.sh || {}); // Paimon Terminal：这台 Mac 上真的 shell
     // 上次开着的 Claude Code / Codex 会话：刚启动时它们可能还没登记（App 刚换过新版、读会话列表慢）——先按 id 建起来；
     //   还是没有就先占着这一格、记着原来是哪个会话（不能存成一个空 shell：以前这样存下去，更新重启后标签页就只剩历史记录），隔一会儿再试
+    if (spec.page === "agy") spec = Object.assign({}, spec, { page: null, agent: "agy:" + spec.arg });
     var ag = spec.agent && (A.get(spec.agent) || connEnsure(spec.agent));
     if (spec.page && window.TSU_BROWSER) P.program = TSU_BROWSER.page(P, spec.page, spec.arg); // Paimon Terminal 的页面（claude.code、paimon.code、历史记录、设置、文件），见 browser.js、studio.js
     else if (ag && !ag.archived) P.program = makeView(P, ag.id); else { P.program = P.shell; if (spec.agent && !ag) { P.lostSpec = spec; retryAgent(P, spec.agent); } }
@@ -2111,6 +2121,7 @@
     try {
       if (/^cc:/.test(id) && window.TSU_CLAUDE && TSU_CLAUDE.ensure) TSU_CLAUDE.ensure(id.slice(3));
       else if (/^cx:/.test(id) && window.TSU_CODEX && TSU_CODEX.ensure) TSU_CODEX.ensure(id.slice(3));
+      else if (/^agy:/.test(id) && window.TSU_AGY) TSU_AGY.ensure(id.slice(4));
       else if (/^pi:/.test(id) && window.TSU_PI && TSU_PI.ensure) TSU_PI.ensure(id.slice(3));
       else if (/^ty:/.test(id) && window.TSU_TEYVAT && TSU_TEYVAT.ensure) TSU_TEYVAT.ensure(id.slice(3));
     } catch (e) { /* 还建不了：等一会儿再试 */ }
@@ -2731,13 +2742,15 @@
         if (f === "cost" && st.cost) bits.push("≈" + F.money(st.cost));
       });
       // 「done 3:04 PM」就是「完成时间」这一项：关了就整段不显示（不单留一个 done）；在等后台 Agent 时不写
-      if (!waiting && ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + doneAt(st.at));
+      if (agent.connector === "agy" && !waiting && (ft.includes("duration") || ft.includes("time"))) {
+        bits.push(new Date(st.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
+      } else if (!waiting && ft.indexOf("time") >= 0) bits.push((turn.error ? "" : "done ") + doneAt(st.at));
       // token 预算（/budget）：「12k / 50k (24%)」，用够了「50k used (50k min ✓)」；催过几次；/focus 藏起来的几条
       if (st.budget) bits.push((st.budget.used >= st.budget.limit ? F.k(st.budget.used) + " used (" + F.k(st.budget.limit) + " min ✓)" : F.k(st.budget.used) + " / " + F.k(st.budget.limit) + " (" + Math.round(st.budget.used * 100 / Math.max(1, st.budget.limit)) + "%)") + (st.budget.nudges ? " · " + st.budget.nudges + " " + (st.budget.nudges === 1 ? "nudge" : "nudges") : ""));
       if (st.hidden) bits.push(st.hidden + " " + (st.hidden === 1 ? "message" : "messages") + " hidden (/focus to show)");
       // 现在还在跑的后台活（最后一问那行、闲着时输入框下面那行；写着「Waiting for …」时不写）：「· 1 shell still running」
       if (!waiting && live && bg && bg.summary) bits.push(bg.summary + " still running");
-      return bits.length ? D + "✻ " + bits.join(" · ") + RESET : "";
+      return bits.length ? D + "✻ " + bits.join(agent.connector === "agy" ? " • " : " · ") + RESET : "";
     }
     // 现在还在跑的后台活（同 Claude Code 的 Rhe / Sye）：后台 Agent 的个数（「Waiting for」那边用）；还在跑的一句话——
     //   全是命令「1 shell」「2 shells」，全是后台 Agent「1 local agent」，几种混着「3 background tasks」
@@ -2762,6 +2775,8 @@
       for (var i = ts.length - 1; i >= 0; i--) {
         var t = ts[i];
         if (t.recap !== undefined || t.compact || t.cmd !== undefined || t.bash !== undefined || t.ask === undefined || (t.system && !t.stats)) continue;
+        // 本地 agy 记录可能只追加了下一问，底部仍显示最近一轮已有回复的用时。
+        if (agent.connector === "agy" && !t.stats) continue;
         return t.stats ? t : null;
       }
       return null;
@@ -2904,8 +2919,8 @@
         if (turn.images && turn.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(turn.images) : imageRefs(turn.images, 2, imgNo)); // 悬停预览（默认）/ 直接显示
       }
       var tm = vmode("thinking");
-      if (turn.thought && tm !== "hidden" && V.style === "teyvat") {
-        var first = (turn.thinking || "").replace(/\s+/g, " ").trim(), head = "∴ Thought for " + turn.thought + "s";
+      if ((turn.thought || turn.thinking) && tm !== "hidden" && (V.style === "teyvat" || agent.connector === "agy")) {
+        var first = (turn.thinking || "").replace(/\s+/g, " ").trim(), head = turn.thought ? "∴ Thought for " + turn.thought + "s" : "∴ Thinking";
         if (tm === "collapsed" && first) head += " · " + clip(first, P.cols - W(head) - 6);
         r.text(["", D + head + RESET]);
         if (tm === "expanded" && turn.thinking) turn.thinking.trim().split("\n").forEach(function (p) { wrap(p, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); });
@@ -4241,13 +4256,17 @@
     function renderInput() {
       if (P.off) { inputStale = true; return; }
       var fW = P.foot.clientWidth, fcols = Math.max(24, Math.floor(fW / P.chPx) || P.cols), indent = " ".repeat(Math.round(P.padL / P.chPx)), me = A.me(), D = P.DIM;
-      // 输入框上下两条线左右对称：排不满一格的那点余量左右各留一半（以前全剩在右边：左边贴着边、右边空出一截）；右上角「···」对到线的右端
+      // 输入区和对话正文使用同一个像素起点，箭头后的两个字符格也完全相同。
       if (fsash && fW) {
-        var fpad = Math.floor(fW - fcols * P.chPx) / 2, fpx = fpad + "px", mr = Math.max(0, fpad + (4 * P.chPx - 24) / 2).toFixed(1) + "px"; // 「···」24px 宽，摆在给它留的最后 4 格正中
+        var fpad = Math.max(0, P.term.getBoundingClientRect().left - P.foot.getBoundingClientRect().left + P.padL);
+        indent = "";
+        fcols = Math.max(24, Math.floor((fW - fpad) / P.chPx));
+        var fpx = fpad + "px", mr = Math.max(0, fW - fpad - fcols * P.chPx + (4 * P.chPx - 24) / 2).toFixed(1) + "px";
         if (P.foot.style.paddingLeft !== fpx) P.foot.style.paddingLeft = fpx;
         if (fmore && fmore.style.right !== mr) fmore.style.right = mr;
       }
       if (panel && !ABOVE[panel.kind]) return renderPanel(fcols, indent);
+      var agyStatus = agent.connector === "agy" && rt.session().statusLabel;
       var label = " " + agent.name + " ", ta = P.ta, v = ta.value, bang = v[0] === "!", lineCol = bang ? PINK : D;
       // 最右边留 4 格给「···」按钮（绝对定位在这一行的右端）：名字、线都不被它压着
       var top = fsash ? lineCol + "─".repeat(Math.max(2, fcols - W(label) - 4)) + RESET + D + label + RESET + "    " : lineCol + "─".repeat(Math.max(2, fcols - W(label) - 2)) + RESET + D + label + RESET + lineCol + "──" + RESET;
@@ -4256,7 +4275,7 @@
       var chips = "", preRows = [];
       var fresh = !rt.session().turns.some(function (t) { return t.ask !== undefined || t.bash !== undefined; });
       var rtHint = rt.inputHint ? rt.inputHint() : "";
-      var placeholder = rtHint ? rtHint : agent.claude && rt.localQueued && rt.localQueued() ? "Press up to edit queued messages" : uiT(!me ? "" : !me.loggedIn ? "按 Enter 使用 GitHub 登录" : !me.allowed ? "账号尚未获得邀请" : fresh ? "向 " + agent.name + " 发送消息" + (cfg.tips ? "，输入 ! 执行命令，输入 / 查看命令" : "") : "");
+      var placeholder = rt.hideInputHint ? "" : rtHint ? rtHint : agent.claude && rt.localQueued && rt.localQueued() ? "Press up to edit queued messages" : uiT(!me ? "" : !me.loggedIn ? "按 Enter 使用 GitHub 登录" : !me.allowed ? "账号尚未获得邀请" : fresh ? "向 " + agent.name + " 发送消息" + (cfg.tips ? "，输入 ! 执行命令，输入 / 查看命令" : "") : "");
       if (!v) { lines = preRows.concat([chips + D + placeholder + RESET]); caretRow += preRows.length; caretCol += W(chips); }
       else {
         // 光标在选区「动的那一头」（shift+← 往左选：在左边；拖着往右选：在右边）
@@ -4290,6 +4309,15 @@
         var tok0 = connWhere();
         if (tok0) STUDIO.set(P, { id: "where", type: "text", site: "claude", title: rt.label || "Claude Code", left: true, data: { text: tok0, cls: "st-dim" } }); else STUDIO.remove(P, "where");
       } else if (agent.claude && footInfo) { islandCount(); rows.push.apply(rows, connFoot(indent, fcols)); } // 同 Claude Code 最下面那两行
+      if (agyStatus || rt.liveFooter) {
+        var liveFields = rt.liveFooter && rt.liveFooter.split(/\s*·\s*/);
+        var mode = liveFields ? liveFields[0] : rt.session().mode;
+        if (liveFields) agyStatus = liveFields.slice(1).join(" · ");
+        var statusText = mode + " · " + agyStatus;
+        var room = Math.max(0, fcols - W(statusText));
+        var activity = room > 3 && rt.liveStatus ? clip(rt.liveStatus, room - 2) : "";
+        rows.push(D + activity + RESET + " ".repeat(Math.max(0, room - W(activity))) + rgb("175;165;0") + mode + RESET + D + " · " + agyStatus + RESET);
+      }
       if (!agent.claude && toBar) {
         var sl0 = statusFields(), acc0 = ACCESS_LABEL[agent.access || "read"], run0 = rt.tasks.filter(function (x) { return x.status === "running"; }), sh0 = run0.filter(function (x) { return x.kind === "shell"; }).length;
         STUDIO.set(P, { id: "access", type: "text", site: "paimon", title: "权限级别", left: true, data: { text: "⏵⏵ " + acc0[1] + (sh0 ? " · " + F.plural(sh0, "shell") : "") + (run0.length - sh0 ? " · " + F.plural(run0.length - sh0, "agent") : "") }, click: function () { rt.setAccess({ none: "read", read: "rw", rw: "none" }[agent.access || "read"]); } });
@@ -5680,6 +5708,7 @@
       if (items.length && k === "Tab") { e.preventDefault(); ta.value = items[menuIdx].name + (items[menuIdx].args ? " " : ""); renderInput(); return; }
       if (k === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        if (rt.readOnly) { P.flash("此会话只读", 1600); return; }
         var me = A.me(), now = e.ctrlKey || e.metaKey; // ctrl+enter：答着的时候不排队，打断这一问马上发（闲着就是普通地发）
         if (!me || !me.loggedIn) { location.href = "/auth/login"; return; }
         var exact = /^\/\S+$/.test(ta.value) && (COMMANDS.some(function (c) { return c.name === ta.value; }) || /^\/(status|usage|cost|stats|thinking|bashes|new|settings|access|quit|logout)$/.test(ta.value));
@@ -6173,7 +6202,7 @@
       saveSidePref();
       S.render(true);
     }
-    function refreshAll() { refreshCC(true); if (A.sync) A.sync(); S.render(true); }
+    function refreshAll() { if (window.TSU_AGY && TSU_AGY.enabled()) TSU_AGY.refresh(); refreshCC(true); if (A.sync) A.sync(); S.render(true); }
     // 地址（agents.local.paimon/<卷>/<文件夹>/<名字>.agent，dash.js 给的）：拷贝路径、在 Agent Finder 中显示
     var AD = function () { return window.STUDIO && STUDIO.agentAddr; };
     var addrOf = function (x) { var ad = AD(), a = x && x.id && A.get(x.id); return !ad || !x ? "" : "agents.local.paimon/" + (a ? ad.agent(a) : ad.dir(x.vol, x.dir)); };
@@ -6301,7 +6330,8 @@
         if (sec === "pi") return canNewIn("pi") ? [["new-pi-sess", "\uE027", "新建 pi 会话"]] : [];
         return [];
       };
-      var headActs = function (sec) { return newActs(sec).concat([["only-" + sec, only(sec) ? "\uE023" : "\uE022", only(sec) ? "显示全部" : "仅显示运行中"], ["fold-" + sec, "\uE024", "全部折叠"]]); };
+      var filterAct = function (sec) { return ["only-" + sec, only(sec) ? "\uE023" : "\uE022", only(sec) ? "显示全部" : "仅显示运行中"]; };
+      var headActs = function (sec) { return newActs(sec).concat([filterAct(sec), ["fold-" + sec, "\uE024", "全部折叠"]]); };
       // ---- 界面字是比例字（html.st-uiprop：设置 › 界面字体 = 系统字体）：树不用等宽格子画，一行一行的 DOM（同「文件」视图：缩进一层 16px、展开箭头一格、
       //   图标一格、名字从同一列开始（放不下就 …）、右边时间；样子在 fonts.css）。行的 class、data-* 和等宽那种一样，点、键盘、拖、右键、翻译都照旧 ----
       var dom = root.classList.contains("st-uiprop");
@@ -6343,7 +6373,7 @@
             if (!started && !dis && !icon) { var sp = /^ */.exec(t)[0].length; lead += sp; t = t.slice(sp); }
             if (!t) return;
             if (CHV[t.charAt(0)]) { dis = '<span class="' + CHV[t.charAt(0)] + '"></span>'; t = t.slice(1).replace(/^ +/, ""); if (!t) return; }
-            if (!started && /^[✻◎✦✳\uE030-\uE036] *$/.test(t)) { var col = colorOf(c + raw); icon = '<span class="ts-dic"' + (col ? ' style="color:' + col + '"' : "") + ">" + escHtml(t.trim()) + "</span>"; return; }
+            if (!started && /^[✻◎✦✳\uE030-\uE036\uE03A] *$/.test(t)) { var col = colorOf(c + raw); icon = '<span class="ts-dic"' + (col ? ' style="color:' + col + '"' : "") + ">" + escHtml(t.trim()) + "</span>"; return; }
             started = true;
             label += ansiHtml(c + t + RESET);
           });
@@ -6617,6 +6647,21 @@
             out += row("ts-fold", foldAt("pi:arch", true) + ' data-ic="arch"', [["  " + chev("pi:arch", true), ""], ["已归档", DIMC]]);
             if (!folded("pi:arch", true)) piArch.sort(piOrd).forEach(function (x) { out += piRow(x, "  "); });
           }
+        }
+      }
+      var agy = window.TSU_AGY;
+      if (agy && agy.enabled()) {
+        out += "\n" + row("ts-fold ts-head", foldAt("agy", false), [[chev("agy"), ""], ["Google Antigravity", BOLD]], [filterAct("agy")]);
+        if (!folded("agy")) {
+          var inTerminal = function (s) { return !!s.tty && s.tty !== "??"; };
+          var agySessions = only("agy") ? agy.list().filter(inTerminal) : agy.list();
+          if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中的会话" : agy.status()) + RESET) + "\n";
+          agySessions.forEach(function (s) {
+            var name = s.title || s.sessionId;
+            if (!qHit(name, s.sessionId)) return;
+            out += '<span class="ts-it" data-agy="' + escHtml(s.sessionId) + '" title="' + escHtml(name) + '">' +
+              HR([["    ", ""], ["\uE03A ", ""]].concat(marks(name, "")), DIMC + (s.updatedAt ? agoCN(Date.parse(s.updatedAt)) : "") + RESET, true).replace("\uE03A", '<i class="ts-ccl ts-cxl' + (inTerminal(s) ? " busy" : "") + '">' + TSU_LOGOS.agy + "</i>") + "</span>\n";
+          });
         }
       }
       // ---- Teyvat（teyvat.js）：这台电脑上的 Teyvat agent——在跑的在上面，右边写它在做什么（工作中 / 等待中 / 休眠中 / 已暂停）和在哪儿跑（前台 / 后台）；
@@ -6932,6 +6977,8 @@
       S.render();
       return p;
     };
+    S.viewAgy = async function (id) { var rt = TSU_AGY.ensure(id); if (rt) { await rt.ready(); S.open("agy:" + id, "tab"); } };
+    document.addEventListener("tsu-agy", function () { if (S.shown()) S.render(true); });
     document.addEventListener("tsu-cx", function () { if (S.shown()) S.render(); });
     // ---- pi（连接器，pi.js）：点一个会话 = 开一个看它的标签页（用现在的外壳）；已经开着就跳过去 ----
     S.viewPI = function (id, info) {
@@ -6985,6 +7032,7 @@
       if (r.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(r.dataset.cc) : S.openCC(r.dataset.cc);
       if (r.dataset.cx) return S.viewCX(r.dataset.cx);
       if (r.dataset.pi) return S.viewPI(r.dataset.pi);
+      if (r.dataset.agy) return S.viewAgy(r.dataset.agy);
       if (r.dataset.ty) return S.viewTY(r.dataset.ty);
       if (r.dataset.term) return S.openTerm(r.dataset.term);
       if (r.dataset.sess) { var ps = r.dataset.sess.split(":"), rt3 = A.runtime(ps[0]); if (rt3.session().id !== ps[1]) rt3.resume(ps[1]); return S.open(ps[0]); }
@@ -7091,12 +7139,13 @@
       if (act0 && act0.dataset.act === "new-pi-sess") { if (canNewIn0("pi")) TSU_CONNECTORS.newSession("pi", ""); return; }
       if (act0 && act0.dataset.act === "fold-pi") { var op = fold["only:pi"] ? "o" : ""; Object.keys(fold).forEach(function (k) { if (/^o?pi:/.test(k) && k !== "pi:all") fold[k] = true; }); if (window.TSU_PI) TSU_PI.list().forEach(function (x) { ccDirKeys(x.cwd).forEach(function (k) { fold[op + "pi:" + k.slice(3)] = true; }); }); saveSidePref(); return S.render(true); }
       if (act0 && act0.dataset.act === "new-tm") { S.newTerm(); return; }
-      if (act0 && /^only-(pm|cc|cx|pi|ty)$/.test(act0.dataset.act)) { var ok0 = "only:" + act0.dataset.act.slice(5); fold[ok0] = !fold[ok0]; saveSidePref(); return S.render(true); }
+      if (act0 && /^only-(pm|cc|cx|pi|ty|agy)$/.test(act0.dataset.act)) { var ok0 = "only:" + act0.dataset.act.slice(5); fold[ok0] = !fold[ok0]; saveSidePref(); return S.render(true); }
       if (act0 && (act0.dataset.act === "fold-pm" || act0.dataset.act === "fold-cc")) return collapseAll(act0.dataset.act.slice(5));
       var it = e.target.closest(".ts-it"), act = e.target.closest(".ts-act");
       if (it && it.dataset.cc) return root.classList.contains("termapp") && window.TSU_CLAUDE ? S.viewCC(it.dataset.cc) : S.openCC(it.dataset.cc);
       if (it && it.dataset.cx) return S.viewCX(it.dataset.cx);
       if (it && it.dataset.pi) return S.viewPI(it.dataset.pi);
+      if (it && it.dataset.agy) return S.viewAgy(it.dataset.agy);
       if (it && it.dataset.ty) return S.viewTY(it.dataset.ty);
       if (it && it.dataset.term) return S.openTerm(it.dataset.term);
       if (it) return S.open(it.dataset.id);

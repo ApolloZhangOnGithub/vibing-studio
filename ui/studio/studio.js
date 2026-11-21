@@ -1037,7 +1037,7 @@
     var lab = S.side.querySelector(".st-sagent");
     if (!lab) { lab = document.createElement("button"); lab.type = "button"; lab.className = "st-sagent"; lab.dataset.st = "side-agent"; var lv = S.side.querySelector(".st-sidehdr .st-sidelv"); if (lv) lv.after(lab); }
     // 名字左边是这个 agent 的标志（同右边的「···」一左一右）：Claude Code 的会话是 Claude 的标志（橙）、Codex 的是它的记号、Paimon 的是派蒙的头像
-    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : /^pi:/.test(aid || "") ? LG.pi : /^ty:/.test(aid || "") ? LG.teyvat : LG.paimon;
+    var LG = window.TSU_LOGOS || {}, alg = /^cc:/.test(aid || "") ? LG.claude : /^cx:/.test(aid || "") ? LG.codex : /^pi:/.test(aid || "") ? LG.pi : /^ty:/.test(aid || "") ? LG.teyvat : /^agy:/.test(aid || "") ? LG.agy : LG.paimon;
     var lk = /^cc:/.test(aid || "") ? "cc" : /^(cx|pi|ty):/.test(aid || "") ? "cx" : "pm"; // pi、Teyvat 的标志同 Codex 的一样单色
     var lh = aid ? (alg ? '<i class="st-salogo st-salogo-' + lk + '" aria-hidden="true">' + alg + "</i>" : "") + '<span class="st-cut">' + esc(nm || aid) + "</span>" : "";
     if (lab.dataset.h !== lh) { lab.dataset.h = lh; lab.innerHTML = lh; }

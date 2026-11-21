@@ -336,9 +336,9 @@
       var ai = "";
       var tm = vm("thinking") || "hidden", dl = detail();
       if (dl === "full" && tm === "hidden") tm = "collapsed";
-      if (t.thought && tm !== "hidden") { // 思考：一行（点开看）/ 展开
+      if ((t.thought || t.thinking) && tm !== "hidden") { // 思考：一行（点开看）/ 展开
         var k0 = ti + ":th", o0 = k0 in open ? open[k0] : tm === "expanded" || dl === "full";
-        ai += '<div class="gv-think' + (o0 ? " open" : "") + '" data-k="' + k0 + '"><button class="gv-sum">思考了 ' + t.thought + " 秒<i></i></button>" + (o0 && t.thinking ? '<div class="gv-det gv-thought">' + md(t.thinking) + "</div>" : "") + "</div>";
+        ai += '<div class="gv-think' + (o0 ? " open" : "") + '" data-k="' + k0 + '"><button class="gv-sum">' + (t.thought ? "思考了 " + t.thought + " 秒" : "思考") + "<i></i></button>" + (o0 && t.thinking ? '<div class="gv-det gv-thought">' + md(t.thinking) + "</div>" : "") + "</div>";
       }
       var parts = t.parts || [{ kind: "text", text: t.answer || "" }], group = [], gi = 0, merge = vm("mergeReads") !== false, live = !!(rt.stream && rt.stream.turn === t), lastTool = -1;
       parts.forEach(function (p, i) { if (p.kind === "tool") lastTool = i; });
@@ -507,7 +507,7 @@
     }
     function redraw(t) { var el = blocks.get(t); if (el) paintTurn(t, el); else add(t); }
     // 输入框里的提示：连接器的会话（Claude Code、Codex）照它自己说的（后台会话能送进去、开在别的终端里只读、新会话……），同终端外壳的状态行
-    var hintNow = function () { ta.placeholder = (rt.localQueued && rt.localQueued() ? "按 ↑ 编辑排队的消息" : "") || (V.claude && rt.hint && rt.hint()) || (rt.session().turns.length ? "回复…" : "要做什么？"); };
+    var hintNow = function () { ta.placeholder = rt.hideInputHint ? "" : (rt.localQueued && rt.localQueued() ? "按 ↑ 编辑排队的消息" : "") || (V.claude && rt.hint && rt.hint()) || (rt.session().turns.length ? "回复…" : "要做什么？"); };
     function renderAll() {
       hintNow();
       if (farIO) farIO.disconnect();
@@ -671,7 +671,13 @@
     function bar() {
       var m = rt.model() || {}, c = rt.ctx ? rt.ctx() : null, set = function (k, html, show) { var b = inCol('[data-c="' + k + '"]'); b.hidden = !show; if (b.dataset.h !== html) { b.dataset.h = html; b.innerHTML = html; } };
       set("access", '<svg viewBox="0 0 16 16"><path d="M5 7V5a3 3 0 0 1 6 0v2"/><rect x="3.5" y="7" width="9" height="6.5" rx="1.2"/></svg>' + esc(ACC[agent.access || "read"] || agent.access), !V.claude);
-      set("model", esc(m.name || m.id || "模型"), true); // 连接器的会话：模型（真在用的，带 1M）；后面不再挂会话名（用户：没有意义）
+      var modelLabel = m.name || m.id || "模型";
+      if (agent.connector === "agy") {
+        var session = rt.session();
+        modelLabel = rt.liveFooter || [session.mode, session.statusLabel].filter(Boolean).join(" · ") || modelLabel;
+        modelLabel = [rt.liveStatus, modelLabel].filter(Boolean).join(" · ");
+      }
+      set("model", esc(modelLabel), true); // 连接器的会话：模型（真在用的，带 1M）；后面不再挂会话名（用户：没有意义）
       set("effort", "推理 " + esc(EFF[agent.effort || "high"] || agent.effort), !V.claude);
       var pct = c && c.pct ? Math.min(100, c.pct) : 0, ring = inCol(".gv-ringv"), R = 2 * Math.PI * 7;
       ring.style.strokeDasharray = (R * pct / 100).toFixed(1) + " " + R.toFixed(1);

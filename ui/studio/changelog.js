@@ -11,6 +11,19 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-21", ver: "0.2.1.473", items: {
+      new: [
+        ["macOS 新增 Google Antigravity 连接器。打开本机会话即可查看消息、思考和工具输出，终端中的会话可用侧栏漏斗筛选。", "Open local Google Antigravity conversations on macOS to read messages, thinking and tool output. Use the sidebar filter to show sessions open in a terminal."],
+      ],
+      improved: [
+        ["agy 会话会跟随本地记录更新。支持的终端可在模型栏显示生成状态。", "Antigravity conversations follow changes to the local transcript. The model bar shows generation status from supported terminals."],
+        ["macOS 终端视图按当前行高调整窗口高度，减少底部空白。", "On macOS, terminal windows resize vertically in whole rows to reduce the gap at the bottom."],
+      ],
+      fixed: [
+        ["输入箭头和输入文字与上方对话的对应列对齐。", "The input prompt and typed text now align with the corresponding columns in the conversation."],
+        ["agy 使用完整日志恢复长回复，并按实际完成时间计算 Worked for 用时。", "Antigravity reads long replies from the full transcript and uses the recorded completion time for Worked for durations."],
+      ],
+    } },
     { date: "2026-10-30", ver: "0.2.1.472", items: {
       new: [],
       improved: [

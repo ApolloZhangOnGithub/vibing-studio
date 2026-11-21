@@ -17,12 +17,21 @@ BUILD="${BUILD:-$(cat ../tools/app-build.txt 2>/dev/null || echo 288)}" # 构建
 if [ "$MODE" = terminal ]; then NAME="Vibing Studio"; BID="beer.paimon.terminal"; ICON="AppIcon-terminal"; else NAME="macOS Simulator"; BID="beer.paimon.desktop"; ICON="AppIcon"; fi
 # DEV=1：测试用的那份——bundle id 加 .dev、显示的名字加 Dev（路径不变），和装在「应用程序」里的那份互不干扰（双击、Dock、登录状态都分开）
 if [ "${DEV:-}" = 1 ]; then BID="$BID.dev"; SHOWN="$NAME Dev"; else SHOWN="$NAME"; fi
-APP="${APP_DIR:-$HOME/Applications}/$NAME.app"
+DEFAULT_APP_DIR="$HOME/Applications"
+if [ "$MODE" = terminal ]; then DEFAULT_APP_DIR="$(cd .. && pwd)"; fi
+APP="${APP_DIR:-$DEFAULT_APP_DIR}/$NAME.app"
 ARCH="${TARGET_ARCH:-$(uname -m)}" # TARGET_ARCH=arm64 / x86_64：发版时 Apple 芯片、Intel 各编一份（各自原生，不用 Rosetta）
 # UNIVERSAL=1：两份合成一个（包大一倍；发版不用它，按芯片分开下载）
 # 那里已经有一个别的同名 App：不覆盖
 if [ -f "$APP/Contents/Info.plist" ] && [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist" 2>/dev/null)" != "$BID" ]; then
   echo "$APP 是别的 App，不覆盖；用 APP_DIR=<目录> 换个地方" >&2; exit 1
+fi
+# 在同步目录外签名，避免 Finder 在签名过程中添加元数据。
+DEST_APP="$APP"
+if [ "$MODE" = terminal ] && [ -z "${APP_DIR:-}" ]; then
+  STAGE="$(mktemp -d "${TMPDIR:-/tmp}/vibing-build.XXXXXXXX")"
+  trap 'rm -rf "$STAGE"' EXIT
+  APP="$STAGE/$NAME.app"
 fi
 mkdir -p build "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -109,4 +118,11 @@ elif [ "$SRC" != 0 ] && [ "$ID" != "-" ]; then echo "用证书签名失败，改
 SPCTL="$(/usr/sbin/spctl -a -t exec -vv "$APP" 2>&1 || true)" # spctl 对没公证的 App 本来就返回非 0（pipefail 下不能直接接 grep）
 if [ "$ID" != "-" ] && printf '%s\n' "$SPCTL" | grep -q REVOKED; then echo "签名证书已被 Apple 吊销（${ID}），改用 ad-hoc" >&2; ID="-"; sign -; fi
 codesign --verify --strict "$APP"
+if [ "$APP" != "$DEST_APP" ]; then
+  mkdir -p "$DEST_APP"
+  rsync -a --delete "$APP/" "$DEST_APP/"
+  APP="$DEST_APP"
+  # 文稿同步服务会重新写入 FinderInfo；此处校验落盘后的签名和封装资源。
+  codesign --verify "$APP"
+fi
 echo "built $APP ($CONFIG, $VERSION ($BUILD), signed with ${ID/#-/ad-hoc})"

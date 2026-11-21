@@ -14,7 +14,7 @@ struct BridgeError: Error {
 @MainActor
 final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
   static let protocolVersion = 1
-  static let commands = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "screenshot", "badge", "attention", "window.dragRegions", "window.fullscreen",
+  static let commands = ["info", "permissions", "request", "settings", "notify", "clipboard.read", "clipboard.write", "openExternal", "screenshot", "badge", "attention", "window.dragRegions", "window.rowGrid", "window.fullscreen",
                          "window.title", "window.new", "menu.set", "menu.popup", "pdf.render", "page.snapshot", "window.appearance", "ui.stamp", "ui.source", "open.pending",
                          "window.tabDrop", "app.activate", "app.quit", "app.restartToUpdate", "app.running", "statusItem.set", "remote.open", "window.close",
                          "auth.key.info", "auth.key.create", "auth.key.verify", "auth.key.setId", "auth.key.forget"]
@@ -134,6 +134,12 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
     case "app.running":
       // 终端标签页里现在在前台跑的程序（同退出时那句「要终止正在运行的进程吗」列的）：重启以更新之前页面先看一眼
       return ["names": local?.running() ?? []]
+    case "window.rowGrid":
+      guard let c = controller, let row = a["row"] as? Double, let chrome = a["chrome"] as? Double,
+            let viewport = a["viewport"] as? Double, viewport > 0, row >= 0, row <= 256,
+            chrome >= 0, chrome < viewport else { throw BridgeError.args("invalid row grid") }
+      c.setRowGrid(row: row, chrome: chrome, viewport: viewport)
+      return [:]
     case "window.dragRegions":
       // 网页的菜单栏里空着的地方：按下能拖窗口、双击同标题栏（macOS 自己的窗口没有标题栏，桌面的菜单栏就是它的标题栏）
       let rects = (a["rects"] as? [[String: Any]] ?? []).compactMap { r -> NSRect? in

@@ -243,6 +243,35 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   }
 
   // ---- 窗口 ----
+  private var rowStep: CGFloat = 0
+  private var fixedHeight: CGFloat = 0
+
+  func setRowGrid(row: CGFloat, chrome: CGFloat, viewport: CGFloat) {
+    let scale = webView.pageZoom
+    rowStep = row * scale
+    fixedHeight = window.frame.height - webView.bounds.height + chrome * scale
+    guard rowStep > 0, !window.inLiveResize, !isFullScreen,
+          abs(webView.bounds.height - viewport * scale) < 2 else { return }
+    var frame = window.frame
+    let height = snappedHeight(frame.height)
+    guard abs(height - frame.height) >= 1,
+          window.screen?.visibleFrame.height ?? height >= height else { return }
+    frame.origin.y += frame.height - height
+    frame.size.height = height
+    window.setFrame(frame, display: true)
+  }
+
+  private func snappedHeight(_ height: CGFloat) -> CGFloat {
+    let minimum = ceil((window.minSize.height - fixedHeight) / rowStep)
+    let rows = max(minimum, ((height - fixedHeight) / rowStep).rounded())
+    return (fixedHeight + rows * rowStep).rounded()
+  }
+
+  func windowWillResize(_ sender: NSWindow, to proposed: NSSize) -> NSSize {
+    guard rowStep > 0, !isFullScreen else { return proposed }
+    return NSSize(width: proposed.width, height: snappedHeight(proposed.height))
+  }
+
   func windowDidBecomeKey(_ notification: Notification) { emitActive(); menus.reapply() } // 菜单栏跟着前面那个窗口
   func windowWillClose(_ notification: Notification) { bridge.rdp?.closeAll(); if winId > 1 { (NSApp.delegate as? AppDelegate)?.closed(self) } } // 关窗口：这个窗口里的远程桌面都断开
   func windowDidResignKey(_ notification: Notification) { emitActive() }
