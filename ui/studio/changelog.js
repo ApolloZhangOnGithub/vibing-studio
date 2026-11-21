@@ -21,6 +21,7 @@
         ["macOS 终端视图按当前行高调整窗口高度，减少底部空白。", "On macOS, terminal windows resize vertically in whole rows to reduce the gap at the bottom."],
       ],
       fixed: [
+        ["重开 Codex 会话时，只有确实完成的回合才显示 Worked for，已结束的工具停止闪烁。", "Reopening a Codex conversation now shows Worked for only on completed turns and stops animating finished tools."],
         ["输入箭头和输入文字与上方对话的对应列对齐。", "The input prompt and typed text now align with the corresponding columns in the conversation."],
         ["agy 使用完整日志恢复长回复，并按实际完成时间计算 Worked for 用时。", "Antigravity reads long replies from the full transcript and uses the recorded completion time for Worked for durations."],
       ],

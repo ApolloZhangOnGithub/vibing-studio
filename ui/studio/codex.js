@@ -356,13 +356,13 @@
     //   最后一条是要它回的（你的话、开始一问、工具的结果）、它还没写出东西（推理、回复、工具调用）——这段时间它在推理。用户 2026-10-28：Codex 以前只写 Working
     var lastIn = 0, lastOut = 0;
     rt.thinkSince = function () { return rt.stream && running && lastIn > lastOut ? lastIn : 0; };
-    function finishTurn() { if (cur && cur.last && !cur.stats && cur.at) cur.stats = { secs: Math.max(1, Math.round((cur.last - cur.at) / 1000)), verb: "Worked", at: cur.last, auto: true }; }
+
     // 在跑的那一问（转圈那一行、「在跑」的画法跟着它）：读到新的一问就换成它——不然还指着上一问（已经答完的），
     //   新的一问的回复、「Worked for」那一行都画错（上一问当成在跑、少了做完那一行）
     // 发出去、Codex 还没写进记录的那几句：先画成「排着」（灰底的「❯ 原话」），记录里出现了就划掉——不然要等它答了这句话才冒出来，像被吞了
     var sentWait = [];
     var wnorm = function (t) { return String(t || "").replace(/\s+/g, ""); };
-    function newTurn(text, at, imgs) { finishTurn(); cur = { ask: text, images: imgs || [], parts: [], at: at }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; if (sentWait.length) dropSent(text, at); return cur; }
+    function newTurn(text, at, imgs) { if (cur) settle(cur); cur = { ask: text, images: imgs || [], parts: [], at: at }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; if (sentWait.length) dropSent(text, at); return cur; }
     // 记录里来了新的一问：把这边「刚发的」那条去掉（不然同一句画两遍：用户「怎么又重复了」）——原话一样最好；Codex 记下来的话常常和发的不完全一样
     //   （带图的少了图、几句拼成一条、前后多了空白）：包含 / 开头一样也算；都对不上时，发出以后才开始的第一问就是它
     function dropSent(text, at) {
@@ -404,12 +404,12 @@
       var p = j.payload || {}, at = ts(j.timestamp);
       if (j.type === "session_meta") { info.cwd = p.cwd || info.cwd; return null; }
       if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = p.effort || cs.reasoning_effort; return null; }
-      if (j.type === "compacted") { finishTurn(); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
+      if (j.type === "compacted") { if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
       if (j.type === "event_msg") {
         if (p.type === "task_started") { running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
-        if (p.type === "task_complete") { running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
+        if (p.type === "task_complete") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
         if (p.type === "thread_goal_updated") { var g = p.goal || {}; agent.goal = g.status === "active" && g.objective ? { text: String(g.objective), at: (g.createdAt || 0) * 1000 || at, checking: false, iterations: 0 } : null; emit("config"); return null; } // Codex 的 /goal
-        if (p.type === "turn_aborted") { running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
+        if (p.type === "turn_aborted") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
         if (p.type === "token_count" && p.rate_limits && (!p.rate_limits.limit_id || p.rate_limits.limit_id === "codex")) {
           var limits = p.rate_limits, windows = [limits.primary, limits.secondary].filter(Boolean);
           function used(minutes, fallback) {
@@ -493,10 +493,9 @@
           turns.length = 0; cur = null; byCall = {}; sessOf = {}; running = null; runAt = 0;
           var r = linesOf(buf, start > 0);
           r.lines.forEach(feedLine);
-          finishTurn();
           offset = start + r.end;
           sess.updated = st.mtime;
-          (turns.length ? turns : []).forEach(function (t) { (t.parts || []).forEach(function (q) { if (q.kind === "tool" && q.status === "running" && !running) q.status = "done"; }); });
+          turns.forEach(function (t) { if (t !== cur || !running) settle(t); });
           emit("reset"); emit("status");
           liveBusy();
         });
@@ -541,16 +540,36 @@
     var ticker = 0;
     function tickOn() { if (ticker) return; ticker = setInterval(function () { if (!busy) { clearInterval(ticker); ticker = 0; return; } if (document.hidden) return; emit("tick"); }, 120); } // 看不见时不转（同 claude.js）
     function setBusy(v) {
-      if (v === busy) return;
+      if (v === busy) {
+        if (v && rt.stream && running && cur && !cur.stats) rt.stream.turn = cur;
+        return;
+      }
       busy = v;
       if (v) tickOn();
       if (v) rt.stream = { t0: running && runAt && !(proc && proc.alive()) ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", answer: "", ctl: { abort: function () {} } };
-      else { rt.stream = null; finishTurn(); if (cur) emit("turn", cur); }
+      else { rt.stream = null; clearInterval(ticker); ticker = 0; if (cur) { settle(cur); emit("turn", cur); } }
       emit("status"); emit("state");
     }
     // 在跑：这边起的 codex exec 还没退；或者记录里一问开了头还没结束，而且它正开在 Codex 里（守护进程载入着）或者文件一分钟内写过（没开着又停在半截的：Codex 退出了，不一直转）；
     //   刚排进 Codex 的（codex queue）：它开始写之前的十秒也算
-    function liveBusy() { if (proc && proc.alive()) return; setBusy(!!running && (live() || Date.now() - (sess.updated || 0) < 60000) || Date.now() - sentAt < 10000); }
+    var statusCheckAt = 0, checkingStatus = false;
+    function liveBusy() {
+      if (proc && proc.alive()) return;
+      var now = Date.now(), recent = now - (sess.updated || 0) < 60000;
+      setBusy(!!running && (recent || live() && busy) || now - sentAt < 10000);
+      if (!running || recent || checkingStatus || now < statusCheckAt || !live()) return;
+      var turnId = running, seen = sess.updated;
+      checkingStatus = true;
+      statusCheckAt = now + 10000;
+      cxRpc("thread/read", { threadId: sid, includeTurns: false }).then(function (reply) {
+        checkingStatus = false;
+        if (turnId !== running || seen !== sess.updated || proc && proc.alive()) return;
+        var thread = reply && reply.result && reply.result.thread;
+        var active = thread && thread.status && thread.status.type === "active";
+        if (thread && !active) running = null;
+        setBusy(!!active);
+      });
+    }
     var live = function () { var x = byId[sid]; return !!(x && x.live); };
     rt.elsewhere = function () { return live() && !(proc && proc.alive()); };
     rt.canInject = function () { return true; };
