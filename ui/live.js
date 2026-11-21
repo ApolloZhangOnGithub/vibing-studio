@@ -742,7 +742,7 @@
       if (ss.marginTop !== mt) ss.marginTop = mt;
       if (ss.marginBottom !== mb) ss.marginBottom = mb;
       if (!P.side && tw.ws && tw.ws.active === P && el.offsetHeight && window.nadosNative && root.classList.contains("termapp")) {
-        var gridRow = !vg && h && !(P.program && P.program.gui) ? P.rowH : 0;
+        var gridRow = P.rowH;
         var chromeHeight = innerHeight - avail;
         var key = gridRow + ":" + chromeHeight;
         if (tw.nativeRowGrid !== key) {

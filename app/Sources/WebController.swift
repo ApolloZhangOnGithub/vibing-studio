@@ -78,6 +78,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     window.tabbingMode = .disallowed
     window.collectionBehavior.insert(.fullScreenPrimary)
     window.minSize = NSSize(width: 720, height: 480)
+    if Config.terminal { window.contentResizeIncrements = NSSize(width: 1, height: rowStep) }
     window.backgroundColor = look.bg
     if let ap = look.appearance { window.appearance = ap } // 页面定死了深 / 浅（不跟系统）：红黄绿、标题栏一开始就对
     window.isReleasedWhenClosed = false
@@ -243,12 +244,14 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   }
 
   // ---- 窗口 ----
-  private var rowStep: CGFloat = 0
+  private var rowStep: CGFloat = 14
   private var fixedHeight: CGFloat = 0
 
   func setRowGrid(row: CGFloat, chrome: CGFloat, viewport: CGFloat) {
     let scale = webView.pageZoom
+    guard Config.terminal, row > 0 else { return }
     rowStep = row * scale
+    window.contentResizeIncrements = NSSize(width: 1, height: rowStep)
     fixedHeight = window.frame.height - webView.bounds.height + chrome * scale
     guard rowStep > 0, !window.inLiveResize, !isFullScreen,
           abs(webView.bounds.height - viewport * scale) < 2 else { return }
@@ -268,7 +271,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   }
 
   func windowWillResize(_ sender: NSWindow, to proposed: NSSize) -> NSSize {
-    guard rowStep > 0, !isFullScreen else { return proposed }
+    guard Config.terminal, !isFullScreen else { return proposed }
     return NSSize(width: proposed.width, height: snappedHeight(proposed.height))
   }
 
