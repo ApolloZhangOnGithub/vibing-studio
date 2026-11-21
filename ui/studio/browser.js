@@ -537,10 +537,19 @@
     if (a.kind === "file") { if (window.TSU_FICON) return TSU_FICON(a.path); var e = String(a.path || "").split(".").pop().toLowerCase(), x = EXT_ICON[e] || ["cfg", "≡"]; return '<i class="st-ico st-i-' + x[0] + '">' + x[1] + "</i>"; } // 文件：同「文件」视图的图标（ficons.js）
     return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', pi: '<i class="st-ico st-i-cx st-i-pi">' + PIL() + '</i>', teyvat: '<i class="st-ico st-i-ty">' + TYL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
   }
-  function fav(tabEl, P) {
+  function fav(tabEl, P, panes) {
     var span = tabEl.querySelector("span");
     if (!span) return;
     if (root.classList.contains("termapp")) {
+      var unread = (panes || [P]).some(function (pane) {
+        if (!pane || !pane.finishedAgent || pane.finishedAgent !== pane.program.agentId) return false;
+        if (document.hasFocus() && !document.hidden && TSU_TERM.front() === pane.win && pane.win.ws.active === pane) {
+          pane.finishedAgent = "";
+          return false;
+        }
+        return true;
+      });
+      if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="回复已完成"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
       // agent 在跑：图标还是它自己的（Claude Code 的就是 Claude 的 logo），只是跳动起来（一下一下地放大、回落）；名字后面不挂 ✳，也不换成字符转圈。
       //   几个一起跑：各自的节奏、相位按会话算（不齐刷刷一起跳）

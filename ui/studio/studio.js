@@ -1047,7 +1047,7 @@
     var art = null; try { art = aid && window.TSU_AGENTS ? TSU_AGENTS.runtime(aid) : null; } catch (e) { art = null; }
     lab.classList.toggle("busy", !!(art && (art.stream || (art.state && art.state() === "working")))); // 在跑：标志是橙的；闲着是灰的
     var fam = familyHost() === "side" && AP ? familyHtml(AP, subsInFoot(tw) ? ["todo", "bg"] : null) : ""; // 子 Agent 在面板的 Agent 那一层时，这里只放任务清单、后台任务
-    var empty = aid ? '<div class="st-dim st-empty">这个 agent 现在没有任务清单、后台任务和子 Agent</div>' :
+    var empty = aid ? "" :
       '<div class="st-empty st-noag"><div>没有打开的 agent</div><div class="st-dim">打开或新建一个 agent，这里是它的任务清单、后台任务和子 Agent</div>' + (!window.TSU_CONNECTORS || TSU_CONNECTORS.on("paimon") ? '<button type="button" class="st-btn" data-st="new-agent">新建 Agent</button>' : "") + "</div>"; // Paimon Code 连接器关了：没有「新建 Agent」
     var html = (S.previewImg ? '<div class="st-sec st-prev"><div class="st-prevh"><span class="st-cut">预览 · ' + esc(S.previewImg.title || "") + '</span><span class="st-fill"></span><span class="st-x" data-st="preview-close" title="关闭预览">×</span></div><div class="st-prevb"><img src="' + esc(S.previewImg.src) + '" alt=""></div></div>' : "") +
       (fam || (S.previewImg ? "" : empty));
@@ -3471,20 +3471,32 @@
   function noteTick() {
     var mode = getv("agentNotify") || "off", T = window.TSU_TERM, A2 = window.TSU_AGENTS, N = window.nadosNative;
     if (!T || !T.panes || !A2 || !A2.runtime) return;
-    var seen = {};
+    var seen = new Set(), focused = !document.hidden && document.hasFocus(), front = T.front();
     T.panes().forEach(function (p) {
       var id = p.program && p.program.agentId;
-      if (!id || seen[id]) return;
-      seen[id] = 1;
-      var rt = null; try { rt = A2.runtime(id); } catch (e) { rt = null; }
-      if (!rt) return;
-      var busy = !!rt.stream, was = notePrev[id];
-      notePrev[id] = busy;
-      if (mode === "off" || !was || busy || !N || !N.call) return;
-      if (!document.hidden && document.hasFocus()) return; // 正看着：不打扰
+      if (!id || p.side || seen.has(id)) return;
+      seen.add(id);
+      var rt = A2.runtime(id);
+      if (!rt || !rt.session) return;
+      var turns = rt.session().turns || [], completed = 0;
+      for (var i = turns.length - 1; i >= 0; i--) {
+        var turn = turns[i];
+        if (turn.stats && !turn.error) { completed = turn.stats.at || turn.at || 0; break; }
+      }
+      var prior = notePrev[id], visible = focused && front === p.win && front.ws.active === p;
+      if (visible && p.finishedAgent) { p.finishedAgent = ""; p.win.syncTitles(); }
+      if (!turns.length) return;
+      notePrev[id] = {completed: Math.max(completed, prior ? prior.completed : 0)};
+      if (!prior || visible || !completed || completed <= prior.completed || completed < Date.now() - 60000) return;
+      p.finishedAgent = id;
+      p.win.syncTitles();
+      if (focused || !N || !N.call) return;
+      N.call("attention").catch(function () {});
+      if (mode === "off") return;
       var name = (rt.agent && rt.agent.name) || "Agent", tail = rt.tail ? String(rt.tail() || "") : "";
-      N.call("notify", { id: "agent:" + id + ":" + Date.now(), title: name + " 做完了", body: tail.replace(/\s+/g, " ").slice(0, 160) }).catch(function () {});
+      N.call("notify", { id: "agent:" + id + ":" + completed, title: name + " 做完了", body: tail.replace(/\s+/g, " ").slice(0, 160) }).catch(function () {});
     });
+    Object.keys(notePrev).forEach(function (id) { if (!seen.has(id)) delete notePrev[id]; });
   }
   setInterval(noteTick, 2000);
   // ---- 在等你的会话（问你问题、等你确认权限）：开着的标签页（V.needsYou）+ 没开着、Claude Code 登记成 waiting 的（侧栏的会话列表）----

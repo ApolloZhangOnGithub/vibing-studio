@@ -11,6 +11,15 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var KEY = "vs-clips";
   var all = (function () { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } })();
+  function sourceKind(agent, fallback) {
+    var match = /^(cc|cx|agy|pi|ty):/.exec(agent || "");
+    return match ? match[1] : fallback || "pm";
+  }
+  function normalize(rec) {
+    if (rec && rec.src && rec.src.agent) rec.src.kind = sourceKind(rec.src.agent, rec.src.kind);
+    return rec;
+  }
+  Object.values(all).forEach(normalize);
   var subs = [];
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(all)); } catch (e) { /* 满了 */ } };
   var fire = function () { subs.slice().forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); document.dispatchEvent(new Event("vs-clips")); };
@@ -19,12 +28,12 @@
     var SY = window.TSU_SYNC;
     if (SY && SY.push) SY.push([{ ns: "clip", id: id, data: all[id] ? JSON.stringify(all[id]) : null }]).catch(function () { /* 下次改动时再推 */ });
   }
-  function put(rec) { all[rec.id] = rec; save(); push(rec.id); fire(); return rec; }
+  function put(rec) { all[rec.id] = normalize(rec); save(); push(rec.id); fire(); return rec; }
   function remove(id) { if (!all[id]) return; delete all[id]; save(); push(id); fire(); }
   // 别的设备收的、改的（agents.js 拉到 ns = "clip" 的记录交过来）
   function remote(id, data) {
     if (data == null) { if (!all[id]) return; delete all[id]; }
-    else { var o; try { o = JSON.parse(data); } catch (e) { return; } if (JSON.stringify(all[id]) === data) return; all[id] = o; }
+    else { var o; try { o = JSON.parse(data); } catch (e) { return; } if (JSON.stringify(all[id]) === data) return; all[id] = normalize(o); }
     save(); fire();
   }
   var devName = function () { var SY = window.TSU_SYNC; try { return SY && SY.name ? SY.name() : ""; } catch (e) { return ""; } };
@@ -39,7 +48,7 @@
   function favOf(src) { return list().filter(function (r) { return r.type === "msg" && sameMsg(r.src, src); })[0] || null; }
   // 这段会话里的标记：对话里那一问左边画一道线
   function flagsFor(agentId) { return list().filter(function (r) { return r.type === "flag" && r.src && r.src.agent === agentId; }); }
-  var KIND = { cc: "Claude Code", cx: "Codex", pi: "pi", ty: "Teyvat", pm: "Paimon" };
+  var KIND = { cc: "Claude Code", cx: "Codex", agy: "Google Antigravity", pi: "pi", ty: "Teyvat", pm: "Paimon" };
   var when = function (ms) { if (!ms) return ""; var d = new Date(ms); return t((d.getMonth() + 1) + "月" + d.getDate() + "日 ", d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " ") + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); };
   var srcLine = function (r) { var s = r.src || {}; return [KIND[s.kind] || "", s.title ? "「" + s.title + "」" : "", s.at ? when(s.at) : ""].filter(Boolean).join(" · "); };
   // 复制为引用：原文一行行 > 引起来，下面一行出处（连接器、会话、时间、会话 id）——贴到别的对话、笔记里也知道从哪来
@@ -80,7 +89,7 @@
     return false;
   }
   window.TSU_CLIPS = {
-    list: list, get: function (id) { return all[id] || null; }, add: add, remove: remove, remote: remote, flagsFor: flagsFor, favOf: favOf,
+    sourceKind: sourceKind, list: list, get: function (id) { return all[id] || null; }, add: add, remove: remove, remote: remote, flagsFor: flagsFor, favOf: favOf,
     setNote: function (id, note) { var r = all[id]; if (!r) return; r.note = String(note || ""); r.edited = Date.now(); put(r); },
     reference: reference, jump: jump, insert: insert, srcLine: srcLine, when: when,
     watch: function (f) { subs.push(f); return function () { subs = subs.filter(function (g) { return g !== f; }); }; },
@@ -99,8 +108,8 @@
     jump: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L7.8 8.2M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>',
     back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>',
   };
-  var KINDS = ["cc", "cx", "pi", "ty", "pm"];
-  var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : ""; };
+  var KINDS = ["cc", "cx", "agy", "pi", "ty", "pm"];
+  var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : L[k] || ""; };
   var roleOf = function (r) { return r.type === "flag" ? "flag" : (r.src && r.src.role) === "user" ? "user" : "reply"; };
   // agent 的回答：同对话里那样画（终端的样子：代码块上色、折行对齐），用对话的 Markdown 渲染（同 live.js / dash.js），不自己糊一套 HTML
   var termLight = function () { try { return !!(window.TSU_TERM && TSU_TERM.termLight && TSU_TERM.termLight()); } catch (e) { return false; } };
@@ -143,7 +152,7 @@
       ro === "user" ? termAsk(r.text) : termMd(r.text, 40);
     return '<article class="fv-card' + (Q.sel === r.id ? " on" : "") + '" data-id="' + esc(r.id) + '" tabindex="-1">' +
       '<header><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><b>' + esc(s.title || kindName(s)) + "</b><time>" + esc(when(r.created)) + "</time></header>" +
-      '<div class="fv-who">' + esc(ro === "user" ? t("你", "You") : ro === "flag" ? t("标记", "Flag") : t("回复", "Reply")) + "</div>" + '<div class="fv-prev">' + body + "</div>" +
+      '<div class="fv-who">' + esc(ro === "user" ? t("你", "You") : ro === "flag" ? t("标记", "Flag") : t("回复", "Reply")) + " · " + esc(kindName(s)) + "</div>" + '<div class="fv-prev">' + body + "</div>" +
       (r.note ? '<div class="fv-cnote">' + esc(r.note) + "</div>" : "") + "</article>";
   }
   function detailHtml(r) {
@@ -181,6 +190,14 @@
     if (had) { var qi = host.querySelector(".fv-q"); qi.focus(); qi.setSelectionRange(pos, pos); }
   }
   function wire(host, P) {
+    host.addEventListener("wheel", function (event) {
+      if (event.ctrlKey || event.metaKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      var column = event.target.closest(".fv-detail, .fv-list, .fv-nav");
+      if (!column || column.scrollHeight <= column.clientHeight) return;
+      var unit = event.deltaMode === 1 ? parseFloat(getComputedStyle(column).lineHeight) || 16 : event.deltaMode === 2 ? column.clientHeight : 1;
+      event.preventDefault();
+      column.scrollTop += event.deltaY * unit;
+    }, { passive: false });
     host.addEventListener("input", function (e) { if (e.target.classList && e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
     host.addEventListener("focusout", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n) { var r = all[n.dataset.note]; if (r && (r.note || "") !== n.textContent) window.TSU_CLIPS.setNote(r.id, n.textContent); setTimeout(function () { paint(host); }, 0); } });
     host.addEventListener("keydown", function (e) {

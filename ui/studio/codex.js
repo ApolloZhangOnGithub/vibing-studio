@@ -11,15 +11,16 @@
   var TAIL = 4 << 20;
   var home = function () { return (LOC.info() || {}).home || ""; };
   // 附的图（粘贴、拖进来的截屏）：存成文件（~/Library/Application Support/Vibing Studio/shots/，同 claude.js），发话时 --image 带上
-  function saveShots(imgs) {
-    if (!LOC.write) return Promise.resolve([]);
-    var dir = home() + "/Library/Application Support/Vibing Studio/shots", stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
+  async function saveShots(imgs) {
+    if (!LOC.write && imgs.some(function (im) { return !im.path; })) throw new Error("无法写入本地图片");
+    var dir = home() + "/Library/Application Support/Vibing Studio/shots", stamp = crypto.randomUUID();
     return Promise.all(imgs.map(function (im, i) {
+      if (im.path && !im.data) return im.path;
       var ext = /png/.test(im.media_type) ? "png" : /gif/.test(im.media_type) ? "gif" : /webp/.test(im.media_type) ? "webp" : "jpg", p = dir + "/shot-" + stamp + "-cx" + (i + 1) + "." + ext;
       var bin = atob(im.data), u8 = new Uint8Array(bin.length);
       for (var k = 0; k < bin.length; k++) u8[k] = bin.charCodeAt(k);
-      return LOC.write(p, u8).then(function () { return p; }, function () { return ""; });
-    })).then(function (ps) { return ps.filter(Boolean); });
+      return LOC.write(p, u8).then(function () { return p; });
+    }));
   }
   var on = function () { return !!(CON && CON.on("codex")); };
   var ts = function (s) { var t = Date.parse(s || ""); return isNaN(t) ? Date.now() : t; };
@@ -53,7 +54,7 @@
     ' sub sw { my $d = shift; my $l = length $d; my $f = chr(129) . ($l < 126 ? chr(128 | $l) : $l < 65536 ? chr(254) . pack(q(n), $l) : chr(255) . pack(q(Q>), $l)); my @k = map { int rand 256 } 1..4; $f .= pack(q(C4), @k); my $i = 0; $f .= join q(), map { chr(ord($_) ^ $k[$i++ % 4]) } split //, $d; print $s $f; $s->flush }' +
     ' sub rd { my $n = shift; my $b = q(); while (length($b) < $n) { sysread($s, my $c, $n - length $b) or exit 0; $b .= $c } $b }' +
     ' sub rw { my ($a, $b) = unpack(q(C2), rd(2)); my $l = $b & 127; $l = unpack(q(n), rd(2)) if $l == 126; $l = unpack(q(Q>), rd(8)) if $l == 127; return ($a & 15, $l ? rd($l) : q()) }' +
-    ' sw(q({"id":1,"method":"initialize","params":{"clientInfo":{"name":"vibing-studio","version":"1"}}}));' +
+    ' sw(q({"id":1,"method":"initialize","params":{"clientInfo":{"name":"vibing-studio","version":"1"},"capabilities":{"experimentalApi":true}}}));' +
     ' while (1) { my ($o, $p) = rw(); next unless $o == 1; if ($p =~ /"id":1[,}]/) { sw(q({"method":"initialized"})); sw(qq({"id":2,"method":"$m","params":$pa})); } elsif ($p =~ /"id":2[,}]/) { print $p, "\\n"; exit 0 } }';
   // → { result } / { error }；连不上（守护进程没在跑）→ { error: "noconn" }
   // Codex 的模型目录（model/list）：十分钟问一次；名字照它的 displayName（gpt-6-astra → GPT-6 Astra），没读到就按 id 拼一个像样的
@@ -87,7 +88,10 @@
   function jsArg(code, fn) {
     var i = code.indexOf("tools." + fn + "(");
     if (i < 0) return "";
-    var s = code.slice(i + fn.length + 7).replace(/^\s+/, ""), qc = s.charAt(0), out = "";
+    return jsString(code.slice(i + fn.length + 7).trimStart(), code);
+  }
+  function jsString(s, code) {
+    var qc = s.charAt(0), out = "";
     if (qc !== '"' && qc !== "'" && qc !== "`") return "";
     for (var k = 1; k < s.length; k++) {
       var c = s.charAt(k);
@@ -260,7 +264,12 @@
     if (p.type === "custom_tool_call" && name === "exec") { // 写一段脚本调别的工具（Codex 的 code mode）：按它调的第一个工具来叫
       var code = p.input || "", inner = /tools\.(\w+)\s*\(/.exec(code), q = function (k) { var r = new RegExp(k + '\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(code); try { return r ? JSON.parse('"' + r[1] + '"') : ""; } catch (e) { return r ? r[1] : ""; } };
       var iname = inner ? inner[1] : "";
-      if (iname === "exec_command") return { name: "Bash", input: { command: q("cmd") || clip(code, 200) } };
+      if (iname === "exec_command") {
+        var field = /(?:[,{]\s*)(?:cmd|"cmd"|'cmd')\s*:\s*/g;
+        field.lastIndex = inner.index + inner[0].length;
+        var found = field.exec(code);
+        return { name: "Bash", input: { command: found ? jsString(code.slice(field.lastIndex), code) : "" } };
+      }
       if (iname === "write_stdin") { var sm = /session_id\s*:\s*(\d+)/.exec(code); return { name: "TaskOutput", input: { task_id: sm ? sm[1] : "", chars: q("chars") } }; } // 等一条还在跑的命令的输出（接在那条命令下面，见 pollOf）
       if (iname === "web__run") return q("q") ? { name: "web_search", input: { query: q("q") } } : { name: "WebFetch", input: { url: q("ref_id") || q("url") } };
       if (iname === "apply_patch") { var pt = jsArg(code, "apply_patch"), fl = [], fm, fre = /^\*\*\* (Add|Update|Delete) File: (.+)$/gm; while ((fm = fre.exec(pt))) fl.push(fm[2].trim()); return { name: "Edit", input: { file_path: fl[0] || "", files: fl, patch: pt } }; } // 补丁本身在 tools.apply_patch("…") 的参数里
@@ -296,11 +305,12 @@
   function result(p, o) {
     var r = outputOf(o), lines = r.text.replace(/\r/g, "").split("\n");
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    p.exitCode = r.code;
     var err = r.code !== null && r.code !== 0;
     p.secs = Math.max(0, Math.round(((p.turn && p.turn.last) || p.t0) - p.t0) / 1000);
     if (r.sess !== null && p.name === "Bash") { p.status = "running"; p.sess = r.sess; p.detail = lines.slice(-400); return; } // 还在跑：之后等它的输出接在这里（Codex 自己也是这样显示）
     p.status = err ? "error" : "done";
-    if (err) { p.error = (lines.filter(Boolean).slice(-1)[0] || "exit code " + r.code).slice(0, 300); p.detail = lines.slice(0, 200); return; }
+    if (err) { p.error = (lines.filter(Boolean).slice(-1)[0] || "exit code " + r.code).slice(0, 300); p.detail = lines; return; }
     if (p.name === "Edit") {
       var d = [], add = 0, del = 0, pl = String(p.input.patch || "").split("\n");
       pl.forEach(function (l) { if (/^\*\*\* /.test(l)) { if (d.length) d.push({ t: "…" }); return; } if (l[0] === "+") { d.push({ t: "+", l: l.slice(1) }); add++; } else if (l[0] === "-") { d.push({ t: "-", l: l.slice(1) }); del++; } else if (l[0] === " ") d.push({ t: " ", l: l.slice(1) }); });
@@ -314,10 +324,10 @@
     if (p.name === "WebFetch") { p.summary = lines[0] ? lines[0].slice(0, 160) : "Done"; p.detail = lines.slice(0, 200); return; }
     if (p.name === "TodoWrite") { p.summary = "Updated plan"; return; }
     if (p.name === "Agent") { p.summary = lines[0] ? lines[0].slice(0, 200) : "Done"; p.detail = lines.slice(0, 200); return; }
-    p.detail = lines.slice(0, 400);
+    p.detail = p.name === "Bash" ? lines : lines.slice(0, 400);
   }
 
-  function Runtime(aid, info) {
+  function Runtime(aid, info, historyLines) {
     var rt = this, sid = aid.slice(3), subs = [], turns = [], sess = { id: sid, title: info.title || sid.slice(0, 8), turns: turns, todo: { items: [] }, ctx: 0, window: 0, updated: info.mtime || 0 };
     var agent = rt.agent = { id: aid, name: sess.title, effort: "", access: "rw", model: info.model || "", current: sid, goal: null, archived: false, claude: true, connector: "codex" };
     rt.info = info; rt.sid = sid; rt.label = "Codex";
@@ -345,8 +355,22 @@
     ["setEffort", "setModel", "setAccess", "rename", "setGoal", "clearGoal", "clear", "resume", "bang", "detachBash", "stopTask", "wakeUp", "receive", "afterReload"].forEach(function (k) { rt[k] = function () { return false; }; });
     rt.turnOf = function () { return null; };
     rt.historical = function () { return false; };
-    rt.more = function () { return false; };
-    rt.earlier = function () { return Promise.resolve(false); };
+    var historyStart = 0, readingHistory = false;
+    rt.more = function () { return historyStart > 0; };
+    rt.earlier = async function () {
+      if (!historyStart || loadingNow || readingHistory) return false;
+      var generation = gen;
+      readingHistory = true;
+      try {
+        var page = await readPage(historyStart);
+        if (gen !== generation) return false;
+        var history = new Runtime(aid, Object.assign({}, info), page.lines);
+        historyStart = page.start;
+        turns.unshift.apply(turns, history.session().turns);
+        emit("prepend");
+        return true;
+      } finally { readingHistory = false; }
+    };
     rt.later = function () { return Promise.resolve(false); };
     rt.latest = function () { return load(); };
 
@@ -354,8 +378,23 @@
     var offset = 0, pollT = 0, cur = null, byCall = {}, loading = null, running = null;
     // 它在想吗（同 Claude Code 转圈那一行的 thinking / still thinking / deep in thought：live.js 的 thinkPhrase 问 rt.thinkSince）：
     //   最后一条是要它回的（你的话、开始一问、工具的结果）、它还没写出东西（推理、回复、工具调用）——这段时间它在推理。用户 2026-10-28：Codex 以前只写 Working
+    var pendingPolls = new Set(), compactSince = 0, compactEnd = 0, compactCheck = 0, checkingCompact = false;
+    function phase() {
+      return compactSince ? "Compacting context" : pendingPolls.size ? "Waiting for background terminal" : "";
+    }
+    function checkCompact() {
+      if (!running || checkingCompact || Date.now() < compactCheck || !/^[a-f0-9-]+$/i.test(sid) || !/^[a-f0-9-]+$/i.test(running)) return;
+      var turn = running;
+      compactCheck = Date.now() + 2500;
+      checkingCompact = true;
+      var sql = "SELECT (ts * 1000 + ts_nanos / 1000000) FROM logs WHERE thread_id='" + sid + "' AND ts >= " + Math.floor(runAt / 1000) + " AND instr(feedback_log_body,'run_auto_compact{') > 0 AND instr(feedback_log_body,'" + turn + "') > 0 AND (ts * 1000 + ts_nanos / 1000000) > " + compactEnd + " ORDER BY ts, ts_nanos LIMIT 1";
+      LOC.exec({cmd: '/usr/bin/sqlite3 -readonly "$HOME/.codex/logs_2.sqlite" ' + shq(sql)}).then(function (result) {
+        var time = Number(result && result.out);
+        if (!compactSince && running === turn && time > compactEnd && time >= runAt) compactSince = time;
+      }).finally(function () { checkingCompact = false; });
+    }
     var lastIn = 0, lastOut = 0;
-    rt.thinkSince = function () { return rt.stream && running && lastIn > lastOut ? lastIn : 0; };
+    rt.thinkSince = function () { return rt.stream && !phase() && running && lastIn > lastOut ? lastIn : 0; };
 
     // 在跑的那一问（转圈那一行、「在跑」的画法跟着它）：读到新的一问就换成它——不然还指着上一问（已经答完的），
     //   新的一问的回复、「Worked for」那一行都画错（上一问当成在跑、少了做完那一行）
@@ -398,16 +437,47 @@
     }
     // 一问做完 / 停下：还挂着「在跑」的工具不再转（后台还在跑的命令，之后再等它的输出照样接上：sessOf 留着）
     function settle(t) { (t.parts || []).forEach(function (q) { if (q.kind === "tool" && q.status === "running") q.status = "done"; }); }
+    function assistantText(text, phase, at, source, id) {
+      if (!text || !text.trim()) return null;
+      var t = ensureTurn(at), last = t.parts[t.parts.length - 1];
+      if (last && last.kind === "text" && ((id && last.messageId === id) ||
+          (last.text === text && last.source !== source))) return null;
+      lastOut = Math.max(lastOut, at);
+      t.parts.push({kind: "text", text: text, whole: true, at: at, source: source, messageId: id,
+        phase: phase === "commentary" ? "progress" : phase === "final_answer" ? "final" : ""});
+      t.last = at;
+      return t;
+    }
     function feedLine(line) {
       if (!line || line.length < 10) return null;
       var j; try { j = JSON.parse(line); } catch (e) { return null; }
       var p = j.payload || {}, at = ts(j.timestamp);
       if (j.type === "session_meta") { info.cwd = p.cwd || info.cwd; return null; }
       if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = p.effort || cs.reasoning_effort; return null; }
-      if (j.type === "compacted") { if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
+      if (j.type === "compacted") { compactSince = 0; compactEnd = at; if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
       if (j.type === "event_msg") {
-        if (p.type === "task_started") { running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
-        if (p.type === "task_complete") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
+        if (p.type === "item_completed" && p.item && p.item.type === "AgentMessage") {
+          var message = p.item;
+          return assistantText((message.content || []).map(function (block) { return block.type === "Text" ? block.text : ""; }).filter(Boolean).join("\n"), message.phase, at, "item", message.id);
+        }
+        if (p.type === "item_completed" && p.item && p.item.type === "CommandExecution" && cur) {
+          var item = p.item, argv = item.command;
+          if (!Array.isArray(argv) || !argv.length) return null;
+          var command = /^-[a-z]*c$/.test(argv[1]) ? argv[2] : argv.join(" ");
+          var candidates = cur.parts.filter(function (part) { return part.name === "Bash" && !part.nativeCommand && part.status === "running"; });
+          var match = candidates.find(function (part) { return part.input.command === command; });
+          if (!match && candidates.length === 1 && !candidates[0].input.command) match = candidates[0];
+          if (match) {
+            match.nativeCommand = true;
+            match.parsedCommand = item.parsed_cmd;
+            match.input.command = command;
+            match.input.workdir = item.cwd;
+            result(match, { output: JSON.stringify({output: item.aggregated_output || "", exit_code: item.exit_code}) });
+            return cur;
+          }
+        }
+        if (p.type === "task_started") { pendingPolls.clear(); compactSince = 0; running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
+        if (p.type === "task_complete") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; assistantText(p.last_agent_message, "final_answer", at, "completion"); running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
         if (p.type === "thread_goal_updated") { var g = p.goal || {}; agent.goal = g.status === "active" && g.objective ? { text: String(g.objective), at: (g.createdAt || 0) * 1000 || at, checking: false, iterations: 0 } : null; emit("config"); return null; } // Codex 的 /goal
         if (p.type === "turn_aborted") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
         if (p.type === "token_count" && p.rate_limits && (!p.rate_limits.limit_id || p.rate_limits.limit_id === "codex")) {
@@ -419,20 +489,27 @@
           sess.limits = { five: used(300, limits.primary), week: used(10080, limits.secondary), at: at };
         }
         if (p.type === "token_count" && p.info) { var u = p.info.last_token_usage || {}; if (u.total_tokens || u.input_tokens) sess.ctx = u.total_tokens || ((u.input_tokens || 0) + (u.output_tokens || 0)); if (p.info.model_context_window) sess.window = p.info.model_context_window; return null; }
-        if (p.type === "context_compacted") return null; // 同一回事的 compacted 那一行已经画了
+        if (p.item && /^(contextCompaction|context_compaction)$/i.test(p.item.type)) {
+          if (p.type === "item_started") compactSince = p.started_at_ms || at;
+          if (p.type === "item_completed") {
+            var start = p.started_at_ms || compactSince, end = p.completed_at_ms || at;
+            var entry = turns[turns.length - 1];
+            if (!entry || !entry.compact || (start && entry.at < start)) {
+              entry = { compact: {}, at: end };
+              turns.push(entry);
+            }
+            if (start && end >= start) entry.compact.duration = end - start;
+            compactSince = 0; compactEnd = end;
+            return entry;
+          }
+        }
+        if (p.type === "context_compacted") { compactSince = 0; compactEnd = at; return null; } // 同一回事的 compacted 那一行已经画了
         return null;
       }
       if (j.type !== "response_item") return null;
       if (p.type === "message") {
         if (p.role === "user") { var u = userOf(p.content); if ((!u.text.trim() && !u.images.length) || synthetic(u.text)) return null; lastIn = Math.max(lastIn, at); return newTurn(u.text, at, u.images); }
-        if (p.role === "assistant") lastOut = Math.max(lastOut, at);
-        var text = textOf(p.content);
-        if (p.role !== "assistant" || !text.trim()) return null;
-        var t = ensureTurn(at);
-        // whole：Codex 写进记录的是说完了的整段（不是流式的半段）——在跑的这一问里也整段画（live.js 不再只画到最后一个换行：单行的回复整句都不见）
-        t.parts.push({ kind: "text", text: text, whole: true, at: at, phase: p.phase === "commentary" ? "progress" : p.phase === "final_answer" ? "final" : "" });
-        t.last = at;
-        return t;
+        return p.role === "assistant" ? assistantText(textOf(p.content), p.phase, at, "response", p.id) : null;
       }
       if (p.type === "reasoning") {
         lastOut = Math.max(lastOut, at); // 推理写进记录了：这一段想完了（接下来是回复或工具调用）
@@ -445,6 +522,7 @@
       if (/_call$/.test(p.type) && p.type !== "function_call_output") lastOut = Math.max(lastOut, at);
       if (/_call$/.test(p.type) && p.type !== "function_call_output") {
         var po = pollOf(p), tg = po && sessOf[po.sess];
+        if (po && !po.chars && (p.call_id || p.id)) pendingPolls.add(p.call_id || p.id);
         if (tg && (p.call_id || p.id)) { byCall[p.call_id || p.id] = { poll: tg, chars: po.chars }; return null; }
         var tp = toolPart(p, at), t3 = ensureTurn(at);
         var part = { kind: "tool", name: tp.name, input: tp.input || {}, status: p.type === "web_search_call" ? "done" : "running", id: p.call_id || p.id, t0: at, turn: t3 };
@@ -457,10 +535,11 @@
       }
       if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "tool_search_output") lastIn = Math.max(lastIn, at); // 工具的结果回去了：它又要想了
       if (p.type === "function_call_output" || p.type === "custom_tool_call_output" || p.type === "tool_search_output") {
+        pendingPolls.delete(p.call_id);
         var pp = byCall[p.call_id];
         if (!pp) return null;
         if (pp.poll) { delete byCall[p.call_id]; return more(pp.poll, p.output, at, pp.chars); }
-        result(pp, p.output);
+        if (!pp.nativeCommand) result(pp, p.output);
         if (pp.status === "running" && pp.sess != null) sessOf[pp.sess] = pp;
         if (pp.turn) pp.turn.last = at;
         return pp.turn;
@@ -481,19 +560,45 @@
       var j = u8.lastIndexOf(10), end = j + 1 > a ? j + 1 : a;
       return { end: end, lines: end > a ? dec(u8.subarray(a, end)).split("\n") : [] };
     }
+    async function readPage(end) {
+      var cursor = end, suffix = new Uint8Array(0), groups = [], consumed = end;
+      do {
+        var start = Math.max(0, cursor - TAIL);
+        var block = new Uint8Array(await LOC.read(info.path, { offset: start, max: cursor - start }));
+        var bytes = new Uint8Array(block.length + suffix.length);
+        bytes.set(block); bytes.set(suffix, block.length);
+        var first = start ? bytes.indexOf(10) + 1 : 0;
+        if (!start || first) {
+          var last = bytes.lastIndexOf(10) + 1;
+          if (cursor === end || !groups.length) consumed = start + last;
+          var lines = dec(bytes.subarray(first, last)).split("\n");
+          var boundary = start ? lines.findIndex(function (line) {
+            if (!line.includes('"task_started"')) return false;
+            try { var j = JSON.parse(line); return j.type === "event_msg" && j.payload.type === "task_started"; } catch (_) { return false; }
+          }) : 0;
+          if (boundary >= 0) {
+            var skip = boundary ? new TextEncoder().encode(lines.slice(0, boundary).join("\n") + "\n").length : 0;
+            groups.unshift(lines.slice(boundary));
+            return { start: start + first + skip, end: consumed, lines: groups.flat() };
+          }
+          groups.unshift(lines);
+        }
+        suffix = first ? bytes.slice(0, first) : bytes;
+        cursor = start;
+      } while (cursor);
+    }
     function load() {
       var g = ++gen;
       loadingNow = true;
       loading = withPath().then(function (pth) { return LOC.stat(pth); }).then(function (st) {
         if (g !== gen) return;
         if (!st) throw new Error("会话记录不存在");
-        var size = st.size, start = size > TAIL ? size - TAIL : 0;
-        return LOC.read(info.path, { offset: start, max: size - start }).then(function (buf) {
+        return readPage(st.size).then(function (page) {
           if (g !== gen) return;
-          turns.length = 0; cur = null; byCall = {}; sessOf = {}; running = null; runAt = 0;
-          var r = linesOf(buf, start > 0);
-          r.lines.forEach(feedLine);
-          offset = start + r.end;
+          pendingPolls.clear(); compactSince = compactEnd = 0; turns.length = 0; cur = null; byCall = {}; sessOf = {}; running = null; runAt = 0;
+          historyStart = page.start;
+          page.lines.forEach(feedLine);
+          offset = page.end;
           sess.updated = st.mtime;
           turns.forEach(function (t) { if (t !== cur || !running) settle(t); });
           emit("reset"); emit("status");
@@ -546,7 +651,7 @@
       }
       busy = v;
       if (v) tickOn();
-      if (v) rt.stream = { t0: running && runAt && !(proc && proc.alive()) ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", answer: "", ctl: { abort: function () {} } };
+      if (v) rt.stream = { t0: running && runAt && !(proc && proc.alive()) ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", specialStatus: phase(), phaseAt: compactSince, answer: "", ctl: { abort: function () {} } };
       else { rt.stream = null; clearInterval(ticker); ticker = 0; if (cur) { settle(cur); emit("turn", cur); } }
       emit("status"); emit("state");
     }
@@ -554,6 +659,8 @@
     //   刚排进 Codex 的（codex queue）：它开始写之前的十秒也算
     var statusCheckAt = 0, checkingStatus = false;
     function liveBusy() {
+      checkCompact();
+      if (rt.stream) { rt.stream.specialStatus = phase(); rt.stream.phaseAt = compactSince; }
       if (proc && proc.alive()) return;
       var now = Date.now(), recent = now - (sess.updated || 0) < 60000;
       setBusy(!!running && (recent || live() && busy) || now - sentAt < 10000);
@@ -658,17 +765,39 @@
     // codex exec 的 stdin 是接着的管道时会一直读到头（把读到的接在话后面）：起来就关掉 stdin，不然它一直等着
     function eof(p) { if (p && p.close && p.started) p.started.then(function () { p.close(); }, function () {}); }
     // 排进正开在 Codex 里的会话（官方的 codex queue：守护进程收下，它闲着马上开始、忙着排在后面）
-    function queueIn(text) {
+    function queueIn(text, steerTurn) {
       sentAt = Date.now(); liveBusy();
       var sh = takeShots(text);
-      eof(LOC.proc({ argv: ["codex", "queue", "--thread", sid].concat(sh.args, runOpts(), ["--message", sh.text]), cwd: info.cwd || "" }, function (s, isErr) { if (isErr && /error/i.test(s)) rt.record(text, "没排进 Codex：" + s.trim().slice(0, 300)); }, function (code) { if (code) { sentAt = 0; rt.record(text, "没排进 Codex（" + code + "）"); liveBusy(); } setTimeout(poll, 600); }));
+      function failed(reason) {
+        sentAt = 0;
+        if (sentWait.some(function (entry) { return entry.text === sh.text; })) dropSent(sh.text, 0);
+        rt.record(sh.text, "没排进 Codex：" + reason);
+        liveBusy();
+      }
+      if (sh.args.length || steerTurn) {
+        var input = sh.args.map(function (arg) { return {type: "localImage", path: arg.slice("--image=".length)}; });
+        if (!sh.args.length || sh.text !== "(image)") input.push({type: "text", text: sh.text});
+        cxRpc(steerTurn ? "turn/steer" : "thread/queue/add", steerTurn ? {threadId: sid, expectedTurnId: steerTurn, input: input} : {threadId: sid, clientUserMessageId: crypto.randomUUID(), input: input}).then(function (reply) {
+          if (!reply || reply.result == null) failed(String(reply && reply.error && (reply.error.message || reply.error) || "无响应"));
+          setTimeout(poll, 600);
+        });
+        return;
+      }
+      var stderr = "";
+      eof(LOC.proc({ argv: ["codex", "queue", "--thread", sid, "--message", sh.text], cwd: info.cwd || "" }, function (chunk, isErr) {
+        if (isErr) stderr = (stderr + chunk).slice(-1000);
+      }, function (code) {
+        if (code) failed(stderr.trim() || "退出码 " + code);
+        setTimeout(poll, 600);
+      }));
     }
-    rt.send = function (text, imgs) {
+    rt.send = function (text, imgs, options) {
       text = String(text || "").trim();
-      imgs = (imgs || []).filter(function (x) { return x && x.data; });
-      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.send(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + text); }); return true; }
+      imgs = (imgs || []).filter(function (x) { return x && (x.data || x.path); });
+      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.send(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + text, null, options); }).catch(function (e) { rt.record(text, "图片发送失败：" + e.message); }); return true; }
       if (!text) return false;
       if (!(deciding || (proc && proc.alive()))) { sentWait.push({ text: takeShots(text).text, at: Date.now(), q: busy }); emit("status"); } // 马上发的：先画成排着（附的图不算在话里：记录里的话不带它）
+      if (running && running !== "?" && !(options && options.queue)) { queueIn(text, running); return true; }
       if (deciding || (proc && proc.alive())) { rt.queued = rt.queued ? { text: rt.queued.text + "\n\n" + text } : { text: text }; emit("status"); return true; } // 这边起的那一问还没完：排着（又说的拼在后面，空一行），完了一次发出去
       if (info.fresh && !info.path) { runExec(text); return true; } // 新会话：第一句建出来
       // 正开在 Codex 里（Codex app、终端里的 codex）→ codex queue；没开着 → codex exec resume。开没开着现问守护进程（列表里记的最多是十秒前的）：
@@ -700,8 +829,8 @@
     rt.canSendNow = rt.canInterrupt;
     // ctrl+enter：排着的（加上这一句）拼成一条；在跑就停掉这一问（停下来以后一次发出去），闲着就直接发
     rt.sendNow = function (text, imgs) {
-      imgs = (imgs || []).filter(function (x) { return x && x.data; });
-      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.sendNow(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + String(text || "").trim()); }); return true; }
+      imgs = (imgs || []).filter(function (x) { return x && (x.data || x.path); });
+      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.sendNow(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + String(text || "").trim()); }).catch(function (e) { rt.record(text, "图片发送失败：" + e.message); }); return true; }
       text = String(text || "").trim();
       if (text) rt.queued = rt.queued ? { text: rt.queued.text + "\n\n" + text } : { text: text };
       if (rt.interrupt()) { emit("status"); return true; }
@@ -828,6 +957,7 @@
       });
       return Promise.resolve({ groups: [{ title: "Needs input", items: needs }, { title: "Working", items: working }, { title: "Completed", items: done }].filter(function (g) { return g.items.length; }), running: working.length - (busy ? 1 : 0) });
     };
+    if (historyLines) { historyLines.forEach(feedLine); turns.forEach(settle); }
   }
 
   // /init（同 Codex 的 prompt_for_init_command.md）

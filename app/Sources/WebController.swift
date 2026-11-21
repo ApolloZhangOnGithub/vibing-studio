@@ -78,7 +78,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     window.tabbingMode = .disallowed
     window.collectionBehavior.insert(.fullScreenPrimary)
     window.minSize = NSSize(width: 720, height: 480)
-    if Config.terminal { window.contentResizeIncrements = NSSize(width: 1, height: rowStep) }
+    if Config.terminal { window.contentResizeIncrements = NSSize(width: columnStep, height: rowStep) }
     window.backgroundColor = look.bg
     if let ap = look.appearance { window.appearance = ap } // 页面定死了深 / 浅（不跟系统）：红黄绿、标题栏一开始就对
     window.isReleasedWhenClosed = false
@@ -245,23 +245,37 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
 
   // ---- 窗口 ----
   private var rowStep: CGFloat = 14
+  private var columnStep: CGFloat = 7
+  private var fixedWidth: CGFloat = 0
   private var fixedHeight: CGFloat = 0
 
-  func setRowGrid(row: CGFloat, chrome: CGFloat, viewport: CGFloat) {
+  func setRowGrid(row: CGFloat, chrome: CGFloat, viewport: CGFloat, column: CGFloat?, chromeWidth: CGFloat?) {
     let scale = webView.pageZoom
     guard Config.terminal, row > 0 else { return }
     rowStep = row * scale
-    window.contentResizeIncrements = NSSize(width: 1, height: rowStep)
+    if !window.inLiveResize, let column, column > 0, let chromeWidth, chromeWidth >= 0 {
+      columnStep = column * scale
+      fixedWidth = window.frame.width - webView.bounds.width + chromeWidth * scale
+    }
+    window.contentResizeIncrements = NSSize(width: columnStep, height: rowStep)
     fixedHeight = window.frame.height - webView.bounds.height + chrome * scale
     guard rowStep > 0, !window.inLiveResize, !isFullScreen,
           abs(webView.bounds.height - viewport * scale) < 2 else { return }
     var frame = window.frame
     let height = snappedHeight(frame.height)
-    guard abs(height - frame.height) >= 1,
+    let width = snappedWidth(frame.width)
+    guard abs(height - frame.height) >= 1 || abs(width - frame.width) >= 1,
           window.screen?.visibleFrame.height ?? height >= height else { return }
     frame.origin.y += frame.height - height
+    frame.size.width = width
     frame.size.height = height
     window.setFrame(frame, display: true)
+  }
+
+  private func snappedWidth(_ width: CGFloat) -> CGFloat {
+    let minimum = ceil((window.minSize.width - fixedWidth) / columnStep)
+    let columns = max(minimum, ((width - fixedWidth) / columnStep).rounded())
+    return (fixedWidth + columns * columnStep).rounded()
   }
 
   private func snappedHeight(_ height: CGFloat) -> CGFloat {
@@ -272,7 +286,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
 
   func windowWillResize(_ sender: NSWindow, to proposed: NSSize) -> NSSize {
     guard Config.terminal, !isFullScreen else { return proposed }
-    return NSSize(width: proposed.width, height: snappedHeight(proposed.height))
+    return NSSize(width: snappedWidth(proposed.width), height: snappedHeight(proposed.height))
   }
 
   func windowDidBecomeKey(_ notification: Notification) { emitActive(); menus.reapply() } // 菜单栏跟着前面那个窗口

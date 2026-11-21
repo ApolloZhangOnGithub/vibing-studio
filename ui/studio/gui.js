@@ -6,7 +6,6 @@
 // 运行时的接口同 live.js 的 AgentView 用的：on、session()、stream、state()、todo()、model()、ctx()、send()、interrupt()、setModel()……
 (function () {
   "use strict";
-  var GUI_BLUR = false; // 点外面让输入框失焦的监听只挂一次（整个页面一个）
   var A = window.TSU_AGENTS;
   if (!A) return;
   // 浮层的最上面一层：输入框那一列搬进 Studio 面板时，按钮上的浮层放这里（面板会裁掉超出去的）。带 .gv：颜色变量同对话里；占满窗口、不挡点击（gui.css .gv-float）
@@ -531,13 +530,6 @@
     }, { passive: true });
     new ResizeObserver(stick).observe(listEl);
     new ResizeObserver(stick).observe(scroll); // 对话区自己变矮 / 变高（底部多了一行在跑的、排着的、输入框长高、拖了底部）：在底下就还贴着底（排完版、画之前，不跳）
-    // 点输入框外面（对话、空白处；不是输入框那一块、它弹出来的菜单）：输入框失焦（同 Claude App）。点到别的能输入的地方自然就换过去了
-    if (!GUI_BLUR) { GUI_BLUR = true; document.addEventListener("mousedown", function (e) {
-      var a = document.activeElement;
-      if (!a || a.tagName !== "TEXTAREA" || !a.closest(".gv-comp")) return;
-      if (e.target.closest && e.target.closest(".gv-comp, .gv-pop, .gv-sug, .st-menu, .st-pop, .st-palette, input, textarea, [contenteditable]")) return;
-      setTimeout(function () { if (document.activeElement === a) a.blur(); }, 0);
-    }, true); }
     // 点开 / 收起（思考、工具、一组）；链接在浏览器里开。
     //   展开着的卡片：点卡片里面空的地方（不是链接、按钮、图片，也不是在选字、不是双击）也收起——不用回到标题行去点小箭头；
     //   等 260ms 看是不是双击（双击是选词，不收），选了字不收
@@ -629,7 +621,7 @@
       else if (s && wl !== "hidden") {
         var act = (rt.todo ? rt.todo() : []).filter(function (x) { return x.status === "in_progress" && x.activeForm; })[0];
         // 同终端界面（Claude Code）：在做的任务的 activeForm，没有就是这一问随机的那个词（Concocting… Swirling…）；等模型、思考中写在后面淡的那段
-        var label = s.wait ? "等待重试" : act ? trG(act.activeForm) : s.verb || "Working", phase = s.wait ? "" : !s.firstAt ? "等待模型" : s.thinking ? "思考中" : "";
+        var label = s.wait ? "等待重试" : s.specialStatus ? s.specialStatus : act ? trG(act.activeForm) : s.verb || "Working", phase = s.wait || s.specialStatus ? "" : !s.firstAt ? "等待模型" : s.thinking ? "思考中" : "";
         var h = '<div class="gv-spin">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + dur(Date.now() - s.t0) + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
         if (liveEl.dataset.h !== h) { liveEl.dataset.h = h; liveEl.innerHTML = h; }
         spinGo();
@@ -1014,7 +1006,7 @@
       if (!t) return null;
       var sid = (rt.session && rt.session().id) || String(agentId).replace(/^[a-z]{2}:/, ""), cwd = "";
       try { cwd = rt.home ? String(rt.home() || "") : ""; } catch (e) { cwd = ""; }
-      var kind = /^cc:/.test(agentId) ? "cc" : /^cx:/.test(agentId) ? "cx" : /^pi:/.test(agentId) ? "pi" : /^ty:/.test(agentId) ? "ty" : "pm";
+      var kind = TSU_CLIPS.sourceKind(agentId);
       return { kind: kind, agent: agentId, session: sid, title: String(agent.name || ""), cwd: cwd, uuid: t.uuid || "", turn: rt.session().turns.indexOf(t), at: t.at || 0, role: el0.closest(".gv-user, .gv-ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
     };
     V.flagOf = function (src) { if (!src || !window.TSU_CLIPS) return null; return TSU_CLIPS.flagsFor(agentId).filter(function (f) { var s0 = f.src || {}; return src.uuid ? s0.uuid === src.uuid : s0.at === src.at; })[0] || null; };

@@ -113,7 +113,7 @@
         en: "# Codex\n\nRead and continue the Codex sessions on this Mac (`~/.codex/sessions`) inside Vibing Studio, shown with the wrapper you choose — for example the Claude Code style TUI.\n\n## Features\n\n- **Sessions**: the side bar and Agent Finder list the Codex sessions on this Mac.\n- **Transcripts**: `local.codex:<session>` opens a session; while it runs elsewhere, new output streams in.\n- **Keep talking**: `codex exec resume <session>`; when it's open in Codex, messages are queued with `codex queue`.\n\n## Requirements\n\n- Codex installed on this Mac (the `codex` command).\n" } },
     { id: "pi", name: "pi", icon: "", cmd: "pi", third: true, desc: "在 Vibing Studio 中使用 pi：这台电脑上的 pi 会话都能接着说", descEn: "Work with pi in Vibing Studio: pick up any pi session on this computer and keep going",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "pi.dev", homepage: "https://github.com/earendil-works/pi", version: "0.1.0", updated: "2026-10-07", builtin: false, files: ["studio/pi.js"],
-      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#141414"/><g transform="translate(17 17) scale(0.0639)">' + PI_MARK + "</g></svg>", // 黑底上 pi 自己的彩色标志
+      logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#fff"/><g transform="translate(17 17) scale(0.0639)">' + PI_MARK + "</g></svg>", // 白底上 pi 自己的彩色标志
       categories: [{ zh: "AI", en: "AI" }, { zh: "聊天", en: "Chat" }],
       links: [{ zh: "pi 的源代码", en: "pi on GitHub", url: "https://github.com/earendil-works/pi" }, { zh: "设置文件", en: "Settings File", file: "~/.pi/agent/settings.json" }],
       readme: {
@@ -124,7 +124,7 @@
         commands: [{ zh: "新建 pi 会话", en: "New pi Session", where: "主侧栏「pi」一组的标题行", whereEn: "pi group header in the Primary Side Bar" }],
         views: [{ zh: "pi 会话目录树", en: "pi session tree", where: "主侧栏", whereEn: "Primary Side Bar" }],
       } },
-    { id: "agy", name: "Google Antigravity", cmd: "agy", readme: { zh: "在左侧 Agents 中展开 Google Antigravity，点击会话标题即可查看对话。会话从本机 JSONL 记录加载。", en: "Expand Google Antigravity in Agents and select a session to read its transcript from local JSONL files." }, settings: "connectors/agy", version: "0.1.0", logo: window.TSU_LOGOS.agy, third: true, desc: "查看本机会话记录", descEn: "Read local session transcripts", homepage: "https://antigravity.google/", publisher: "Vibing Studio" },
+    { id: "agy", name: "Google Antigravity", cmd: "agy", readme: { zh: "在左侧 Agents 中展开 Google Antigravity，点击会话标题即可查看对话。会话从本机 JSONL 记录加载。", en: "Expand Google Antigravity in Agents and select a session to read its transcript from local JSONL files." }, settings: "connectors/agy", version: "0.1.0", logo: window.TSU_LOGOS.agy, builtin: true, desc: "查看本机会话记录", descEn: "Read local session transcripts", homepage: "https://antigravity.google/", publisher: "Vibing Studio" },
     { id: "teyvat", name: "Teyvat", icon: "", cmd: "genshin", third: true, desc: "在 Vibing Studio 中使用 Teyvat：这台电脑上的 Teyvat agent 都能看，后台运行的能直接对话", descEn: "Work with Teyvat in Vibing Studio: see every Teyvat agent on this computer and talk to the ones running in the background",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "paimon.beer", homepage: "https://paimon.beer", version: "0.1.0", updated: "2026-10-13", builtin: false, files: ["studio/teyvat.js"],
       logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#0a1424"/><image href="' + TY_SRC + '" x="7" y="7" width="50" height="50"/></svg>', // 深蓝底上一颗提瓦特
@@ -419,7 +419,7 @@
         pendingMsgs: function () { return 0; },
         cost: function () { return 0; },
         tail: function () { return ""; },
-        readOnly: true, send: no, sendNow: no, interrupt: no, canInject: no, canSendNow: no,
+        sendTerminal: function (message) { return readAgy(["--send-iterm", id, "--message=" + message]); }, send: no, sendNow: no, interrupt: no, canInject: no, canSendNow: no,
         canInterrupt: no, canCycle: no, maybeRecap: no, recap: no,
         record: no, setGoal: no, clearGoal: no, clear: no, bang: no, wakeUp: no,
         setAccess: no, setEffort: no, setModel: no, resume: no, afterReload: no

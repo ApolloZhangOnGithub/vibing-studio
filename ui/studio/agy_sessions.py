@@ -9,6 +9,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 
@@ -21,6 +22,25 @@ def transcripts():
             if sid not in files or path.stat().st_mtime > files[sid].stat().st_mtime:
                 files[sid] = path
     return files
+
+
+def workspace_dirs(root):
+    db = root / "conversation_summaries.db"
+    result = {}
+    try:
+        with closing(sqlite3.connect(db.as_uri() + "?mode=ro", uri=True)) as conn:
+            for sid, raw in conn.execute("SELECT conversation_id, workspace_uris FROM conversation_summaries"):
+                try:
+                    uris = json.loads(raw or "[]")
+                    if isinstance(uris, list):
+                        paths = [urlsplit(uri) for uri in uris if isinstance(uri, str)]
+                        result[sid] = list(dict.fromkeys(unquote(p.path) for p in paths
+                            if p.scheme == "file" and p.netloc in ("", "localhost") and p.path.startswith("/")))
+                except ValueError:
+                    continue
+    except sqlite3.Error:
+        pass
+    return result
 
 
 def rows(path):
@@ -170,7 +190,7 @@ def history(path):
             "mode": settings.get("mode") or "auto"}
 
 
-def terminal_sessions():
+def terminal_sessions(foreground=False):
     presence = Path.home() / ".gemini/antigravity-cli/presence"
     if not presence.is_dir():
         return {}
@@ -186,11 +206,48 @@ def terminal_sessions():
         elif line.startswith("c"):
             command = line[1:]
         elif command == "agy" and line.startswith("n") and line.endswith(".lock"):
-            tty = subprocess.run(["/bin/ps", "-p", pid, "-o", "tty="],
-                                 capture_output=True, text=True).stdout.strip()
-            if tty:
-                sessions[Path(line[1:]).stem] = tty
+            fields = subprocess.run(["/bin/ps", "-p", pid, "-o", "tty=,pgid=,tpgid="],
+                                    capture_output=True, text=True).stdout.split()
+            if len(fields) == 3 and (not foreground or fields[1] == fields[2]):
+                sessions[Path(line[1:]).stem] = (fields[0], pid) if foreground else fields[0]
     return sessions
+
+
+def send_iterm(sid, message):
+    target = terminal_sessions(foreground=True).get(sid)
+    if not target or not re.fullmatch(r"ttys[0-9]+", target[0]):
+        sys.exit("该会话没有在终端前台运行")
+    if not message.strip() or any(ord(c) < 32 and c != "\n" for c in message):
+        sys.exit("消息为空或包含终端控制字符")
+    tty, pid = target
+    script = """on run argv
+set targetTTY to item 1 of argv
+set targetPID to item 2 of argv
+set msg to item 3 of argv
+if application id "com.googlecode.iterm2" is running then
+tell application id "com.googlecode.iterm2"
+repeat with w in windows
+repeat with t in tabs of w
+repeat with s in sessions of t
+if tty of s is targetTTY then
+set procInfo to words of (do shell script "/bin/ps -p " & quoted form of targetPID & " -o pgid=,tpgid=,ucomm=")
+if (count of procInfo) is not 3 then error "agy 已退出"
+if item 1 of procInfo is not item 2 of procInfo or item 3 of procInfo is not "agy" then error "agy 已离开前台"
+write s text ((ASCII character 27) & "[200~" & msg & (ASCII character 27) & "[201~") newline yes
+return "sent"
+end if
+end repeat
+end repeat
+end repeat
+end tell
+end if
+error "找不到此会话的 iTerm2 分屏"
+end run"""
+    result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message],
+                            input=script, capture_output=True, text=True, timeout=15)
+    if result.returncode or result.stdout.strip() != "sent":
+        sys.exit(result.stderr.strip() or "iTerm2 未确认输入")
+    return {"sent": True}
 
 
 def screen_status(sid):
@@ -232,7 +289,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--session", type=UUID)
     parser.add_argument("--screen", type=UUID)
+    parser.add_argument("--send-iterm", type=UUID)
+    parser.add_argument("--message")
     args = parser.parse_args()
+    if args.send_iterm:
+        return send_iterm(str(args.send_iterm), args.message or "")
     if args.screen:
         return screen_status(str(args.screen))
     files = transcripts()
@@ -245,9 +306,15 @@ def main():
         terminals = terminal_sessions()
     except (OSError, subprocess.TimeoutExpired):
         terminals = None
-    return {"sessions": [dict(path=str(path), tty=terminals.get(sid, "") if terminals is not None else None, sessionId=sid, title=title(path, sid),
-                              updatedAt=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat())
-                         for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True)]}
+    sources = {root: workspace_dirs(root) for root in {path.parents[4] for path in files.values()}}
+    sessions = []
+    for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True):
+        dirs = sources[path.parents[4]].get(sid, [])
+        sessions.append(dict(path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
+                             tty=terminals.get(sid, "") if terminals is not None else None,
+                             sessionId=sid, title=title(path, sid),
+                             updatedAt=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()))
+    return {"sessions": sessions}
 
 
 if __name__ == "__main__":

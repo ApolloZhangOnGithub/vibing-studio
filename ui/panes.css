@@ -319,3 +319,11 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 /* 没送到的那句：放在发出时的位置（live.js placeUnsent）；点了下面「查看」跳过来时闪一下底色 */
 .tpane .term .vs-unsent-here.vs-flash { animation: vs-unsent-flash 1.2s ease-out; }
 @keyframes vs-unsent-flash { 0%, 35% { background: rgba(255, 90, 90, .16); } 100% { background: transparent; } }
+
+.foot .composer-rule-start { position: relative; }
+.foot .composer-rule-start::before { content: ""; position: absolute; right: 100%; top: 0; height: 100%; width: var(--rule-extension); background: inherit; }
+
+.tab .tab-finished-dot { order: 2; display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: #388cff; }
+
+.tpane .term .cx-imgref { color: #48aaff; }
+.tpane.tl .term .cx-imgref { color: #0063b5; }

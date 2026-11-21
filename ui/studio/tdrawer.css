@@ -107,9 +107,10 @@ html.light .st-todoi.doing .st-tg { color: #b9542f; }
 .st-fam .st-frow > .st-dim { flex: none; }
 .st-fam .td-det { margin-left: 20px; }
 /* 辅助侧栏标题行「Agent | 全局」后面：跟着的是哪个 agent（编辑区当前的不是 agent 时是最近用的那个，斜一点；点一下切过去） */
-.st-sagent { flex: 0 1 auto; min-width: 0; max-width: 45%; display: inline-flex; align-items: center; height: 20px; margin-left: -5px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--st-dim); font: inherit; font-size: 0.92em; cursor: pointer; } /* -5px：标志和下面各块的小箭头、◎ 在同一列，名字和各块的标题左边齐 */
+.st-sagent { flex: 0 1 auto; min-width: 0; max-width: none; display: inline-flex; align-items: center; min-height: 20px; margin-left: -5px; padding: 0 6px; border: 0; border-radius: 5px; background: none; color: var(--st-dim); font: inherit; font-size: 0.92em; cursor: pointer; } /* -5px：标志和下面各块的小箭头、◎ 在同一列，名字和各块的标题左边齐 */
 .st-sagent[hidden] { display: none; }
-.st-sagent > .st-cut { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sagent > .st-cut { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+.st-sidehdr:has(.st-sagent:not([hidden])) { height: auto; min-height: 28px; flex-shrink: 0; }
 .st-sagent.away { font-style: italic; }
 /* 名字左边这个 agent 的标志（Claude 的橙色标志 / Codex 的记号 / 派蒙的头像），同右边的「···」一左一右 */
 .st-salogo { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-right: 6px; font-style: normal; line-height: 0; }

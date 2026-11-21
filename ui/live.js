@@ -107,7 +107,7 @@
   var MD_MEMO = new Map(), MD_MAX = 1200;
   var mdNums = function () { return !!(window.STUDIO && STUDIO.get && STUDIO.get("mdLineNumbers") === true); };
   var mdLines = function (md, o) {
-    var ln = mdNums(), opt = Object.assign({ lineNumbers: ln }, o || {}), key = (opt.width || 0) + "|" + (opt.theme || "") + "|" + (opt.lineNumbers ? 1 : 0) + "|" + md;
+    var ln = mdNums(), opt = Object.assign({ lineNumbers: ln }, o || {}), key = (opt.width || 0) + "|" + (opt.theme || "") + "|" + (opt.lineNumbers ? 1 : 0) + "|" + (opt.codexReply ? "cx" : "") + "|" + md;
     var hit = MD_MEMO.get(key);
     if (hit) { MD_MEMO.delete(key); MD_MEMO.set(key, hit); return hit.slice(); } // 用到的挪到最后（最久没用的先丢）
     var lines = TTU.markdownLines(cjkEm(md), opt);
@@ -247,7 +247,7 @@
   function setFootH(aid, h) { var o = {}; try { o = JSON.parse(localStorage.getItem(FH_KEY) || "{}") || {}; } catch (e) { o = {}; } if (h > 0) o[aid] = Math.round(h); else delete o[aid]; try { localStorage.setItem(FH_KEY, JSON.stringify(o)); } catch (e) { /* 满了就不记 */ } }
   var escHtml = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); };
   var termPref = function () { return localStorage.getItem("tsu-term") || "auto"; };
-  var termLight = function () { var p = termPref(); return p === "auto" ? root.classList.contains("light") : p === "light"; };
+  var termLight = function () { if (root.classList.contains("termapp") && window.STUDIO) return root.classList.contains("light"); var p = termPref(); return p === "auto" ? root.classList.contains("light") : p === "light"; };
   var timeOf = function (t, opts) { return new Date(t).toLocaleTimeString(cfg.time === "24h" ? "en-GB" : "en-US", opts || { hour: "numeric", minute: "2-digit" }); };
   // 「done」后面的时间（同 Claude Code 2.1.281 的 A$e）：今天的只写几点；1–6 天前的加星期几（Monday 5:06 AM）；再早的加月、日（Monday, Oct 6 at 5:06 AM）
   var doneAt = function (t) {
@@ -469,7 +469,9 @@
       var ahead = Math.min(6 * H, Math.abs(revV) * 250), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + top); // offsetTop ↔ 滚动内容里的位置
       var lo = top - H - (revV < 0 ? ahead : 0) + base, hi = top + 2 * H + (revV > 0 ? ahead : 0) + base, a = 0, b = n - 1;
       while (a < b) { var m = (a + b) >> 1, km = kids[m]; if (km.offsetTop + km.offsetHeight < lo) a = m + 1; else b = m; }
-      for (var i = a; i < n; i++) { var kb = kids[i]; if (kb.offsetTop > hi) break; if (kb.classList.contains("cvfar")) kb.classList.remove("cvfar"); }
+      var reveal = [];
+      for (var i = a; i < n; i++) { var kb = kids[i]; if (kb.offsetTop > hi) break; if (kb.classList.contains("cvfar")) reveal.push(kb); }
+      reveal.forEach(function (block) { block.classList.remove("cvfar"); });
     };
     P.block = function (html, before) {
       var b = document.createElement("span");
@@ -584,8 +586,8 @@
       caret.style.height = rh + "px";
       caret.style.lineHeight = rh + "px";
       caret.style.font = cs.font;
-      caret.style.background = o.color || (P.light ? "#1a1a1a" : "#c7c7c7");
-      caret.style.color = P.light ? "#fff" : "#000";
+      caret.style.background = o.color || (root.classList.contains("termapp") ? "var(--st-fg)" : cs.color);
+      caret.style.color = root.classList.contains("termapp") ? "var(--st-bg)" : P.light ? "#fff" : "#000";
       caret.textContent = o.ch && o.ch !== "\n" ? o.ch : "";
       caret.hidden = document.activeElement !== ta || !!o.hidden;
       // 输入法的候选框跟着光标：把透明的 textarea 挪到光标那一行
@@ -639,10 +641,11 @@
       topgap.classList.toggle("on", screen.scrollTop > 0);
       if (following) P.unread = 0;
       var show = !following && !(P.program && P.program.noJump && P.program.noJump());
+      var wasShown = jump.classList.contains("on");
       jump.classList.toggle("on", show);
       if (show) {
-        jump.textContent = P.unread ? P.unread + " new message" + (P.unread > 1 ? "s" : "") + " ↓" : "Jump to bottom ↓";
-        placeJump();
+        var jumpText = P.unread ? P.unread + " new message" + (P.unread > 1 ? "s" : "") + " ↓" : "Jump to bottom ↓";
+        if (!wasShown || jump.textContent !== jumpText) { jump.textContent = jumpText; placeJump(); }
       }
       if (P.program && P.program.afterScroll) P.program.afterScroll();
     };
@@ -679,12 +682,17 @@
       P.scrollByRows(rows);
       return screen.scrollTop !== y0;
     }
+    var wheelFrame = 0, wheelPixels = 0;
     screen.addEventListener("wheel", function (e) {
       if (e.ctrlKey || e.metaKey) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.preventDefault(); return; }
       if (e.target.closest && e.target.closest(".fig")) { wheelAcc = 0; return; } // 图片上原生顺滑滚
       e.preventDefault();
-      rowStep(e.deltaMode === 1 ? e.deltaY * P.rowH : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY);
+      wheelPixels += e.deltaMode === 1 ? e.deltaY * P.rowH : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY;
+      if (!wheelFrame) wheelFrame = requestAnimationFrame(function () {
+        var pixels = wheelPixels; wheelPixels = wheelFrame = 0;
+        if (!P.closed && !P.off) rowStep(pixels);
+      });
     }, { passive: false });
     // 手指（iPad）：同样一整行一整行地走——跟着手指攒够一行走一行；松手后带惯性接着一行一行走、慢慢停（减速同 iOS 的 0.998/ms）；到头就停，不回弹
     var tY = null, tT = 0, tV = 0, fling = 0;
@@ -744,10 +752,11 @@
       if (!P.side && tw.ws && tw.ws.active === P && el.offsetHeight && window.nadosNative && root.classList.contains("termapp")) {
         var gridRow = P.rowH;
         var chromeHeight = innerHeight - avail;
-        var key = gridRow + ":" + chromeHeight;
+        var chromeWidth = innerWidth - term.clientWidth + P.padL + (parseFloat(getComputedStyle(term).paddingRight) || 0);
+        var key = [gridRow, chromeHeight, P.chPx, chromeWidth].join(":");
         if (tw.nativeRowGrid !== key) {
           tw.nativeRowGrid = key;
-          nadosNative.call("window.rowGrid", {row: gridRow, chrome: chromeHeight, viewport: innerHeight}).catch(function () {});
+          nadosNative.call("window.rowGrid", {row: gridRow, chrome: chromeHeight, viewport: innerHeight, column: P.chPx, chromeWidth: chromeWidth}).catch(function () {});
         }
       }
       lastH = el.clientHeight;
@@ -896,11 +905,27 @@
       }
       P.focus();
     });
-    // 点终端任何地方（没在选字时）都把焦点给输入；选了字：按设置复制
+    var pressOrigin = null;
+    el.addEventListener("pointerdown", function (event) {
+      pressOrigin = [event.clientX, event.clientY];
+    }, true);
+    // 普通正文和空白落回当前会话的输入框。让内层按钮、折叠和选区先处理点击。
+    el.addEventListener("click", function (e) {
+      if (!P.program || !P.program.agentId || e.defaultPrevented || e.button || e.detail > 1 ||
+          e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !document.getSelection().isCollapsed) return;
+      var dragged = e.detail > 0 && pressOrigin && Math.hypot(e.clientX - pressOrigin[0], e.clientY - pressOrigin[1]) > 4;
+      pressOrigin = null;
+      var target = e.target;
+      if (dragged || !target.isConnected || !target.closest(".screen, .gv-scroll") ||
+          target.closest("a, button, input, textarea, select, summary, [contenteditable], [role=button], [tabindex='0'], .hot, .grp.trsw, .grp.uopen, .gdet.idet, .st-imgref, .gv-tr, .gv-tool.open > .gv-det, .gv-group.open > .gv-card, [data-more], [data-gmore]") ||
+          getComputedStyle(target).cursor === "pointer") return;
+      P.focus();
+    });
+    // 选了字：按设置复制
     el.addEventListener("mouseup", function (e) {
       if (P.program && P.program.gui) return; // 图形界面（同 Claude App）：点别处就是点别处，不把焦点拉回输入框（输入框自己失焦）
       var sel = String(document.getSelection());
-      if (!sel) { if (!(e.target.closest && e.target.closest(".grp"))) P.focus(); return; } // 点折叠的一组（展开 / 收起）：不把焦点拉走
+      if (!sel) { if (!P.program?.agentId && e.button === 0 && !e.target.closest(".grp")) P.focus(); return; } // 点折叠的一组（展开 / 收起）：不把焦点拉走
       // 选了字：按设置复制——松手在折叠的一组（工具、命令输出）里也照样复制（以前在组里松手就不复制：选中了却没进剪贴板）；
       //   网页的剪贴板不让写（App 里常见）就走原生的
       if (cfg.copyOnSelect === false) return;
@@ -2163,7 +2188,7 @@
     var TY = agent.connector === "teyvat"; // Teyvat 的会话：它自己的一套（execute / wait / hibernate、底部的状态栏、右侧栏的意图）
     var DIM = function () { return P.DIM; };
     var blocks = new Map(), statusEl = null, bannerEl = null, bgSig = ""; // bgSig：上次画的时候后台还在跑的（见 liveBg）
-    var panel = null, menuIdx = 0, histIdx = -1, draft = "", attach = [], pastes = [], verbose = false, open = {}, moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
+    var panel = null, menuIdx = 0, histIdx = -1, historyChoices = [], draft = "", attach = [], pastes = [], verbose = false, open = {}, moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
     V.agentId = agentId;
     // ---- agent 自己的底部（输入框 → 在跑的那一行 → 状态行）：自动高度；右上角 ··· 管显示哪几块 ----
     var fsash = null, dragH = null, footBase = 0, sashRO = null;
@@ -2425,7 +2450,7 @@
       var el0 = node && node.nodeType === 3 ? node.parentElement : node, b = el0 && el0.closest ? el0.closest(".blk") : null, t = b && b._t;
       if (!t) return null;
       var turns = rt.session().turns, sid = (rt.session && rt.session().id) || String(agentId).replace(/^[a-z]{2}:/, "");
-      var kind = /^cc:/.test(agentId) ? "cc" : /^cx:/.test(agentId) ? "cx" : /^pi:/.test(agentId) ? "pi" : /^ty:/.test(agentId) ? "ty" : "pm";
+      var kind = TSU_CLIPS.sourceKind(agentId);
       var cwd = ""; try { cwd = rt.home ? String(rt.home() || "") : ""; } catch (e) { cwd = ""; }
       return { kind: kind, agent: agentId, session: sid, title: String(agent.name || (V.title ? V.title() : "") || ""), cwd: cwd, uuid: t.uuid || "", turn: turns.indexOf(t), at: t.at || 0, role: el0.closest(".ask") ? "user" : "assistant", label: String(t.ask || "").replace(/\s+/g, " ").trim().slice(0, 160) };
     };
@@ -2689,7 +2714,7 @@
     }
     function answer(md) {
       var dot = P.light ? rgb("85;85;85") + DOT + RESET : DOT;
-      return trim(mdLines(md, { width: P.cols - 2, theme: P.theme })).map(function (l, i) { return (i ? "  " : dot + " ") + l; });
+      return trim(mdLines(md, { width: P.cols - 2, theme: P.theme, codexReply: agent.connector === "codex" })).map(function (l, i) { return (i ? "  " : dot + " ") + l; });
     }
     // 流式中只排写完了的行；开头的围栏、表格分隔行不单独出（免得冒出空代码块、空表格）
     function settled(text) {
@@ -2700,10 +2725,21 @@
       if (lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[lines.length - 1])) lines.pop();
       return lines.join("\n");
     }
-    function askBlock(r, text, mark) {
+    function askBlock(r, text, mark, images, numbers) {
       var ask = [];
-      text.split("\n").forEach(function (para) { ask.push.apply(ask, wrap(para, P.cols - 2)); });
-      r.block('<span class="ask">' + P.toHtml(ask.map(function (l, i) { return pad((i ? "  " : mark) + l, P.cols); })) + "</span>");
+      var prefix = "", occupied = 0;
+      if (images) {
+        prefix = mark + (cfg.imageShow === "inline" ? thumbs(images) : images.map(function (im, i) {
+          if (im.load && !im.bytes && !im.missing) im.load();
+          return '<span class="st-imgref cx-imgref" data-img="' + TSU_IMG.key(im) + '" data-name="Image #' + numbers[i] + '">[Image #' + numbers[i] + ']</span>';
+        }).join(" ")) + (text ? (cfg.imageShow === "inline" ? "\n" : " ") : "");
+        if (cfg.imageShow !== "inline") occupied = W(numbers.map(function (n) { return "[Image #" + n + "]"; }).join(" ")) + (text ? 1 : 0);
+        mark = occupied ? "" : "  ";
+      }
+      if (occupied && text) ask = wrapKeep(text, P.cols - 2, occupied).map(function (line) { return line.text; });
+      else if (text || !images) text.split("\n").forEach(function (para) { ask.push.apply(ask, wrap(para, P.cols - 2)); });
+      r.block('<span class="ask">' + prefix + P.toHtml(ask.map(function (l, i) { var row = pad((i ? "  " : mark) + l, P.cols - (!i && occupied ? occupied + 2 : 0));
+        return agent.connector === "codex" ? row.replace(/\[Image #\d+\]/g, codexShellPalette[P.light ? "light" : "dark"].reference + "$&" + RESET) : row; })) + "</span>");
     }
     // 图片不直接摊在对话里（同 Claude Code）：一行「⎿  [Image #1] [Image #2]」，虚线下划线，点一下在右侧栏里看
     // 附的图：同 Claude Code 2.x，一张一行「⎿  [Image #N]」（虚线下划线的链接：悬停浮出小图、点了放大）。srcs：记录里的图对象 {media_type, data}，或 data: 地址
@@ -2712,7 +2748,7 @@
       return srcs.map(function (src, i) {
         var n = nums && nums[i] != null ? nums[i] : i + 1;
         if (src && src.load && !src.bytes && !src.missing) src.load(); // 存在文件里的图：先读着，悬停时就有
-        return '<span class="blk st-imgrefs">' + " ".repeat(indent) + '<span class="st-dim">⎿  </span><span class="st-imgref" data-img="' + TSU_IMG.key(src) + '" data-name="Image #' + n + '">[Image #' + n + "]</span></span>";
+        return '<span class="blk st-imgrefs">' + " ".repeat(indent) + '<span class="st-dim">⎿  </span><span class="st-imgref' + (agent.connector === "codex" ? " cx-imgref" : "") + '" data-img="' + TSU_IMG.key(src) + '" data-name="Image #' + n + '">[Image #' + n + "]</span></span>";
       }).join("");
     }
     function thumbs(images) {
@@ -2809,6 +2845,11 @@
         var cti = rt.session().turns.indexOf(turn), ck = cti + ":c", co = verbose || open[ck], en0 = enLang(), cp0 = turn.compact, ksz = function (n) { return F.k(n) + " tokens"; };
         var cdet = en0 ? (cp0.pre && cp0.post ? ksz(cp0.pre) + " summarized to " + F.k(cp0.post) : cp0.pre ? ksz(cp0.pre) + " summarized" : cp0.msgs ? F.plural(cp0.msgs, "message") + " summarized" : "") + (cp0.summary ? " (ctrl+o to see summary)" : "")
           : (cp0.pre && cp0.post ? ksz(cp0.pre) + " 压缩到 " + F.k(cp0.post) : cp0.pre ? "压缩了 " + ksz(cp0.pre) : cp0.msgs ? "压缩了 " + cp0.msgs + " 条消息" : "") + (cp0.summary ? "（ctrl+o 查看摘要）" : "");
+        if (agent.connector === "codex") {
+          r.text(["", D + "● Context compacted" + (cp0.duration != null ? " · " + F.dur(cp0.duration) : "") + RESET]);
+          if (co && cp0.summary) r.text([cp0.summary]);
+          return done();
+        }
         r.text([""]);
         r.block('<span class="grp' + (co ? " open" : "") + '" data-key="' + ck + '">' + hotHtml([D + (en0 ? ITALIC : "") + "∷ " + HOT + (en0 ? "Compacted" : "已压缩") + (cdet ? " · " + cdet : "") + HOT_END + RESET]) + "</span>");
         // 摘要正文按 Markdown 原样的颜色画（不整体套灰：行里的代码、列表记号会把灰色重置掉，一行灰一行黑、半行灰半行黑）
@@ -2904,19 +2945,22 @@
           var inTx = (String(askText || "").match(/\[Image #(\d+)\]/g) || []).map(function (x) { return +/\d+/.exec(x)[0]; });
           var ids0 = turn.imgIds && turn.imgIds.length ? turn.imgIds : inTx;
           imgNo = turn.images.map(function (im, i) { return ids0[i] != null ? ids0[i] : im && im.no ? im.no : i + 1; }); // 这边附的图：发的时候编好的号（[Image #N: "路径"]）
-          if (!inTx.length) askText = imgNo.map(function (n) { return "[Image #" + n + "] "; }).join("") + askText;
+          if (agent.connector === "codex") {
+            imgNo.forEach(function (n) { askText = String(askText || "").replace("[Image #" + n + "]", ""); });
+            askText = askText.trim();
+          } else if (!inTx.length) askText = imgNo.map(function (n) { return "[Image #" + n + "] "; }).join("") + askText;
         }
         // 不显示「消息」时，这一问还是一组：一行淡的「❯ 问的话」做组的标题（回答、出错跟在它下面，才看得出是回哪一问的）
         if (turn.cont && !String(askText || "").trim()) { /* 接着上一问的（它的问题在还没读进来的那段里）：没有问题这一行 */ }
         else if (vmode("prompts")) {
           if (turn.fire) { r.text(wrap(turn.fire, P.cols - 2).map(function (l, k) { return D + (k ? "" : "✻ ") + l + RESET; })); r.text([""]); } // 定时任务到点（同 2.1.281 的 scheduled_task_fire）：一行淡的「✻ 内容」在它送进来的这一问上面
-          mark(turn.at); askBlock(r, askText, "❯ ");
+          mark(turn.at); askBlock(r, askText, "❯ ", agent.connector === "codex" && imgNo ? turn.images : null, imgNo);
           // 没送成过、后来才送到的：写的时间、送到的时间（它在记录里的位置是送到的时候，不写的话看着像是后来才说的）
           var wa = rt.writtenAt ? rt.writtenAt(turn.ask) : null;
           if (wa) r.text(["  " + D + "⎿  " + (enLang() ? "written " + clockOf(wa.first) + " · delivered " + clockOf(wa.at) : clockOf(wa.first) + " 写 · " + clockOf(wa.at) + " 送达") + RESET]);
         }
         else hdr = D + "❯ " + clip(String(askText).replace(/\s+/g, " ").trim(), P.cols - 4) + RESET;
-        if (turn.images && turn.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(turn.images) : imageRefs(turn.images, 2, imgNo)); // 悬停预览（默认）/ 直接显示
+        if (agent.connector !== "codex" && turn.images && turn.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(turn.images) : imageRefs(turn.images, 2, imgNo)); // 悬停预览（默认）/ 直接显示
       }
       var tm = vmode("thinking");
       if ((turn.thought || turn.thinking) && tm !== "hidden" && (V.style === "teyvat" || agent.connector === "agy")) {
@@ -3025,7 +3069,7 @@
             if (m === "hidden" && p.status !== "running") return;
             if (p.name === "Agent" && (p.asyncLaunched || p.status === "background") && !verbose && !(ti + ":p" + i in open)) { if (group.length || gThink) flushGroup(); agB.push({ p: p, i: i }); return; } // 放到后台的子 agent：连着的并成一块
             if (agB.length) flushAg();
-            if (merge && ccKind(p) && !(vflag("toolModes") || {})[p.name] && !(p.edits && p.edits.length)) { group.push(p); gIdx.push(i); return; } // 改了文件的命令单独一条（同 Claude Code）
+            if (merge && !(agent.connector === "codex" && p.name === "Bash") && ccKind(p) && !(vflag("toolModes") || {})[p.name] && !(p.edits && p.edits.length)) { group.push(p); gIdx.push(i); return; } // 改了文件的命令单独一条（同 Claude Code）
             flushGroup();
             if (p.name === "AskUserQuestion") { if (m !== "hidden" || verbose) askAnswered(p); return; } // 同 Claude Code：问的那一下不画，答了画一块
             if (CC_SILENT.test(p.name) && !verbose && m !== "full") return;
@@ -3843,21 +3887,74 @@
     //   ● Bash(命令)——不是完整时最多 2 行、160 个字，多的「…」；
     //   跑着：⎿ Running… (用时)；有输出的：最后 5 行 +「+N lines (用时)」；能放到后台的（Paimon 的）才有「(ctrl+b to run in background)」——Claude Code 的会话这边做不到，不写；
     //   跑完：⎿ 输出（折到宽度后前 3 行，正好 4 行就 4 行）+「… +N lines」；完整：全部；没有输出：(No output)；后台的：Running in the background (↓ to manage)；出错：红的「Error: …」
+    var codexShellPalette = {
+      dark: {reference: "72;170;255", command: "128;174;250", option: "252;148;158", string: "151;220;141", argument: "200;211;248", operator: "90;215;205", delimiter: "199;156;249", success: "94;250;103", foreground: "255;255;255", muted: "100;100;100"},
+      light: {reference: "0;99;181", command: "32;80;165", option: "158;48;65", string: "49;109;53", argument: "65;76;108", operator: "0;110;109", delimiter: "108;64;150", success: "32;123;61", foreground: "27;27;27", muted: "102;102;102"}
+    };
+    Object.values(codexShellPalette).forEach(function (palette) {
+      Object.keys(palette).forEach(function (key) { palette[key] = rgb(palette[key]); });
+    });
+    function colorCommand(line, state, palette) {
+      return line.replace(/'(?:[^']*'|[^']*$)|"(?:\\.|[^"\\])*"?|&&|\|\||<<-?|[|;&<>]|(?:\\.|[^\s|;&<>'"])+/g, function (word) {
+        var color;
+        if (/^[|;&]/.test(word)) { state.head = true; color = palette.operator; }
+        else if (/^[<>]/.test(word)) { color = palette.operator; state.heredoc = word.startsWith("<<"); }
+        else if (/^['"]/.test(word)) { color = state.heredoc ? palette.delimiter : palette.string; state.heredoc = false; state.head = false; }
+        else if (state.head && /^\w+=/.test(word)) color = palette.argument;
+        else if (state.head) { state.head = false; color = palette.command; }
+        else if (/^-.+/.test(word)) color = palette.option;
+        else color = palette.argument;
+        return color + word + RESET;
+      });
+    }
     function bashRows(p, lvl, dot) {
       var a = p.input || {}, D = P.DIM, sub = "  " + D + "⎿" + RESET + "  ", pad5 = "     ", cmd = String(a.command || "").replace(/\s+$/, ""), all = lvl === "full" || verbose, shown = cmd;
       if (!all) { var cl0 = cmd.split("\n"); if (cl0.length > 2 || cmd.length > 160) shown = (cl0.length > 2 ? cl0.slice(0, 2).join("\n") : cmd).slice(0, 160).trim() + "…"; }
       var hl = [];
       ("Bash(" + shown + ")").split("\n").forEach(function (l) { wrap(l, P.cols - 2).forEach(function (x) { hl.push(x); }); });
       var rows = hl.map(function (l, i) { return i ? "  " + l : dot + " " + BOLD + "Bash" + RESET + l.slice(4); });
+      if (agent.connector === "codex") {
+        var palette = codexShellPalette[P.light ? "light" : "dark"];
+        D = palette.muted;
+        sub = "  " + D + "⎿" + RESET + "  ";
+        dot = (p.status === "running" ? D : p.status === "error" ? palette.foreground : palette.success) + (p.status === "running" ? DOT_RUN : DOT) + RESET;
+        var explored = p.status === "done" && p.parsedCommand;
+        if (explored && explored.length && explored.every(function (op) { return ["read", "list_files", "search"].includes(op.type); })) {
+          rows = [D + DOT + RESET + " " + palette.foreground + BOLD + "Explored" + RESET];
+          (all ? explored : explored.slice(0, 3)).forEach(function (op, index) {
+            var action = op.type === "read" ? "Read" : op.type === "search" ? "Search" : "List";
+            var text = op.type === "search" ? (op.query || "") + (op.path ? " in " + op.path : "") : op.name || op.path || op.cmd;
+            rows.push((index ? pad5 : sub) + palette.reference + action + RESET + " " + clip(text, Math.max(12, P.cols - action.length - 6)));
+          });
+          if (!all) return rows.concat(pad5 + D + HOT + "+ Show details" + HOT_END + RESET);
+        }
+        var verb = p.status === "running" ? "Running" : p.status === "error" && p.exitCode != null ? "Exited (status " + p.exitCode + ")" : "Ran";
+        var title = all ? cmd : clip(cmd.split("\n")[0], Math.max(12, P.cols - verb.length - 5)) + (cmd.includes("\n") ? " …" : "");
+        rows = (verb + " " + title).split("\n").flatMap(function (line) { return wrap(line, P.cols - 2); });
+        var commandState = {head: true};
+        rows = rows.map(function (line, index) { return index ? "  " + colorCommand(line, commandState, palette) : dot + " " + palette.foreground + BOLD + verb + RESET + colorCommand(line.slice(verb.length), commandState, palette); });
+      }
       if (p.status === "running") {
         var ms = Date.now() - (p.t0 || Date.now()), et = ms >= 1000 ? D + "(" + F.dur(ms) + ")" + RESET : "", out = (p.detail || []).map(String).filter(function (l) { return l.trim(); });
         if (!out.length) rows.push(sub + D + "Running…" + RESET + (et ? " " + et : ""));
         else {
-          var tl = out.slice(-5), more = out.length - tl.length;
+          var tl = out.slice(agent.connector === "codex" ? -3 : -5), more = out.length - tl.length;
           tl.forEach(function (l, i) { rows.push((i ? pad5 : sub) + D + clip(l, P.cols - 6) + RESET); });
           if (more > 0 || et) rows.push(pad5 + (more > 0 ? D + "+" + more + " lines" + RESET + (et ? " " : "") : "") + et);
         }
         if (p.detach) rows.push(pad5 + D + "(ctrl+b to run in background)" + RESET);
+        return rows;
+      }
+      if (agent.connector === "codex" && p.status !== "background") {
+        var output = p.detail || [], hidden = all ? 0 : Math.max(0, output.length - 3);
+        output.slice(hidden).forEach(function (line, index) {
+          var width = Math.max(1, P.cols - 6);
+          var segments = all ? termLines(String(line), width) : [clip(String(line), width)];
+          segments.forEach(function (segment, part) {
+            rows.push((index || part ? pad5 : sub) + D + segment + RESET);
+          });
+        });
+        if (hidden) rows.push(pad5 + D + HOT + "+ " + hidden + " lines" + HOT_END + RESET);
         return rows;
       }
       if (p.status === "error") return rows.concat(errRows(p, all));
@@ -4009,6 +4106,7 @@
     }
     // 转圈旁边的词：有任务在做就用它的 activeForm（同 Claude Code：「Running the tests…」），没有就是这一问随机的那个词
     function spinLabel(s) {
+      if (s.specialStatus) return s.specialStatus;
       var act = (rt.todo ? rt.todo() : []).filter(function (x) { return x.status === "in_progress" && x.activeForm; })[0];
       return act ? trTask(act.activeForm) : s.verb;
     }
@@ -4018,7 +4116,7 @@
       var s = rt.stream, items = (rt.todo ? rt.todo() : []).map(function (x) { return { id: x.id, subject: x.subject, status: x.status, activeForm: x.activeForm }; });
       if (items.length && items.some(function (x) { return x.status !== "completed"; })) STUDIO.set(P, { id: "tasks", type: "tasks", site: "paimon", data: { items: items } });
       else STUDIO.remove(P, "tasks");
-      STUDIO.set(P, { id: "status", type: "status", site: "paimon", title: agent.name, data: s ? { busy: true, label: spinLabel(s), t0: s.t0, detail: (s.thinking ? "thinking" : "") + (agent.effort && agent.effort !== "off" ? (s.thinking ? " with " : "") + agent.effort + " effort" : "") } : { busy: false, label: "空闲" } });
+      STUDIO.set(P, { id: "status", type: "status", site: "paimon", title: agent.name, data: s ? { busy: true, label: spinLabel(s), t0: s.phaseAt || s.t0, detail: (s.thinking ? "thinking" : "") + (agent.effort && agent.effort !== "off" ? (s.thinking ? " with " : "") + agent.effort + " effort" : "") } : { busy: false, label: "空闲" } });
       STUDIO.set(P, { id: "view", type: "form", site: "paimon", title: "对话", fields: viewFields, change: viewChange });
     }
     function viewFields() { return convFields(P); } // 同 设置 › 对话：消息、回答、思考、你的 ! 命令、图片；工具每类的档位；系统；任务清单、状态行放哪
@@ -4096,7 +4194,7 @@
       // 排着的一句：「❯ 原话」（原样的颜色：这是你已经发出去的话，它下一步读到），太长的收成「… +n lines」；提示只在最后一句下面写一次（同 Claude Code）
       var quote = function (text) { var pl = []; String(text || "").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, w)); }); pl.slice(0, 6).forEach(function (l, i) { out.push(indent + (i ? "  " : "❯ ") + l); }); if (pl.length > 6) out.push(indent + "  " + D + "… +" + (pl.length - 6) + " lines" + RESET); };
       if (s && spinHere && wl !== "hidden") {
-        var st0 = s.turn || {}, secs = Math.floor((Date.now() - s.t0) / 1000), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
+        var st0 = s.turn || {}, secs = Math.max(0, Math.floor((Date.now() - (s.phaseAt || s.t0)) / 1000)), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
         var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · waiting for the model" : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "", took = secs < 60 ? secs + "s" : F.dur(secs * 1000); // 在想的那几个字（同 Claude Code：灰、想久了变黄），前面的「·」同括号里的字
         var cp = rt.compacting;
         if (cp) { // 在压缩上下文（同 Claude Code：「Compacting conversation…」，下面一条进度条 + 百分比）
@@ -4157,7 +4255,7 @@
       var bg = rt.tasks.filter(function (x) { return x.status === "running"; }).length;
       if (s && spinHere) {
         // Claude Code 的会话（claude.js）流里的这一问是会话记录里的样子：没有 answer / thinking 两段字，别当它有（不然整个重排在这里断掉，宽度变了也不重排）
-        var st0 = s.turn || {}, secs = Math.floor((Date.now() - s.t0) / 1000), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
+        var st0 = s.turn || {}, secs = Math.max(0, Math.floor((Date.now() - (s.phaseAt || s.t0)) / 1000)), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
         var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · waiting for the model" : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "";
         var wl = vmode("workLine"), took = secs < 60 ? secs + "s" : F.dur(secs * 1000); // 运行状态行：完整 / 简洁（转圈和用时）/ 隐藏
         if (wl === "hidden") { /* 不画这一行：Esc 照样能打断，标签页的图标照样在转 */ }
@@ -4386,6 +4484,17 @@
         rows[wi] = base + RESET + " ".repeat(Math.max(1, fc0 - W(base) - W(ind) - 1)) + "\uE009" + ind + "\uE008";
       }
       P.input.innerHTML = logoMarks(P.rowsHtml(rows, P.footCols()));
+      if (fsash && fpad > 0) {
+        var rules = P.input.querySelectorAll(".ttu-box:first-child");
+        var cellWidth = Math.floor(P.chPx * 64) / 64;
+        var rightInset = fW - fpad - fcols * cellWidth;
+        for (var edge of rules) {
+          if (edge.textContent === "─" && edge.nextElementSibling && edge.nextElementSibling.textContent === "─") {
+            edge.style.setProperty("--rule-extension", Math.max(0, fpad - rightInset) + "px");
+            edge.classList.add("composer-rule-start");
+          }
+        }
+      }
       var ne0 = P.input.querySelector(".vs-needs");
       if (ne0) ne0.title = nd.map(function (x) { return x.name + (x.text ? "：" + x.text : ""); }).join("\n");
       if (rows.length !== lastFootRows) { lastFootRows = rows.length; P.fit(); P.stick(); }
@@ -5712,8 +5821,20 @@
       // （以前空输入按 ↓ 打开后台任务列表：任务、后台任务、子 Agent 都在右侧栏里看，不再在输入框里弹一块）
       if (items.length && (k === "ArrowDown" || k === "ArrowUp")) { e.preventDefault(); menuIdx = (menuIdx + (k === "ArrowDown" ? 1 : items.length - 1)) % items.length; renderInput(); return; }
       if (items.length && k === "Tab") { e.preventDefault(); ta.value = items[menuIdx].name + (items[menuIdx].args ? " " : ""); renderInput(); return; }
-      if (k === "Enter" && !e.shiftKey) {
+      var codexQueue = agent.connector === "codex" && k === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !items.length && rt.stream && ta.value.trim();
+      if ((k === "Enter" || codexQueue) && !e.shiftKey) {
         e.preventDefault();
+        if (rt.sendTerminal) {
+          if (!ta.value.trim() || P.terminalSendPending) return;
+          if (attach.length) { P.flash("iTerm2 输入仅支持文字", 2000); return; }
+          var original = ta.value, message = original;
+          pastes.forEach(function (paste) { message = message.split(paste.tag).join(paste.text); });
+          P.terminalSendPending = true;
+          rt.sendTerminal(message).then(function () {
+            if (ta.value === original) { ta.value = ""; pastes = []; histIdx = -1; draftSet(agentId, ""); renderInput(); }
+          }).catch(function (error) { P.flash(error.message, 3500); }).finally(function () { P.terminalSendPending = false; });
+          return;
+        }
         if (rt.readOnly) { P.flash("此会话只读", 1600); return; }
         var me = A.me(), now = e.ctrlKey || e.metaKey; // ctrl+enter：答着的时候不排队，打断这一问马上发（闲着就是普通地发）
         if (!me || !me.loggedIn) { location.href = "/auth/login"; return; }
@@ -5739,6 +5860,10 @@
           if (mc && rt.models) { if (!mc[1]) return pickConnModel(); rt.setModel(mc[1]); rt.record(v.trim(), "Set model to " + mc[1]); return; }
           // Codex：它自己的 / 命令这边做（codex.js rt.command：问它的守护进程），不当话发给模型；路径（/Users/…）照常是话
           if (rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { P.toBottom(); return; }
+          if (agent.connector === "codex") {
+            imgs.forEach(function (im) { v = v.replace(im.tag, ""); });
+            rt.send(v.trim(), imgs, {queue: !!codexQueue}); P.toBottom(); return;
+          }
           if (now && rt.sendNowAfter && rt.sendNowAfter()) now = false; // ctrl+enter：这句照常送进它的队，送到了马上按它的 ctrl+x ctrl+s（同在它那里按，不打断）
           else if (now && rt.interrupt) rt.interrupt(); // 自己起的 claude -p：打断这一问，这句马上当下一问（它排着，打断后接着读）
           rt.send(v, imgs, pastesV.length ? { shown: shownV, pastes: pastesV } : null); P.toBottom();
@@ -5781,9 +5906,9 @@
       if (k === "ArrowUp" && !ta.value && histIdx < 0 && agent.claude && rt.localQueued && rt.localQueued() && rt.takeQueued) { var lqT = rt.takeQueued(); if (lqT) { e.preventDefault(); ta.value = lqT.text; ta.selectionStart = ta.selectionEnd = ta.value.length; draftSet(agentId, ta.value, pastes); renderInput(); return; } }
       // ↑↓ 按画出来的行走（折行的中文一句也是好几行）：不在第一 / 最后一行时，光标挪到上 / 下一行差不多同一列的地方——
       //   以前只看有没有换行符：一整段折成好几行时按 ↑ 直接翻出上一句历史（用户：光标定位不对）；输入框自己的 ↑↓ 按它看不见的那层排版走，也对不上
-      if ((k === "ArrowUp" || k === "ArrowDown") && !e.altKey && !e.metaKey && !e.ctrlKey && caretVMove(k === "ArrowUp" ? -1 : 1)) { e.preventDefault(); return; }
-      if (k === "ArrowUp" && before.indexOf("\n") < 0) {
-        var h = askHistory();
+      if ((k === "ArrowUp" || k === "ArrowDown") && !e.altKey && !e.metaKey && !e.ctrlKey && histIdx < 0 && caretVMove(k === "ArrowUp" ? -1 : 1)) { e.preventDefault(); return; }
+      if (k === "ArrowUp" && (histIdx >= 0 || before.indexOf("\n") < 0)) {
+        var h = histIdx < 0 ? (historyChoices = askHistory()) : historyChoices;
         if (histIdx + 1 < h.length) {
           e.preventDefault();
           if (histIdx < 0) draft = ta.value;
@@ -5794,10 +5919,10 @@
         }
         return;
       }
-      if (k === "ArrowDown" && after.indexOf("\n") < 0 && histIdx >= 0) {
+      if (k === "ArrowDown" && histIdx >= 0) {
         e.preventDefault();
         histIdx--;
-        var h2 = askHistory();
+        var h2 = historyChoices;
         ta.value = histIdx < 0 ? draft : h2[h2.length - 1 - histIdx];
         ta.setSelectionRange(ta.value.length, ta.value.length);
         renderInput();
@@ -5808,7 +5933,8 @@
     };
     function askHistory() {
       var asks = [];
-      A.sessionsOf(agentId).slice().reverse().forEach(function (s) { s.turns.forEach(function (t) { if (t.ask && !t.system) asks.push(t.ask); }); });
+      var sessions = agent.connector ? [rt.session()] : A.sessionsOf(agentId).slice().reverse();
+      sessions.forEach(function (s) { s.turns.forEach(function (t) { if (typeof t.ask === "string" && t.ask && !t.system) asks.push(t.ask); }); });
       return asks.filter(function (a, i) { return asks.indexOf(a, i + 1) < 0; });
     }
     V.command = command;
@@ -6662,11 +6788,23 @@
           var inTerminal = function (s) { return !!s.tty && s.tty !== "??"; };
           var agySessions = only("agy") ? agy.list().filter(inTerminal) : agy.list();
           if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中的会话" : agy.status()) + RESET) + "\n";
+          var folders = new Map(), homeAgy = (TSU_LOCAL.info() || {}).home;
           agySessions.forEach(function (s) {
+            if (!qHit(s.title || s.sessionId, s.sessionId, s.cwd || "")) return;
+            var key = s.cwd || "";
+            if (!folders.has(key)) folders.set(key, []);
+            folders.get(key).push(s);
+          });
+          folders.forEach(function (items, dir) {
+            var key = "agy:dir:" + dir;
+            var label = !dir ? "未记录工作目录" : dir === homeAgy ? "~" : homeAgy && dir.startsWith(homeAgy + "/") ? "~" + dir.slice(homeAgy.length) : dir;
+            out += row("ts-fold", foldAt(key, false) + (dir ? ' data-dir="' + escHtml(dir) + '"' : ""), [["  " + chev(key, false), ""], [label, DIMC]]);
+            if (folded(key, false) && !qToks.length) return;
+            items.forEach(function (s) {
             var name = s.title || s.sessionId;
-            if (!qHit(name, s.sessionId)) return;
             out += '<span class="ts-it" data-agy="' + escHtml(s.sessionId) + '" title="' + escHtml(name) + '">' +
               HR([["    ", ""], ["\uE03A ", ""]].concat(marks(name, "")), DIMC + (s.updatedAt ? agoCN(Date.parse(s.updatedAt)) : "") + RESET, true).replace("\uE03A", '<i class="ts-ccl ts-cxl' + (inTerminal(s) ? " busy" : "") + '">' + TSU_LOGOS.agy + "</i>") + "</span>\n";
+            });
           });
         }
       }
@@ -7723,7 +7861,7 @@
         b.className = "tab" + (i === ws.ti ? " on" : "");
         b.innerHTML = '<i class="tx" title="关闭标签页">×</i><span></span><em class="pt-k">' + (i < 9 ? "⌘" + (i + 1) : "") + "</em>";
         titleInto(b.querySelector("span"), p, "", ps.length > 1 ? " (" + ps.length + ")" : "");
-        if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
+        if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p, ps);
         b.addEventListener("mousedown", function (e) { e.preventDefault(); if (e.target.closest(".tx")) askClose(ps, "标签页", function () { ps.forEach(function (x) { ws.closePane(x); }); }); });
         b.addEventListener("click", function (e) { if (!e.target.closest(".tx")) ws.useTab(i); });
         b.addEventListener("auxclick", function (e) { if (e.button === 1) askClose(ps, "标签页", function () { ps.forEach(function (x) { ws.closePane(x); }); }); });

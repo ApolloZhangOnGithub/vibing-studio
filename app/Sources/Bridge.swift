@@ -138,7 +138,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       guard let c = controller, let row = a["row"] as? Double, let chrome = a["chrome"] as? Double,
             let viewport = a["viewport"] as? Double, viewport > 0, row >= 0, row <= 256,
             chrome >= 0, chrome < viewport else { throw BridgeError.args("invalid row grid") }
-      c.setRowGrid(row: row, chrome: chrome, viewport: viewport)
+      c.setRowGrid(row: row, chrome: chrome, viewport: viewport, column: a["column"] as? CGFloat, chromeWidth: a["chromeWidth"] as? CGFloat)
       return [:]
     case "window.dragRegions":
       // 网页的菜单栏里空着的地方：按下能拖窗口、双击同标题栏（macOS 自己的窗口没有标题栏，桌面的菜单栏就是它的标题栏）
