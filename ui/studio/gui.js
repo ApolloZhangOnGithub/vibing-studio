@@ -677,6 +677,7 @@
         modelLabel = rt.liveFooter || [session.mode, session.statusLabel].filter(Boolean).join(" · ") || modelLabel;
         modelLabel = [rt.liveStatus, modelLabel].filter(Boolean).join(" · ");
       }
+      if (rt.footerFields) modelLabel = rt.footerFields().join(" · ");
       set("model", esc(modelLabel), true); // 连接器的会话：模型（真在用的，带 1M）；后面不再挂会话名（用户：没有意义）
       set("effort", "推理 " + esc(EFF[agent.effort || "high"] || agent.effort), !V.claude);
       var pct = c && c.pct ? Math.min(100, c.pct) : 0, ring = inCol(".gv-ringv"), R = 2 * Math.PI * 7;

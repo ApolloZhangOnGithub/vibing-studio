@@ -403,15 +403,22 @@
       var j; try { j = JSON.parse(line); } catch (e) { return null; }
       var p = j.payload || {}, at = ts(j.timestamp);
       if (j.type === "session_meta") { info.cwd = p.cwd || info.cwd; return null; }
-      if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (cs && cs.reasoning_effort) agent.effort = cs.reasoning_effort; return null; }
+      if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = p.effort || cs.reasoning_effort; return null; }
       if (j.type === "compacted") { finishTurn(); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
       if (j.type === "event_msg") {
         if (p.type === "task_started") { running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
         if (p.type === "task_complete") { running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
         if (p.type === "thread_goal_updated") { var g = p.goal || {}; agent.goal = g.status === "active" && g.objective ? { text: String(g.objective), at: (g.createdAt || 0) * 1000 || at, checking: false, iterations: 0 } : null; emit("config"); return null; } // Codex 的 /goal
         if (p.type === "turn_aborted") { running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
-        if (p.type === "token_count" && p.rate_limits) { var rl = p.rate_limits, pcx = function (x) { return x && typeof x.used_percent === "number" ? Math.round(x.used_percent) : null; }; sess.limits = { five: pcx(rl.primary), week: pcx(rl.secondary), at: at }; } // 5 小时、7 天的限额（它自己记的）
-        if (p.type === "token_count" && p.info) { var u = p.info.last_token_usage || {}; if (u.total_tokens || u.input_tokens) sess.ctx = (u.input_tokens || 0) + (u.output_tokens || 0); if (p.info.model_context_window) sess.window = p.info.model_context_window; return null; }
+        if (p.type === "token_count" && p.rate_limits && (!p.rate_limits.limit_id || p.rate_limits.limit_id === "codex")) {
+          var limits = p.rate_limits, windows = [limits.primary, limits.secondary].filter(Boolean);
+          function used(minutes, fallback) {
+            var window = windows.find(function (entry) { return entry.window_minutes === minutes; }) || (fallback && !fallback.window_minutes ? fallback : null);
+            return window && typeof window.used_percent === "number" ? Math.round(window.used_percent) : null;
+          }
+          sess.limits = { five: used(300, limits.primary), week: used(10080, limits.secondary), at: at };
+        }
+        if (p.type === "token_count" && p.info) { var u = p.info.last_token_usage || {}; if (u.total_tokens || u.input_tokens) sess.ctx = u.total_tokens || ((u.input_tokens || 0) + (u.output_tokens || 0)); if (p.info.model_context_window) sess.window = p.info.model_context_window; return null; }
         if (p.type === "context_compacted") return null; // 同一回事的 compacted 那一行已经画了
         return null;
       }
@@ -779,6 +786,17 @@
       return true;
     };
     rt.canCycle = function () { return false; };
+    rt.footerFields = function () {
+      var bits = [];
+      if (sess.window && sess.ctx) {
+        // Codex rounds the remaining fraction after reserving its 12k baseline.
+        var usable = sess.window - 12000;
+        var remaining = usable > 0 ? Math.max(0, usable - Math.max(0, sess.ctx - 12000)) / usable : 0;
+        bits.push("Context " + (100 - Math.round(remaining * 100)) + "% used");
+      }
+      if (sess.limits && sess.limits.week != null) bits.push("weekly " + Math.max(0, Math.min(100, 100 - sess.limits.week)) + "% left");
+      return bits.concat([rt.model().name, agent.effort]).filter(Boolean);
+    };
     rt.limits = function () { return sess.limits || null; };
     // ← 那一块：这台 Mac 上的 Codex 会话——正开在 Codex 里的算「在干活」（刚写过）/「等你回复」，其余最近的 15 个是「已完成」；最前面是现在这个
     rt.island = function () {

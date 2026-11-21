@@ -16,6 +16,7 @@
         ["macOS 新增 Google Antigravity 连接器。打开本机会话即可查看消息、思考和工具输出，终端中的会话可用侧栏漏斗筛选。", "Open local Google Antigravity conversations on macOS to read messages, thinking and tool output. Use the sidebar filter to show sessions open in a terminal."],
       ],
       improved: [
+        ["对话底栏在同一行显示用时和模型。Codex 还会显示上下文使用率、周额度剩余比例和推理强度。", "Conversation footers show duration and model on one line. Codex also shows context usage, remaining weekly quota and reasoning effort."],
         ["agy 会话会跟随本地记录更新。支持的终端可在模型栏显示生成状态。", "Antigravity conversations follow changes to the local transcript. The model bar shows generation status from supported terminals."],
         ["macOS 终端视图按当前行高调整窗口高度，减少底部空白。", "On macOS, terminal windows resize vertically in whole rows to reduce the gap at the bottom."],
       ],

@@ -4309,14 +4309,14 @@
         var tok0 = connWhere();
         if (tok0) STUDIO.set(P, { id: "where", type: "text", site: "claude", title: rt.label || "Claude Code", left: true, data: { text: tok0, cls: "st-dim" } }); else STUDIO.remove(P, "where");
       } else if (agent.claude && footInfo) { islandCount(); rows.push.apply(rows, connFoot(indent, fcols)); } // 同 Claude Code 最下面那两行
+      var footerRight = "";
       if (agyStatus || rt.liveFooter) {
         var liveFields = rt.liveFooter && rt.liveFooter.split(/\s*·\s*/);
         var mode = liveFields ? liveFields[0] : rt.session().mode;
         if (liveFields) agyStatus = liveFields.slice(1).join(" · ");
-        var statusText = mode + " · " + agyStatus;
-        var room = Math.max(0, fcols - W(statusText));
-        var activity = room > 3 && rt.liveStatus ? clip(rt.liveStatus, room - 2) : "";
-        rows.push(D + activity + RESET + " ".repeat(Math.max(0, room - W(activity))) + rgb("175;165;0") + mode + RESET + D + " · " + agyStatus + RESET);
+        footerRight = rgb("175;165;0") + mode + RESET + D + " · " + agyStatus + RESET;
+      } else if (rt.footerFields) {
+        footerRight = D + rt.footerFields().join(" · ") + RESET;
       }
       if (!agent.claude && toBar) {
         var sl0 = statusFields(), acc0 = ACCESS_LABEL[agent.access || "read"], run0 = rt.tasks.filter(function (x) { return x.status === "running"; }), sh0 = run0.filter(function (x) { return x.kind === "shell"; }).length;
@@ -4358,6 +4358,12 @@
       // 全屏只看对话（手机）：输入框贴到最下面——在跑的那一行挪到输入框上面，状态信息那两行不要（下面不留一截）
       var focusNow = root.classList.contains("st-focus");
       if (focusNow) { above = above.concat(work); work = []; rows = rows.slice(0, inputLen); }
+      if (!focusNow && footerRight && W(footerRight)) {
+        var remaining = Math.max(0, fcols - W(footerRight));
+        var left = rt.liveStatus || work[0] || "";
+        if (W(left) + 1 > remaining) left = remaining > 2 ? D + clip(strip(left), remaining - 1) + RESET : "";
+        work[0] = left + " ".repeat(Math.max(0, remaining - W(left))) + footerRight;
+      }
       rows = above.concat(rows.slice(0, inputLen), work, rows.slice(inputLen));
       caretRow += above.length;
       if (inMap) inMap.row0 = above.length + 1; // 字的第一行在底部的第几行（上面是面板 / 菜单、再上面一条线）
@@ -4715,7 +4721,7 @@
         if (whereT || mid) out.push(indent + "  " + D + [whereT, mid].filter(Boolean).join(" · ") + RESET);
         return out;
       }
-      out.push(indent + "  " + D + (agent.connector === "pi" ? "" : "5h: " + pcs(L && L.five) + " | 7d: " + pcs(L && L.week) + " | ") + "Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a") + RESET); // pi 没有 5 小时、7 天的限额：只写上下文
+      if (!rt.footerFields && agent.connector !== "agy") out.push(indent + "  " + D + (agent.connector === "pi" ? "" : "5h: " + pcs(L && L.five) + " | 7d: " + pcs(L && L.week) + " | ") + "Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a") + RESET); // pi 没有 5 小时、7 天的限额：只写上下文
       var mode = rt.permMode ? rt.permMode() : "", look = MODE_LOOK[mode], bits = [];
       var sh = (rt.tasks || []).filter(function (x) { return x.kind === "shell" && x.status === "running"; }).length, wh = connWhere();
       if (islandRunning) bits.push(D + "← " + islandRunning + " agent" + (islandRunning === 1 ? "" : "s") + RESET);
