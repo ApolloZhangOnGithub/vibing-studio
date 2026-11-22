@@ -1933,7 +1933,7 @@
       rt.state && rt.state() === "working" && rt.session().turns.at(-1) === turn;
   }
   function toolHistoryTitle(count) {
-    return "Implemented " + count + " tool use" + (count === 1 ? "" : "s") + "...";
+    return "Implemented " + count + " tool use" + (count === 1 ? "" : "s");
   }
   function filteredParts(turn, mode, rt) {
     var live = isCurrentToolTurn(turn, rt);
