@@ -1950,12 +1950,20 @@
     var live = isCurrentToolTurn(turn, rt);
     var parts = turn.parts || [{kind: "text", text: turn.answer}];
     var lastTool = parts.findLastIndex(function (p) { return p.kind === "tool"; });
-    return parts.filter(function (p, i) {
+    var visible = parts.filter(function (p, i) {
       if (p.kind === "tool") return mode === "body" && i === lastTool;
       if (p.kind !== "text" || !p.text) return false;
       return mode === "body" || p.phase === "final" ||
         (p.phase !== "progress" && !live && i > lastTool);
     });
+    if (mode === "body" && live && lastTool === -1) {
+      var turns = rt.session().turns;
+      for (var j = turns.indexOf(turn) - 1; j >= 0; j--) {
+        var previous = (turns[j].parts || []).findLast(function (part) { return part.kind === "tool"; });
+        if (previous) { visible.push(previous); break; }
+      }
+    }
+    return visible;
   }
   function filterButton(pane) {
     if (!pane || !pane.program || !pane.program.agentId) return "";
