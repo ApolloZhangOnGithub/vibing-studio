@@ -3081,7 +3081,13 @@
             if (earlier.length) {
               var key = ti + ":tool-history";
               r.text([""]);
-              r.block(ccGroupHtml(earlier, key, !!open[key], null, false, true));
+              var expanded = !!open[key];
+              var summary = hotHtml(["  " + HOT + D + toolHistoryTitle(earlier.length) + RESET + HOT_END]);
+              var details = expanded ? earlier.map(function (item) {
+                return P.toHtml(toolRows(item, "full"));
+              }).join("\n\n") : "";
+              r.block('<span class="grp' + (expanded ? ' open' : '') + '" data-key="' + key + '" data-def="call">' +
+                summary + (details ? "\n" + details : "") + '</span>');
             }
             if (current) oneTool(part, lastTool, "preview");
           }
@@ -3597,8 +3603,8 @@
     //   在跑的：一闪一闪的灰点 + 在跑的命令的说明（没有就「Running 3 shell commands…」，现在进行时）+ 淡的「· 用时」（2 秒起），
     //           下面「⎿ $ 命令」（淡，最后一行后面「(用时)」）；还在想的：「⎿ 想的那句」（淡、斜体，最多 10 行）；能放到后台的（Paimon 的）才有「(ctrl+b to run in background)」；
     //   出错的、放到后台的：也只是组里的一条；点这一行（或 ctrl+o）展开：每一条的完整样子（全路径、全部输出、红的 Error）
-    function ccGroupHtml(list, key, isOpen, think, tail, history) {
-      var D = P.DIM, run = list.filter(function (p) { return p.status === "running"; }), act = !history && (run.length > 0 || tail), dur = F.dur;
+    function ccGroupHtml(list, key, isOpen, think, tail) {
+      var D = P.DIM, run = list.filter(function (p) { return p.status === "running"; }), act = run.length > 0 || tail, dur = F.dur;
       var n = { search: 0, list: 0, bash: 0, mcp: 0, readOps: 0 }, files = {}, servers = [];
       list.forEach(function (p) {
         var k = ccKind(p);
@@ -3617,7 +3623,6 @@
       add("listing", "listed", n.list, "directory", "directories");
       if (n.mcp) bits.push(tone + (bits.length ? ", " : "") + (act ? (bits.length ? "calling" : "Calling") : bits.length ? "called" : "Called") + " " + servers.join(", ") + (n.mcp > 1 ? " " + num(n.mcp) + " times" : "") + RESET);
       add("running", "ran", n.bash, "shell command", "shell commands");
-      if (history) bits = [tone + toolHistoryTitle(list.length) + RESET];
       var rows = [];
       // 用时：这一组从第一条开始算起的总时长（墙上时间：中间它想、写的那几秒也算——这一批活一共干了多久）；每一条自己的用时写在它的标题后面
       var g0 = list.reduce(function (m, p) { return p.t0 && (!m || p.t0 < m) ? p.t0 : m; }, 0), g1 = list.reduce(function (m, p) { return Math.max(m, p.t1 || p.t0 || 0); }, 0);
