@@ -337,9 +337,10 @@
         return h + TT().filteredParts(t, P.textFilter, rt).map(function (part) {
           if (part.kind === "tool") {
             var index = t.parts.indexOf(part);
-            var earlier = t.parts.slice(0, index).filter(function (item) { return item.kind === "tool"; });
-            var history = earlier.length ? toolGroup(earlier, ti + ":tool-history", false) : "";
-            return '<div class="gv-ai latest-tool">' + history + toolOne(part, ti + ":t" + index, "call", false) + "</div>";
+            var current = TT().isCurrentToolTurn(t, rt);
+            var earlier = t.parts.slice(0, index + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
+            var history = earlier.length ? toolGroup(earlier, ti + ":tool-history", false, null, TT().toolHistoryTitle(earlier.length)) : "";
+            return '<div class="gv-ai latest-tool">' + history + (current ? toolOne(part, ti + ":t" + index, "call", false) : "") + "</div>";
           }
           return '<div class="gv-ai"><div class="gv-md">' + md(part.text) + '</div></div>';
         }).join("");
@@ -471,10 +472,10 @@
     }
     // 连着的几次工具调用（中间没说话）：一行汇总「运行了 12 条命令、读取了 3 个文件 · 6 分 3 秒」（这一组从第一条开始的总时长），点开是每一条一行；
     //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 另外 N 条」点开，再点收起）；别的组收着
-    function toolGroup(g, key, hot, rowKey) {
+    function toolGroup(g, key, hot, rowKey, historyTitle) {
       var live = g.some(running), o = key in open ? !!open[key] : live || hot || detail() === "full", allR = !!open[key + ":more"] || detail() === "full", MAXR = 4;
       var t0 = g.reduce(function (m0, p) { return p.t0 && (!m0 || p.t0 < m0) ? p.t0 : m0; }, 0), t1 = live ? 0 : g.reduce(function (m0, p) { return Math.max(m0, p.t1 || (p.t0 ? p.t0 + (p.secs || 0) * 1000 : 0)); }, 0);
-      var bad = 0, head = sumText(g, live); // 失败的不单独标（同 Claude Code：组的那一行不写几个失败、不变红；点开那一条自己看）
+      var bad = 0, head = historyTitle || sumText(g, live); // 失败的不单独标（同 Claude Code：组的那一行不写几个失败、不变红；点开那一条自己看）
       var rows = "";
       if (o) {
         var hid = Math.max(0, g.length - MAXR), from = allR ? 0 : hid;

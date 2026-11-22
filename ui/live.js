@@ -1928,13 +1928,19 @@
   }
   var DOTS3 = '<svg viewBox="0 0 16 16"><circle cx="4" cy="8" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="12" cy="8" r="1.1" fill="currentColor"/></svg>';
   // 终端界面、图形界面的对话都交这一个按钮（只在 macOS 风格的窗口标题栏里：别的风格有编辑区的 ···，Claude App 的在它自己的标题 ⌄ 里）
-  function filteredParts(turn, mode, rt) {
-    var live = rt.stream ? rt.stream.turn === turn :
+  function isCurrentToolTurn(turn, rt) {
+    return rt.stream ? rt.stream.turn === turn :
       rt.state && rt.state() === "working" && rt.session().turns.at(-1) === turn;
+  }
+  function toolHistoryTitle(count) {
+    return "Implemented " + count + " tool use" + (count === 1 ? "" : "s") + "...";
+  }
+  function filteredParts(turn, mode, rt) {
+    var live = isCurrentToolTurn(turn, rt);
     var parts = turn.parts || [{kind: "text", text: turn.answer}];
     var lastTool = parts.findLastIndex(function (p) { return p.kind === "tool"; });
     return parts.filter(function (p, i) {
-      if (p.kind === "tool") return live && i === lastTool;
+      if (p.kind === "tool") return i === lastTool;
       if (p.kind !== "text" || !p.text) return false;
       return mode === "body" || p.phase === "final" ||
         (p.phase !== "progress" && !live && i > lastTool);
@@ -3070,14 +3076,14 @@
       if (P.textFilter) {
         filteredParts(turn, P.textFilter, rt).forEach(function (part) {
           if (part.kind === "tool") {
-            var earlier = parts.slice(0, lastTool).filter(function (item) { return item.kind === "tool"; });
+            var current = isCurrentToolTurn(turn, rt);
+            var earlier = parts.slice(0, lastTool + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
             if (earlier.length) {
               var key = ti + ":tool-history";
               r.text([""]);
-              r.block(earlier.every(ccKind) ? ccGroupHtml(earlier, key, !!open[key], null, false, true)
-                : groupHtml(earlier, key, !!open[key], "full"));
+              r.block(ccGroupHtml(earlier, key, !!open[key], null, false, true));
             }
-            oneTool(part, lastTool, "preview");
+            if (current) oneTool(part, lastTool, "preview");
           }
           else { r.text([""]); r.text(answer(part.text)); }
         });
@@ -3611,6 +3617,7 @@
       add("listing", "listed", n.list, "directory", "directories");
       if (n.mcp) bits.push(tone + (bits.length ? ", " : "") + (act ? (bits.length ? "calling" : "Calling") : bits.length ? "called" : "Called") + " " + servers.join(", ") + (n.mcp > 1 ? " " + num(n.mcp) + " times" : "") + RESET);
       add("running", "ran", n.bash, "shell command", "shell commands");
+      if (history) bits = [tone + toolHistoryTitle(list.length) + RESET];
       var rows = [];
       // 用时：这一组从第一条开始算起的总时长（墙上时间：中间它想、写的那几秒也算——这一批活一共干了多久）；每一条自己的用时写在它的标题后面
       var g0 = list.reduce(function (m, p) { return p.t0 && (!m || p.t0 < m) ? p.t0 : m; }, 0), g1 = list.reduce(function (m, p) { return Math.max(m, p.t1 || p.t0 || 0); }, 0);
@@ -9182,7 +9189,7 @@
     globalPane: function (tw) { if (!tw.globalPane) tw.globalPane = new Pane(tw, { side: true }); return tw.globalPane; },
     kinds: KINDS,
     // 对话显示的分法（右侧栏的 ··· 用同一套；图形界面、快速查看按同样的档位画）
-    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, byToolItems: byToolItems, toolsSeen: toolsSeen,
+    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, byToolItems: byToolItems, toolsSeen: toolsSeen,
     tsFmt: tsFmt, dayKey: dayKey, dayLabel: dayLabel, turnTime: turnTime, // 时间戳（图形界面也用）
     viewMode: function (k, view) { var c = isFull(view) ? vcv(view, k) : cv(k); return c === undefined ? VMODES[k] : c; }, // 带预览的当前值（图形界面用：指着菜单时一起变；拆出来的一格按它自己的）
     toolMode: function (p, view) { return toolModeIn(view || null, p); },
