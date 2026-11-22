@@ -1,83 +1,76 @@
-# Vibing Studio
+<h1 align="center">Vibing Studio</h1>
 
-一个 macOS App：把 Claude Code、Codex 的会话（包括 `claude --bg` 的后台会话）放进同一个窗口里看、接着说、管理。外观可以是
-**Visual Studio Code + Claude Code 的终端界面（TUI）**，也可以是 **Claude Desktop** 的样子；自带访达式的文件 / Agent 浏览器、
-活动监视器、内置浏览器，还有一个内置的助手 Paimon（帮你看着正在干活的 Agent）。
+<p align="center"><strong>把散落在各个终端里的 AI 编程会话，按项目放回同一个工作台。</strong></p>
 
-## 截图 · Screenshots
+<p align="center">
+  <a href="https://github.com/ApolloZhangOnGithub/vibing-studio/releases/latest"><strong>下载桌面版 ↗</strong></a>
+  &nbsp; · &nbsp; <a href="#开始使用">开始使用</a>
+  &nbsp; · &nbsp; <a href="#选择你的视图">界面预览</a>
+  &nbsp; · &nbsp; <a href="https://github.com/ApolloZhangOnGithub/vibing-studio/issues">反馈问题</a>
+</p>
 
-| Claude Code 的终端界面（diff、代码块同 Claude Code 自己的样子）<br>Terminal UI | Claude Desktop 风格<br>Claude Desktop style |
-|---|---|
-| ![终端界面](docs/screenshot-tui.jpg) | ![Claude Desktop 风格](docs/screenshot-gui.jpg) |
+![终端视图中的编程会话、工具调用和代码改动](docs/screenshot-tui.jpg)
 
-| 访达式的文件 / Agent 浏览器<br>Finder-style files & agents | Claude App 风格的新会话<br>New session |
-|---|---|
-| ![访达](docs/screenshot-dash.jpg) | ![新会话](docs/screenshot-ca.jpg) |
+昨天在 Codex 里追的 bug，今天在 Claude Code 里改的代码，都能从左侧会话列表找到。打开原来的对话，查看它刚跑的命令，点开回复里提到的文件；需要同时盯两个任务时，就把标签拖到旁边分屏。
 
-## 目录
+## 开始使用
 
-| 目录 | 是什么 |
-|---|---|
-| `app/` | 原生外壳（Swift，AppKit + WKWebView）：窗口、菜单、系统通知、这台 Mac 上的终端 / 命令 / 文件、内嵌浏览器、本地界面服务（`LocalUI.swift`）。`build.sh` 不用开 Xcode 就能编 |
-| `ui/` | 界面（`terminal.html` 和它载入的全部文件）：`live.js`（终端界面、会话的 TUI 画法、Agents 树）、`agents.js`（Agent 数据、设置）、`studio/`（VS Code 式的工作台：设置、访达、活动监视器、Claude Desktop 风格……）、`vendor/`（xterm、CodeMirror） |
-| `ios/` | iPhone / iPad 版（同一个原生 App，SwiftUI + WKWebView，经中转用你的 Mac）：`build.sh` 装到连着的 iPhone、iPad；`project.yml` 由 xcodegen 生成工程 |
-| `tools/` | 编 App、装界面、自动测试、从老地方同步 |
+1. **下载适合你电脑的安装包。** [打开最新版本](https://github.com/ApolloZhangOnGithub/vibing-studio/releases/latest)，在 **Assets** 中按下表选择。
+2. **连接你平时用的工具。** 打开 Vibing Studio，进入「设置 → 连接器」。先启用一个已经在本机安装并登录的工具，例如 Codex 或 Claude Code。
+3. **打开第一条会话。** 展开左侧对应的连接器和工作目录，选择一条已有对话。如果列表为空，先在原工具里完成一轮对话，再回来刷新列表。
 
-`ui/studio/` 里几个主要的文件：
+| 你的电脑 | 选择的文件 |
+| --- | --- |
+| Mac，Apple 芯片（M 系列） | `macOS-AppleSilicon.zip`，解压后将 App 拖入「应用程序」 |
+| Mac，Intel 处理器 | `macOS-Intel.zip`，安装方式相同 |
+| Linux，Intel / AMD 64 位 | Debian / Ubuntu 选 `amd64.deb`，也可选 `x86_64.AppImage` |
+| Linux，ARM 64 位 | 选 `arm64.deb` 或 `arm64.AppImage` |
 
-- `studio.js`：工作台本身——活动栏、标签页、面板、菜单、设置页、配色、命令面板
-- `claude.js` / `codex.js`：连接 Claude Code、Codex——读会话记录（`~/.claude/projects`、`~/.codex/sessions`），经 Claude Code 的后台服务（daemon）把话送进后台会话、看它的屏幕（转圈那一行、正在写的话）
-- `claudeapp.js` / `gui.js`：Claude Desktop 风格的外观、图形界面（GUI）的对话
-- `dash.js`：访达（File Finder / Agent Finder）
-- `trace.js`：Agent 活动（活动监视器式的表格、时间线；按进程树量每个会话的 CPU、内存）
-- `globalagent.js`：内置助手 Paimon 的工具
-- `i18n.js`：中英文
+macOS 版要求 macOS 14 或更高版本。在苹果菜单的「关于本机」中可以看到芯片和系统版本。
 
-## 常用命令
+## 在工作台里做什么
+
+- **找回上次的上下文。** 按工具和工作目录浏览会话，用搜索定位项目或对话。Claude Code 和 Codex 直接读取本机已有的会话记录。
+- **同时跟进几个任务。** 把不同会话并排打开。标签标题右侧的黄点表示运行中，蓝点表示有新回复，读完后回到绿色。
+- **决定看多少过程。** 点击分屏工具栏的三横线，在完整过程、正文和最终回复之间循环切换。需要排查某一步时，展开对应的工具调用即可查看输出。
+- **从回复走到文件。** 点击会话里可打开的文件引用，在新标签中阅读源码。文件上方的面包屑显示它在项目中的位置。
+
+## 选择你的视图
+
+首页大图是 **终端视图（TUI）**，命令、输出和 diff 按执行顺序排列。切换到 **图形视图（GUI）** 后，同一段会话以对话和工具卡片呈现，更方便回读长回复。
+
+![图形视图中的会话与工具卡片](docs/screenshot-gui.jpg)
+
+<details>
+<summary>查看文件浏览器与新会话界面</summary>
+
+| 文件与 Agent 浏览器 | 新会话 |
+| --- | --- |
+| ![按目录浏览文件和 Agent](docs/screenshot-dash.jpg) | ![新会话界面](docs/screenshot-ca.jpg) |
+
+</details>
+
+## 连接器
+
+| 工具 | 可以从哪里开始 |
+| --- | --- |
+| Claude Code | 打开项目历史，继续对话，也可以查看后台会话。 |
+| Codex | 打开已有线程，跟进命令执行，查看回复和代码改动。 |
+| Google Antigravity（agy） | 按工作目录浏览本机会话。向已经打开的终端会话输入时，macOS 连接器使用 iTerm2。 |
+| DeepSeek Harness（DSH） | 浏览 DSH 工作区和会话存档。要继续发送消息，请先在连接器设置中连接 DSH。 |
+| pi | 启用扩展连接器后，打开本机 pi 会话。 |
+
+## 数据与服务
+
+Claude Code、Codex 的本机会话浏览、文件和终端可独立于 Studio 的在线服务使用。发送消息时，模型访问由相应工具的账户和配置决定。Studio 的登录、设置同步和翻译会使用在线服务。
+
+## 从源码运行
+
+在安装了 Xcode 命令行工具的 Mac 上，进入仓库根目录运行：
 
 ```sh
-# 编 App（生成在项目根目录；APP_DIR=<目录> 放到别处；DEV=1 编测试用的那份，bundle id 带 .dev）
 tools/build-app.sh
-
-# 只改了界面：装成 App 读的本地界面，App 里「重新载入以更新」就用上（不用重新编 App）
-tools/install-ui.sh
-
-# 测试、发布前先起本地服务（各开一个终端，一直开着）：
-#   (cd ../teyvat-mac-simulator && node dev/run.mjs --port 8787 --ip 127.0.0.1)   开发服务器：测试用的 App 从这里载入界面
-#   (cd ../teyvat-mac-simulator/sandbox && npm run mac)                           沙盒服务（8790）：网页版的沙盒，部分测试用到
-# 自动测试：先编一份测试用的 App，再跑测试脚本
-DEV=1 APP_DIR="$HOME/Library/Developer/Vibing Studio Test" tools/build-app.sh
-tools/run-test.sh tools/smoke.js
+open "Vibing Studio.app"
 ```
 
-## 开发流程
-
-日常开发就在这里改（`ui/`、`app/`）。发布界面用 `tools/deploy.sh`：
-
-1. 语法检查；
-2. 和 `../teyvat-mac-simulator/public` 两边同步——谁改得晚用谁（`rsync -u`，不删文件）：网站 code.paimon.beer 用的也是这份界面，那边有人改了也不会被盖掉；
-3. 冒烟测试（测试用的 App 从本地开发服务器载入：`../teyvat-mac-simulator` 里 `node dev/run.mjs --port 8787`）；
-4. 版本号 +1（`tools/ui-build.txt`），装成 App 的本地界面（App 里「重新载入以更新」），部署网站。
-
-改了 `app/` 的 Swift：`tools/build-app.sh` 重新编（装之前先退出正在跑的 App）。老地方 `../teyvat-mac-simulator/apps/macos` 不再改；
-`tools/sync-from-cloud.sh` 只在那边又有人改了时用来收过来。
-
-## 结构
-
-```
-Vibing Studio.app（Swift）
- ├─ WKWebView：界面（ui/，本地读，LocalUI）
- │    └─ window.nadosNative.call(命令, 参数) ⇄ Bridge.swift（终端 PTY、执行命令、读写文件、窗口、菜单、通知……）
- ├─ Claude Code：~/.claude/projects/*.jsonl（记录）+ 后台服务的控制通道（reply / subscribe / attach）
- └─ Codex：~/.codex/sessions + codex app-server
-```
-
-## 开源前要知道的
-
-- 许可证：MIT（`LICENSE`）。`ui/vendor/` 里的第三方库（xterm.js、CodeMirror）各有自己的许可证，照原样保留。
-- 服务端：登录、设置同步、内置助手 Paimon、翻译走 code.paimon.beer。自己部署时换地址：
-  `defaults write beer.paimon.terminal serviceURL https://你的域名`（或者编的时候在 `app/Info.plist` 里加 `VibingServiceURL`）。
-  服务端的代码在 `../teyvat-mac-simulator/src`（Cloudflare Worker）。
-- 不需要服务端也能用的：Claude Code、Codex 的会话（读本机的记录、经它们自己的后台服务送话），文件、终端、访达、Agent 活动。
-- 还要自带 API 的（以后再做）：Paimon 和翻译现在用的是服务端代理的模型额度；开源版需要一处填自己的 API key。
-- 仓库里扫过：没有密钥、令牌。`ui/sim/`（网页版 macOS 模拟器）和 `ui/desk.js` 的帮助菜单里还写着作者自己的 GitHub 仓库地址，那是模拟器的，不影响 Studio。
+默认生成的 App 位于仓库根目录。[原生 App 构建说明](app/README.md) · [MIT 许可证](LICENSE)
