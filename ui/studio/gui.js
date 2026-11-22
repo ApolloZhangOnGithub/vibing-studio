@@ -245,7 +245,7 @@
     V.host = host;
     var scroll = host.querySelector(".gv-scroll"), listEl = host.querySelector(".gv-list"), liveEl = host.querySelector(".gv-live"), ta = host.querySelector("textarea");
     var jumpB = host.querySelector(".gv-jump"), sendB = host.querySelector(".gv-send"), attEl = host.querySelector(".gv-att"), todoEl = host.querySelector(".gv-todo"), qEl = host.querySelector(".gv-queued"), fileIn = host.querySelector("input[type=file]");
-    var blocks = new Map(), open = {}, attach = [], follow = true, shown = false;
+    var blocks = new Map(), historyTop = new Map(), open = {}, attach = [], follow = true, shown = false;
     V.scrollEl = scroll;
     // 输入框这一列（在跑的那一行、排着的、输入框、下面一排）：能整列搬到别处——Studio 面板的 Agent 那一层（agent 的底部），标签页里就只剩对话
     var bottomEl = host.querySelector(".gv-bottom"), colEl = bottomEl.querySelector(":scope > .gv-col"), dockWrap = null;
@@ -605,6 +605,10 @@
       var tEl = box.closest(".gv-turn"), t = null, bk = box.dataset.k, y0 = s.getBoundingClientRect().top;
       blocks.forEach(function (el, k) { if (el === tEl) t = k; });
       if (!t) return;
+      if (bk.endsWith(":tool-history")) {
+        if (!box.classList.contains("open")) historyTop.set(bk, y0);
+        else if (historyTop.has(bk)) { y0 = historyTop.get(bk); historyTop.delete(bk); }
+      }
       follow = false; // 这一下是你点的：不再贴着底（不然变高以后 ResizeObserver 又把它顶上去）；滚到底时自己再跟上
       paintTurn(t, tEl);
       // 点的那一行留在原处、内容往下展开（贴着底时以前是往上顶）

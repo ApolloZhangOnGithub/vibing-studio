@@ -1940,7 +1940,7 @@
     var parts = turn.parts || [{kind: "text", text: turn.answer}];
     var lastTool = parts.findLastIndex(function (p) { return p.kind === "tool"; });
     return parts.filter(function (p, i) {
-      if (p.kind === "tool") return i === lastTool;
+      if (p.kind === "tool") return mode === "body" && i === lastTool;
       if (p.kind !== "text" || !p.text) return false;
       return mode === "body" || p.phase === "final" ||
         (p.phase !== "progress" && !live && i > lastTool);
@@ -2243,7 +2243,7 @@
     var TY = agent.connector === "teyvat"; // Teyvat 的会话：它自己的一套（execute / wait / hibernate、底部的状态栏、右侧栏的意图）
     var DIM = function () { return P.DIM; };
     var blocks = new Map(), statusEl = null, bannerEl = null, bgSig = ""; // bgSig：上次画的时候后台还在跑的（见 liveBg）
-    var panel = null, menuIdx = 0, histIdx = -1, historyChoices = [], draft = "", attach = [], pastes = [], verbose = false, open = {}, moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
+    var panel = null, menuIdx = 0, histIdx = -1, historyChoices = [], draft = "", attach = [], pastes = [], verbose = false, open = {}, historyTop = new Map(), moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
     V.agentId = agentId;
     // ---- agent 自己的底部（输入框 → 在跑的那一行 → 状态行）：自动高度；右上角 ··· 管显示哪几块 ----
     var fsash = null, dragH = null, footBase = 0, sashRO = null;
@@ -4231,6 +4231,10 @@
       if (!t) return;
       // 点的那一行留在原处，内容往下展开 / 收起（用户 2026-10-28：有的展开时整块往上跑）——以前贴着底的时候按「跟着到底」挪，标题被顶上去
       var gk = g.dataset.key, y0 = g.getBoundingClientRect().top;
+      if (gk.endsWith(":tool-history")) {
+        if (!g.classList.contains("open")) historyTop.set(gk, y0);
+        else if (historyTop.has(gk)) { y0 = historyTop.get(gk); historyTop.delete(gk); }
+      }
       drawTurn(t);
       var g2 = P.out.querySelector('.grp[data-key="' + (window.CSS && CSS.escape ? CSS.escape(gk) : gk) + '"]');
       if (g2) { var dy = g2.getBoundingClientRect().top - y0; if (Math.abs(dy) >= 1) P.screen.scrollTop += dy; P.onScroll(true); }
