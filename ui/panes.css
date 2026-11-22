@@ -372,3 +372,7 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tab .tab-idle-dot { background: #39a65b; }
 
 .st-tacts button[data-t="text-filter"] svg { width: 15px; flex: none; }
+
+.tpane .dense-latest { display: block; }
+.tpane .dense-latest:not(.open) { height: 5lh; overflow: hidden; }
+.dense-latest-gui:not(.expanded) { height: 5lh; overflow: hidden; }

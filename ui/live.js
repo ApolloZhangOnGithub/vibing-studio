@@ -1935,6 +1935,17 @@
   function toolHistoryTitle(count) {
     return "Ran " + count + " command" + (count === 1 ? "" : "s");
   }
+  function runningPreview(tool) {
+    var input = tool.input || {};
+    var output = (tool.detail || []).flatMap(function (line) { return String(line).split("\n"); }).filter(function (line) { return line.trim(); });
+    var context = [input.description, input.file_path || input.path || input.workdir || input.cwd, input.query || input.pattern];
+    if (input.command) context.push.apply(context, String(input.command).split("\n").slice(1));
+    var rows = output.length ? output.slice(-3) : context.filter(Boolean).slice(0, 3);
+    var meta = [];
+    if (output.length > 3) meta.push("+" + (output.length - 3) + " lines");
+    if (tool.t0) meta.push(F.dur(Math.max(0, Date.now() - tool.t0)));
+    return rows.concat(meta.length ? [meta.join(" · ")] : []);
+  }
   function filteredParts(turn, mode, rt) {
     var live = isCurrentToolTurn(turn, rt);
     var parts = turn.parts || [{kind: "text", text: turn.answer}];
@@ -3089,7 +3100,18 @@
               r.block('<span class="grp' + (expanded ? ' open' : '') + '" data-key="' + key + '" data-def="call">' +
                 summary + (details ? "\n" + details : "") + '</span>');
             }
-            if (current) oneTool(part, lastTool, "preview");
+            if (current) {
+              var latestKey = ti + ":latest-tool:" + lastTool, full = !!open[latestKey];
+              var latestRows = toolRows(part, full ? "full" : "preview");
+              if (!full && part.status === "running") {
+                latestRows = latestRows.slice(0, 1).concat(runningPreview(part).map(function (line, i) {
+                  return (i ? "     " : "  ⎿  ") + D + clip(line, Math.max(1, P.cols - 6)) + RESET;
+                }));
+              }
+              r.text([""]); mark(part.t0);
+              r.block('<span class="grp dense-latest' + (full ? ' open' : '') + '" data-key="' + latestKey + '" data-def="preview"><span class="hot">' +
+                P.toHtml(full ? latestRows : latestRows.slice(0, 5)) + '</span></span>');
+            }
           }
           else { r.text([""]); r.text(answer(part.text)); }
         });
@@ -9198,7 +9220,7 @@
     globalPane: function (tw) { if (!tw.globalPane) tw.globalPane = new Pane(tw, { side: true }); return tw.globalPane; },
     kinds: KINDS,
     // 对话显示的分法（右侧栏的 ··· 用同一套；图形界面、快速查看按同样的档位画）
-    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, byToolItems: byToolItems, toolsSeen: toolsSeen,
+    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
     tsFmt: tsFmt, dayKey: dayKey, dayLabel: dayLabel, turnTime: turnTime, // 时间戳（图形界面也用）
     viewMode: function (k, view) { var c = isFull(view) ? vcv(view, k) : cv(k); return c === undefined ? VMODES[k] : c; }, // 带预览的当前值（图形界面用：指着菜单时一起变；拆出来的一格按它自己的）
     toolMode: function (p, view) { return toolModeIn(view || null, p); },

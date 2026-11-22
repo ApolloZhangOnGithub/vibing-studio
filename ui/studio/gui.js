@@ -348,7 +348,7 @@
                 '"><button class="gv-sum">' + TT().toolHistoryTitle(earlier.length) + '<i></i></button>' +
                 (open[key] ? '<div class="gv-card gv-rows">' + details + '</div>' : '') + '</div>';
             }
-            return '<div class="gv-ai latest-tool">' + history + (current ? toolOne(part, ti + ":t" + index, "call", false) : "") + "</div>";
+            return '<div class="gv-ai latest-tool">' + history + (current ? '<div class="dense-latest-gui' + (open[ti + ":t" + index] ? " expanded" : "") + '">' + toolOne(part, ti + ":t" + index, "preview", false, true) + "</div>" : "") + "</div>";
           }
           return '<div class="gv-ai"><div class="gv-md">' + md(part.text) + '</div></div>';
         }).join("");
@@ -471,12 +471,12 @@
     // 一次工具调用：一行（标题 · 用时；出错红；在跑的带 …）+ 点开的卡片。图形界面默认收着（同终端界面的 TUI：一问里几十次调用全摊开没法看）：
     //   在跑的那条自动展开（跑完收回）；最新的那一条（最后一问里最后一次调用）露出结果的前几行；别的只有一行，点一下看卡片、再点收起。
     //   卡片里的输出先给 40 行，「… 另外 N 行」点开看全，最后「收起」。档位「只看调用」：只有这一行（点开照样看）；「隐藏」：不画（在跑的除外）
-    function toolOne(p, k, m, hot) {
-      var run = running(p), auto = run || (hot && m !== "call") || detailMode() === "full", o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
+    function toolOne(p, k, m, hot, dense) {
+      var run = running(p), auto = run || (hot && m !== "call") || detailMode() === "full", o = k in open ? !!open[k] : !dense && auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
       // 在跑的：用时不写进 HTML（每秒一变，整问重画一遍，看着的那一块就跳）——空的 span 带起点，旁边每秒填一次（tickTm）
       var ms = p.t0 && p.t1 ? p.t1 - p.t0 : (p.secs || 0) * 1000, tm = run && p.t0 ? '<span class="gv-tm gv-tick" data-t0="' + p.t0 + '"></span>' : ms >= 1000 ? '<span class="gv-tm">' + esc(durC(ms)) + "</span>" : "";
       return '<div class="gv-tool' + (o ? " open" : "") + (o && lvl === "peek" ? " peek" : "") + (run ? " run" : "") + '" data-k="' + k + '" data-kind="' + kindOf(p.name) + '"><button class="gv-sum"><span class="gv-st">' + esc(t) + "</span>" + (run ? '<span class="gv-dots"></span>' : "") + tm + "<i></i></button>" +
-        (o ? '<div class="gv-det gv-card' + (lvl === "peek" ? " gv-peek" : "") + '">' + detail(p, lvl === "peek" ? true : lvl, rt, P.view, k) + "</div>" : "") + "</div>";
+        (o ? '<div class="gv-det gv-card' + (lvl === "peek" ? " gv-peek" : "") + '">' + detail(p, lvl === "peek" ? true : lvl, rt, P.view, k) + "</div>" : dense && run ? '<div class="gv-out">' + TT().runningPreview(p).map(esc).join("<br>") + "</div>" : dense ? detail(p, true, rt, P.view, k) : "") + "</div>";
     }
     // 连着的几次工具调用（中间没说话）：一行汇总「运行了 12 条命令、读取了 3 个文件 · 6 分 3 秒」（这一组从第一条开始的总时长），点开是每一条一行；
     //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 另外 N 条」点开，再点收起）；别的组收着
