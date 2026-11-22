@@ -3074,7 +3074,7 @@
             if (earlier.length) {
               var key = ti + ":tool-history";
               r.text([""]);
-              r.block(earlier.every(ccKind) ? ccGroupHtml(earlier, key, !!open[key], null, false)
+              r.block(earlier.every(ccKind) ? ccGroupHtml(earlier, key, !!open[key], null, false, true)
                 : groupHtml(earlier, key, !!open[key], "full"));
             }
             oneTool(part, lastTool, "preview");
@@ -3591,8 +3591,8 @@
     //   在跑的：一闪一闪的灰点 + 在跑的命令的说明（没有就「Running 3 shell commands…」，现在进行时）+ 淡的「· 用时」（2 秒起），
     //           下面「⎿ $ 命令」（淡，最后一行后面「(用时)」）；还在想的：「⎿ 想的那句」（淡、斜体，最多 10 行）；能放到后台的（Paimon 的）才有「(ctrl+b to run in background)」；
     //   出错的、放到后台的：也只是组里的一条；点这一行（或 ctrl+o）展开：每一条的完整样子（全路径、全部输出、红的 Error）
-    function ccGroupHtml(list, key, isOpen, think, tail) {
-      var D = P.DIM, run = list.filter(function (p) { return p.status === "running"; }), act = run.length > 0 || tail, dur = F.dur;
+    function ccGroupHtml(list, key, isOpen, think, tail, history) {
+      var D = P.DIM, run = list.filter(function (p) { return p.status === "running"; }), act = !history && (run.length > 0 || tail), dur = F.dur;
       var n = { search: 0, list: 0, bash: 0, mcp: 0, readOps: 0 }, files = {}, servers = [];
       list.forEach(function (p) {
         var k = ccKind(p);
