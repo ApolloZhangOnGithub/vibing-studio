@@ -335,7 +335,12 @@
       }
       if (P.textFilter) {
         return h + TT().filteredParts(t, P.textFilter, rt).map(function (part) {
-          if (part.kind === "tool") return '<div class="gv-ai latest-tool">' + toolOne(part, ti + ":t" + t.parts.indexOf(part), "call", false) + "</div>";
+          if (part.kind === "tool") {
+            var index = t.parts.indexOf(part);
+            var earlier = t.parts.slice(0, index).filter(function (item) { return item.kind === "tool"; });
+            var history = earlier.length ? toolGroup(earlier, ti + ":tool-history", false) : "";
+            return '<div class="gv-ai latest-tool">' + history + toolOne(part, ti + ":t" + index, "call", false) + "</div>";
+          }
           return '<div class="gv-ai"><div class="gv-md">' + md(part.text) + '</div></div>';
         }).join("");
       }

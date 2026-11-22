@@ -3069,7 +3069,16 @@
       };
       if (P.textFilter) {
         filteredParts(turn, P.textFilter, rt).forEach(function (part) {
-          if (part.kind === "tool") oneTool(part, lastTool, "preview");
+          if (part.kind === "tool") {
+            var earlier = parts.slice(0, lastTool).filter(function (item) { return item.kind === "tool"; });
+            if (earlier.length) {
+              var key = ti + ":tool-history";
+              r.text([""]);
+              r.block(earlier.every(ccKind) ? ccGroupHtml(earlier, key, !!open[key], null, false)
+                : groupHtml(earlier, key, !!open[key], "full"));
+            }
+            oneTool(part, lastTool, "preview");
+          }
           else { r.text([""]); r.text(answer(part.text)); }
         });
         return done();
