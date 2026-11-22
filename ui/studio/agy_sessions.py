@@ -131,12 +131,19 @@ def wire_fields(data):
 def step_times(path):
     database = path.parents[4] / "conversations" / (path.parents[2].name + ".db")
     times = {}
+    durations = {}
     try:
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as db:
-            for idx, kind, blob in db.execute("SELECT idx, step_type, metadata FROM steps WHERE step_type IN (14,15) AND status=3"):
+            for idx, kind, blob, payload in db.execute("SELECT idx, step_type, metadata, step_payload FROM steps WHERE step_type IN (14,15) AND status=3"):
                 # Field 1 is creation. Field 8 on a completed planner response is its end.
                 wanted = 1 if kind == 14 else 8
                 try:
+                    if kind == 15:
+                        planner = next((v for k, v in wire_fields(payload or b"") if k == 20), b"")
+                        duration = next((v for k, v in wire_fields(planner) if k == 11), None)
+                        if isinstance(duration, bytes):
+                            fields = dict(wire_fields(duration))
+                            durations[idx] = fields.get(1, 0) + fields.get(2, 0) / 1e9
                     stamp = next((v for k, v in wire_fields(blob or b"") if k == wanted), None)
                     if isinstance(stamp, bytes):
                         parts = dict(wire_fields(stamp))
@@ -147,11 +154,11 @@ def step_times(path):
                     continue
     except sqlite3.Error:
         pass
-    return times
+    return times, durations
 
 
 def history(path):
-    times = step_times(path)
+    times, durations = step_times(path)
     events = []
     model = ""
     tools = deque()
@@ -166,19 +173,27 @@ def history(path):
         elif kind == "PLANNER_RESPONSE":
             thinking = row.get("thinking")
             if isinstance(thinking, str) and thinking.strip():
-                events.append(dict(role="thinking", text=thinking))
+                events.append(dict(role="thinking", text=thinking, seconds=durations.get(row.get("step_index"))))
             if text:
                 events.append(dict(role="agent_message_chunk", text=text, end_ms=times.get(row.get("step_index"))))
             for call in row.get("tool_calls", []):
                 args = call.get("args") or {}
-                name = args.get("CommandLine") or args.get("toolSummary") or call.get("name")
-                tool = dict(role="tool", id=str(len(events)), title=str(name).strip('"'),
-                            kind="execute" if call.get("name") == "run_command" else "tool")
+                action = call.get("name") or "tool"
+                fields = {"run_command": "CommandLine", "read_file": "Path", "view_file": "AbsolutePath",
+                          "edit_file": "Path", "write_file": "Path", "search_web": "query"}
+                label = args.get(fields.get(action)) or args.get("toolSummary") or action
+                if isinstance(label, str) and label.startswith('"'):
+                    try:
+                        label = json.loads(label)
+                    except ValueError:
+                        pass
+                tool = dict(role="tool", id=str(len(events)), title=str(label), action=action,
+                            kind="execute" if action == "run_command" else "tool")
                 events.append(tool)
                 tools.append(tool)
         elif kind == "GENERIC" and tools:
             tool = tools.popleft()
-            tool.update(status="failed" if row.get("error") else "completed", output=text)
+            tool.update(status="failed" if row.get("error") else "completed", output=text, error=row.get("error"))
     settings_path = path.parents[4] / "settings.json"
     settings = {}
     if settings_path.is_file():

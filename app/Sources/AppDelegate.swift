@@ -287,7 +287,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   }
 
   @objc func reloadPage(_ sender: Any?) {
-    if !web.window.isVisible { web.window.makeKeyAndOrderFront(nil) }
-    web.webView.reload()
+    let active = NSApp.keyWindow ?? NSApp.mainWindow
+    let target = extra.first { $0.window === active } ?? web!
+    if !target.window.isVisible { target.window.makeKeyAndOrderFront(nil) }
+    target.webView.reload()
   }
 }

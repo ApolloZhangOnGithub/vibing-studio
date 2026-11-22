@@ -71,6 +71,7 @@
     if (prog.agentId && /^cx:/.test(prog.agentId)) { var xid = window.TSU_CODEX ? TSU_CODEX.real(prog.agentId.slice(3)) : prog.agentId.slice(3); return { url: /^new-/.test(xid) ? "local.codex:" : "local.codex:" + xid.slice(0, 8) + "/", title: prog.title(), kind: "codex" }; } // Codex 的会话（连接器）：local.codex:<会话 id 前 8 位>/
     if (prog.agentId && /^pi:/.test(prog.agentId)) { var pid = prog.agentId.slice(3); return { url: "local.pi:" + pid.slice(0, 8) + "/", title: prog.title(), kind: "pi" }; } // pi 的会话（连接器）：local.pi:<会话 id 前 8 位>/
     if (prog.agentId && /^ty:/.test(prog.agentId)) return { url: "local.teyvat:" + prog.agentId.slice(3) + "/", title: prog.title(), kind: "teyvat" }; // Teyvat 的 agent：local.teyvat:<agent id>/
+    if (/^(agy|dsh):/.test(prog.agentId || "")) return { agentId: prog.agentId, url: "local." + prog.agentId + "/", title: prog.title(), kind: prog.agentId.split(":")[0] };
     if (prog.agentId) return { agentId: prog.agentId, url: pmURL(prog.agentId), title: prog.title(), kind: "paimon" };
     var cc = ccOf(P.win), id = null;
     Object.keys(cc.panes).forEach(function (k) { if (cc.panes[k] === P) id = k; });
@@ -111,6 +112,8 @@
     if (nm) { var segs = nm[2].split("/").filter(Boolean), k0 = nm[1].toLowerCase(); s = k0 + ".code" + (segs.length ? "/" + (k0 === "claude" ? (segs.length > 1 ? segs[0] + "/" + segs[1] : (ccAcct || "me") + "/" + segs[0]) : pmAcct() + "/" + segs[segs.length - 1]) : ""); }
     if (!s) return false;
     // Codex 的会话（连接器）：local.codex:<会话 id 或前几位>/
+    var external = /^(?:local\.)?(agy|dsh):([a-z0-9-]+)\/?$/i.exec(s);
+    if (external) { tw.side.open(external[1] + ":" + external[2], "tab"); return true; }
     var cxm = /^(?:local\.)?codex:\/*([0-9a-f-]*)\/*$/i.exec(s);
     if (cxm) {
       var CX = window.TSU_CODEX;
@@ -530,6 +533,7 @@
   var PAGE_ICON = { settings: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6\"/><circle cx=\"10\" cy=\"4.5\" r=\"1.5\"/><circle cx=\"6\" cy=\"11.5\" r=\"1.5\"/></svg></i>", keys: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"1.5\" y=\"4\" width=\"13\" height=\"8.4\" rx=\"1.6\"/><path d=\"M4 6.7h.3M6.3 6.7h.3M8.6 6.7h.3M10.9 6.7h.3M4.8 9.6h6.4\"/></svg></i>", history: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2.6 8a5.4 5.4 0 1 0 1.6-3.8M2.4 2.8v2.6H5\"/><path d=\"M8 5.2V8l2 1.2\"/></svg></i>", dash: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"2\" width=\"5\" height=\"6\" rx=\"1\"/><rect x=\"9\" y=\"2\" width=\"5\" height=\"3.5\" rx=\"1\"/><rect x=\"9\" y=\"7.5\" width=\"5\" height=\"6.5\" rx=\"1\"/><rect x=\"2\" y=\"10\" width=\"5\" height=\"4\" rx=\"1\"/></svg></i>", explorer: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M1.8 4.2c0-.6.4-1 1-1h3.1l1.4 1.5h5.9c.6 0 1 .4 1 1v6.6c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z\"/><path d=\"M1.8 6.6h12.4\"/></svg></i>", web: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M2 8h12M8 2c1.8 1.8 2.6 3.8 2.6 6s-.8 4.2-2.6 6M8 2C6.2 3.8 5.4 5.8 5.4 8s.8 4.2 2.6 6\"/></svg></i>", extension: "<i class=\"st-ico st-i-svg\"><svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"6.5\" width=\"4\" height=\"4\" rx=\".5\"/><rect x=\"2\" y=\"10.5\" width=\"4\" height=\"4\" rx=\".5\"/><rect x=\"6\" y=\"10.5\" width=\"4\" height=\"4\" rx=\".5\"/><rect x=\"9\" y=\"2\" width=\"4.6\" height=\"4.6\" rx=\".5\"/></svg></i>" };
   function icon(a) {
     var pg = a.page && window.STUDIO && STUDIO.pages && STUDIO.pages[a.page];
+    if (a.agentId && /^dsh:/.test(a.agentId)) return '<i class="st-ico st-i-svg">' + TSU_LOGOS.dsh + "</i>";
     if (a.agentId && /^agy:/.test(a.agentId)) return '<i class="st-ico st-i-svg">' + TSU_LOGOS.agy + "</i>";
     if (pg && pg.icon) { var ic = pg.icon(a.arg); if (ic) return /^<i /.test(ic) ? ic : '<i class="st-ico st-i-svg">' + ic + "</i>"; } // 页面自己给的图标
     if (a.page && PAGE_ICON[a.page]) return PAGE_ICON[a.page];
@@ -549,7 +553,13 @@
         }
         return true;
       });
-      if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="回复已完成"></b>');
+      var working = (panes || [P]).some(function (pane) {
+        return pane && pane.program && pane.program.working && (pane.program.working() || pane._tabWorking);
+      });
+      var conversation = (panes || [P]).some(pane => pane && pane.program && pane.program.agentId);
+      if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
+      else if (working) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-working-dot" aria-label="运行中"></b>');
+      else if (conversation) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
       // agent 在跑：图标还是它自己的（Claude Code 的就是 Claude 的 logo），只是跳动起来（一下一下地放大、回落）；名字后面不挂 ✳，也不换成字符转圈。
       //   几个一起跑：各自的节奏、相位按会话算（不齐刷刷一起跳）
@@ -621,7 +631,7 @@
     var osItems = function () { return S && S.osModes ? S.osModes.map(function (x, i) { return chk(x[1], (get("os") || "vscode") === x[0], function () { S.setv("os", x[0]); }, String(x[2] || i + 1), "cmd,ctrl"); }) : []; }; // macOS、Pure Terminal 要打开开发者功能才列出来（x[2] 是它的 ⌃⌘ 几）
     var uiItems = function () { var forced = S && S.get && S.get("os") && { claude: "gui", terminal: "tui" }[S.get("os")]; return S && S.uiModes ? S.uiModes.map(function (x) { var off = !!forced && forced !== x[0]; return it(x[1] + (off ? "（在此应用风格下不可用）" : ""), function () { if (!off) S.setv("ui", x[0]); menusSoon(); }, null, null, { checked: (S.get("ui")) === x[0], enabled: !off }); }) : []; }; // 应用风格定死了的：另一个灰着、写明不可用
     var view = clean([
-      it("重新载入", function () { location.reload(); }, "r"), // ⌘R：这是 App 不是浏览器，自己带一个（新版本上线后点这里、或按 ⌘R）
+      it("重新载入", function () { TSU_TERM.reload(); }, "r"), // ⌘R：这是 App 不是浏览器，自己带一个（新版本上线后点这里、或按 ⌘R）
       sep,
       S ? { title: "应用风格", items: osItems() } : null,
       S ? { title: "Agent 显示风格", items: uiItems() } : null,

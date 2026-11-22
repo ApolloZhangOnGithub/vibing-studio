@@ -77,13 +77,15 @@
     cc: { id: "claude-code", name: "Claude Code", glyph: STAR },
     cx: { id: "codex", name: "Codex", glyph: (window.TSU_LOGOS && TSU_LOGOS.codex) || "◎" }, // ChatGPT / OpenAI 的结（ext.js）
     pi: { id: "pi", name: "pi", glyph: (window.TSU_LOGOS && TSU_LOGOS.pi) || "" }, // pi：它自己的标志（ext.js）
+    dsh: { id: "dsh", name: "DeepSeek Harness", get glyph() { return TSU_LOGOS.dsh; } },
+    agy: { id: "agy", name: "Google Antigravity", get glyph() { return (window.TSU_LOGOS && TSU_LOGOS.agy) || ""; } },
     ty: { id: "teyvat", name: "Teyvat", get glyph() { return (window.TSU_LOGOS && TSU_LOGOS.teyvat) || ""; } }, // Teyvat：提瓦特这颗星球的图（ext.js）
     pm: { id: "paimon", name: "Paimon", get glyph() { return (window.TSU_LOGOS && TSU_LOGOS.paimon) || '<img class="pm-av" src="img/paimon.png" alt="" draggable="false">'; } }, // Paimon：派蒙的头像（读进内存的那一份，ext.js）
   };
-  var CONN_ORDER = ["cc", "cx", "pi", "ty", "pm"]; // 按连接器分段时的先后
+  var CONN_ORDER = ["cc", "cx", "pi", "agy", "dsh", "ty", "pm"]; // 按连接器分段时的先后
   // 开着没有：Claude Code、Codex 关着时 TSU_CLAUDE / TSU_CODEX 是空的；Paimon 看它的连接器开关；能不能在那儿开新会话
-  var connOn = function (k) { return k === "cc" ? !!window.TSU_CLAUDE : k === "cx" ? !!window.TSU_CODEX : k === "pi" ? !!window.TSU_PI : k === "ty" ? !!window.TSU_TEYVAT : k === "pm" ? pmOn() : false; };
-  var isConnK = function (k) { return k === "cc" || k === "cx" || k === "pi" || k === "ty"; }; // 连接器的会话（不是 Paimon 的 agent）
+  var connOn = function (k) { return k === "cc" ? !!window.TSU_CLAUDE : k === "cx" ? !!window.TSU_CODEX : k === "pi" ? !!window.TSU_PI : k === "dsh" ? !!(window.TSU_DSH && TSU_DSH.enabled()) : k === "agy" ? !!(window.TSU_AGY && TSU_AGY.enabled()) : k === "ty" ? !!window.TSU_TEYVAT : k === "pm" ? pmOn() : false; };
+  var isConnK = function (k) { return k === "cc" || k === "cx" || k === "pi" || k === "agy" || k === "dsh" || k === "ty"; }; // 连接器的会话（不是 Paimon 的 agent）
   var canNewIn = function (k) { if (k === "pm") return pmOn(); var C = window.TSU_CONNECTORS; return !!(C && C.canNew && CONN[k] && C.canNew(CONN[k].id)); };
   var ico = function (k, cls) { return CONN[k] ? '<span class="ca-ico ca-k-' + k + (cls ? " " + cls : "") + '">' + CONN[k].glyph + "</span>" : ""; }; // span 不是 i：标题栏里的 i 是红黄绿三个灯的样式
 
@@ -158,7 +160,7 @@
   var pmOn0 = function () { return !window.TSU_CONNECTORS || TSU_CONNECTORS.on("paimon"); };
   // 边栏里不再列 Paimon Code 的 agent（同 Agents 树、Agent Finder：Paimon 是内置的助手）；localStorage st-pm-vols = "1" 时照旧列
   var pmOn = function () { return localStorage.getItem("st-pm-vols") === "1" && pmOn0(); };
-  var envKeys = function () { return ["here", "other", "cc", "cx", "pi", "ty"].filter(function (k) { return pmOn() || isConnK(k); }); };
+  var envKeys = function () { return ["here", "other", "cc", "cx", "pi", "agy", "dsh", "ty"].filter(function (k) { return pmOn() || isConnK(k); }); };
   var cardsMode = function () { return S.get ? S.get("claudeCards") || "auto" : "auto"; };
   var filesOK = function () { return !!(S.viewDef && S.viewDef("files")); }; // 文件卡片：这台 Mac 上才有（files.js 的文件树）
   var globalOK = function () { return !!window.TSU_GLOBAL; }; // 全局助手卡片（globalagent.js）
@@ -244,7 +246,7 @@
     var A = Ag();
     if (k === "here") return A && A.local && A.local() ? tr("本机 Mac", "This Mac") : A && A.remote && A.remote() ? tr("云端沙盒", "Cloud Sandbox") : tr("浏览器沙盒", "Browser Sandbox");
     if (k === "other") return tr("其他设备", "Other Devices");
-    return k === "cx" ? "Codex" : k === "pi" ? "pi" : k === "ty" ? "Teyvat" : "Claude Code";
+    return k === "cx" ? "Codex" : k === "pi" ? "pi" : k === "dsh" ? CONN.dsh.name : k === "agy" ? CONN.agy.name : k === "ty" ? "Teyvat" : "Claude Code";
   }
   function sessions(w, archived) {
     var A = Ag(), out = [];
@@ -258,7 +260,7 @@
     if (archived && A.archived && pmOn()) A.archived().forEach(function (a) { add(a, true); });
     // 开着的 Claude Code、Codex 会话（这个窗口里有它的标签页）：它的运行时已经起来了，状态照它的（在这里说的话它正在答）；没开着的不去建运行时
     var openSt = {};
-    if (w.ws && w.ws.all) w.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^(c[cx]|pi|ty):/.test(ag)) { try { var r0 = A.runtime(String(ag)); if (r0 && r0.state) openSt[String(ag)] = r0.state(); } catch (e) { /* 还没起来 */ } } });
+    if (w.ws && w.ws.all) w.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^(c[cx]|pi|dsh|agy|ty):/.test(ag)) { try { var r0 = A.runtime(String(ag)); if (r0 && r0.state) openSt[String(ag)] = r0.state(); } catch (e) { /* 还没起来 */ } } });
     var stNow = function (aid, busy) { return openSt[aid] === "working" || busy ? "working" : openSt[aid] === "waiting" ? "waiting" : "idle"; };
     // Claude Code 的会话（连接器开着才有）：边栏树里那一份；live = 在别的终端里开着（busy：正在干活）
     var cc = Q.trim() && w.side && w.side.ccSearchList ? w.side.ccSearchList() : ccList(w); // 搜的时候：这台 Mac 上全部的会话（平时只有最近 40 个）
@@ -270,6 +272,19 @@
     var PI = window.TSU_PI;
     if (PI) PI.list().filter(function (x) { return archived || !EXTS.arch["pi:" + x.id]; }).slice(0, Q.trim() ? Infinity : 60).forEach(function (x) { var k2 = "pi:" + x.id; out.push({ kind: "pi", id: x.id, name: x.title || x.id, dim: !!x.dimTitle, pinned: !!EXTS.pin[k2], arch: !!EXTS.arch[k2], t: x.mtime || 0, c: x.mtime || 0, state: stNow(k2, x.live && x.live.status === "busy"), live: !!x.live, cwd: x.cwd || "", env: "pi" }); });
     // Teyvat 的 agent（连接器开着才有，teyvat.js）：没归档的都列；在做什么照它自己的状态（工作中 = working，等待 / 休眠 = waiting）
+    if (connOn("dsh")) TSU_DSH.list().forEach(function (x) {
+      var key = "dsh:" + x.id;
+      if (!archived && EXTS.arch[key]) return;
+      out.push({ kind: "dsh", id: x.id, name: EXTS.name[key] || x.title, pinned: !!EXTS.pin[key], arch: !!x.archived,
+        t: x.updated, c: x.updated, state: "idle", cwd: x.cwd, env: "dsh" });
+    });
+    if (connOn("agy")) TSU_AGY.list().forEach(function (x) {
+      var key = "agy:" + x.sessionId, time = Date.parse(x.updatedAt) || 0;
+      if (EXTS.arch[key] && !archived) return;
+      out.push({ kind: "agy", id: x.sessionId, name: EXTS.name[key] || x.title || x.sessionId,
+        pinned: !!EXTS.pin[key], arch: !!EXTS.arch[key], t: time, c: time,
+        state: stNow(key), live: !!x.tty, cwd: x.cwd || "", env: "agy" });
+    });
     var TY = window.TSU_TEYVAT;
     if (TY) TY.list().filter(function (x) { return archived || !EXTS.arch["ty:" + x.id]; }).forEach(function (x) { var k3 = "ty:" + x.id; out.push({ kind: "ty", id: x.id, name: x.name || x.id, pinned: !!EXTS.pin[k3], arch: !!EXTS.arch[k3], t: x.mtime || 0, c: x.created || x.mtime || 0, state: x.state === "working" ? "working" : x.state === "waiting" || x.state === "hibernating" ? "waiting" : "idle", env: "ty" }); });
     return out;
@@ -279,6 +294,8 @@
   // 一段会话在哪个目录（Claude Code、Codex 的；Paimon 的 agent 没有工作目录）
   function dirOfSess(w, k, sid) {
     var x = k === "cc" ? ccList(w).filter(function (y) { return y.id === sid; })[0] : k === "cx" && window.TSU_CODEX ? TSU_CODEX.get(sid) : k === "pi" && window.TSU_PI ? TSU_PI.get(sid) : null;
+    if (k === "dsh" && connOn(k)) x = TSU_DSH.list().find(function (item) { return item.id === sid; });
+    if (k === "agy" && connOn(k)) x = TSU_AGY.list().find(function (item) { return item.sessionId === sid; });
     if (x && x.cwd) return x.cwd;
     try { var A = Ag(), rt = A && A.runtime(k + ":" + sid); return rt && rt.home ? String(rt.home() || "") : ""; } catch (e) { return ""; }
   }
@@ -363,7 +380,7 @@
     var searching = !!Q.trim(), h = "";
     R.secs.filter(function (s) { return s.items.length; }).forEach(function (s) {
       // 这一段的漏斗开着（同 VS Code 风格左边树）：只列在跑、等着你、有新消息的（正看着的那个也留着）
-      var only = !!(s.conn && secSt(s.key).only), its = only ? s.items.filter(function (x) { return x.state !== "idle" || curId(x) || UNREAD[keyOf(x.kind, x.id)]; }) : s.items;
+      var only = !!(s.conn && TSU_CONNECTORS.runningFilter(s.conn, secSt(s.key).only)), its = only ? s.items.filter(function (x) { return x.state !== "idle" || curId(x) || UNREAD[keyOf(x.kind, x.id)]; }) : s.items;
       var shown = its, hid = 0, full = searching || !!secSt(s.key).all, long = its.length > MAXN + 2;
       var head = long ? its.filter(function (x, i) { return i < MAXN || curId(x) || x.state !== "idle" || UNREAD[keyOf(x.kind, x.id)]; }) : its; // 收着时露出来的那几行
       var rest = long && full && !searching ? its.filter(function (x) { return head.indexOf(x) < 0; }) : []; // 展开后多出来的：画在「收起」下面（按钮不挪位置，同 Show more 原地变 Show less）
@@ -447,7 +464,7 @@
     if (w.ca.nav.dataset.h !== nav) { w.ca.nav.dataset.h = nav; w.ca.nav.innerHTML = nav; }
     var p = w.ws && w.ws.active, aid = activeAgent(w), A = Ag(), chip = "", ck = "", cdir = "";
     // 标题旁边的小标签：哪个连接器的会话（图标 + 名字）· 在哪个目录（Claude Code、Codex 的项目目录；Paimon 的 agent 是它在哪个文件夹里）；新会话的草稿：选的连接器和目录
-    if (aid && /^(c[cx]|pi):/.test(aid)) { ck = aid.slice(0, 2); var d0 = dirOfSess(w, ck, aid.slice(3)); cdir = d0 ? baseName(d0) : ""; }
+    if (aid && /^(c[cx]|pi|dsh|agy):/.test(aid)) { ck = aid.split(":")[0]; var d0 = dirOfSess(w, ck, aid.slice(aid.indexOf(":") + 1)); cdir = d0 ? baseName(d0) : ""; }
     else if (aid && A && A.get(aid)) { ck = "pm"; var a0 = A.get(aid); cdir = a0 && a0.path ? String(a0.path).split("/").join(" / ") : ""; }
     else if (p && p.program && p.program.page === "ca-new") { ck = draftConn(); cdir = ck && ck !== "pm" ? baseName(draftDirOf(ck)) : ""; }
     if (ck && CONN[ck]) chip = '<span class="ca-chip ca-cchip" title="' + esc(CONN[ck].name + (cdir ? " · " + cdir : "")) + '">' + ico(ck) + '<span class="ca-cn">' + esc(CONN[ck].name) + "</span>" + (cdir ? '<span class="ca-csep">·</span><span class="ca-cdir">' + esc(cdir) + "</span>" : "") + "</span>";
@@ -484,7 +501,7 @@
   //   不另外画；它的 ⤢ ✕ 就是这张卡片的全屏、关闭。根目录跟着当前会话（Claude Code、Codex 的项目目录；Paimon 的 agent 没有工作目录：家目录）；
   //   打开过哪些文件、树多宽……按窗口记（App 的每个窗口一份）。没有 TSU_FILEPANEL 时退回下面 files.js 的文件树（标题「文件」+ 它那排按钮）
   var winKey = function () { var m = /[?&]win=([^&]+)/.exec(location.search); return "claude:" + (m ? decodeURIComponent(m[1]) : "main"); };
-  function filesRoot(w) { var aid = activeAgent(w); if (aid && /^(c[cx]|pi):/.test(aid)) { var d = dirOfSess(w, aid.slice(0, 2), aid.slice(3)); if (d) return d; } return homeDir(); }
+  function filesRoot(w) { var aid = activeAgent(w); if (aid && /^(c[cx]|pi|dsh|agy):/.test(aid)) { var d = dirOfSess(w, aid.split(":")[0], aid.slice(aid.indexOf(":") + 1)); if (d) return d; } return homeDir(); }
   function filesCard(w) {
     if (w.ca.files || !filesOK()) return w.ca.files || null;
     if (window.TSU_FILEPANEL) {
@@ -1141,7 +1158,7 @@
       if (arL) { e.stopPropagation(); setK("claudeStatus", arL.dataset.arch === "1" ? "archived" : "active"); return refresh(w, true); }
       var sa = e.target.closest(".ca-shadd"), sf = e.target.closest(".ca-shx"), sm = e.target.closest(".ca-smore"), so = e.target.closest(".ca-shflt");
       if (sa) { e.stopPropagation(); peekClose(true); return newIn(w, sa.dataset.new); }
-      if (so) { e.stopPropagation(); setSec(so.dataset.only, { only: !secSt(so.dataset.only).only }); return refresh(w, true); } // 漏斗：仅显示运行中 ↔ 全部
+      if (so) { e.stopPropagation(); var key = so.dataset.only, section = key.slice(2), enabled = !TSU_CONNECTORS.runningFilter(section, secSt(key).only); TSU_CONNECTORS.setRunningFilter(section, enabled); setSec(key, { only: enabled }); return refresh(w, true); } // 漏斗：仅显示运行中 ↔ 全部
       if (sf) { if (!Q.trim()) { setSec(sf.dataset.fold, { fold: !secSt(sf.dataset.fold).fold }); refresh(w, true); } return; }
       if (sm) { setSec(sm.dataset.more, { all: !secSt(sm.dataset.more).all }); return refresh(w, true); }
       if (nv || it) peekClose(true); // 偷看的边栏里点了去处、会话：打开它、边栏收回去
@@ -1231,6 +1248,8 @@
     if (kind === "cc") { if (w.side.viewCC && window.TSU_CLAUDE) w.side.viewCC(id); else if (w.side.openCC) w.side.openCC(id); }
     else if (kind === "cx") { if (w.side.viewCX) w.side.viewCX(id); }
     else if (kind === "pi") { if (w.side.viewPI) w.side.viewPI(id); }
+    else if (kind === "dsh") w.side.open("dsh:" + id, "tab");
+    else if (kind === "agy") { if (w.side.viewAgy) w.side.viewAgy(id); }
     else if (kind === "ty") { if (w.side.viewTY) w.side.viewTY(id); }
     else w.side.open(id);
     later(w);
@@ -1240,7 +1259,7 @@
   function viewOf(p) {
     var pr = p && p.program;
     if (!pr) return null;
-    if (pr.agentId) { var id = String(pr.agentId); return /^(c[cx]|pi):/.test(id) ? { k: "a:" + id, kind: id.slice(0, 2), id: id.slice(3) } : { k: "a:" + id, kind: "pm", id: id }; }
+    if (pr.agentId) { var id = String(pr.agentId); return /^(c[cx]|pi|dsh|agy):/.test(id) ? { k: "a:" + id, kind: id.split(":")[0], id: id.slice(id.indexOf(":") + 1) } : { k: "a:" + id, kind: "pm", id: id }; }
     if (pr.page) return { k: "p:" + pr.page + ":" + (pr.arg == null ? "" : String(pr.arg)), kind: "page", page: pr.page, arg: pr.arg };
     return null;
   }
@@ -1773,7 +1792,9 @@
   new MutationObserver(function () { if (on()) requestAnimationFrame(fadeScan); }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   requestAnimationFrame(fadeScan);
   // 某个 agent 是哪个连接器的（cc:… Claude Code、cx:… Codex、pi:…、ty:… Teyvat；别的是 Paimon）：它的图标（图形界面运行状态行左边用）
-  var connIcon = function (aid) { var a = String(aid || ""), k = /^cc:/.test(a) ? "cc" : /^cx:/.test(a) ? "cx" : /^pi:/.test(a) ? "pi" : /^ty:/.test(a) ? "ty" : "pm"; return CONN[k] ? ico(k) : ""; };
+  var connIcon = function (aid) { var a = String(aid || ""), k = /^cc:/.test(a) ? "cc" : /^cx:/.test(a) ? "cx" : /^pi:/.test(a) ? "pi" : /^dsh:/.test(a) ? "dsh" : /^agy:/.test(a) ? "agy" : /^ty:/.test(a) ? "ty" : "pm"; return CONN[k] ? ico(k) : ""; };
+  document.addEventListener("tsu-dsh", function () { if (on()) refresh(null); });
+  document.addEventListener("tsu-agy", function () { if (on()) refresh(null); });
   window.TSU_CLAUDEAPP = { refresh: function () { refresh(null); }, dialog: dialog, fadeScan: fadeScan, connIcon: connIcon,
     open: function (u) { var w = front(); if (w && build(w)) { setCard(w, "web", true); var t = curTab(); if (t.url) t = addTab(); webGo(w, u, t); refresh(w, true); } }, // Agent 开网页：当前标签页有东西就开一个新的，不盖掉人正在看的
     web: function () { return { cur: WEB.cur, dev: WEB.dev, wide: WEB.wide, tabs: WEB.tabs.map(function (t) { return { id: t.id, url: t.url, title: t.title, loading: t.loading, err: t.err, frame: t.frame }; }) }; }, // 浏览器卡片现在开着哪些页（给 Agent、测试看）

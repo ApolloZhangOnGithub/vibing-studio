@@ -53,7 +53,7 @@
   var isConn = function (x) { return !!(x && C && C.get && C.get(x.id)); };
   var local = function () { return !!(window.nadosNative && nadosNative.local); };
   // 列表里的：连接器在前，真正额外装的扩展（现在没有）在后
-  var items = function () { return (C && C.list ? C.list() : []).concat(X.list()); };
+  var items = function () { return (C && C.list ? C.list() : []).concat(X.list()).filter(function (x) { return x.id !== "paimon"; }); };
   // 活动栏上的（24 格，同 studio.js 原来那个）；标签页上的小图标（16 格）
   var ICON24 = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="9.5" width="6" height="6" rx=".6"/><rect x="3.5" y="15.5" width="6" height="6" rx=".6"/><rect x="9.5" y="15.5" width="6" height="6" rx=".6"/><rect x="13.5" y="3.5" width="7" height="7" rx=".6"/></svg>';
   var EXT16 = IC('<rect x="2.3" y="6.3" width="4" height="4" rx=".5"/><rect x="2.3" y="10.3" width="4" height="4" rx=".5"/><rect x="6.3" y="10.3" width="4" height="4" rx=".5"/><rect x="9" y="2.3" width="4.7" height="4.7" rx=".5"/>');

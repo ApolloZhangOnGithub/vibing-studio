@@ -11,6 +11,19 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-22", ver: "0.2.1.474", items: {
+      new: [
+        ["接入 DeepSeek Harness 本机会话，支持读取存档、发送消息、查看工具调用和文件修改。", "Browse local DeepSeek Harness sessions, send messages and inspect tool calls and file changes."],
+        ["分屏按钮旁新增三档会话筛选。点击切换完整视图、正文和最终回复；运行中的回合保留最新工具调用。", "Cycle between the full transcript, conversation text and final replies beside the split button. Filtered views keep the current turn’s latest tool call."],
+      ],
+      improved: [
+        ["DSH 的读取和命令共用折叠分组，编辑显示增删差异。回复中的本地文件链接可直接打开，路径显示在文件上方。", "DSH groups file reads and commands, shows edit diffs and opens local file links with breadcrumbs above the document."],
+        ["会话标签用黄、蓝、绿三色区分运行中、未读和空闲。", "Conversation tabs distinguish running, unread and idle states with yellow, blue and green indicators."],
+      ],
+      fixed: [
+        ["修复刷新时的分屏恢复，以及隐藏思考时连续工具调用被拆成多组的问题。", "Fixed split restoration on refresh and unnecessary breaks between tool groups when thinking is hidden."],
+      ],
+    } },
     { date: "2026-11-21", ver: "0.2.1.473", items: {
       new: [
         ["macOS 新增 Google Antigravity 连接器。打开本机会话即可查看消息、思考和工具输出，终端中的会话可用侧栏漏斗筛选。", "Open local Google Antigravity conversations on macOS to read messages, thinking and tool output. Use the sidebar filter to show sessions open in a terminal."],

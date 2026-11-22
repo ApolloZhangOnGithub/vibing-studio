@@ -1119,11 +1119,12 @@
   //   App 里两秒问一次原生（system.load：不起进程）；老版本的 App、Linux 版用一条很轻的命令兜底。窗口看不见、状态栏关着时不读 ----
   var STATS = [["cpu", "CPU", "CPU"], ["gpu", "GPU", "GPU"], ["mem", "内存", "Memory"], ["disk", "磁盘剩余", "Disk Free"]];
   // ---- 状态栏左边：当前标签页的 agent 的 5 小时 / 7 天用量和上下文（输入框下面那行「状态信息」关着时，放到这里；用户 2026-10-28）——右键状态栏选显示哪几样 ----
+  var showAgentUsageInStatusBar = false;
   var AGU = [["five", "5 小时用量", "5-Hour Usage"], ["week", "7 天用量", "7-Day Usage"], ["ctx", "上下文", "Context"]];
   var aguOn = function () { var s0 = getv("statusAgent"); return Array.isArray(s0) ? s0 : AGU.map(function (x) { return x[0]; }); };
   function agentUsage(prog) {
     var aid = prog && prog.agentId, A = window.TSU_AGENTS;
-    if (!aid || !A || !A.runtime || acfg().footInfo !== false) return "";
+    if (!showAgentUsageInStatusBar || !aid || !A || !A.runtime || acfg().footInfo !== false) return "";
     var rt = null; try { rt = A.runtime(aid); } catch (e) { rt = null; }
     if (!rt) return "";
     var on = aguOn(), L0 = null, c = null;
@@ -1193,10 +1194,30 @@
   function statusBar(tw, S, P, els) {
     S = S || parts(tw); P = P || tw.ws.active; els = els || list(P);
     S.status.hidden = !getv("statusBar");
+    var updates = [];
+      if (updateReady && !appUpd) updates.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
+      if (nagUpd()) updates.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+    var topHtml = S.status.hidden ? updates.join("") : "";
+    if (topHtml !== (S.topUpdateHtml || "")) {
+      var bar = tw.el.querySelector(".bar");
+      if (bar) {
+        var top = bar.querySelector(".st-top-update");
+        if (top) top.remove();
+        if (topHtml) {
+          top = document.createElement("div");
+          top.className = "st-top-update";
+          top.dataset.nodrag = "";
+          top.innerHTML = topHtml;
+          top.addEventListener("pointerdown", function (e) { e.stopPropagation(); });
+          top.addEventListener("click", function (e) { e.stopPropagation(); click(tw, e); });
+          bar.insertBefore(top, bar.querySelector(".st-lay"));
+        }
+        S.topUpdateHtml = topHtml;
+      }
+    }
     if (getv("statusBar")) {
       var prog = P && P.program, cwd = P && P.shell && P.shell.cwd ? tilde(P.shell.cwd()) : "", left = [], rightI = [];
       var item = function (el) { var h = TYPES[el.type].line(el); return h ? '<span class="st-item" data-el="' + esc(el.id) + '" title="' + esc(titleOf(el)) + '">' + h + "</span>" : ""; };
-      if (prog && prog.page === "file") left.push('<span class="st-item st-cwd" title="文件">' + esc(tilde(prog.arg || "")) + "</span>");
       // 不是终端了：状态栏不再挂「›_ 当前目录」（只有底下终端面板里的终端才有目录）
       els.forEach(function (el) {
         if (slotOf(el.site || "paimon", el.id) !== "status" || !TYPES[el.type]) return;
@@ -1210,8 +1231,7 @@
       if (prog && prog.page === "rdp" && window.TSU_RDP && TSU_RDP.statusLine) { var rdl = TSU_RDP.statusLine(prog); if (rdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(rdl) + "</span>"); }
       if (prog && prog.page === "macdesk" && window.TSU_MACDESK) { var mdl = TSU_MACDESK.statusLine(prog); if (mdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(mdl) + "</span>"); }
       var agP = agentPaneFor(tw), agu = agentUsage(agP && agP.program); tw._aguTxt = agu; if (agu) left.unshift(agu);
-      if (updateReady && !appUpd) rightI.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
-      if (nagUpd()) rightI.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
+      rightI.push(...updates);
       var stx = statsHtml();
       if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
@@ -3471,9 +3491,14 @@
   function noteTick() {
     var mode = getv("agentNotify") || "off", T = window.TSU_TERM, A2 = window.TSU_AGENTS, N = window.nadosNative;
     if (!T || !T.panes || !A2 || !A2.runtime) return;
+    var dirtyWindows = new Set();
     var seen = new Set(), focused = !document.hidden && document.hasFocus(), front = T.front();
     T.panes().forEach(function (p) {
       var id = p.program && p.program.agentId;
+      if (id && !p.side) {
+        var working = !!(p.program.working && p.program.working());
+        if (p._tabWorking !== working) { p._tabWorking = working; dirtyWindows.add(p.win); }
+      }
       if (!id || p.side || seen.has(id)) return;
       seen.add(id);
       var rt = A2.runtime(id);
@@ -3484,18 +3509,19 @@
         if (turn.stats && !turn.error) { completed = turn.stats.at || turn.at || 0; break; }
       }
       var prior = notePrev[id], visible = focused && front === p.win && front.ws.active === p;
-      if (visible && p.finishedAgent) { p.finishedAgent = ""; p.win.syncTitles(); }
+      if (visible && p.finishedAgent) { p.finishedAgent = ""; dirtyWindows.add(p.win); }
       if (!turns.length) return;
       notePrev[id] = {completed: Math.max(completed, prior ? prior.completed : 0)};
       if (!prior || visible || !completed || completed <= prior.completed || completed < Date.now() - 60000) return;
       p.finishedAgent = id;
-      p.win.syncTitles();
+      dirtyWindows.add(p.win);
       if (focused || !N || !N.call) return;
       N.call("attention").catch(function () {});
       if (mode === "off") return;
       var name = (rt.agent && rt.agent.name) || "Agent", tail = rt.tail ? String(rt.tail() || "") : "";
       N.call("notify", { id: "agent:" + id + ":" + completed, title: name + " 做完了", body: tail.replace(/\s+/g, " ").slice(0, 160) }).catch(function () {});
     });
+    dirtyWindows.forEach(function (win) { win.syncTitles(); });
     Object.keys(notePrev).forEach(function (id) { if (!seen.has(id)) delete notePrev[id]; });
   }
   setInterval(noteTick, 2000);
@@ -5960,7 +5986,8 @@
   }
   function crumbsInto(el, P) {
     if (!el) return;
-    var h = P && getv("breadcrumbs") ? crumbHtml(P) : "";
+    var filePage = P && P.program && P.program.page === "file";
+    var h = P && (filePage || getv("breadcrumbs")) ? crumbHtml(P) : "";
     el.style.display = h ? "" : "none";
     if (!h) return;
     if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h || "&nbsp;"; }

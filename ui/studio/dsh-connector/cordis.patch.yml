@@ -1,0 +1,3 @@
+- insert:
+    - id: vibing-studio-session-input
+      name: '@vibing-studio/dsh-connector'

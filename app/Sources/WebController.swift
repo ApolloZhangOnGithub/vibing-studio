@@ -8,6 +8,7 @@ final class VerJoin: @unchecked Sendable { var site: Int? = nil; var go: (() -> 
 
 @MainActor
 final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSWindowDelegate {
+  private static let isolatedStore = WKWebsiteDataStore.nonPersistent()
   let window: DesktopWindow
   let webView: WebView
   let bridge = Bridge()
@@ -27,6 +28,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   // 本地界面（LocalUI.swift）：界面文件从这台 Mac 上读，账号那些照旧走网站；simulatedAt：刚交给 WKWebView 的那一页（它自己的这次导航放行）；
   // bypassOnce：没登录时照旧打开网站那一页（登录页）一次
   let localOn: Bool
+  private var displayedLocalPage: (url: URL, injection: String)?
   private var simulatedAt: Date? = nil, bypassOnce = false
   let winId: Int // 1 = 主窗口（红色按钮只是收起来）；2、3… = 新建的窗口（关了就关）
   let remoteMac: String? // 连着另一台 Mac 的窗口：那台的设备号（关了窗口就断开）
@@ -35,7 +37,9 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     self.winId = winId
     self.remoteMac = remoteMac
     let cfg = WKWebViewConfiguration()
-    cfg.websiteDataStore = .default() // Cookie、localStorage、IndexedDB 都在磁盘上，关了再开还是登录着
+    let env = ProcessInfo.processInfo.environment
+    let isolated = env["NADOS_TESTJS"] != nil || env["NADOS_SELFTEST"] == "1"
+    cfg.websiteDataStore = isolated ? Self.isolatedStore : .default()
     cfg.preferences.javaScriptCanOpenWindowsAutomatically = true
     cfg.preferences.isElementFullscreenEnabled = true
     cfg.preferences.inactiveSchedulingPolicy = .none // 窗口藏起来、被挡住时页面照常跑（agent 在后台干活）
@@ -53,7 +57,6 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     let ucc = cfg.userContentController
     ucc.addUserScript(WKUserScript(source: WebController.bridgeSource(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
     // 自动测试（量启动）：NADOS_PROBE_JS=<文件> 在页面最开头跑一段（记时间点）；NADOS_APPEARANCE=light|dark 让整个 App 当成系统是浅色 / 深色（不动系统设置）
-    let env = ProcessInfo.processInfo.environment
     if let p = env["NADOS_PROBE_JS"], let src = try? String(contentsOfFile: p, encoding: .utf8) {
       ucc.addUserScript(WKUserScript(source: src, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
@@ -215,6 +218,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     guard let html = LocalUI.page(injection: inj, inline: ProcessInfo.processInfo.environment["NADOS_LOCAL_UI_INLINE"] == "1" || (!LocalUI.secureScheme && page.scheme == "https")) else { bypassOnce = true; webView.load(URLRequest(url: page)); return }
     let resp = HTTPURLResponse(url: page, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"])!
     trace("local UI from " + (LocalUI.dir?.path ?? "?"))
+    displayedLocalPage = (page, inj)
     simulatedAt = Date()
     webView.loadSimulatedRequest(URLRequest(url: page), response: resp, responseData: Data(html.utf8))
   }
@@ -312,7 +316,12 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
       if let t = simulatedAt, Date().timeIntervalSince(t) < 5 { simulatedAt = nil; return decisionHandler(.allow) }
       if bypassOnce { bypassOnce = false; return decisionHandler(.allow) }
       decisionHandler(.cancel)
-      loadLocal(url)
+      if action.navigationType == .reload, let current = displayedLocalPage, current.url == url, webView.url == url {
+        showLocal(url, current.injection)
+      } else {
+        displayedLocalPage = nil
+        loadLocal(url)
+      }
       return
     }
     if url.path == "/auth/login", !(url.query ?? "").contains("dev="), let o = Config.origin(url), o == Config.origin(Config.startURL) || Config.bridgeAllowed(o) { // ?dev=：本地开发的测试登录，照常在页面里

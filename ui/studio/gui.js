@@ -223,7 +223,7 @@
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（同终端界面，见 live.js titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
-    V.working = function () { return !!rt.stream; };
+    V.working = function () { return !!rt.stream || (rt.state && rt.state() === "working"); };
     V.busy = function () { return false; };
     V.spec = function () { return { sh: P.shell.spec().sh, agent: agentId, ui: "gui" }; };
     V.tabActions = function () { return window.TSU_TERM && TSU_TERM.agentTabActions ? TSU_TERM.agentTabActions(agentId) : []; }; // 同终端界面：macOS 风格的窗口标题栏里 ··· 显示方式与内容
@@ -301,6 +301,7 @@
     function turnHtml0(t, ti) {
       var h = "";
       // 连接器那边压缩了上下文（Claude Code、Codex）：一条分隔线，点开是它写的摘要——不是用户的气泡
+      if (P.textFilter && (t.compact || t.recap !== undefined || t.cmd !== undefined || t.bash !== undefined || t.system || (t.note && t.ask === undefined))) return "";
       if (t.compact) { // 压缩了上下文：一条分隔线（点开是摘要）；中英文照界面语言
         var ck = ti + ":c", co = !!open[ck], en1 = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"), kt = t.compact.pre ? esc(String(Math.round(t.compact.pre / 1000))) + "k tokens" : "", kp = t.compact.post ? esc(String(Math.round(t.compact.post / 100) / 10)) + "k" : "";
         var ctl = en1 ? "Compacted" + (kt ? " · " + kt + " summarized" + (kp ? " to " + kp : "") : "") : "已压缩" + (kt ? " · " + kt + (kp ? " 压缩到 " + kp : "") : ""); // 同 TUI：压缩前、压缩后各多少
@@ -326,11 +327,17 @@
         h += sh;
       }
       var ask = String(t.ask || "");
-      if (on("prompts") && (ask.trim() || (t.images && t.images.length))) {
+      if ((P.textFilter || on("prompts")) && (ask.trim() || (t.images && t.images.length))) {
         // 图片：悬停预览（默认，[Image #N] 指着看、点了放大）/ 直接显示（缩略图）——设置 › 对话 › 图片
         var inl = ((A && A.cfg && A.cfg.imageShow) || "hover") === "inline";
         var imh = t.images && t.images.length ? (inl ? '<div class="gv-imgs">' + t.images.map(function (im) { return '<img src="' + TSU_IMG.of(im) + '" alt="">'; }).join("") + "</div>" : '<div class="gv-imgrefs">' + t.images.map(function (im, i) { return '<span class="st-imgref" data-img="' + TSU_IMG.key(im) + '" data-name="Image #' + (im && im.no ? im.no : i + 1) + '">[Image #' + (im && im.no ? im.no : i + 1) + "]</span>"; }).join(" ") + "</div>") : "";
         h += '<div class="gv-user">' + tsEl(t.at) + '<div class="gv-bubble">' + imh + esc(ask).replace(/\n/g, "<br>") + "</div></div>";
+      }
+      if (P.textFilter) {
+        return h + TT().filteredParts(t, P.textFilter, rt).map(function (part) {
+          if (part.kind === "tool") return '<div class="gv-ai latest-tool">' + toolOne(part, ti + ":t" + t.parts.indexOf(part), "call", false) + "</div>";
+          return '<div class="gv-ai"><div class="gv-md">' + md(part.text) + '</div></div>';
+        }).join("");
       }
       var ai = "";
       var tm = vm("thinking") || "hidden", dl = detail();
@@ -363,6 +370,14 @@
           return;
         }
         flushG();
+        if (p.kind === "thinking") {
+          if (tm !== "hidden") {
+            var key = ti + ":th" + i, expanded = open[key] === true;
+            var label = Number.isFinite(p.seconds) ? "思考了 " + p.seconds + " 秒" : "思考";
+            ai += '<div class="gv-think' + (expanded ? ' open' : '') + '" data-k="' + key + '"><button class="gv-sum">' + label + '<i></i></button>' + (expanded ? '<div class="gv-det gv-thought">' + md(p.text) + '</div>' : '') + '</div>';
+          }
+          return;
+        }
         if (p.kind === "notice") { // 一轮中间读进去的通知：后台命令的按「后台任务通知」，子 agent 跑完的按「Agent 消息 › 子 Agent 报告」
           if (on("notices")) ai += (p.notices || []).filter(function (n) { return n.kind !== "agent"; }).map(function (n) { return '<div class="gv-note">' + esc(noteText(n)) + "</div>"; }).join("");
           ai += reportsHtml((p.notices || []).filter(function (n) { return n.kind === "agent"; }), ti + ":r" + i, p.at || t.at);
@@ -373,13 +388,14 @@
         if (p.kind !== "text" || !String(p.text || "").trim()) return;
         // 回复翻译（translate.js 的 reply）：说完了的一段有译文就换上（还在流的那段照原文）。没有「原文 / 译文」按钮：
         //   译文那一块指上去淡淡一层高亮，点一下换成原文（浅色底）；原文那块里任何地方点一下换回译文（划选文字、点链接不算）
-        var trk = ti + ":tr" + i, ptx = String(p.text), trd = !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.reply ? TSU_TRANSLATE.reply(ptx, agentId) : null, showO = !!(trd && open[trk]);
+        var agyFinal = agentId.startsWith("agy:") && i > lastTool && (!live || p.whole);
+        var trk = ti + ":tr" + i, ptx = String(p.text), trd = !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.reply ? TSU_TRANSLATE.reply(ptx, agentId) : null, showO = !!(!agyFinal && trd && open[trk]);
         if (trd && !showO) ptx = trd;
         else if (!trd && !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.replyPending && (function () { try { return ((typeof A.cfg === "function" ? A.cfg() : A.cfg) || {}).translateShow === "only"; } catch (e) { return false; } })() && TSU_TRANSLATE.replyPending(ptx)) { ai += '<div class="gv-md gv-trwait">…</div>'; return; } // 只显示译文：还没翻好的段落先是一个淡的 …
-        var mdT = function (x) { var h0 = md(x); return trd ? '<div class="gv-tr' + (showO ? " on" : "") + '" data-tr="' + trk + '">' + h0 + "</div>" : h0; };
+        var mdT = function (x) { var h0 = md(x); return trd && !agyFinal ? '<div class="gv-tr' + (showO ? " on" : "") + '" data-tr="' + trk + '">' + h0 + "</div>" : h0; };
         // 最后一次调用工具之后的话是最终回复；夹在工具调用之间的是过程说明（完整 / 一行：灰的第一句，点开看全 / 隐藏；在跑的这一问，最后那段也先算过程说明）
         var tAt = p.at || (!live && i > lastTool && t.stats && t.stats.at) || lastEnd;
-        if (!live && i > lastTool) { if (on("answers")) { if (dl === "brief") finalA += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); else ai += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); } return; }
+        if ((!live || agyFinal) && i > lastTool) { if (on("answers")) { if (dl === "brief") finalA += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); else ai += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); } return; }
         var pm = vm("progress") || "full", xk = ti + ":x" + i, po = xk in open ? !!open[xk] : pm === "full" || dl === "full";
         if (pm === "hidden") return;
         if (po && !(xk in open)) { ai += tsw(tAt, '<div class="gv-md gv-prog">' + mdT(ptx) + "</div>"); return; }
@@ -922,6 +938,13 @@
     ta.addEventListener("blur", sugClose);
     function submit() {
       var v = ta.value, imgs = attach.slice();
+      if (rt.agent && rt.agent.connector === "dsh") {
+        if (!v.trim() && !imgs.length) return;
+        rt.send(v, imgs).then(function () {
+          if (ta.value === v) { ta.value = ""; draftSave(); atts(); grow(); }
+        }, function (err) { P.flash(err.message, 6000); });
+        return;
+      }
       if (!v.trim() && !imgs.length) { if ((rt.queued || (rt.pending && rt.pending().some(function (q) { return q.local; }))) && rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; } // 空着回车：排着的马上发（同 Claude Code 的「Enter to send them now」）
       var w = v.trim().split(/\s+/)[0], c = !V.claude && CMDS.filter(function (x) { return x.name === w; })[0];
       ta.value = ""; attach = []; atts(); grow();

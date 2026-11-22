@@ -254,7 +254,7 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 }
 
 /* 状态点（live.js 的 DOT）：TTU 给的一格宽的框里画一个实心圆，颜色跟着所在的字（绿 / 红 / 灰）；同 Claude Code 的 ⏺ */
-.tpane .tdot.blink { animation: tdot-blink 1.2s steps(1, end) infinite; } /* 在跑的工具：灰点一闪一闪（同 Claude Code 的 ToolUseLoader：亮 600ms、灭 600ms） */
+.tpane .tdot.blink, .tab .tab-working-dot { animation: tdot-blink 1.2s steps(1, end) infinite; } /* 在跑的工具：灰点一闪一闪（同 Claude Code 的 ToolUseLoader：亮 600ms、灭 600ms） */
 @keyframes tdot-blink { 50% { opacity: 0; } }
 .tpane .tdot { display: inline-block; width: calc(var(--ttu-cell, 1ch) * 0.94); height: calc(var(--ttu-cell, 1ch) * 0.94); margin-left: calc(var(--ttu-cell, 1ch) * 0.03); border-radius: 50%; background: currentColor; vertical-align: 0.03em; }
 
@@ -327,3 +327,48 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 
 .tpane .term .cx-imgref { color: #48aaff; }
 .tpane.tl .term .cx-imgref { color: #0063b5; }
+
+.tpane .term .cx-turn a[href^="http"] {
+  background-image: none;
+  color: #80aefa;
+  text-decoration: underline solid currentColor;
+  text-underline-offset: 2px;
+}
+.tpane.tl .term .cx-turn a[href^="http"] { color: #2050a5; background-image: none; }
+
+.tpane .ask.cx-prompt { padding-block: 1lh; }
+
+.tpane .draft-imgref { pointer-events: auto; cursor: pointer; }
+
+.tpane .term .grp .hot, .gv-sum, .dsh-statbar button { -webkit-user-select: none; user-select: none; }
+.dsh-statbar { display: inline-flex; align-items: baseline; gap: .35em; width: 100%; overflow: hidden; }
+.dsh-statbar button { font: inherit; color: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; min-width: 2em; }
+.dsh-statbar button:hover { text-decoration: underline; }
+.dsh-model { margin-left: auto; }
+.dsh-stat-detail {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: max-content;
+  max-width: calc(100vw - 8px);
+  box-sizing: border-box;
+  padding: 7px 10px;
+  background: #191919;
+  color: #dadada;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  display: none;
+}
+.dsh-stat-detail:popover-open { display: grid; grid-template-columns: auto auto; column-gap: 2ch; }
+.dsh-stat-detail.is-light { background: #fafafa; color: #393939; border-color: #c9c9c9; }
+.dsh-stat-detail > div { display: contents; }
+.dsh-stat-detail span:first-child { opacity: .75; }
+.dsh-stat-detail span:last-child { text-align: right; }
+.dsh-stat-detail > div:first-child span { border-bottom: 1px solid color-mix(in srgb,currentColor 20%,transparent); padding-bottom: 3px; margin-bottom: 3px; opacity: 1; }
+.tab .tab-working-dot { background: #e6ad19; }
+.tab .tab-idle-dot { background: #39a65b; }
+
+.st-tacts button[data-t="text-filter"] svg { width: 15px; flex: none; }
