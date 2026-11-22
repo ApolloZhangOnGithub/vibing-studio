@@ -219,7 +219,7 @@
     var modeOf = function (p) { return TT().toolMode ? TT().toolMode(p, P.view) : A.toolMode(p); };
     // 对话的详细程度（同 Claude App 对话记录的「普通 / 思考 / 详细」；用户 2026-10-28）：简洁——每一问只露出最后的回答，中间的话、工具调用收成一行；
     //   标准——现在这样，一段话一组工具交替着；最详细——所有的都展开。默认标准（设置 › 对话、对话 ··· 里改）
-    var detail = function () { var d = window.STUDIO && STUDIO.get ? STUDIO.get("guiDetail") : ""; return d === "brief" || d === "full" ? d : "standard"; };
+    var detailMode = function () { var d = window.STUDIO && STUDIO.get ? STUDIO.get("guiDetail") : ""; return d === "brief" || d === "full" ? d : "standard"; };
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（同终端界面，见 live.js titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
@@ -342,7 +342,7 @@
             var key = ti + ":tool-history", history = "";
             if (earlier.length) {
               var details = open[key] ? earlier.map(function (item) {
-                return '<div class="gv-st">' + esc(title(item)) + '</div>' + detail(item, "all", rt, P.view, key);
+                return '<div class="gv-st">' + esc(title(item)) + '</div>' + detail(item, "all", rt, P.view);
               }).join("") : "";
               history = '<div class="gv-group' + (open[key] ? ' open' : '') + '" data-k="' + key +
                 '"><button class="gv-sum">' + TT().toolHistoryTitle(earlier.length) + '<i></i></button>' +
@@ -354,7 +354,7 @@
         }).join("");
       }
       var ai = "";
-      var tm = vm("thinking") || "hidden", dl = detail();
+      var tm = vm("thinking") || "hidden", dl = detailMode();
       if (dl === "full" && tm === "hidden") tm = "collapsed";
       if ((t.thought || t.thinking) && tm !== "hidden") { // 思考：一行（点开看）/ 展开
         var k0 = ti + ":th", o0 = k0 in open ? open[k0] : tm === "expanded" || dl === "full";
@@ -472,7 +472,7 @@
     //   在跑的那条自动展开（跑完收回）；最新的那一条（最后一问里最后一次调用）露出结果的前几行；别的只有一行，点一下看卡片、再点收起。
     //   卡片里的输出先给 40 行，「… 另外 N 行」点开看全，最后「收起」。档位「只看调用」：只有这一行（点开照样看）；「隐藏」：不画（在跑的除外）
     function toolOne(p, k, m, hot) {
-      var run = running(p), auto = run || (hot && m !== "call") || detail() === "full", o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
+      var run = running(p), auto = run || (hot && m !== "call") || detailMode() === "full", o = k in open ? !!open[k] : auto, lvl = open[k + ":all"] ? "all" : o && !(k in open) && !run ? "peek" : "card", t = title(p);
       // 在跑的：用时不写进 HTML（每秒一变，整问重画一遍，看着的那一块就跳）——空的 span 带起点，旁边每秒填一次（tickTm）
       var ms = p.t0 && p.t1 ? p.t1 - p.t0 : (p.secs || 0) * 1000, tm = run && p.t0 ? '<span class="gv-tm gv-tick" data-t0="' + p.t0 + '"></span>' : ms >= 1000 ? '<span class="gv-tm">' + esc(durC(ms)) + "</span>" : "";
       return '<div class="gv-tool' + (o ? " open" : "") + (o && lvl === "peek" ? " peek" : "") + (run ? " run" : "") + '" data-k="' + k + '" data-kind="' + kindOf(p.name) + '"><button class="gv-sum"><span class="gv-st">' + esc(t) + "</span>" + (run ? '<span class="gv-dots"></span>' : "") + tm + "<i></i></button>" +
@@ -481,7 +481,7 @@
     // 连着的几次工具调用（中间没说话）：一行汇总「运行了 12 条命令、读取了 3 个文件 · 6 分 3 秒」（这一组从第一条开始的总时长），点开是每一条一行；
     //   在跑的那组、最新的那组默认展开，只列最后 4 条（前面的「… 另外 N 条」点开，再点收起）；别的组收着
     function toolGroup(g, key, hot, rowKey) {
-      var live = g.some(running), o = key in open ? !!open[key] : live || hot || detail() === "full", allR = !!open[key + ":more"] || detail() === "full", MAXR = 4;
+      var live = g.some(running), o = key in open ? !!open[key] : live || hot || detailMode() === "full", allR = !!open[key + ":more"] || detailMode() === "full", MAXR = 4;
       var t0 = g.reduce(function (m0, p) { return p.t0 && (!m0 || p.t0 < m0) ? p.t0 : m0; }, 0), t1 = live ? 0 : g.reduce(function (m0, p) { return Math.max(m0, p.t1 || (p.t0 ? p.t0 + (p.secs || 0) * 1000 : 0)); }, 0);
       var bad = 0, head = sumText(g, live); // 失败的不单独标（同 Claude Code：组的那一行不写几个失败、不变红；点开那一条自己看）
       var rows = "";
