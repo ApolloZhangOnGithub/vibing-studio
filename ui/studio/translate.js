@@ -199,7 +199,7 @@
         var to = ready[0].to, batch = [], chars = 0;
         for (var i = 0; i < ready.length; i++) {
           var x = ready[i];
-          if (x.to !== to) continue;
+          if (x.to !== to || x.passage !== ready[0].passage) continue;
           if (kind === "reply" ? batch.length >= R_BATCH || (batch.length && chars + x.src.length > R_CHARS) : batch.length >= BATCH) break;
           batch.push(x); chars += x.src.length;
         }
@@ -218,7 +218,7 @@
     list.forEach(function (x) { var n = ctxName(x.ctx); if (n && !seen[n]) { seen[n] = 1; names.push(n); } });
     if (SY && SY.dev) hd["x-tsu-device"] = SY.dev; // 服务记录里写哪台设备
     fetch("/api/translate", { method: "POST", credentials: "same-origin", headers: hd, signal: ctl ? ctl.signal : undefined, svclog: false, // 这里自己记（带上条数、缓存命中）
-      body: JSON.stringify({ to: list[0].to, items: list.map(function (x) { return x.src; }), context: names.join(", ").slice(0, 200), kind: kind === "reply" ? "reply" : undefined }) })
+      body: JSON.stringify({ to: list[0].to, items: list.map(function (x) { return x.src; }), context: list[0].passage || names.join(", ").slice(0, 200), kind: kind === "reply" ? "reply" : undefined }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { st: r.status, j: j || {} }; }); })
       .then(function (res) { clearTimeout(tmo); settle(list, kind, res.st, res.j, t0, ""); },
         function (e) { clearTimeout(tmo); settle(list, kind, 0, {}, t0, e && e.name === "AbortError" ? "Client timeout (" + (kind === "reply" ? 150 : 60) + "s)" : String((e && e.message) || e || "network error")); });
@@ -333,7 +333,7 @@
     return lat / n < 0.5 || /\b(the|and|with|this|that|is|are|was|for)\b/i.test(t); // 法、德、西：看着像英文的才翻
   }
   // 整段的译文：每一块都有了才给（没有的在后台去要），不然 null（照原文）
-  function reply(md, ctx) {
+  function reply(md, ctx, passage) {
     var to = rTarget();
     if (!to || !md) return null;
     var bl = mdBlocks(md), out = [], miss = false, any = false;
@@ -346,12 +346,45 @@
       if (MEM.has(k)) { var v = MEM.get(k); out.push(v ? b.pre + v : b.raw); return; }
       miss = true;
       if (FLY.has(k) || RPEND.has(k) || (LMISS.has(k) && !netOK(k))) return; // 在队里 / 路上，或者试满了还没到点：等译文到了、到点再来
-      RPEND.set(k, { k: k, src: src, to: to, ctx: ctx ? String(ctx) : "" });
+      RPEND.set(k, { k: k, passage: passage, src: src, to: to, ctx: ctx ? String(ctx) : "" });
       if (!rtimer) rtimer = setTimeout(rflush, WAIT);
     });
     return any && !miss ? out.join("\n") : null;
   }
   // 这一段要翻、还有没翻好的（「只显示译文」时先不露原文）
+  const translateThoughtInChunks = false;
+  function thought(source, ctx, streaming, only) {
+    if (!rTarget()) return {body:source, ready:0};
+    if (!translateThoughtInChunks) {
+      if (streaming) return {body:source, ready:0};
+      var complete = reply(source, ctx);
+      return {body:complete || (only && replyPending(source) ? "…" : source), ready:complete ? 1 : 0};
+    }
+    var offset = 0, ready = 0, body = "";
+    // Commit paragraph boundaries and complete sentences. Never submit a growing suffix.
+    var boundaries = /\n[ \t]*\n+|[.!?。！？](?=\s)/g, match;
+    function append(end) {
+      var chunk = source.slice(offset, end), previous = source.slice(Math.max(0, offset - 160), offset).trim();
+      var context = previous ? "Previous passage: " + previous : undefined;
+      var translated = reply(chunk, ctx, context);
+      if (translated) ready++;
+      var content = translated || (only && replyPending(chunk) ? "…" : chunk.trim());
+      body += content + (chunk.match(/\s+$/)?.[0] || "");
+      offset = end;
+    }
+    while ((match = boundaries.exec(source))) {
+      if (match[0][0] !== "\n" && boundaries.lastIndex - offset < 360) continue;
+      var end = boundaries.lastIndex;
+      while (end < source.length && /\s/.test(source[end])) end++;
+      boundaries.lastIndex = end;
+      if (source.slice(offset, end).trim()) append(end);
+    }
+    if (offset < source.length) {
+      if (streaming) body += source.slice(offset);
+      else append(source.length);
+    }
+    return {body:body, ready:ready};
+  }
   function replyPending(md) {
     var to = rTarget();
     if (!to || !md) return false;
@@ -372,7 +405,7 @@
     pair: function (s, ctx) { var t = text(s, ctx); return { t: t, o: t !== s ? String(s) : "" }; },
     stats: function () { return Object.assign({ mem: MEM.size, queued: QUEUE.task.size + QUEUE.reply.size, inflight: INFL.task + INFL.reply, paused: Math.max(0, pauseTill - Date.now()) }, stats); },
     preview: function (m) { PREV = m == null ? null : String(m); changed(); },
-    reply: reply, replyPending: replyPending, replyTarget: rTarget, blocks: mdBlocks,
+    reply: reply, thought: thought, replyPending: replyPending, replyTarget: rTarget, blocks: mdBlocks,
     previewReplies: function (m) { RPREV = m == null ? null : String(m); changed(); },
     langs: LANGS,
   };

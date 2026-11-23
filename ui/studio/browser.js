@@ -559,6 +559,13 @@
       var conversation = (panes || [P]).some(pane => pane && pane.program && pane.program.agentId);
       if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
       else if (working) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-working-dot" aria-label="运行中"></b>');
+      else if (conversation && (panes || [P]).some(pane => pane?.program?.scheduleInfo?.())) {
+        var dot = document.createElement("b");
+        dot.className = "tab-finished-dot tab-schedule-dot";
+        dot.title = (panes || [P]).map(pane => pane?.program?.scheduleInfo?.()).filter(Boolean).join("\n");
+        dot.setAttribute("aria-label", dot.title);
+        span.after(dot);
+      }
       else if (conversation) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
       // agent 在跑：图标还是它自己的（Claude Code 的就是 Claude 的 logo），只是跳动起来（一下一下地放大、回落）；名字后面不挂 ✳，也不换成字符转圈。

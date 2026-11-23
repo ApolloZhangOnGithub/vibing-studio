@@ -282,6 +282,7 @@
       var x = find(r.dataset.x), b = e.target.closest("[data-a]");
       if (!x) return;
       select(x.id);
+      if (b && b.dataset.a === "gear" && x.id === "codex") return S.settings(tw, x.settings);
       if (b && b.dataset.a === "gear") return S.menu(extMenu(tw, x), { el: b, side: "below-end" });
       if (b && b.dataset.a === "install") { if (!b.disabled) X.set(x.id, true); return; }
       openDetail(tw, x.id);

@@ -150,7 +150,7 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .about-card button { margin-top: 14px; padding: 4px 22px; border-radius: 6px; border: 0; background: #0a84ff; color: #fff; font: inherit; font-size: 13px; }
 
 /* 临时提示：输入栏上沿的上一行，右对齐、淡紫（同 Claude Code） */
-.tpane .foot .flash { position: absolute; z-index: 6; color: rgb(177, 185, 249); white-space: pre; pointer-events: none; }
+.tpane .foot .flash { position: absolute; z-index: 6; color: rgb(177, 185, 249); white-space: nowrap; max-width: calc(100% - 4ch); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .tpane .foot .flash[hidden] { display: none; }
 
 /* 经典终端（shell）：没有底部的输入栏，提示符就是滚动内容的最后一行 */
@@ -214,6 +214,11 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .tpane .xt .xterm-viewport::-webkit-scrollbar { display: none; }
 
 /* 改动（Edit / Write 的 diff）：颜色同 teyvat（= Claude Code 深色主题）。每一行是一整块 inline-block、一行高，上下行连成一片不留缝；左右各留 5 格 */
+/* A tool disclosure can wrap its entire diff in one hit target. Keep code
+   colors intact while that target is hovered or expanded. */
+.tpane .term .grp .hot:has(.drow) { filter: none !important; }
+.tpane .term .grp.uopen:has(.drow)::before,
+.tpane .term .gdet:has(.drow)::before { display: none; }
 .tpane .term .drow { display: inline-block; vertical-align: top; height: 1lh; color: rgb(248, 248, 242); }
 .tpane .term .drow.dadd { background: rgb(2, 40, 0); }
 .tpane .term .drow.ddel { background: rgb(61, 1, 0); }
@@ -333,6 +338,8 @@ html.st-reduced .ts-pml.s-work { animation: none; }
   color: #80aefa;
   text-decoration: underline solid currentColor;
   text-underline-offset: 2px;
+  -webkit-text-decoration-skip: none;
+  text-decoration-skip-ink: none;
 }
 .tpane.tl .term .cx-turn a[href^="http"] { color: #2050a5; background-image: none; }
 
@@ -368,7 +375,7 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .dsh-stat-detail span:first-child { opacity: .75; }
 .dsh-stat-detail span:last-child { text-align: right; }
 .dsh-stat-detail > div:first-child span { border-bottom: 1px solid color-mix(in srgb,currentColor 20%,transparent); padding-bottom: 3px; margin-bottom: 3px; opacity: 1; }
-.tab .tab-working-dot { background: #e6ad19; }
+.tab .tab-working-dot, .tab .tab-schedule-dot { background: #e6ad19; }
 .tab .tab-idle-dot { background: #39a65b; }
 
 .st-tacts button[data-t="text-filter"] svg { width: 15px; flex: none; }
@@ -376,3 +383,28 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .dense-latest { display: block; }
 .tpane .dense-latest:not(.open) { height: 5lh; overflow: hidden; }
 .dense-latest-gui:not(.expanded) { height: 5lh; overflow: hidden; }
+
+.screen.filter-final, .gv-scroll.filter-final { display: flex; flex-direction: column; }
+.screen.filter-final > *, .gv-scroll.filter-final > * { flex-shrink: 0; }
+.screen.filter-final > .page, .gv-scroll.filter-final > .gv-list { margin-top: auto; }
+
+.cx-footer-choice { pointer-events: auto; appearance: none; font: inherit; color: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.cx-footer-choice:hover { text-decoration: underline; }
+
+/* Diagram overlays use the source link for preview and a window-centred viewer for zoom. */
+.vs-flow-panel { position:fixed; z-index:99999; width:max-content; height:max-content; max-width:calc(100vw - 8px); padding:6px; box-sizing:border-box; background:white; color:#222b37; border:1px solid #949ba366; border-radius:8px; box-shadow:0 4px 18px #0002; overflow:hidden; pointer-events:none }
+.vs-flow-panel img { display:block; max-width:none; max-height:none }
+.vs-flow-panel.full { transform:translate(-50%,-50%); padding:8px 8px 24px; pointer-events:auto; outline:none }
+.vs-flow-panel.full .vs-flow-canvas { width:100%; height:100%; display:flex; overflow:auto; scrollbar-width:auto }
+.vs-flow-panel.full img { flex:none; margin:auto; cursor:zoom-in }
+.vs-flow-canvas::-webkit-scrollbar { display:block; width:8px; height:8px }
+.vs-flow-canvas::-webkit-scrollbar-track { background:#8881 }
+.vs-flow-canvas::-webkit-scrollbar-thumb { background:#8889; border:1px solid transparent; background-clip:padding-box; border-radius:6px }
+.vs-flow-zoom { position:absolute; right:7px; bottom:2px; display:flex; gap:3px }
+.vs-flow-zoom button { color:#566170; background:none; border:0; font:16px/20px system-ui; padding:0 6px; cursor:pointer; border-radius:3px }
+.vs-flow-zoom button:hover { background:#8997a81c }
+a[href*="#vs-flow:"] { color:inherit; text-decoration:none }
+a[href*="#vs-flow:"]:focus:not(:focus-visible) { outline:none }
+.vs-path-hint { position:fixed; z-index:99999; pointer-events:none; max-width:min(72ch,90vw); overflow-wrap:anywhere; padding:4px 8px; border-radius:4px; background:Canvas; color:CanvasText; border:1px solid GrayText; font:12px/1.4 ui-monospace,monospace }
+
+.agy-countdown { pointer-events:auto; cursor:default; background:transparent; border:0; padding:0; color:inherit; font:inherit; font-variant-numeric:tabular-nums; }

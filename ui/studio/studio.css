@@ -119,6 +119,9 @@ html.termapp .termwin .tab > span { order: 1; }
 /* ---- 面包屑：标签条下面一行 ---- */
 .st-crumbs { flex: none; display: block; height: 22px; line-height: 22px; padding: 0 12px; background: var(--st-bg); color: var(--st-dim); font: var(--st-fs) var(--st-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .st-crumbs .st-ico { display: inline-block; min-width: 0; margin-right: 4px; }
+.st-file-trail { display: flex; align-items: center; height: 100%; font-size: 12px; font-weight: 400; }
+.st-file-trail .st-file-dirs, .st-file-trail b { overflow: hidden; text-overflow: ellipsis; }
+.st-file-trail b { flex: 0 0 auto; max-width: 100%; }
 .st-crumbs b { font-weight: 400; color: var(--st-fg); }
 .st-crumbs .st-sepc { padding: 0 6px; color: var(--st-faint); }
 html:not(.termapp) .st-crumbs { display: none; }
@@ -268,7 +271,7 @@ html:not(.termapp) .st-crumbs { display: none; }
 .st-ed { position: absolute; inset: 0; overflow: hidden; font: var(--st-fs)/1.5 var(--st-mono); contain: strict; } /* 里面重排、重画不牵连外面 */
 /* 代码编辑器（只看也是它，只读）：CodeMirror 6 铺满；颜色、字体在 vendor/codemirror 的主题里走 --st-* / --hl-* */
 .st-ed.st-cm > .cm-editor { height: 100%; }
-.st-ed.st-cm .cm-scroller { -webkit-user-select: text; user-select: text; }
+.st-ed.st-cm .cm-scroller { overscroll-behavior-x: none; -webkit-user-select: text; user-select: text; }
 /* 改了没存的「是否要保存」（同 VS Code 在 Mac 上的那个）：不带图标；粗体一行标题、一行淡的说明，三个按钮——不保存（左）· 取消 · 保存（蓝，默认） */
 .st-modal.st-modal-save { display: flex; align-items: flex-start; justify-content: center; padding-top: max(72px, 16vh); background: rgba(0, 0, 0, .28); animation: sdFade .12s ease-out; }
 html.light .st-modal.st-modal-save { background: rgba(0, 0, 0, .12); }
@@ -532,7 +535,8 @@ html.termapp :is(.st-search, .st-pin, .ts-addr) input::placeholder { color: var(
 .st-prw .st-cut { min-width: 0; }
 .st-pempty { padding: 6px 8px; }
 /* 对话里的图片：一行「⎿  [Image #1]」，虚线下划线，点一下在右侧栏里看（同 Claude Code）*/
-.tpane .term a[href*="#vs-img:"], .st-imgref, .terminal-style-ui span.st-imgref { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-color: var(--st-dim); cursor: pointer; }
+.tpane .term a[href*="#vs-img:"] { text-decoration: none; cursor: pointer; }
+.st-imgref, .terminal-style-ui span.st-imgref { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-color: var(--st-dim); cursor: pointer; }
 .st-imgref:hover { color: var(--st-hi); } /* 同别的能点的字：只是字变亮，没有底色块 */
 /* 悬停在 [Image #N] 上浮出来的小预览（不接指针，离开就收） */
 .st-imgpeek { position: fixed; z-index: 90; pointer-events: none; padding: 4px; border-radius: 8px; background: var(--st-bg2, #1e1e1e); border: 1px solid var(--st-line); box-shadow: 0 10px 30px rgba(0, 0, 0, .35); opacity: 0; transform: translateY(2px); transition: opacity .12s ease, transform .12s ease; }
@@ -1526,5 +1530,12 @@ html.st-noln { --st-cm-gut: none; --st-cm-pl: 14px; } /* 编辑器在影子 DOM 
 .st-toast { position: fixed; left: 50%; bottom: 110px; z-index: 2147483000; transform: translate(-50%, 6px); padding: 6px 14px; border-radius: 14px; background: rgba(40, 40, 40, .92); color: #eee; font: 12.5px -apple-system, "PingFang SC", system-ui, sans-serif; pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s; }
 .st-toast.on { opacity: 1; transform: translate(-50%, 0); }
 html.light .st-toast { background: rgba(250, 250, 250, .96); color: #222; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
-.termwin .bar .st-top-update { display: inline-flex; align-items: center; position: relative; z-index: 2; -webkit-app-region: no-drag; }
-.termwin .bar .st-top-update .st-update { font: 12px system-ui; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+.termwin .bar .st-top-update + .st-lay { margin-left:4px; }
+.termwin .bar .st-top-update { margin-left:auto; display: inline-flex; align-items: center; position: relative; z-index: 2; -webkit-app-region: no-drag; }
+.termwin .bar .st-top-update .st-update { background:transparent; color:var(--st-dim); font: 12px system-ui; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+
+.st-notebook { padding: 12px 20px; }
+.st-notebook section { padding: 10px 0; border-bottom: 1px solid color-mix(in srgb,currentColor 15%,transparent); }
+.st-notebook small { opacity: .65; }
+.st-notebook pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
+.st-notebook img { display: block; max-width: 100%; height: auto; }

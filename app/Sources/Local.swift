@@ -364,6 +364,7 @@ final class Local {
     var env: [String: String] = ["HOME": home, "USER": user, "LOGNAME": user, "SHELL": shell, "PATH": loginPath, "TMPDIR": tmp + "/", "LANG": ProcessInfo.processInfo.environment["LANG"] ?? Local.lang(),
                                  "TERM": "dumb", "NO_COLOR": "1", "PAGER": "cat", "GIT_PAGER": "cat"]
     if let s = ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] { env["SSH_AUTH_SOCK"] = s }
+    if let dshHome = ProcessInfo.processInfo.environment["DSH_HOME"] { env["DSH_HOME"] = dshHome }
     return env
   }
   // 常装在登录 shell 的 PATH 之外的几个位置（Claude Code 的原生版在 ~/.local/bin，写在 ~/.zshrc 里——这里读 PATH 用的非交互登录 shell 读不到它）：有就补在后面

@@ -1523,10 +1523,11 @@
     //   · 自己起的 claude -p（stream-json）：直接发 set_model 控制请求——马上换、不用停掉重起（同 Claude Desktop）；下一次起也带 --model
     //   · 后台会话（Claude Code 后台服务里的 job）：经后台服务送「/model 模型」进去（同你在它终端里打）——Claude Code 会把它也存成你的默认模型，先问一句
     //   · 开在别的终端里的：这边送不进去，说一句
-    rt.setModel = function (id) {
+    rt.setModel = function (id, directOnly) {
       id = String(id || "").trim();
       if (!id) return false;
       if (rt.elsewhere()) {
+        if (directOnly) return false;
         if (!(info.job && LOC.exec)) { rt.record("/model " + id, "这个会话开在别的终端里：在那里打 /model " + id); return false; }
         var go = function () { viaDaemon("/model " + id).then(function () { modelSel = id; selAt = Date.now(); modelKeep(sid, id); emit("config"); emit("status"); }, function (e) { rt.record("/model " + id, "没换成：" + (e && e.message || e)); }); };
         var ask = window.STUDIO && STUDIO.ask;

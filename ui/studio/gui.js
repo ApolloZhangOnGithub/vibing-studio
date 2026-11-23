@@ -1028,11 +1028,23 @@
     var off2 = A.on(function (type) { if (shown && (type === "me" || type === "cfg")) { bar(); if (type === "cfg") renderAll(); } });
 
     V.refreshStatus = function () { status(); }; // 任务清单换了位置、⌃T（studio.js）：输入框上方那一块重画
-    V.render = function () {
+    V.render = function (options) {
+      var lower = null, edge = scroll.getBoundingClientRect().bottom;
+      if (options && options.alignBottom && !follow) blocks.forEach(function (block, turn) {
+        var rect = block.getBoundingClientRect();
+        if (rect.height && rect.top < edge && (!lower || rect.top > lower.top))
+          lower = { turn: turn, top: rect.top, bottom: rect.bottom };
+      });
+      scroll.classList.toggle("filter-final", P.textFilter === "final");
       host.hidden = false;
       if (!shown) { shown = true; draftLoad(); }
       else if (document.activeElement !== ta) draftLoad(); // 又露出来（换回这个风格、别处改过草稿）：照共享的那份
       renderAll();
+      if (lower && blocks.has(lower.turn)) {
+        follow = false;
+        scroll.scrollTop += blocks.get(lower.turn).getBoundingClientRect().bottom - lower.bottom;
+        jumpShow();
+      }
     };
     // 换标签页时这一格被从页面上拿下来再放回去（live.js P.park / P.reshow）：不整段重画，回到离开时看着的地方（贴底的接着贴底）
     var parkedAt = null;

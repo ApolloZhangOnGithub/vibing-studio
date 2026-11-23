@@ -30,7 +30,7 @@
   var tr = function (s) { return window.TSU_I18N && TSU_I18N.t ? TSU_I18N.t(s) : s; };
   var clip = function (s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
   // 用户消息里 Codex 自己塞进来的（环境、说明、提醒……）：都是 <标签> 开头
-  var synthetic = function (t) { return /^\s*<[a-z_][\w-]*[\s>]/i.test(t || "") || /^\s*# AGENTS\.md instructions for /.test(t || ""); }; // 还有它塞进来的 AGENTS.md 说明
+  var synthetic = function (t) { return /^\s*<[a-z_][\w-]*[\s>]/i.test(t || "") || /^\s*# AGENTS\.md instructions(?: for |\s*\n+<INSTRUCTIONS>)/.test(t || ""); }; // 还有它塞进来的 AGENTS.md 说明
   var textOf = function (content) { return (Array.isArray(content) ? content : []).filter(function (b) { return b && (b.type === "input_text" || b.type === "output_text" || b.type === "text"); }).map(function (b) { return b.text || ""; }).join("\n"); };
   // 你说的一句：带图的，Codex 把图包成 <image name=[Image #1] path="…"> 图 </image> 放在话前面——包装去掉（不然整句当成它塞进来的、不显示），图单独取出来（同 claude.js 的 { media_type, data }）
   var userOf = function (content) {
@@ -69,6 +69,19 @@
     if (c) return c.name;
     return String(id || "").replace(/^gpt-/i, "GPT-").replace(/-([a-z])([a-z]*)$/, function (m, a, b) { return " " + a.toUpperCase() + b; });
   }
+  var daemonStart;
+  async function sendRpc(request) {
+    var reply = await request();
+    // noconn comes only from connect(), before any bytes of the message were sent.
+    if (reply.error !== "noconn") return reply;
+    if (!daemonStart) daemonStart = LOC.exec({cmd: "codex app-server daemon start", timeout: 20000})
+      .finally(function () { daemonStart = null; });
+    var start = await daemonStart;
+    if (start.code) throw new Error("无法启动 Codex 服务：" + (start.err || start.out || "启动失败").trim().slice(-240));
+    reply = await request();
+    if (reply.error === "noconn") throw new Error("Codex 服务启动后仍无法连接");
+    return reply;
+  }
   function cxRpc(method, params) {
     return LOC.exec({ cmd: "/usr/bin/perl -e '" + CXRPC_PL + "' \"$HOME/.codex/app-server-control/app-server-control.sock\" " + shq(method) + " " + shq(JSON.stringify(params || {})) }).then(function (r) {
       var m = /\{[^\n]*\}/.exec(String(r && r.out || "")); if (!m) return { error: "noreply" };
@@ -77,7 +90,7 @@
   }
   // 一连串请求（上一个回了再发下一个，都在同一条连接上：thread/resume 载入以后接着 thread/compact/start）；wait：最后一个回了以后接着等，
   //   等到这样的通知（如 "method":"thread/compacted"）再回（最多 secs 秒）。回最后一个请求的回答
-  var CXSEQ_PL = "use IO::Socket::UNIX; use JSON::PP; my ($sp, $cj, $wait, $to) = @ARGV; my @calls = @{ decode_json($cj) }; my $s = IO::Socket::UNIX->new(Peer => $sp) or do { print qq({\"error\":\"noconn\"}\\n); exit 0 }; my $last = qq({\"error\":\"timeout\"}); $SIG{ALRM} = sub { print $last, \"\\n\"; exit 0 }; alarm($to || 8); print $s \"GET / HTTP/1.1\\r\\nHost: localhost\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n\"; $s->flush; my $h = q(); while ($h !~ /\\r\\n\\r\\n/) { sysread($s, my $c, 1) or exit 0; $h .= $c } $h =~ / 101 / or do { print qq({\"error\":\"nows\"}\\n); exit 0 }; sub sw { my $d = shift; utf8::encode($d) if utf8::is_utf8($d); my $l = length $d; my $f = chr(129) . ($l < 126 ? chr(128 | $l) : $l < 65536 ? chr(254) . pack(q(n), $l) : chr(255) . pack(q(Q>), $l)); my @k = map { int rand 256 } 1..4; $f .= pack(q(C4), @k); my $i = 0; $f .= join q(), map { chr(ord($_) ^ $k[$i++ % 4]) } split //, $d; print $s $f; $s->flush } sub rd { my $n = shift; my $b = q(); while (length($b) < $n) { sysread($s, my $c, $n - length $b) or exit 0; $b .= $c } $b } sub rw { my ($a, $b) = unpack(q(C2), rd(2)); my $l = $b & 127; $l = unpack(q(n), rd(2)) if $l == 126; $l = unpack(q(Q>), rd(8)) if $l == 127; return ($a & 15, $l ? rd($l) : q()) } my $js = JSON::PP->new->canonical; my $n = 1; my $waiting = 0; sw(q({\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"vibing-studio\",\"version\":\"1\"}}})); while (1) { my ($o, $p) = rw(); next unless $o == 1;   if ($waiting) { if ($p =~ /$wait/) { print $last, \"\\n\"; exit 0 } next }   next unless $p =~ /\"id\":(\\d+)[,}]/ && $1 == $n;   if ($n == 1) { sw(q({\"method\":\"initialized\"})) } else { $last = $p; if (exists $js->decode($p)->{error}) { print $p, \"\\n\"; exit 0 } }   if (@calls) { my $c = shift @calls; $n++; sw($js->encode({ id => $n, method => $c->[0], params => $c->[1] })) }   elsif ($wait) { $waiting = 1 } else { print $p, \"\\n\"; exit 0 } }";
+  var CXSEQ_PL = "use IO::Socket::UNIX; use JSON::PP; my ($sp, $cj, $wait, $to) = @ARGV; my @calls = @{ decode_json($cj) }; my $s = IO::Socket::UNIX->new(Peer => $sp) or do { print qq({\"error\":\"noconn\"}\\n); exit 0 }; my $last = qq({\"error\":\"timeout\"}); $SIG{ALRM} = sub { print $last, \"\\n\"; exit 0 }; alarm($to || 8); print $s \"GET / HTTP/1.1\\r\\nHost: localhost\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\nSec-WebSocket-Version: 13\\r\\n\\r\\n\"; $s->flush; my $h = q(); while ($h !~ /\\r\\n\\r\\n/) { sysread($s, my $c, 1) or exit 0; $h .= $c } $h =~ / 101 / or do { print qq({\"error\":\"nows\"}\\n); exit 0 }; sub sw { my $d = shift; utf8::encode($d) if utf8::is_utf8($d); my $l = length $d; my $f = chr(129) . ($l < 126 ? chr(128 | $l) : $l < 65536 ? chr(254) . pack(q(n), $l) : chr(255) . pack(q(Q>), $l)); my @k = map { int rand 256 } 1..4; $f .= pack(q(C4), @k); my $i = 0; $f .= join q(), map { chr(ord($_) ^ $k[$i++ % 4]) } split //, $d; print $s $f; $s->flush } sub rd { my $n = shift; my $b = q(); while (length($b) < $n) { sysread($s, my $c, $n - length $b) or exit 0; $b .= $c } $b } sub rw { my ($a, $b) = unpack(q(C2), rd(2)); my $l = $b & 127; $l = unpack(q(n), rd(2)) if $l == 126; $l = unpack(q(Q>), rd(8)) if $l == 127; return ($a & 15, $l ? rd($l) : q()) } my $js = JSON::PP->new->canonical; my $n = 1; my $waiting = 0; sw(q({\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"vibing-studio\",\"version\":\"1\"},\"capabilities\":{\"experimentalApi\":true}}})); while (1) { my ($o, $p) = rw(); next unless $o == 1;   if ($waiting) { if ($p =~ /$wait/) { print $last, \"\\n\"; exit 0 } next }   next unless $p =~ /\"id\":(\\d+)[,}]/ && $1 == $n;   if ($n == 1) { sw(q({\"method\":\"initialized\"})) } else { $last = $p; if (exists $js->decode($p)->{error}) { print $p, \"\\n\"; exit 0 } }   if (@calls) { my $c = shift @calls; $n++; sw($js->encode({ id => $n, method => $c->[0], params => $c->[1] })) }   elsif ($wait) { $waiting = 1 } else { print $p, \"\\n\"; exit 0 } }";
   function cxSeq(calls, wait, secs) {
     return LOC.exec({ cmd: "/usr/bin/perl -e '" + CXSEQ_PL + "' \"$HOME/.codex/app-server-control/app-server-control.sock\" " + shq(JSON.stringify(calls)) + " " + shq(wait || "") + " " + (secs || 8), timeout: ((secs || 8) + 5) * 1000 }).then(function (r) {
       var m = /\{[^\n]*\}/.exec(String(r && r.out || "")); if (!m) return { error: "noreply" };
@@ -311,6 +324,12 @@
     if (r.sess !== null && p.name === "Bash") { p.status = "running"; p.sess = r.sess; p.detail = lines.slice(-400); return; } // 还在跑：之后等它的输出接在这里（Codex 自己也是这样显示）
     p.status = err ? "error" : "done";
     if (err) { p.error = (lines.filter(Boolean).slice(-1)[0] || "exit code " + r.code).slice(0, 300); p.detail = lines; return; }
+    if (p.name === "wait") {
+      var raw = Array.isArray(o) ? o.map(x => x.text || "").join("\n") : String(o || "");
+      p.summary = [p.input.cell_id, raw.split("\n")[0]].filter(Boolean).join(" · ");
+      p.detail = Object.entries(p.input).map(([key, value]) => key + ": " + value).concat(raw.trimEnd().split("\n"));
+      return;
+    }
     if (p.name === "Edit") {
       var d = [], add = 0, del = 0, pl = String(p.input.patch || "").split("\n");
       pl.forEach(function (l) { if (/^\*\*\* /.test(l)) { if (d.length) d.push({ t: "…" }); return; } if (l[0] === "+") { d.push({ t: "+", l: l.slice(1) }); add++; } else if (l[0] === "-") { d.push({ t: "-", l: l.slice(1) }); del++; } else if (l[0] === " ") d.push({ t: " ", l: l.slice(1) }); });
@@ -345,8 +364,9 @@
         var items = reply && reply.result && reply.result.data;
         if (!Array.isArray(items)) return;
         var next = items.map(function (item) {
-          var text = item.input.map(function (part) { return part.type === "text" ? part.text : "[Image]"; }).join(" ");
-          return { id: item.id, input: item.input, clientUserMessageId: item.clientUserMessageId, metadata: item.responsesapiClientMetadata, text: text, ours: true, sending: false };
+          var imageNumber = 0;
+          var text = item.input.map(function (part) { return part.type === "text" ? part.text : "[Image #" + (++imageNumber) + "]"; }).join(" ");
+          return { id: item.id, caption: item.input.filter(part => part.type === "text").map(part => part.text).join(" ") || "(image)", text: text, ours: true, sending: false };
         });
         if (JSON.stringify(next) !== JSON.stringify(serverQueue)) {
           serverQueue = next;
@@ -358,7 +378,8 @@
     rt.pending = function () {
       var local = sentWait.slice();
       serverQueue.forEach(function (entry) {
-        var i = local.findIndex(function (x) { return x.text === entry.text; });
+        var caption = entry.caption;
+        var i = local.findIndex(function (x) { return x.text === caption; });
         if (i >= 0) local.splice(i, 1);
       });
       return serverQueue.concat(local.map(function (x) { return { text: x.text, at: x.at, ours: true, sending: !x.q }; }));
@@ -420,16 +441,26 @@
     // 在跑的那一问（转圈那一行、「在跑」的画法跟着它）：读到新的一问就换成它——不然还指着上一问（已经答完的），
     //   新的一问的回复、「Worked for」那一行都画错（上一问当成在跑、少了做完那一行）
     // 发出去、Codex 还没写进记录的那几句：先画成「排着」（灰底的「❯ 原话」），记录里出现了就划掉——不然要等它答了这句话才冒出来，像被吞了
-    var sentWait = [];
+    var pendingKey = "tsu-cx-awaiting-log:" + sid, sentWait = [];
+    try {
+      var savedPending = JSON.parse(sessionStorage.getItem(pendingKey) || "[]");
+      if (Array.isArray(savedPending)) sentWait = savedPending.filter(x => x && typeof x.text === "string" && Number.isFinite(x.at));
+    } catch (e) {}
+    function savePending() {
+      try {
+        if (sentWait.length) sessionStorage.setItem(pendingKey, JSON.stringify(sentWait));
+        else sessionStorage.removeItem(pendingKey);
+      } catch (e) {}
+    }
     var wnorm = function (t) { return String(t || "").replace(/\r\n/g, "\n").trim(); };
     function newTurn(text, at, imgs) { if (cur) settle(cur); cur = { ask: text, images: imgs || [], parts: [], at: at }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; if (sentWait.length) dropSent(text, at); return cur; }
     function dropSent(text, at) {
       var hit = sentWait.findIndex(function (x) {
         return (!at || at >= x.at - 1000) && wnorm(x.text) === wnorm(text);
       });
-      if (hit >= 0) sentWait.splice(hit, 1);
+      if (hit >= 0) { sentWait.splice(hit, 1); savePending(); }
     }
-    function ensureTurn(at) { if (!cur) { cur = { ask: "", parts: [], at: at, cont: true }; turns.push(cur); if (rt.stream && !rt.stream.turn.at) rt.stream.turn = cur; } return cur; }
+    function ensureTurn(at) { if (!cur) { cur = { ask: "", parts: [], at: at, cont: true }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; } return cur; }
     // 还在跑的命令（exec_command 先返回了、session ID N）：之后 write_stdin 等它的输出——不另起一格，接在那条命令下面（同 Codex 自己）
     var sessOf = {}, runAt = 0;
     function pollOf(p) {
@@ -472,7 +503,7 @@
       var j; try { j = JSON.parse(line); } catch (e) { return null; }
       var p = j.payload || {}, at = ts(j.timestamp);
       if (j.type === "session_meta") { info.cwd = p.cwd || info.cwd; return null; }
-      if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = p.effort || cs.reasoning_effort; return null; }
+      if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = effortSel || p.effort || cs.reasoning_effort; return null; }
       if (j.type === "compacted") { compactSince = 0; compactEnd = at; if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
       if (j.type === "event_msg") {
         if (p.type === "item_completed" && p.item && p.item.type === "AgentMessage") {
@@ -496,8 +527,15 @@
           }
         }
         if (p.type === "task_started") { pendingPolls.clear(); compactSince = 0; running = p.turn_id || "?"; runAt = p.started_at ? p.started_at * 1000 : at; if (rt.stream) { rt.stream.t0 = runAt; rt.stream.phaseAt = 0; } lastIn = Math.max(lastIn, at); if (at >= sentAt - 2000) sentAt = 0; return null; } // 排进去的那句开始跑了：不再靠「刚排进去」算在跑（跑完马上停转）
-        if (p.type === "task_complete") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; assistantText(p.last_agent_message, "final_answer", at, "completion"); running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
-        if (p.type === "turn_aborted") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
+        if (p.type === "task_complete") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; assistantText(p.last_agent_message, "final_answer", at, "completion"); if (at >= sentAt) sentAt = 0; running = null; if (cur) { settle(cur); var dsec = p.duration_ms ? p.duration_ms / 1000 : p.completed_at && p.started_at ? p.completed_at - p.started_at : ((cur.last || at) - cur.at) / 1000; cur.stats = { secs: Math.max(1, Math.round(dsec)), verb: "Worked", at: at }; cur.last = at; } return cur; }
+        if (p.type === "turn_aborted") { if (running && running !== "?" && p.turn_id && p.turn_id !== running) return null; if (at >= sentAt) sentAt = 0;
+          var abortedId = p.turn_id || running;
+          var stranded = sentWait.filter(x => x.steerTurn && x.steerTurn === abortedId);
+          if (stranded.length) {
+            sentWait = sentWait.filter(x => !stranded.includes(x)); savePending();
+            stranded.forEach(x => rt.record(x.text, "回合已中断，追加消息未写入会话记录"));
+          }
+          running = null; if (cur) { settle(cur); cur.error = "Interrupted by user"; return cur; } return null; }
         if (p.type === "token_count" && p.rate_limits && (!p.rate_limits.limit_id || p.rate_limits.limit_id === "codex")) {
           var limits = p.rate_limits, windows = [limits.primary, limits.secondary].filter(Boolean);
           function used(minutes, fallback) {
@@ -513,6 +551,10 @@
             var start = p.started_at_ms || compactSince, end = p.completed_at_ms || at;
             var entry = turns[turns.length - 1];
             if (!entry || !entry.compact || (start && entry.at < start)) {
+              // The large compacted record can be outside the loaded page. Close the
+              // preceding segment here too, so later output follows the marker.
+              if (cur) settle(cur);
+              cur = null;
               entry = { compact: {}, at: end };
               turns.push(entry);
             }
@@ -669,17 +711,17 @@
       }).catch(function () {}).then(function () { pollBusy = false; if (pollAgain) { pollAgain = false; setTimeout(poll, 0); } });
     }
     // 在跑时读得勤（120ms）、闲着读得慢（700ms）——streaming 时才是一行一行地出来，不是 700ms 一整块（用户 2026-10-30：「block 一个 block 返回」）
-    function start() { if (!loading) load(); clearTimeout(pollT); pollT = 0; var loop = function () { pollT = setTimeout(function () { loop(); }, busy ? 120 : 700); poll(); }; loop(); }
-    function stop() { clearTimeout(pollT); pollT = 0; }
+    function start() { if (busy) tickOn(); if (!loading) load(); clearTimeout(pollT); pollT = 0; var loop = function () { pollT = setTimeout(function () { loop(); }, busy ? 120 : 700); poll(); }; loop(); }
+    function stop() { clearTimeout(pollT); pollT = 0; clearInterval(ticker); ticker = 0; }
 
     // ---- 在跑吗：自己起的进程；或者记录里有一问开了头还没结束、文件刚写过（在 Codex 里跑着）----
-    var busy = false, proc = null, outBuf = "", sentAt = 0, deciding = false;
+    var busy = false, proc = null, outBuf = "", sentAt = 0, sendingCount = 0, dispatch = Promise.resolve();
     // 转圈那一行指着的一问：正在跑的那一问（记录里开了头、还没做完）；刚说完、记录里还没有新的一问：先空着（读到新的一问时 newTurn 换上）——
     //   不指着上一问（答完了的）：它会被当成还在跑（少了「Worked for」那一行，最后一段话只画到换行为止）
     //   从几点算：在 Codex 那边跑着的，从它开始那一刻（task_started）；这边刚说的，从现在
     // 在跑时每 120ms 一个 tick：转圈那一行的雪花照样转（同 Claude Code 的会话；原来只在有新事件时才画一次，停在「·」不动）
     var ticker = 0;
-    function tickOn() { if (ticker) return; ticker = setInterval(function () { if (!busy) { clearInterval(ticker); ticker = 0; return; } if (document.hidden) return; emit("tick"); }, 120); } // 看不见时不转（同 claude.js）
+    function tickOn() { if (ticker || !subs.length) return; ticker = setInterval(function () { if (!busy) { clearInterval(ticker); ticker = 0; return; } if (document.hidden) return; emit("tick"); }, 120); } // 看不见时不转（同 claude.js）
     function setBusy(v) {
       if (v === busy) {
         if (v && rt.stream && running && cur && !cur.stats) rt.stream.turn = cur;
@@ -699,14 +741,14 @@
       if (rt.stream) { rt.stream.specialStatus = phase(); rt.stream.phaseAt = compactSince; }
       if (proc && proc.alive()) return;
       var now = Date.now(), recent = now - (sess.updated || 0) < 60000;
-      setBusy(!!running && (recent || live() && busy) || now - sentAt < 10000);
+      setBusy(sendingCount > 0 || !!running && (recent || live() && busy) || now - sentAt < 10000);
       if (!running || recent || checkingStatus || now < statusCheckAt || !live()) return;
       var turnId = running, seen = sess.updated;
       checkingStatus = true;
       statusCheckAt = now + 10000;
       cxRpc("thread/read", { threadId: sid, includeTurns: false }).then(function (reply) {
         checkingStatus = false;
-        if (turnId !== running || seen !== sess.updated || proc && proc.alive()) return;
+        if (sendingCount || turnId !== running || seen !== sess.updated || proc && proc.alive()) return;
         var thread = reply && reply.result && reply.result.thread;
         var active = thread && thread.status && thread.status.type === "active";
         if (thread && !active) running = null;
@@ -725,6 +767,8 @@
       var old = "cx:" + sid, nu = "cx:" + real;
       newKeep(sid, { real: real });
       if (modelSel) cxModelKeep(real, modelSel);
+      var previousKey = pendingKey; pendingKey = "tsu-cx-awaiting-log:" + real; savePending();
+      try { sessionStorage.removeItem(previousKey); } catch (e) {}
       sid = real; sess.id = agent.current = real; agent.id = nu; rt.sid = real;
       rts[nu] = rt; A.registerExternal(nu, rt);
       if (window.TSU_TERM && TSU_TERM.panes) TSU_TERM.panes().forEach(function (p) { if (p.program && p.program.agentId === old) p.run(TSU_TERM.makeView(p, nu), true); });
@@ -804,6 +848,10 @@
     function queueIn(text, steerTurn) {
       sentAt = Date.now(); liveBusy();
       var sh = takeShots(text);
+      if (steerTurn) {
+        var waiting = sentWait.find(x => !x.steerTurn && x.text === sh.text);
+        if (waiting) { waiting.steerTurn = steerTurn; savePending(); }
+      }
       function failed(reason) {
         sentAt = 0;
         if (sentWait.some(function (entry) { return entry.text === sh.text; })) dropSent(sh.text, 0);
@@ -813,18 +861,21 @@
       if (sh.args.length || steerTurn) {
         var input = sh.args.map(function (arg) { return {type: "localImage", path: arg.slice("--image=".length)}; });
         if (!sh.args.length || sh.text !== "(image)") input.push({type: "text", text: sh.text});
-        cxRpc(steerTurn ? "turn/steer" : "thread/queue/add", steerTurn ? {threadId: sid, expectedTurnId: steerTurn, input: input} : {threadId: sid, clientUserMessageId: crypto.randomUUID(), input: input}).then(function (reply) {
-          if (steerTurn && reply && /thread not found/i.test(String(reply.error && reply.error.message))) {
-            failed("本地 Codex 服务未加载这个终端会话，可在原终端追加消息");
-            return;
+        var request = () => steerTurn
+          ? cxRpc("turn/steer", {threadId: sid, expectedTurnId: steerTurn, input: input})
+          : cxSeq([["thread/resume", {threadId: sid, excludeTurns: true}], ["thread/queue/add", {threadId: sid, clientUserMessageId: crypto.randomUUID(), input: input}]]);
+        return sendRpc(request).then(function (reply) {
+          if (steerTurn && reply && reply.error && /no active turn|turn (?:has |already )?(?:ended|completed)|expected.*turn.*(?:mismatch|got)|no turn in progress/i.test(reply.error.message || "")) {
+            return startTurn(text);
           }
+          if (steerTurn && /thread not found|no active worker/i.test(String(reply?.error?.message || ""))) return startTurn(text);
           if (!reply || reply.result == null) failed(String(reply && reply.error && (reply.error.message || reply.error) || "无响应"));
           setTimeout(poll, 600);
         });
         return;
       }
       var stderr = "";
-      eof(LOC.proc({ argv: ["codex", "queue", "--thread", sid, "--message", sh.text], cwd: info.cwd || "" }, function (chunk, isErr) {
+      eof(LOC.proc({ argv: ["codex", "queue", "--resume", "--thread", sid, "--message", sh.text], cwd: info.cwd || "" }, function (chunk, isErr) {
         if (isErr) stderr = (stderr + chunk).slice(-1000);
       }, function (code) {
         if (code) failed(stderr.trim() || "退出码 " + code);
@@ -832,48 +883,60 @@
       }));
     }
     async function sendToLoadedTurn(text, fallbackTurn) {
+      if (fallbackTurn && fallbackTurn !== "?") return queueIn(text, fallbackTurn);
+      var statusReply = await cxRpc("thread/read", {threadId: sid, includeTurns: false});
+      var state = statusReply?.result?.thread?.status?.type;
+      if (state === "idle" || state === "notLoaded") return startTurn(text);
       var reply = await cxRpc("thread/turns/list", { threadId: sid, limit: 1, sortDirection: "desc" });
       var turns = reply && reply.result && reply.result.data;
       if (!Array.isArray(turns)) {
-        if (fallbackTurn && fallbackTurn !== "?") return queueIn(text, fallbackTurn);
-        dropSent(takeShots(text).text, 0);
-        rt.record(text, "未发送：无法读取 Codex 当前回合");
-        return;
+        return startTurn(text);
       }
       var latest = turns[0];
       if (latest && latest.status === "inProgress") return queueIn(text, latest.id);
-      if (fallbackTurn) {
-        dropSent(takeShots(text).text, 0);
-        rt.record(text, "未发送：当前回合已结束");
-      } else queueIn(text);
+      return startTurn(text);
+    }
+    async function startTurn(text, fresh) {
+        var sh = takeShots(text), input = sh.args.map(arg => ({type: "localImage", path: arg.slice(8)}));
+        if (!input.length || sh.text !== "(image)") input.push({type: "text", text: sh.text});
+        var params = {threadId: sid, input: input, model: modelSel || undefined, effort: effortSel || undefined};
+        var started = await sendRpc(() => fresh ? cxRpc("turn/start", params) : cxSeq([["thread/resume", {threadId: sid, excludeTurns: true}], ["turn/start", params]]));
+        if (started.result?.turn?.id) { running = started.result.turn.id; sentAt = runAt = Date.now(); setBusy(true); }
+        if (!started.result) throw new Error(String(started.error?.message || started.error || "Codex 未确认发送"));
+        setTimeout(poll, 400);
     }
     rt.send = function (text, imgs, options) {
       text = String(text || "").trim();
       imgs = (imgs || []).filter(function (x) { return x && (x.data || x.path); });
-      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.send(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + text, null, options); }).catch(function (e) { rt.record(text, "图片发送失败：" + e.message); }); return true; }
+      if (imgs.length) { saveShots(imgs).then(function (ps) { rt.send(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + text, null, options); }).catch(function (e) { emit("edit", {text: text, images: imgs}); rt.record("Codex", "图片发送失败：" + e.message); }); return true; }
       if (!text) return false;
-      if (!(deciding || (proc && proc.alive()))) { sentWait.push({ text: takeShots(text).text, at: Date.now(), q: busy }); emit("status"); } // 马上发的：先画成排着（附的图不算在话里：记录里的话不带它）
-      if (running && !(options && options.queue)) { sendToLoadedTurn(text, running); return true; }
-      if (deciding || (proc && proc.alive())) { rt.queued = rt.queued ? { text: rt.queued.text + "\n\n" + text } : { text: text }; emit("status"); return true; } // 这边起的那一问还没完：排着（又说的拼在后面，空一行），完了一次发出去
-      if (info.fresh && !info.path) { runExec(text); return true; } // 新会话：第一句建出来
-      // 正开在 Codex 里（Codex app、终端里的 codex）→ codex queue；没开着 → codex exec resume。开没开着现问守护进程（列表里记的最多是十秒前的）：
-      //   开着的另起 exec 就是两个进程一起写同一段会话；没开着的用 codex queue，话只是存进它的队列，要等有人在 Codex 里打开这段会话才会跑
-      deciding = true;
-      readLoaded().then(function () {
-        deciding = false;
-        var x = byId[sid], isLive = !!loaded[sid];
-        if (x) { if (isLive) x.live = x.live || { kind: "codex", status: "idle", since: Date.now() }; else delete x.live; }
-        if (!isLive) runExec(text);
-        else if (options && options.queue) queueIn(text);
-        else sendToLoadedTurn(text, running);
-        if (rt.queued && isLive) { var q = rt.queued; rt.queued = null; emit("status"); queueIn(q.text); } // 问的那一下又说的：也排进去（在后面）
-      });
+      var sh = takeShots(text);
+      sentWait.push({ text: sh.text, at: Date.now(), q: !!options?.queue });
+      sendingCount++;
+      setBusy(true);
+      savePending(); emit("status");
+      dispatch = dispatch.then(async function () {
+        if (sid.startsWith("new-")) {
+          var created = await sendRpc(() => cxRpc("thread/start", {cwd: info.cwd || home(), model: modelSel || undefined}));
+          if (!created.result?.thread?.id) throw new Error(created.error?.message || "Codex 未创建会话");
+          rekey(created.result.thread.id);
+          await startTurn(text, true);
+        } else if (options?.queue) {
+          await queueIn(text);
+        } else {
+          await sendToLoadedTurn(text, running);
+        }
+      }).catch(function (err) {
+        dropSent(sh.text, 0);
+        emit("edit", {text: sh.text === "(image)" && sh.args.length ? "" : sh.text, images: sh.args.map(arg => ({path: arg.slice(8)}))});
+        rt.record("Codex", err.message); emit("status");
+      }).finally(function () { sendingCount--; liveBusy(); });
       return true;
     };
     // 打断：这边起的 codex exec 停掉它；正开在 Codex 里、正在跑的一问：请守护进程停下这一问（turn/interrupt，同在 Codex 里按 Esc）
     rt.interrupt = function () {
       if (proc && proc.alive()) { proc.kill(); return true; }
-      if (!live() || !running || running === "?") return false;
+      if (!running || running === "?") return false;
       var tid = running;
       cxRpc("turn/interrupt", { threadId: sid, turnId: tid }).then(function (j) {
         if (j && j.error) rt.record("Esc", "没能打断 Codex：" + String(j.error.message || j.error).slice(0, 200));
@@ -883,60 +946,7 @@
       return true;
     };
     // 权限模式 Codex 没有 Shift+Tab 这一套
-    rt.canInterrupt = function () { return !!(proc && proc.alive()) || !!(live() && running && running !== "?"); };
-    rt.canSendNow = rt.canInterrupt;
-    var startingQueued = false, queueStartError = "";
-    rt.sendNowError = function () { return queueStartError; };
-    rt.sendNowState = function () {
-      if (startingQueued) return "sending";
-      return serverQueue.length || rt.queued ? "ready" : null;
-    };
-    rt.sendQueuedNow = function () {
-      if (startingQueued) return;
-      var item = serverQueue[0];
-      if (!item) return "nothing";
-      startingQueued = true;
-      queueStartError = "";
-      emit("status");
-      async function deliver() {
-        var params = { threadId: sid, queuedSubmissionId: item.id };
-        var latest = await cxRpc("thread/turns/list", { threadId: sid, limit: 1 });
-        if (!latest.result) return latest;
-        var turn = latest.result.data[0];
-        if (!turn || turn.status !== "inProgress") return cxRpc("thread/queue/start", params);
-        // Claim this exact entry before steering. Another window or Codex may already have taken it.
-        var claim = await cxRpc("thread/queue/delete", params);
-        if (!claim.result || !claim.result.deleted) return { error: claim.error || "队列已变化" };
-        var submission = { threadId: sid, input: item.input, clientUserMessageId: item.clientUserMessageId };
-        if (item.metadata) submission.responsesapiClientMetadata = item.metadata;
-        var sent = await cxRpc("turn/steer", Object.assign({ expectedTurnId: turn.id }, submission));
-        if (sent.result && sent.result.turnId) return sent;
-        if (sent.error && typeof sent.error.code === "number") {
-          var restored = await cxRpc("thread/queue/add", submission);
-          if (restored.result) return sent;
-        }
-        var draft = item.input.map(function (part) { return part.type === "localImage" ? '[Image: "' + part.path + '"]' : part.text || ""; }).join(" ");
-        rt.record(draft, "Codex 送达状态未确认，请核对会话后再重发");
-        return sent;
-      }
-      deliver().then(function (reply) {
-        if (reply.result && (reply.result.turn || reply.result.turnId)) serverQueue = serverQueue.filter(function (entry) { return entry.id !== item.id; });
-        else queueStartError = "Codex 未确认发送：" + String(reply.error && reply.error.message || reply.error || "无响应");
-      }).finally(function () {
-        startingQueued = false;
-        queueReadAt = 0;
-        syncQueue();
-        emit("status");
-      });
-    };
-    rt.sendNow = function (text, imgs) {
-      var local = rt.queued;
-      if (!local && !text && !(imgs && imgs.length)) return rt.sendQueuedNow();
-      if (local && !(running && running !== "?") && proc && proc.alive()) return false;
-      rt.queued = null;
-      var message = [local && local.text, text].filter(Boolean).join("\n\n");
-      return rt.send(message, imgs);
-    };
+    rt.canInterrupt = function () { return !!(proc && proc.alive()) || !!(running && running !== "?"); };
     // ---- / 命令：Codex 自己的命令这边做（问它的 app-server 守护进程 / 在这台 Mac 上跑），不当话发给模型——
     //   以前原样发过去：「/effort max」「/rename xx」模型当成一句话来答，命令一个都不生效。回 false：不是命令（交回去当话发）
     rt.command = function (line) {

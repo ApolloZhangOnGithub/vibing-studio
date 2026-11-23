@@ -140,6 +140,14 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
             chrome >= 0, chrome < viewport else { throw BridgeError.args("invalid row grid") }
       c.setRowGrid(row: row, chrome: chrome, viewport: viewport, column: a["column"] as? CGFloat, chromeWidth: a["chromeWidth"] as? CGFloat)
       return [:]
+    case "window.diagramZoomRect":
+      if let x = a["x"] as? Double, let y = a["y"] as? Double,
+         let w = a["width"] as? Double, let h = a["height"] as? Double {
+        controller?.window.diagramZoomRect = NSRect(x: x, y: y, width: w, height: h)
+      } else {
+        controller?.window.diagramZoomRect = nil
+      }
+      return [:]
     case "window.dragRegions":
       // 网页的菜单栏里空着的地方：按下能拖窗口、双击同标题栏（macOS 自己的窗口没有标题栏，桌面的菜单栏就是它的标题栏）
       let rects = (a["rects"] as? [[String: Any]] ?? []).compactMap { r -> NSRect? in

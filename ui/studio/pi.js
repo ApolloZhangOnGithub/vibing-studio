@@ -306,7 +306,7 @@
       if (e.type === "session") { if (e.cwd) info.cwd = e.cwd; return null; }
       if (e.type === "session_info") { if (e.name) { sess.title = agent.name = String(e.name); emit("config"); } return null; }
       if (e.type === "model_change") { if (e.modelId) agent.model = e.modelId; if (e.provider) agent.provider = e.provider; return null; }
-      if (e.type === "thinking_level_change") { agent.effort = e.thinkingLevel || ""; return null; }
+      if (e.type === "thinking_level_change") { agent.effort = effortSel || e.thinkingLevel || ""; return null; }
       if (e.type === "compaction") { finishTurn(); cur = null; var c = { compact: { summary: String(e.summary || "").trim(), pre: e.tokensBefore || 0, post: 0, msgs: 0, trigger: "" }, at: at }; turns.push(c); return c; }
       if (e.type === "branch_summary") { finishTurn(); cur = null; var bs = { compact: { summary: String(e.summary || "").trim(), pre: 0, post: 0, msgs: 0, trigger: "branch" }, at: at }; turns.push(bs); return bs; }
       if (e.type === "custom_message") { if (!e.display) return null; var cm = { note: clip(textOf(e.content), 2000), at: at }; turns.push(cm); return cm; }
@@ -455,7 +455,16 @@
     rt.canInterrupt = function () { return !!(proc && proc.alive()); };
     rt.canSendNow = rt.canInterrupt;
     // 模型：真在用的是记录里最近一条回答的；这边选的（--model，下一句起）记在这台设备上
-    var modelSel = piModels()[sid] || "";
+    var modelSel = piModels()[sid] || "", effortKey = "tsu-pi-effort:" + sid;
+    var effortSel = localStorage.getItem(effortKey) || "";
+    if (effortSel) agent.effort = effortSel;
+    rt.efforts = function () { return ["off", "minimal", "low", "medium", "high", "xhigh", "max"]; };
+    rt.setEffort = function (level) {
+      if (!rt.efforts().includes(level)) return false;
+      agent.effort = effortSel = level;
+      localStorage.setItem(effortKey, level);
+      emit("config"); emit("status"); return true;
+    };
     var bare = function (x) { return String(x || "").split("/").pop(); };
     rt.model = function () {
       var real = agent.model ? (agent.provider ? agent.provider + "/" : "") + agent.model : "", pending = !!modelSel && !!real && bare(modelSel) !== bare(real), id = pending ? modelSel : real || modelSel;
@@ -477,7 +486,7 @@
     function runPi(text) {
       outBuf = "";
       var sh = takeShots(text), fresh = !info.path;
-      var argv = ["pi", "-p", "--mode", "json"].concat(fresh ? ["--session-id", sid].concat(DIRS.custom ? ["--session-dir", DIRS.custom] : []) : ["--session", info.path], modelSel ? ["--model", modelSel] : [], ["--"], sh.args, [sh.text]);
+      var argv = ["pi", "-p", "--mode", "json"].concat(fresh ? ["--session-id", sid].concat(DIRS.custom ? ["--session-dir", DIRS.custom] : []) : ["--session", info.path], modelSel ? ["--model", modelSel] : [], effortSel ? ["--thinking", effortSel] : [], ["--"], sh.args, [sh.text]);
       cwdKeep(info.cwd || home());
       var mine = proc = LOC.proc({ argv: argv, cwd: info.cwd || home() }, function (s, isErr) {
         if (isErr) { if (/\berror\b/i.test(s) && !/^\s*(WARN|INFO|\[)/.test(s)) rt.record("pi", s.trim().slice(0, 600)); return; }

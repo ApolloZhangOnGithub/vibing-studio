@@ -48,26 +48,30 @@ def list_sessions(paths):
             title = rows.get("title", {}).get("val") or title
             if state.get("global", {}).get("initialized") and sid not in workspaces and sid not in archived:
                 continue
+            has_prompt = False
             if not title and sid not in archived:
                 with records(path) as events:
                     for event in events:
+                        if event.get("type") == "user/message" and event.get("data", {}).get("source", {}).get("kind", "user") == "user":
+                            has_prompt = True
                         if event.get("type") == "session/title":
                             title = event.get("data", {}).get("title") or title
-                if not title:
+                if not title and sid not in workspaces:
                     continue
-            title = title or "未命名会话"
+            empty_draft = not title and not has_prompt and sid not in archived
+            title = title or "新会话"
             selection = (rows.get("modelSelection", {}).get("val") or {}).get("lastUsed") or {}
             model = selection.get("model") or meta.get("model", "")
             if selection.get("provider") == "deepseek-account" and model == "deepseek-flash":
                 model = "DeepSeek-V4.1-Flash"
-            sessions.append(dict(id=sid, path=str(path), cwd=workspace.get("path") or header.get("cwd", ""), title=title,
+            sessions.append(dict(id=sid, path=str(path), cwd=header.get("cwd") or workspace.get("path", ""), title=title,
                                  workspace=workspace.get("title", ""), archived=sid in archived,
-                                 model=model, updated=path.stat().st_mtime * 1000))
+                                 model=model, selection=selection, emptyDraft=empty_draft, updated=path.stat().st_mtime * 1000))
         except (OSError, ValueError, KeyError, StopIteration):
             continue
     folders = state.get("tables", {}).get("workspaces", {})
     return {"sessions": sorted(sessions, key=lambda s: s["updated"], reverse=True),
-            "workspaces": [{"path": ws["path"], "title": ws["title"]} for ws in folders.values()]}
+            "workspaces": [{"id": key, "path": ws["path"], "title": ws["title"]} for key, ws in folders.items()]}
 
 
 def transcript(path):
@@ -82,6 +86,7 @@ def transcript(path):
             if kind == "turn/start":
                 progress["turn"] = event.get("data", {}).get("turn", progress["turn"] + 1)
                 started_at = event.get("time")
+                progress["startedAt"] = started_at
                 progress["phase"] = "running"
             elif kind == "turn/end":
                 progress["phase"] = (event.get("data", {}).get("reason") or {}).get("kind", "ended")

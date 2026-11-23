@@ -68,6 +68,9 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     webView.navigationDelegate = self
     webView.uiDelegate = self
     webView.allowsBackForwardNavigationGestures = false // 两指左右滑是网页桌面自己的手势，不是「后退」
+    window.onDiagramMagnify = { [weak self] delta, point in
+      self?.emit("diagram-magnify", ["delta": delta, "x": point.x, "y": point.y])
+    }
     webView.allowsMagnification = false
     webView.isInspectable = Config.debug
     // 启动时的底色：页面上次记下的（见 bootLook）。WKWebView 不画它自己的白底：页面画出来之前露出来的就是窗口的底色——一开窗就是 App 的深 / 浅色，不闪白
@@ -356,7 +359,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   var events: [String] = []
   func trace(_ s: String) { if events.count < 200 { events.append(String(format: "%.1f ", Date().timeIntervalSince(started)) + s) } }
   private let started = Date()
-  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { trace("start " + (webView.url?.absoluteString ?? "")) }
+  func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { window.diagramZoomRect = nil; trace("start " + (webView.url?.absoluteString ?? "")) }
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
     trace("commit " + (webView.url?.absoluteString ?? ""))
     if webView.url?.scheme != "about" { committed = true; retries = 0 }

@@ -104,7 +104,7 @@
         ],
         addresses: [{ pat: "local.claude:<账号>/<会话>", patEn: "local.claude:<account>/<session>", zh: "打开一段 Claude Code 会话", en: "Open a Claude Code session" }],
       } },
-    { id: "codex", name: "Codex", icon: "◎", cmd: "codex", desc: "在 Vibing Studio 中使用 Codex，可继续任意会话", descEn: "Work with Codex in Vibing Studio: pick up any session and keep going",
+    { id: "codex", name: "Codex", settings: "connectors/codex", icon: "◎", cmd: "codex", desc: "在 Vibing Studio 中使用 Codex，可继续任意会话", descEn: "Work with Codex in Vibing Studio: pick up any session and keep going",
       publisher: "Vibing Studio", publisherId: "vibing-studio", verified: true, domain: "openai.com", homepage: "https://openai.com/codex/", version: "0.1.0", updated: "2026-09-28", builtin: true, files: ["studio/codex.js"], // 同上：Codex 的官网
       logo: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="' + SQ_D + '" fill="#fff"/><path d="' + SQ_D + '" fill="none" stroke="#000" stroke-opacity=".1" stroke-width=".8"/><g transform="translate(12.4 12.4) scale(1.633)"><path fill="#0d0d0d" d="' + OAI_D + '"/></g></svg>', // 同 ChatGPT App 的图标：白底黑结，结占 62%
       categories: [{ zh: "AI", en: "AI" }, { zh: "聊天", en: "Chat" }],
@@ -279,31 +279,80 @@
     if (!ST || !ST.addSettings) return;
     var C = window.TSU_CONNECTORS, local = function () { return !!(window.nadosNative && nadosNative.local); };
       var quote = function (v) { return "'" + String(v).replace(/'/g, "'\\''") + "'"; };
-      async function readAgy(args) {
+      async function readAgy(args, onDelta) {
         var dir = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir;
         if (!dir || !C.on("agy") || nadosNative.remote) throw new Error("请在本机 App 中启用连接器");
         var cmd = ["python3", dir + "/studio/agy_sessions.py"].concat(args).map(quote).join(" ");
-        var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 45000);
+        var controller = new AbortController(), timer = args[0] === "--send" ? null : setTimeout(function () { controller.abort(); }, 45000);
         try {
-          var result = await TSU_LOCAL.exec({ cmd: cmd }, controller.signal);
-          if (result.code || !result.out.trim()) throw new Error(result.err.trim() || "agy 未返回会话数据");
-          return JSON.parse(result.out);
+          var carry = "";
+          var result = await TSU_LOCAL.exec({ cmd: cmd }, controller.signal, onDelta && function (chunk, channel) {
+            if (channel !== 1) return;
+            var lines = (carry + chunk).split("\n");
+            carry = lines.pop();
+            for (var line of lines) {
+              if (!line.trim()) continue;
+              var event = JSON.parse(line);
+              if (event.delta || typeof event.thinking === "boolean") onDelta(event);
+            }
+          });
+          if (result.code || !result.out.trim()) {
+            var reason = result.err.trim().split(/\r?\n/).pop() || "agy 未返回会话数据";
+            console.warn("agy", args[0], result.err);
+            throw new Error(reason.slice(0, 150));
+          }
+          return JSON.parse(args[0] === "--send" ? result.out.trim().split("\n").pop() : result.out);
         } finally { clearTimeout(timer); }
       }
-    var sessions = [], pending, loadedAt = 0, listError = "";
+    var sessions = [], sessionSignature = "", pending, loadedAt = 0, listError = "";
+    var quotaAttempted = false, quotaState = {}, quotaNext = 0, quotaPending, modelChoices = [], modelRequest;
+    try { quotaState = JSON.parse(localStorage.getItem("tsu-agy-weekly") || "{}"); } catch (_) {}
+    function refreshQuota() {
+      if (quotaPending || Date.now() < quotaNext) return;
+      quotaNext = Date.now() + 60000;
+      quotaPending = readAgy(["--weekly"]).then(q => {
+        if (!Number.isFinite(q.remaining)) return;
+        quotaState = q;
+        quotaNext = Date.now() + 300000;
+        localStorage.setItem("tsu-agy-weekly", JSON.stringify(q));
+      }).catch(() => {}).finally(() => { quotaPending = null; quotaAttempted = true; document.dispatchEvent(new Event("tsu-agy-quota")); });
+    }
+    var modelsLoadedAt = 0;
+    function prepareModels() {
+      if (modelChoices.length && Date.now() - modelsLoadedAt < 60000) return Promise.resolve();
+      if (!modelRequest) modelRequest = readAgy(["--models"]).then(rows => {
+        if (!rows.length) throw new Error("agy 未返回可用模型");
+        modelChoices = rows; modelsLoadedAt = Date.now();
+      }).finally(() => { modelRequest = null; });
+      return modelRequest;
+    }
     async function refreshAgy() {
       if (!pending) pending = (async function () {
+        var changed = !loadedAt, previousError = listError;
         try {
-          sessions = (await readAgy([])).sessions; listError = "";
+          var rows = (await readAgy([])).sessions;
+          if (!Array.isArray(rows)) throw new Error("无效的会话列表");
+          var signature = JSON.stringify(rows);
+          if (signature !== sessionSignature) {
+            changed = true;
+            sessions = rows;
+            sessionSignature = signature;
+            try { localStorage.setItem("tsu-sidebar-agy-v1", signature); } catch (_) {}
+          }
+          listError = "";
         } catch (e) { listError = e.message; }
         finally {
           loadedAt = Date.now(); pending = null;
-          document.dispatchEvent(new Event("tsu-agy"));
+          if (changed || previousError !== listError) document.dispatchEvent(new Event("tsu-agy"));
         }
       })();
       return pending;
     }
     window.TSU_AGY = {
+      quota: function () {
+        refreshQuota();
+        return {data: Date.parse(quotaState.reset) > Date.now() ? quotaState : null, loading: !quotaAttempted && !!quotaPending};
+      },
       enabled: function () { return local() && !nadosNative.remote && C.on("agy"); },
       list: function () {
         if (Date.now() - loadedAt > 120000) refreshAgy();
@@ -312,8 +361,15 @@
       status: function () { return listError || (pending ? "正在读取会话…" : "没有会话"); },
       refresh: refreshAgy
     };
+    if (local() && !nadosNative.remote) {
+      try {
+        var cachedSessions = JSON.parse(localStorage.getItem("tsu-sidebar-agy-v1"));
+        if (Array.isArray(cachedSessions)) sessions = cachedSessions;
+      } catch (_) {}
+      setTimeout(function () { if (TSU_AGY.enabled() && !loadedAt) refreshAgy(); }, 0);
+    }
     setInterval(function () {
-      if (!document.hidden && TSU_AGY.enabled() && loadedAt && !pending) refreshAgy();
+      if ((!document.hidden || sessions.some(s => s.workingSince)) && TSU_AGY.enabled() && loadedAt && !pending) refreshAgy();
     }, 5000);
     function findSession(id) { return sessions.find(function (s) { return s.sessionId === id; }); }
     TSU_AGY.ensure = function (id) {
@@ -323,7 +379,30 @@
       var info = findSession(id) || {}, listeners = new Set(), loading;
       var session = { id: id, title: info.title || "Google Antigravity", turns: [], todo: { items: [] } };
       var agent = { id: aid, current: id, name: session.title, connector: "agy", claude: true, access: "ro" };
+      var modelKey = "tsu-agy-model:" + id;
+      var preferred;
+      try { preferred = JSON.parse(localStorage.getItem(modelKey)); } catch (_) {}
+      function quotaChanged() { listeners.forEach(fn => fn("status")); }
       var no = function () { return false; };
+      function attachment(path) {
+        var image = {path, media_type: "image/" + path.split(".").pop().toLowerCase().replace(/^jpg$/, "jpeg")};
+        var reading;
+        image.load = function (done) {
+          if (!reading) reading = TSU_LOCAL.read(path).then(buf => { image.bytes = buf; }, () => { image.missing = true; });
+          if (done) reading.then(done);
+        };
+        return image;
+      }
+      function readPrompt(turn, text) {
+        turn.ask = text.replace(/@("(?:[^"\\\n]|\\.)*")/g, function (match, quoted) {
+          var path;
+          try { path = JSON.parse(quoted); } catch (_) { return match; }
+          if (!/^\/.*\.(?:png|jpe?g|gif|webp)$/i.test(path)) return match;
+          if (!turn.images) { turn.images = []; turn.wireAsk = text; }
+          turn.images.push(attachment(path));
+          return "[Image #" + turn.images.length + "]";
+        });
+      }
       function addEvent(turn, event) {
         if (event.role === "tool") {
           var tool = turn.parts.find(function (p) { return p.kind === "tool" && p.id === event.id; });
@@ -331,10 +410,71 @@
             tool = { kind: "tool", id: event.id, name: event.action || "Tool", input: {}, status: "running" };
             turn.parts.push(tool);
           }
+          if (event.file_path) {
+            tool.name = event.action === "edit_file" ? "Edit" : "Write";
+            tool.input.file_path = event.file_path;
+            if (event.lines) tool.detail = event.lines;
+            if (event.diff) tool.diff = event.diff;
+          }
+          if (event.action === "ask_question") {
+            var questions = Array.isArray(event.questions) ? event.questions.filter(q => q && q.question) : [];
+            var result = String(event.output || event.error || "").split(/\r?\n/);
+            while (result.length && /^(?:Created At:|Completed At:|\s*$)/.test(result[0])) result.shift();
+            tool.summary = [questions[0]?.question, result[0]].filter(Boolean).join(" → ");
+            tool.detail = questions.flatMap((q, index) => [
+              "Q" + (index + 1) + ": " + q.question,
+              ...(Array.isArray(q.options) ? q.options.map(option => "  · " + (typeof option === "string" ? option : option.label || JSON.stringify(option))) : [])
+            ]).concat(result);
+          }
+          if (event.action === "manage_task") {
+            var args = event.taskArgs || {};
+            var output = String(event.output || event.error || "");
+            var taskStatus = /^Status:\s*(.+)$/im.exec(output);
+            var target = String(args.TaskId || "").split("/").pop();
+            var done = event.status === "completed" && !event.error;
+            var verbs = {
+              kill: done && /\b(?:cancell?ed|terminated)\b/i.test(output) ? "Terminated" : "Terminate",
+              status: done ? "Checked" : "Check",
+              list: done ? "Listed tasks" : "List tasks",
+              send_input: done ? "Sent input to" : "Send input to"
+            };
+            tool.taskHeading = [verbs[args.Action] || args.Action || "Manage", target || (args.Action === "list" ? "" : "task")].filter(Boolean).join(" ");
+            tool.summary = [args.Action, args.TaskId && String(args.TaskId).split("/").pop(), taskStatus && taskStatus[1]].filter(Boolean).join(" · ") || "manage_task";
+            tool.detail = Object.entries(args).map(([key, value]) => key + ": " + value);
+            if (output) {
+              var stamps = new Set();
+              tool.detail.push(...output.trimEnd().split(/\r?\n/).filter(line => {
+                if (!/^(Created|Completed) At:/.test(line)) return true;
+                if (stamps.has(line)) return false;
+                stamps.add(line);
+                return true;
+              }));
+            }
+          }
+          if (event.schedule) {
+            var schedule = event.schedule;
+            var timing = schedule.CronExpression === "* * * * *" ? "每分钟 (* * * * *)" : schedule.CronExpression;
+            if (schedule.DurationSeconds) timing = [timing, schedule.DurationSeconds + " 秒"].filter(Boolean).join(" · ");
+            var interval = /^\*(?:\/(\d+))? \* \* \* \*$/.exec(schedule.CronExpression || "");
+            var cadence = interval ? "every " + (interval[1] || 1) + "m" : schedule.CronExpression;
+            if (!cadence && schedule.DurationSeconds) cadence = "in " + schedule.DurationSeconds + "s";
+            var taskId = /task id:\s*(?:[^\s/]+\/)?(task-[\w-]+)/i.exec(event.output || "");
+            tool.taskHeading = [taskId && event.status === "completed" ? "Scheduled" : "Schedule", taskId?.[1] || "task", cadence].filter(Boolean).join(" ");
+            tool.summary = [timing, schedule.Prompt && schedule.Prompt.split("\n")[0].slice(0, 64)].filter(Boolean).join(" · ");
+            tool.detail = [schedule.Prompt, event.output].filter(Boolean).join("\n").split("\n").filter(Boolean);
+          }
+          if (event.commandSummary) tool.commandSummary = event.commandSummary;
           if (event.title) tool.input.description = event.title;
           if (event.kind === "execute") { tool.name = "Bash"; tool.input.command = tool.input.description; }
+          if (event.action === "search_web") {
+            tool.name = "web_search";
+            tool.input.query = tool.input.description;
+          }
           if (event.action === "read_file" || event.action === "view_file") {
             tool.name = "Read"; tool.input.file_path = event.title;
+            if (/^\/.*\.(?:png|jpe?g|gif|webp)$/i.test(event.title) && tool.img?.path !== event.title) {
+              tool.img = attachment(event.title);
+            }
           }
           tool.agyAction = event.action;
           tool.agyError = event.error;
@@ -347,6 +487,7 @@
         } else if (event.role === "agent_message_chunk") {
           var last = turn.parts[turn.parts.length - 1];
           if (!last || last.kind !== "text") { last = { kind: "text", text: "", whole: true }; turn.parts.push(last); }
+          (turn.agyTextSteps || (turn.agyTextSteps = new Set())).add(event.step);
           last.text += event.text;
           turn.answer = (turn.answer || "") + event.text;
           var at = event.end_ms;
@@ -354,8 +495,12 @@
           else delete turn.stats;
         }
       }
+      var pendingTurn = null, optimisticTurns = [], workingSince = 0;
       var revision = "", followTimer, checking = false;
       var screenBusy = false, nextScreen = 0;
+      var observedWorking = false, turnHashes = [], knownPrefix = "";
+      var workingKey = "tsu-agy-working:" + id;
+      var restoredWorking = Number(sessionStorage.getItem(workingKey)) > Date.now() - 60000;
       async function updateScreen() {
         if (screenBusy || Date.now() < nextScreen) return;
         var current = findSession(id);
@@ -367,18 +512,48 @@
         catch (e) { nextScreen = Date.now() + 10000; }
         finally { screenBusy = false; }
         var status = screen.status || "";
-        if (rt.liveStatus === status && rt.liveFooter === screen.footer) return;
+        // An unreadable frame during a terminal repaint has no lifecycle signal.
+        if (active && typeof screen.working !== "boolean") return;
+        var tasks = active ? screen.tasks || [] : rt.recordedTasks || [];
+        var schedules = tasks.filter(task => task.kind === "cron"), shells = tasks.filter(task => task.kind === "shell");
+        if (JSON.stringify(rt.schedules) !== JSON.stringify(schedules) || JSON.stringify(rt.tasks) !== JSON.stringify(shells)) {
+          rt.schedules = schedules;
+          rt.tasks = shells;
+          listeners.forEach(fn => fn("tasks"));
+          ST.familyChanged();
+        }
+        var terminalWorking = active && screen.working === true;
+        if (terminalWorking) {
+          if (Number(sessionStorage.getItem(workingKey)) < Date.now() - 15000) sessionStorage.setItem(workingKey, String(Date.now()));
+        } else sessionStorage.removeItem(workingKey);
+        if (rt.terminalWorking === terminalWorking && rt.liveStatus === status && rt.liveFooter === screen.footer) return;
+        var activityChanged = rt.terminalWorking !== terminalWorking;
+        rt.terminalWorking = terminalWorking;
+        if (active) {
+          var thinking = /\bthinking\b/i.test(status);
+          rt.thinkingAt = thinking ? rt.thinkingAt || Date.now() : 0;
+        }
         rt.liveStatus = status; rt.liveFooter = screen.footer;
+        var latest = session.turns.at(-1);
+        if (latest && activityChanged) listeners.forEach(fn => fn("turn", latest));
         listeners.forEach(function (fn) { fn("status"); });
       }
       async function fileRevision(path) {
         var full = path.replace(/transcript\.jsonl$/, "transcript_full.jsonl");
-        var stats = await Promise.all([TSU_LOCAL.stat(path), TSU_LOCAL.stat(full)]);
+        var database = path.replace(/\/brain\/[^/]+\/.*$/, "/conversations/" + id + ".db");
+        var stats = await Promise.all([path, full, database, database + "-wal"].map(file => TSU_LOCAL.stat(file).catch(() => null)));
         return stats.map(function (st) { return st ? st.size + ":" + st.mtime : "-"; }).join("/");
       }
       async function follow() {
+        if (!document.hidden) refreshQuota();
         if (!info.path || loading || checking || !TSU_AGY.enabled()) return;
+        var working = rt.state() === "working";
+        if (working !== observedWorking) {
+          observedWorking = working;
+          listeners.forEach(fn => fn("status"));
+        }
         updateScreen();
+        if ((working || rt.schedules?.some(task => task.status === "running")) && rt.lastWorkingSecond !== Math.floor(Date.now()/1000)) { rt.lastWorkingSecond = Math.floor(Date.now()/1000); listeners.forEach(fn => fn("status")); }
         checking = true;
         try {
           var current = await fileRevision(info.path);
@@ -387,63 +562,234 @@
         finally { checking = false; }
       }
       async function load() {
+        var changes = null, appended = [];
         try {
           if (!findSession(id)) await refreshAgy();
           info = findSession(id);
           if (!info) throw new Error(listError || "找不到该会话");
           session.title = agent.name = info.title || id;
           var before = await fileRevision(info.path);
-          var messages = await readAgy(["--session", id]);
-          var turns = [], turn;
+          var args = ["--session", id];
+          if (knownPrefix && turnHashes.length && !optimisticTurns.length) {
+            args.push("--known-prefix", knownPrefix, "--known-turns", String(turnHashes.length - 1), "--known-last", turnHashes.at(-1));
+          }
+          var messages = await readAgy(args);
+          rt.finalAt = messages.finalAt || 0;
+          rt.recordedTasks = messages.background || [];
+          var turns = session.turns.slice(0, messages.reuseTurns || 0), turn, reuse;
+          var hashes = messages.turnHashes || [], previous = session.turns;
           var model = messages.model || "";
           var effort = /-(low|medium|high|xhigh|max)$/.exec(model);
           var display = model.replace(/-(low|medium|high|xhigh|max)$/, "").replace(/(\d)-(\d)/g, "$1.$2").split("-").map(function (word) { return word.charAt(0).toUpperCase() + word.slice(1); }).join(" ");
           var selected = typeof messages.selectedModel === "string" && /^(.*?) (?:\((low|medium|high|xhigh|max)\))$/i.exec(messages.selectedModel);
           if (messages.selectedModel) display = selected ? selected[1] : messages.selectedModel;
           if (messages.selectedModel) effort = selected ? [null, selected[2].toLowerCase()] : null;
+          session.modelId = model;
+          agent.effort = effort && effort[1];
           session.mode = messages.mode;
           session.statusLabel = [display, effort && effort[1]].filter(Boolean).join(" · ");
           messages.events.forEach(function (message) {
             if (!turn || message.role === "user_message_chunk") {
-              turn = { ask: "", parts: [] }; turns.push(turn);
+              var index = turns.length;
+              reuse = hashes[index] && hashes[index] === turnHashes[index] && previous[index] && previous[index] !== pendingTurn;
+              turn = reuse ? previous[index] : { ask: "", parts: [] };
+              turns.push(turn);
             }
+            if (reuse) return;
             if (message.role === "user_message_chunk") {
-              turn.ask = message.text;
+              readPrompt(turn, message.text);
               var start = Number.isFinite(message.start_ms) ? message.start_ms : Date.parse(message.created_at);
               if (Number.isFinite(start)) turn.at = start;
             }
             else addEvent(turn, message);
           });
-          session.turns = turns;
+          var matched = new Set();
+          optimisticTurns = optimisticTurns.filter(function (entry) {
+            var index = turns.findIndex((t, i) => i >= entry.start && !matched.has(i) &&
+              (t.wireAsk || t.ask) === (entry.turn.wireAsk || entry.turn.ask));
+            if (index < 0) return true;
+            matched.add(index);
+            if (entry.turn === pendingTurn) pendingTurn = null;
+            // Another identical prompt must match a later transcript entry, even on a later poll.
+            optimisticTurns.forEach(other => { if (other !== entry && other.turn.ask === entry.turn.ask) other.start = Math.max(other.start, index + 1); });
+            return false;
+          });
+          optimisticTurns.forEach(entry => turns.push(entry.turn));
+          if (turnHashes.length && hashes.length === turns.length && previous.length === turnHashes.length && turns.length >= previous.length &&
+              turnHashes.slice(0, -1).every((h, i) => h === hashes[i])) {
+            changes = [];
+            var index = previous.length - 1;
+            if (index >= 0 && hashes[index] !== turnHashes[index]) {
+              var last = previous[index];
+              delete last.stats; delete last.answer; delete last.thinking;
+              Object.assign(last, turns[index]);
+              changes.push(last);
+            }
+            appended = turns.slice(previous.length);
+            for (var added of appended) previous.push(added);
+          } else session.turns = turns;
+          turnHashes = hashes;
+          knownPrefix = messages.prefix || "";
           revision = before;
         } catch (e) { if (!session.turns.length) session.turns = [{ note: e.message, parts: [] }]; }
-        finally { loading = null; listeners.forEach(function (f) { try { f("reset"); } catch (e) { console.error(e); } }); }
+        finally { loading = null; listeners.forEach(function (f) { try { if (changes === null) f("reset"); else { changes.forEach(t => f("turn", t)); appended.forEach(t => f("append", t)); f("status"); } } catch (e) { console.error(e); } }); }
+      }
+      async function outboundMessage(message, images) {
+        var outbound = message;
+        for (var image of images || []) {
+          var path = image.path;
+          if (!path) {
+            var extension = {"image/png":"png","image/gif":"gif","image/webp":"webp","image/jpeg":"jpg"}[image.media_type];
+            if (!extension) throw new Error("不支持的图片格式：" + image.media_type);
+            path = TSU_LOCAL.info().home + "/Library/Application Support/Vibing Studio/shots/shot-" + crypto.randomUUID() + "." + extension;
+            await TSU_LOCAL.write(path, Uint8Array.from(atob(image.data), ch => ch.charCodeAt(0)));
+          }
+          outbound = outbound.replace(image.tag, () => "@" + JSON.stringify(path));
+        }
+        return outbound;
       }
       var rt = {
-        agent: agent, sid: id, label: "Google Antigravity", tasks: [], stream: null,
+        agent: agent, sid: id, label: "Google Antigravity", terminalWorking: restoredWorking, tasks: [], stream: null,
         session: function () { return session; },
         on: function (fn) {
           listeners.add(fn);
-          if (!followTimer) followTimer = setInterval(follow, 400);
+          if (!followTimer) {
+            refreshQuota();
+            document.addEventListener("tsu-agy-quota", quotaChanged);
+            followTimer = setInterval(follow, 400);
+          }
           if (!session.turns.length && !loading) loading = load();
-          return function () { listeners.delete(fn); if (!listeners.size) { clearInterval(followTimer); followTimer = null; } };
+          return function () { listeners.delete(fn); if (!listeners.size) { clearInterval(followTimer); followTimer = null; document.removeEventListener("tsu-agy-quota", quotaChanged); } };
         },
-        ready: function () { return loading || (loading = load()); },
+        ready: function () { return loading || (revision && info.path ? Promise.resolve() : (loading = load())); },
         hideInputHint: true,
         more: no, historical: no,
-        model: function () { return { id: "", name: "Antigravity" }; },
-        state: function () { return rt.liveStatus && !/worked for|completed|done/i.test(rt.liveStatus) ? "working" : "idle"; },
+        weeklyLabel: function () {
+          return Number.isFinite(quotaState.remaining) && Date.parse(quotaState.reset) > Date.now() ?
+            "weekly " + Math.round(quotaState.remaining * 100) + "% left" : "";
+        },
+        preferredModel: function () { return preferred; },
+        model: function () { return (rt.headless() && preferred) || modelChoices.find(m => m.id === session.modelId) || {id: session.modelId, name: session.statusLabel}; },
+        models: function () { return modelChoices; },
+        prepareChoices: prepareModels,
+        setModel: async function (key) {
+          if (!rt.headless()) throw new Error("此会话由 agy 终端控制，请在那里切换模型");
+          var choice = modelChoices.find(m => m.id === key);
+          if (!choice) throw new Error("此模型不可用");
+          localStorage.setItem(modelKey, JSON.stringify(choice));
+          preferred = choice;
+          listeners.forEach(fn => fn("status"));
+        },
+        state: function () {
+          if (!rt.headless()) return rt.sending || rt.terminalWorking ? "working" : "idle";
+          var start = workingSince || findSession(id)?.workingSince;
+          if (start && rt.finalAt >= start && !pendingTurn) return "idle";
+          return rt.sending || start ? "working" : "idle";
+        },
         detachBash: no, takeQueued: function () { return null; },
         ctx: function () { return { tokens: 0, window: 0, pct: 0 }; },
         cwd: function () { return info && info.cwd || ""; },
         todo: function () { return []; },
-        pendingMsgs: function () { return 0; },
+        pendingMsgs: function () {
+          return Math.max(optimisticTurns.filter(entry => entry.followup).length, findSession(id)?.queuedInputs || 0);
+        },
         cost: function () { return 0; },
         tail: function () { return ""; },
-        sendTerminal: function (message) { return readAgy(["--send-iterm", id, "--message=" + message]); }, send: no, sendNow: no, interrupt: no, canInject: no, canSendNow: no,
-        canInterrupt: no, canCycle: no, maybeRecap: no, recap: no,
+        headless: function () { return !/^ttys[0-9]+$/.test(findSession(id)?.tty || ""); },
+        thinkSince: function () { return rt.thinkingAt || 0; },
+        workingStartedAt: function () { return workingSince || findSession(id)?.workingSince || session.turns.at(-1)?.at; },
+        sendTerminal: async function (message, images) {
+          var followup = rt.sending || !!findSession(id)?.workingSince;
+          var localTurn;
+          if (!followup) rt.sending = true;
+          if (rt.headless()) {
+            var at = Date.now();
+            localTurn = {ask:message, at:at, parts:[]};
+            if (images?.length) localTurn.images = images.map(im => im.path && !im.data ? attachment(im.path) : im);
+            optimisticTurns.push({turn:localTurn, followup, start:session.turns.length - optimisticTurns.length});
+            workingSince = at; pendingTurn = localTurn;
+            session.turns.push(localTurn);
+            listeners.forEach(fn => fn("append", localTurn));
+            listeners.forEach(fn => fn("status"));
+          }
+          try {
+            var outbound = await outboundMessage(message, images);
+            if (localTurn) localTurn.wireAsk = outbound;
+            var chunks = new Map(), liveThought;
+            var result = await readAgy(["--send", id, "--message=" + outbound].concat(preferred && rt.headless() ? ["--model", preferred.id] : []), function (event) {
+              if (typeof event.thinking === "boolean") {
+                rt.thinkingAt = event.thinking ? rt.thinkingAt || Date.now() : 0;
+                if (!event.thinking) liveThought = null;
+                listeners.forEach(fn => fn("status"));
+                if (!event.delta) return;
+              }
+              rt.streamingText = true;
+              var turn = session.turns.findLast(t => t.ask === message && (t === localTurn || !optimisticTurns.some(e => e.turn === t)));
+              if (!turn || turn.ask !== message) return;
+              if (event.thinking) {
+                if (!liveThought) liveThought = {kind:"agyThinking", text:"", streaming:true};
+                var delta = event.delta;
+                liveThought.text = delta.startsWith(liveThought.text) ? delta : liveThought.text + delta;
+                var stored = turn.parts.find(p => p.kind === "agyThinking" && !p.streaming && p.text &&
+                  (p.text.startsWith(liveThought.text) || liveThought.text.startsWith(p.text)));
+                if (!stored && !turn.parts.includes(liveThought)) turn.parts.push(liveThought);
+                listeners.forEach(fn => fn("turn", turn));
+                return;
+              }
+              if (turn.agyTextSteps?.has(event.step) || (event.step === "acp" && turn.answer)) return;
+              var part = chunks.get(event.step);
+              if (!part) {
+                part = {kind:"text", text:"", whole:true, phase:"final"};
+                chunks.set(event.step, part);
+              }
+              if (!turn.parts.includes(part)) turn.parts.push(part);
+              part.text += event.delta;
+              listeners.forEach(fn => fn("turn", turn));
+            });
+            if (workingSince) {
+              await refreshAgy();
+              if (loading) await loading;
+              await (loading = load());
+            }
+            return result;
+          }
+          catch (error) {
+            if (localTurn) {
+              optimisticTurns = optimisticTurns.filter(entry => entry.turn !== localTurn);
+              session.turns = session.turns.filter(t => t !== localTurn);
+              if (pendingTurn === localTurn) pendingTurn = null;
+              listeners.forEach(fn => fn("reset"));
+            }
+            throw error;
+          } finally {
+            if (!localTurn || workingSince === localTurn.at) {
+              rt.thinkingAt = 0;
+              rt.streamingText = false;
+              workingSince = 0;
+            }
+            if (!followup) rt.sending = false;
+            var latest = session.turns.at(-1);
+            if (latest) listeners.forEach(fn => fn("turn", latest));
+            listeners.forEach(fn => fn("status"));
+          }
+        }, send: no, sendNow: no, interrupt: function () {
+          if (!rt.canInterrupt()) return false;
+          readAgy(["--interrupt", id]).catch(error => {
+            listeners.forEach(fn => fn("notice", String(error.message || error)));
+          });
+          return true;
+        }, canInject: no, canSendNow: no,
+        canInterrupt: function () { return rt.state() === "working"; }, canCycle: no, maybeRecap: no, recap: no,
         record: no, setGoal: no, clearGoal: no, clear: no, bang: no, wakeUp: no,
-        setAccess: no, setEffort: no, setModel: no, resume: no, afterReload: no
+        setAccess: no, resume: no, afterReload: no,
+        efforts: function () {
+          var base = rt.model().id?.replace(/-(low|medium|high|xhigh|max)$/, "");
+          return ["low", "medium", "high", "xhigh", "max"].filter(level => modelChoices.some(m => m.id === base + "-" + level));
+        },
+        setEffort: function (level) {
+          var base = rt.model().id?.replace(/-(low|medium|high|xhigh|max)$/, "");
+          return rt.setModel(base + "-" + level);
+        }
       };
       rt.home = rt.cwd;
       A.registerExternal(aid, rt);
@@ -456,6 +802,7 @@
       if (!f) return "正在检测…";
       return f.found ? (f.version ? f.version + " · " : "") + f.path : "这台 Mac 上没有找到 " + c.cmd + " 命令";
     };
+    var dshSetupStatus = "", dshInstalling = false;
     ST.addSettings("connectors", {
       title: "连接器", icon: "⌁", order: 15, desc: "会话的运行位置：本机的 Claude Code 和 Codex。任何连接器的会话都可使用任意外壳显示",
       levels: 2, // 设置里两级：第一级一行一个连接器（名字、版本 · 在哪、开关、›），点进去是它自己的一页（Paimon Code、Claude Code 自己的设置也在那一页）；「重新检测」留在第一级（top）
@@ -481,6 +828,9 @@
           // 它装的钩子、MCP 服务器、插件、技能……（eco.js）：就在它自己这一页里
           if (c.id === "agy" && local() && !nadosNative.remote && fd && fd.found && C.on("agy"))
             out.push({ key: "agy.sessions", kind: "info", label: "查看会话", value: "左侧 Agents → Google Antigravity" });
+          if (c.id === "dsh" && local() && !nadosNative.remote && window.TSU_UI_LOCAL)
+            out.push({ key: "dsh.sendSetup", must: true, label: "桌面会话发送", kind: "button", text: "连接桌面端", act: "dsh-install",
+              desc: dshSetupStatus || "将 Studio 随附的发送连接器安装到 DSH 桌面和后台配置。请先保存工作并退出 DSH，再点击连接。" });
           var ek = { "claude-code": "cc", codex: "cx", pi: "pi" }[c.id];
           if (ek && local() && fd && fd.found) out.push({ key: c.id + ".eco", kind: "embed", embed: "eco", arg: ek });
         });
@@ -488,7 +838,21 @@
         return out;
       },
       change: function (k, v) { var id = String(k).replace(/\.on$/, ""); if (id !== k) C.set(id, !!v); },
-      action: function (what) { if (what === "detect") detect().then(function () { document.dispatchEvent(new Event("st-settings-changed")); }); },
+      action: async function (what) {
+        if (what === "dsh-install") {
+          if (dshInstalling) return;
+          dshInstalling = true;
+          dshSetupStatus = "正在安装…";
+          document.dispatchEvent(new Event("st-settings-changed"));
+          try {
+            var helper = TSU_UI_LOCAL.dir + "/studio/dsh_send.py";
+            var result = await TSU_LOCAL.exec({cmd: "python3 '" + helper.replace(/'/g, "'\\''") + "' --install"});
+            dshSetupStatus = result.code === 0 ? "已连接。DeepSeek Harness 打开或退出时均可发送。" : (result.err || result.out || "安装失败").trim().slice(-800);
+          } catch (error) { dshSetupStatus = error.message; }
+          finally { dshInstalling = false; document.dispatchEvent(new Event("st-settings-changed")); }
+          return;
+        }
+        if (what === "detect") detect().then(function () { document.dispatchEvent(new Event("st-settings-changed")); }); },
     });
   });
 

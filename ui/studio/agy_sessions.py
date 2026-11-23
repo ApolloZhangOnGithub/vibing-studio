@@ -1,11 +1,25 @@
 """Read Antigravity session metadata and transcripts from the local filesystem."""
 import argparse
+import asyncio
+import agy_acp
+import difflib
+import hashlib
+import fcntl
+import os
+import signal
+import pty
+import shlex
+import tempfile
+import struct
+import termios
+import time
 from contextlib import closing
 from collections import deque
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -86,7 +100,7 @@ def history_rows(path):
             yield full
             full = next(full_rows, None)
         if full is not None and full["step_index"] == index:
-            yield full
+            yield {**summary, **full, "thinking": full.get("thinking") or summary.get("thinking")}
             full = next(full_rows, None)
         else:
             yield summary
@@ -157,25 +171,43 @@ def step_times(path):
     return times, durations
 
 
-def history(path):
+def history(path, known_prefix=None, known_turns=None, known_last=None):
     times, durations = step_times(path)
     events = []
     model = ""
     tools = deque()
+    background = {}
+    owner_start = active_since(path.parents[2].name)
+    owner_iso = datetime.fromtimestamp(owner_start / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    final_at = 0
     for row in history_rows(path):
         if row.get("model"):
             model = row["model"]
         kind = row.get("type")
         text = row.get("content") or ""
+        final_at = 0
+        if kind == "PLANNER_RESPONSE" and row.get("status") == "DONE" and text and not row.get("tool_calls"):
+            final_at = times.get(row.get("step_index")) or 0
+        if kind == "SYSTEM_MESSAGE" and owner_start:
+            sender = re.search(r'\bsender=([^\s]+/task-\d+) ', text)
+            task = background.get(sender[1]) if sender else None
+            if re.search(r'sender=system .*?content=\[Notice\] All your subagents and background tasks have been stopped', text):
+                for item in background.values():
+                    if item["status"] == "running":
+                        item.update(status="cancelled", endedAt=row.get("created_at"))
+            if task and task["status"] == "running" and ("finished with result:" in text or "was canceled with result:" in text or task.get("once")):
+                task["status"] = "cancelled" if "was canceled with result:" in text else "done"
+                task["endedAt"] = row.get("created_at")
         if kind == "USER_INPUT":
             tools.clear()
             events.append(dict(role="user_message_chunk", text=user_text(text), start_ms=times.get(row.get("step_index")), created_at=row.get("created_at")))
         elif kind == "PLANNER_RESPONSE":
             thinking = row.get("thinking")
-            if isinstance(thinking, str) and thinking.strip():
-                events.append(dict(role="thinking", text=thinking, seconds=durations.get(row.get("step_index"))))
+            seconds = durations.get(row.get("step_index"))
+            if thinking or seconds:
+                events.append(dict(role="thinking", text=thinking or "", seconds=seconds))
             if text:
-                events.append(dict(role="agent_message_chunk", text=text, end_ms=times.get(row.get("step_index"))))
+                events.append(dict(role="agent_message_chunk", step=row.get("step_index"), text=text, end_ms=times.get(row.get("step_index"))))
             for call in row.get("tool_calls", []):
                 args = call.get("args") or {}
                 action = call.get("name") or "tool"
@@ -189,10 +221,63 @@ def history(path):
                         pass
                 tool = dict(role="tool", id=str(len(events)), title=str(label), action=action,
                             kind="execute" if action == "run_command" else "tool")
+                if action in ("write_file", "edit_file") and isinstance(args.get("Path"), str):
+                    tool["file_path"] = args["Path"]
+                    if action == "write_file" and isinstance(args.get("Content"), str):
+                        tool["lines"] = args["Content"].splitlines()
+                    if action == "edit_file" and all(isinstance(args.get(k), str) for k in ("Target", "Replacement")):
+                        old, new = args["Target"].splitlines(), args["Replacement"].splitlines()
+                        diff = []
+                        for tag, a, b, c, d in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+                            if tag in ("replace", "delete"):
+                                diff.extend({"t": "-", "l": line} for line in old[a:b])
+                            if tag in ("replace", "insert"):
+                                diff.extend({"t": "+", "l": line} for line in new[c:d])
+                            if tag == "equal":
+                                diff.extend({"t": " ", "l": line} for line in old[a:b])
+                        tool["diff"] = diff
+                if action == "ask_question":
+                    tool["questions"] = args.get("questions") or []
+                if action == "manage_task":
+                    tool["taskArgs"] = args
+                if action == "schedule":
+                    schedule = {}
+                    for key in ("CronExpression", "DurationSeconds", "Prompt"):
+                        value = args.get(key)
+                        if isinstance(value, str) and value.startswith('"'):
+                            try:
+                                value = json.loads(value)
+                            except ValueError:
+                                pass
+                        if value is not None:
+                            schedule[key] = str(value)
+                    tool["schedule"] = schedule
+                if action == "run_command" and isinstance(args.get("toolSummary"), str):
+                    tool["commandSummary"] = args["toolSummary"].strip()
                 events.append(tool)
                 tools.append(tool)
         elif kind == "GENERIC" and tools:
             tool = tools.popleft()
+            if owner_start and (row.get("created_at") or "") >= owner_iso:
+                match = re.search(r'^Tool is running as a background task with task id: (\S+)', text, re.M)
+                if match and tool["action"] in ("run_command", "schedule"):
+                    schedule = tool.get("schedule") or {}
+                    background[match[1]] = dict(id=match[1], kind="cron" if schedule else "shell",
+                        desc=schedule.get("Prompt") or tool["title"], cmd=tool["title"], status="running",
+                        once=bool(schedule and not schedule.get("CronExpression")),
+                        createdAt=row.get("created_at"), duration=schedule.get("DurationSeconds"),
+                        cron=schedule.get("CronExpression"))
+                args = tool.get("taskArgs") or {}
+                target = background.get(str(args.get("TaskId", "")).strip('"'))
+                states = {"DONE":"done", "COMPLETED":"done", "FAILED":"error", "CANCELLED":"cancelled", "CANCELED":"cancelled"}
+                status = re.search(r'^Status:\s*(DONE|COMPLETED|FAILED|CANCELLED|CANCELED)\b', text, re.M)
+                cancelled = re.search(r'^Task "([^"\n]+)" cancel(?:l)?ed\.$', text, re.M)
+                if cancelled:
+                    target = background.get(cancelled[1])
+                if target and (cancelled or status):
+                    completed = re.search(r'^Completed At: (\S+)', text, re.M)
+                    target["endedAt"] = completed[1] if completed else row.get("created_at")
+                    target["status"] = "cancelled" if cancelled else states[status[1]]
             tool.update(status="failed" if row.get("error") else "completed", output=text, error=row.get("error"))
     settings_path = path.parents[4] / "settings.json"
     settings = {}
@@ -201,7 +286,22 @@ def history(path):
             settings = json.loads(settings_path.read_text())
         except (OSError, ValueError):
             pass
-    return {"events": events, "model": model, "selectedModel": settings.get("model"),
+    hashes = []
+    starts = []
+    for index, event in enumerate(events):
+        if not hashes or event["role"] == "user_message_chunk":
+            starts.append(index)
+            hashes.append(hashlib.sha256())
+        hashes[-1].update(json.dumps(event, ensure_ascii=False).encode())
+    digests = [h.hexdigest() for h in hashes]
+    prefix = hashlib.sha256("".join(digests[:-1]).encode()).hexdigest()
+    count = len(digests) - 1 if known_turns is None else known_turns
+    reused = 0
+    if 0 <= count < len(digests) and known_prefix == hashlib.sha256("".join(digests[:count]).encode()).hexdigest():
+        reused = count + int(digests[count] == known_last)
+    offset = starts[reused] if reused < len(starts) else len(events)
+    return {"finalAt": final_at, "background": list(background.values()), "events": events[offset:], "prefix": prefix,
+            "reuseTurns": reused, "turnHashes": digests, "model": model, "selectedModel": settings.get("model"),
             "mode": settings.get("mode") or "auto"}
 
 
@@ -213,26 +313,200 @@ def terminal_sessions(foreground=False):
                           capture_output=True, text=True, timeout=8)
     if scan.stderr.strip() or scan.returncode not in (0, 1):
         raise OSError("无法检查本地终端进程")
-    sessions = {}
+    owners = {}
+    pid = None
     for line in scan.stdout.splitlines():
         if line.startswith("p"):
             pid = line[1:]
-            command = ""
-        elif line.startswith("c"):
-            command = line[1:]
-        elif command == "agy" and line.startswith("n") and line.endswith(".lock"):
-            fields = subprocess.run(["/bin/ps", "-p", pid, "-o", "tty=,pgid=,tpgid="],
-                                    capture_output=True, text=True).stdout.split()
-            if len(fields) == 3 and (not foreground or fields[1] == fields[2]):
-                sessions[Path(line[1:]).stem] = (fields[0], pid) if foreground else fields[0]
+        elif line == "cagy":
+            owners[pid] = set()
+        elif pid in owners and line.startswith("n") and line.endswith(".lock"):
+            owners[pid].add(Path(line[1:]).stem)
+    sessions = {}
+    for pid, ids in owners.items():
+        fields = subprocess.run(["/bin/ps", "-p", pid, "-o", "tty=,pgid=,tpgid="],
+                                capture_output=True, text=True).stdout.split()
+        if len(fields) != 3 or (foreground and fields[1] != fields[2]):
+            continue
+        if not ids and re.fullmatch(r"ttys[0-9]+", fields[0]):
+            files = subprocess.run(["/usr/sbin/lsof", "-nP", "-p", pid, "-Fn"],
+                                   capture_output=True, text=True, timeout=4)
+            database_dir = presence.parent / "conversations"
+            ids = {Path(line[1:]).stem for line in files.stdout.splitlines()
+                   if line.startswith("n") and line.endswith(".db") and Path(line[1:]).parent == database_dir}
+            if len(ids) != 1:
+                continue
+        for sid in ids:
+            sessions[sid] = (fields[0], pid) if foreground else fields[0]
     return sessions
 
 
-def send_iterm(sid, message):
+def activity_file(sid):
+    return Path.home() / "Library/Application Support/Vibing Studio/agy-runs" / sid
+
+
+def active_since(sid):
+    try:
+        with activity_file(sid).open() as marker:
+            try:
+                fcntl.flock(marker, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return int(marker.readline() or 0)
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def weekly_quota():
+    # Launch an idle CLI with a session-only status line. The collector writes
+    # just the Gemini quota, never the rest of the account/status payload.
+    with tempfile.TemporaryDirectory() as folder:
+        sample = Path(folder) / "quota"
+        collector = "import json,sys,pathlib; q=json.load(sys.stdin).get('quota',{}).get('gemini-weekly'); q and pathlib.Path(sys.argv[1]).write_text(json.dumps(q))"
+        cmd = shlex.join([sys.executable, "-c", collector, str(sample)])
+        settings = json.dumps({"statusLine": {"enabled": True, "command": cmd}})
+        master, slave = pty.openpty()
+        try:
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 35, 120, 0, 0))
+            with subprocess.Popen(["agy", "--settings", settings], stdin=slave, stdout=slave, stderr=slave,
+                                  cwd=folder, start_new_session=True) as proc:
+                try:
+                    os.set_blocking(master, False)
+                    for _ in range(100):
+                        try:
+                            os.read(master, 65536)
+                        except BlockingIOError:
+                            pass
+                        if sample.exists() and sample.stat().st_size:
+                            q = json.loads(sample.read_text())
+                            if isinstance(q.get("remaining_fraction"), (int, float)):
+                                return {"remaining": q["remaining_fraction"], "reset": q.get("reset_time")}
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.12)
+                finally:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        try:
+                            proc.wait(2)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+        finally:
+            os.close(master)
+            os.close(slave)
+    return {}
+
+
+def stream_input(message):
+    return (json.dumps({"event": "user", "message": {"content": message}}, ensure_ascii=False) + "\n").encode()
+
+
+def submit_running(sid, message):
+    marker = activity_file(sid)
+    control = marker.with_suffix(".input-count")
+    try:
+        with marker.with_suffix(".write-lock").open("a") as serial, control.open("r+") as state:
+            fcntl.flock(serial, fcntl.LOCK_EX)
+            fcntl.flock(state, fcntl.LOCK_EX)
+            count = int(state.read() or 0)
+            if count < 1:
+                return False
+            fd = os.open(marker.with_suffix(".fifo"), os.O_WRONLY | os.O_NONBLOCK)
+            with os.fdopen(fd, "wb", buffering=0) as pipe:
+                state.seek(0)
+                state.truncate()
+                state.write(str(count + 1))
+                state.flush()
+                # Reserve the turn before releasing state. The reader can finish
+                # earlier turns while a large prompt is still entering its pipe.
+                fcntl.flock(state, fcntl.LOCK_UN)
+                os.set_blocking(fd, True)
+                data = memoryview(stream_input(message))
+                while data:
+                    data = data[pipe.write(data):]
+        return True
+    except OSError as error:
+        if isinstance(error, BlockingIOError):
+            sys.exit("agy 输入管道正忙，草稿已保留")
+        return False
+
+
+def send_message(sid, message, model=None):
+    if not message.strip():
+        sys.exit("消息为空")
+    marker_path = activity_file(sid)
+    request = {"message": message, "model": model}
+    result = agy_acp.exchange(marker_path, request)
+    if result is not None:
+        return result
+    if active_since(sid):
+        # The owner can be between taking the session lock and publishing stdin,
+        # or between closing stdin after a result and releasing the session.
+        until = time.monotonic() + 3
+        while active_since(sid):
+            result = agy_acp.exchange(marker_path, request)
+            if result is not None:
+                return result
+            if submit_running(sid, message):
+                return {"sent": True}
+            fields = marker_path.read_text().splitlines()
+            if len(fields) == 2 and fields[1].isdigit():
+                cmd = subprocess.run(["/bin/ps", "-p", fields[1], "-o", "command="],
+                                     capture_output=True, text=True).stdout
+                if f"--conversation {sid} --output-format stream-json --print " in cmd:
+                    sys.exit("未发送：当前 agy 进程以单次输入模式启动，无法接收追加消息。草稿已保留。")
+            if time.monotonic() >= until:
+                sys.exit("agy 的消息输入通道尚未就绪，草稿已保留")
+            time.sleep(0.05)
+    tty = terminal_sessions().get(sid)
+    if tty and re.fullmatch(r"ttys[0-9]+", tty):
+        return send_iterm(sid, message)
+    if tty:
+        sys.exit("此会话由外部后台进程持有，Studio 没有它的输入通道")
+    path = transcripts().get(sid)
+    if not path:
+        sys.exit("找不到本机会话文件")
+    executable = shutil.which("agy")
+    if not executable:
+        sys.exit("找不到 agy 命令")
+    directories = workspace_dirs(path.parents[4]).get(sid, [])
+    cwd = next((directory for directory in directories if Path(directory).is_dir()), None)
+    owner = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--acp-owner", sid],
+                             cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    until = time.monotonic() + 10
+    while time.monotonic() < until:
+        result = agy_acp.exchange(marker_path, request)
+        if result is not None:
+            return result
+        if owner.poll() is not None and not active_since(sid):
+            break
+        time.sleep(0.05)
+    sys.exit("无法启动 agy ACP 会话，草稿已保留")
+
+
+def interrupt(sid):
+    result = agy_acp.exchange(activity_file(sid), {"interrupt":True})
+    if result is not None:
+        return result
+    if active_since(sid):
+        with activity_file(sid).open() as marker:
+            fields = marker.read().splitlines()
+        if len(fields) == 2:
+            pid = int(fields[1])
+            command = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "command="],
+                                     capture_output=True, text=True).stdout.strip()
+            if re.match(r"^.*?/agy --conversation " + re.escape(sid) + r" (?:--input-format stream-json )?--output-format stream-json ", command):
+                os.kill(pid, signal.SIGINT)
+                return {"interrupted": True}
+    return send_iterm(sid, "", cancel=True)
+
+
+def send_iterm(sid, message, cancel=False):
     target = terminal_sessions(foreground=True).get(sid)
     if not target or not re.fullmatch(r"ttys[0-9]+", target[0]):
         sys.exit("该会话没有在终端前台运行")
-    if not message.strip() or any(ord(c) < 32 and c != "\n" for c in message):
+    if not cancel and (not message.strip() or any(ord(c) < 32 and c != "\n" for c in message)):
         sys.exit("消息为空或包含终端控制字符")
     tty, pid = target
     script = """on run argv
@@ -248,7 +522,17 @@ if tty of s is targetTTY then
 set procInfo to words of (do shell script "/bin/ps -p " & quoted form of targetPID & " -o pgid=,tpgid=,ucomm=")
 if (count of procInfo) is not 3 then error "agy 已退出"
 if item 1 of procInfo is not item 2 of procInfo or item 3 of procInfo is not "agy" then error "agy 已离开前台"
+if item 4 of argv is "interrupt" then
+write s text (ASCII character 27) newline no
+else if msg starts with "/" and msg does not contain linefeed then
+select w
+select t
+select s
+activate
+write s text msg newline yes
+else
 write s text ((ASCII character 27) & "[200~" & msg & (ASCII character 27) & "[201~") newline yes
+end if
 return "sent"
 end if
 end repeat
@@ -258,7 +542,7 @@ end tell
 end if
 error "找不到此会话的 iTerm2 分屏"
 end run"""
-    result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message],
+    result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message, "interrupt" if cancel else "send"],
                             input=script, capture_output=True, text=True, timeout=15)
     if result.returncode or result.stdout.strip() != "sent":
         sys.exit(result.stderr.strip() or "iTerm2 未确认输入")
@@ -284,29 +568,65 @@ def screen_status(sid):
             continue
         footer = re.search(r"(?:auto|plan|accept-edits)\s*·\s*[^·]+\s*·\s*\S+", lines[-1], re.I)
         rules = [i for i, line in enumerate(lines) if re.fullmatch(r"\s*─{6,}\s*", line)]
-        if not footer or len(rules) < 2 or not any(line.lstrip().startswith((">", "❯")) for line in lines[rules[-2]+1:rules[-1]]):
+        if not footer:
             return {}
-        before = [line.strip() for line in lines[:rules[-2]] if line.strip()]
+        # The task tray adds another separator below the composer.
+        composer = next(((top, bottom) for top, bottom in reversed(list(zip(rules, rules[1:])))
+                         if any(line.lstrip().startswith((">", "❯")) for line in lines[top + 1:bottom])), None)
+        if composer is None:
+            return {}
+        top, bottom = composer
+        tasks = []
+        for line in lines[bottom + 1:-1]:
+            task = re.search(r"\[(\d{2}:\d{2}:\d{2})\]\s+(.+?)\s+(running|completed|failed|cancelled)\s*$", line, re.I)
+            if task:
+                clock, label, state = task.groups()
+                tasks.append(dict(id=f"{clock}:{label}", kind="cron" if label.lower().startswith("cron (") else "shell", cmd=label,
+                                  clock=clock, desc=label if label.lower().startswith("cron (") else f"[{clock}] {label}", status={"completed": "done", "failed": "error"}.get(state.lower(), state.lower())))
+        before = [line.strip() for line in lines[:top] if line.strip()]
         recent = before[-8:]
         spinner = next((line for line in reversed(recent) if re.match(r"^[⠁-⣿]", line)), "")
         busy = re.search(r"esc to (?:cancel|interrupt|stop)", lines[-1], re.I)
-        if busy:
-            status = spinner or "正在生成"
+        if busy or spinner:
+            status = re.sub(r"(?i)\b\d+\s+(?:lines?|turns?)\b", "", spinner)
+            status = re.sub(r"\s*[·•|,]\s*(?=[·•|,)]|$)", "", status).strip()
             preview = [] if spinner else [line for line in recent[-4:] if not line.startswith(("└ Tip:", ">"))]
         else:
             status = ""
             preview = []
-        return {"status": status, "footer": footer.group().strip(), "preview": preview}
+        return {"tasks": tasks, "working": bool(busy or spinner), "status": status, "footer": footer.group().strip(), "preview": preview}
     return {}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--acp-owner", type=UUID)
     parser.add_argument("--session", type=UUID)
+    parser.add_argument("--interrupt", type=UUID)
+    parser.add_argument("--known-prefix")
+    parser.add_argument("--known-turns", type=int)
+    parser.add_argument("--known-last")
     parser.add_argument("--screen", type=UUID)
+    parser.add_argument("--send", type=UUID)
     parser.add_argument("--send-iterm", type=UUID)
+    parser.add_argument("--models", action="store_true")
+    parser.add_argument("--weekly", action="store_true")
+    parser.add_argument("--model")
     parser.add_argument("--message")
     args = parser.parse_args()
+    if args.acp_owner:
+        asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner))))
+        return {}
+    if args.weekly:
+        return weekly_quota()
+    if args.models:
+        output = subprocess.check_output(["agy", "models"], text=True, timeout=30)
+        return [dict(id=key, name=name) for row in output.splitlines() if "\t" in row
+                for key, name in [row.split("\t", 1)]]
+    if args.interrupt:
+        return interrupt(str(args.interrupt))
+    if args.send:
+        return send_message(str(args.send), args.message or "", args.model)
     if args.send_iterm:
         return send_iterm(str(args.send_iterm), args.message or "")
     if args.screen:
@@ -316,7 +636,7 @@ def main():
         path = files.get(str(args.session))
         if not path:
             sys.exit("找不到本机会话文件")
-        return history(path)
+        return history(path, args.known_prefix, args.known_turns, args.known_last)
     try:
         terminals = terminal_sessions()
     except (OSError, subprocess.TimeoutExpired):
@@ -325,7 +645,14 @@ def main():
     sessions = []
     for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True):
         dirs = sources[path.parents[4]].get(sid, [])
-        sessions.append(dict(path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
+        started = active_since(sid)
+        queued = 0
+        if started and not Path(agy_acp.endpoint(activity_file(sid))).exists():
+            try:
+                queued = max(0, int(activity_file(sid).with_suffix(".input-count").read_text()) - 1)
+            except (OSError, ValueError):
+                pass
+        sessions.append(dict(workingSince=started, queuedInputs=queued, path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
                              tty=terminals.get(sid, "") if terminals is not None else None,
                              sessionId=sid, title=title(path, sid),
                              updatedAt=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()))
@@ -333,4 +660,7 @@ def main():
 
 
 if __name__ == "__main__":
-    print(json.dumps(main(), ensure_ascii=False))
+    try:
+        print(json.dumps(main(), ensure_ascii=False))
+    except OSError as exc:
+        sys.exit(str(exc))

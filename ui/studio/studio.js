@@ -165,9 +165,9 @@
     if (par) {
       var prt = null; try { prt = TSU_AGENTS.runtime("cc:" + par); } catch (e) { prt = null; }
       var sibs = prt && c.subList !== false ? (prt.tasks || []).filter(function (x) { return x.kind !== "shell"; }).sort(taskOrder) : [];
-      return { aid: aid, fg: fg, fgOn: fgOn, goal: null, todo: [], sh: [], sa: sibs, main: { sid: par, rt: prt, me: String(rt.sid || "").replace(/^sub-/, "") } };
+      return { aid: aid, fg: fg, fgOn: fgOn, goal: null, todo: [], schedules: [], sh: [], sa: sibs, main: { sid: par, rt: prt, me: String(rt.sid || "").replace(/^sub-/, "") } };
     }
-    return { aid: aid, fg: fg, fgOn: fgOn, goal: rt.agent && rt.agent.goal && rt.agent.goal.text ? rt.agent.goal : null, todo: c.taskList !== false && todoShown(aid) ? tasksOf(P) : [], sh: c.bgList === false ? [] : ts.filter(function (x) { return x.kind === "shell"; }).sort(taskOrder), sa: c.subList === false ? [] : ts.filter(function (x) { return x.kind !== "shell"; }).sort(taskOrder) };
+    return { aid: aid, fg: fg, fgOn: fgOn, goal: rt.agent && rt.agent.goal && rt.agent.goal.text ? rt.agent.goal : null, schedules: rt.schedules || [], todo: c.taskList !== false && todoShown(aid) ? tasksOf(P) : [], sh: c.bgList === false ? [] : ts.filter(function (x) { return x.kind === "shell"; }).sort(taskOrder), sa: c.subList === false ? [] : ts.filter(function (x) { return x.kind !== "shell"; }).sort(taskOrder) };
   }
   // 一条后台任务 / 子 Agent 的详情（点那一行就地展开）：命令或任务说明、最后的输出 / 结果
   // 连接器的会话（rt.taskDetail：Claude Code 的后台命令读它的输出文件、子 agent 读它自己的记录，只读）：读回来就重画，在跑的每 2 秒再读一次；
@@ -196,7 +196,12 @@
     return (rep && t.status !== "running" ? tdTail(rep) : steps ? tdTail(steps) : rep ? tdTail(rep) : "") + why;
   }
   function taskDet(t, aid) {
-    var head = t.kind === "shell" ? "$ " + (t.cmd || t.desc || "") : t.prompt || t.desc || "", rt = aid ? tdRt(aid) : null, body;
+    var head = t.prompt || t.desc || "", rt = aid ? tdRt(aid) : null, body;
+    if (t.kind === "shell") {
+      var command = (t.cmd || "").trim();
+      var label = (t.desc || command).replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "").trim();
+      head = command && command !== label ? "$ " + command : "";
+    }
     if (rt && rt.taskDetail) {
       var k0 = tkey(t), c = TDC[aid + ":" + k0];
       if (!c || (c.d && c.d.status && c.d.status !== t.status && Date.now() - c.at > 500)) tdFetch(aid, k0);
@@ -207,7 +212,7 @@
       var log = (t.log || []).slice(-10).map(function (x) { return x.text || x.summary || x.name || ""; }).filter(Boolean).join("\n"), o = String(t.result || t.error || log || "");
       body = o ? '<pre class="td-out">' + esc(o.length > 2400 ? "…" + o.slice(-2400) : o) + "</pre>" : '<div class="td-none">还没有输出</div>';
     }
-    return '<div class="td-det"><pre class="td-cmd">' + esc(head.slice(0, 600)) + "</pre>" + body + "</div>";
+    return '<div class="td-det">' + (head ? '<pre class="td-cmd">' + esc(head.slice(0, 600)) + "</pre>" : "") + body + "</div>";
   }
   // 画出来：一块一块（标题行 + 内容）；没有东西可画就是空字符串。收起没收起不在字符串里（放进去以后 applyFold 按记下的加 class）
   // only：只画哪几块（["todo", "bg"]：辅助侧栏在面板的 Agent 那一层开着时；["sub"]：面板的 Agent 那一层）；不给就是全部
@@ -283,10 +288,10 @@
   function familyHtml(P, only) {
     if (P && P.program && /^ty:/.test(String(P.program.agentId || ""))) return only && only.indexOf("todo") < 0 && only.indexOf("bg") < 0 ? "" : tyFamilyHtml(P);
     var d = famData(P);
-    if (d && only) { if (only.indexOf("todo") < 0) { d.todo = []; d.fg = []; d.fgOn = false; } if (only.indexOf("bg") < 0) d.sh = []; if (only.indexOf("sub") < 0) d.sa = []; }
+    if (d && only) { if (only.indexOf("todo") < 0) { d.schedules = []; d.todo = []; d.fg = []; d.fgOn = false; } if (only.indexOf("bg") < 0) d.sh = []; if (only.indexOf("sub") < 0) d.sa = []; }
     // 「详情」那一块（辅助侧栏 ··· 里勾上才有；只在 Claude Code 的会话里）：几项要紧的（创建、工作时长、Token、子 Agent）+「全部详情…」（ccinfo.js）
     var infoOn = !!(d && (!only || only.indexOf("todo") >= 0) && acfg().infoList === true && /^cc:/.test(d.aid) && !/^cc:sub-/.test(d.aid) && window.TSU_CCINFO);
-    if (!d || !(d.goal || d.main || d.fgOn || d.todo.length || d.sh.length || d.sa.length || infoOn)) return "";
+    if (!d || !(d.goal || d.main || d.fgOn || d.todo.length || d.schedules.length || d.sh.length || d.sa.length || infoOn)) return "";
     var aid = d.aid;
     // /goal 在跑：最上面一行「◎ Goal · 条件 · active 1d」（同 Claude Code 输入框上面那句 ◎ /goal active (1d)）；放不下的点一下换行
     var gl = d.goal, gAge = gl && gl.at ? Date.now() - gl.at : 0, gk = aid + ":goal";
@@ -350,6 +355,15 @@
     return '<div class="st-fam" data-aid="' + esc(aid) + '">' + goalHtml + mainHtml +
       (d.fgOn ? sec("fg", fgItems.length ? head("正在运行", fgItems) : "正在运行", fgTotal(), fgItems.length ? rows(fgItems, "fg", fgRow) : '<div class="st-dim st-fgnone">还没有运行过命令</div>') : "") +
       (d.todo.length ? sec("todo", todoHead(d.todo), cur ? (function (s0) { var t = trT(s0, aid); return '<span class="st-fcur"' + trTitle(t, s0) + ">" + esc(t) + "</span>"; })(cur.activeForm || cur.subject) : "", todoRowsHtml(d.todo, aid)) : "") +
+      (d.schedules.length ? sec("cron", head("定时任务", d.schedules), "", rows(d.schedules, "cron", function (x) {
+        var start = Date.parse(x.createdAt), end = Date.parse(x.endedAt);
+        var due = x.once && Number(x.duration) > 0 ? start + Number(x.duration) * 1000 : NaN;
+        var stamp = Number.isFinite(end) ? end : Number.isFinite(due) ? due : start;
+        var time = Number.isFinite(stamp) ? new Date(stamp).toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"}) : x.clock || "";
+        var label = Number.isFinite(end) ? "结束时间" : Number.isFinite(due) ? "预计触发时间" : "创建时间";
+        var timing = x.cron && !Number.isFinite(end) ? x.cron : time;
+        return '<div class="st-prw st-frow">' + taskIco(x) + ' <span class="st-cut" title="' + esc(x.desc) + '">' + esc(x.desc) + '</span><span class="st-fill"></span><span class="st-dim" title="' + esc(x.cron && timing === x.cron ? x.cron : label + " " + time) + '">' + esc(timing) + '</span></div>';
+      })) : "") +
       (d.sh.length ? sec("bg", head("后台任务", d.sh), "", rows(d.sh, "bg")) : "") +
       (d.sa.length ? sec("sub", head("子 Agent", d.sa), "", rows(d.sa, "sub")) : "") +
       (infoOn ? sec("info", "详情", "", TSU_CCINFO.summaryHtml(aid.slice(3), familyChanged)) : "") + "</div>";
@@ -366,15 +380,18 @@
     if (d.goal) L.push(LV + "◎ " + R + D + "Goal: " + R + trT(d.goal.text, aid) + (d.goal.at ? D + " · active " + dur(Date.now() - d.goal.at) + R : ""));
     if (d.fgOn && fgItems.length) { gap(); L.push(B + "Running" + R); fgItems.forEach(function (x) { var p = x.p, a = p.input || {}, arg = String(a.description || a.command || a.file_path || a.pattern || a.url || a.query || "").replace(/\s+/g, " "), t = took(x); L.push("  " + dot(x.status) + " " + p.name + (arg ? "(" + arg.slice(0, 80) + ")" : "") + (t ? D + " · " + t + R : "")); }); }
     if (d.todo.length) { gap(); L.push(B + "Todos" + R); d.todo.forEach(function (t) { var c = trT(String(t.content || t.subject || ""), aid); L.push("  " + (t.status === "completed" ? D + "☒ " + S + c : t.status === "in_progress" ? B + "☐ " + c : "☐ " + c) + R); }); }
+    if (d.schedules.length) { gap(); L.push(B + "定时任务" + R); d.schedules.forEach(function (x) { L.push("  " + dot(x.status) + " " + x.desc + " · " + x.status); }); }
     if (d.sh.length) { gap(); L.push(B + "Background commands" + R); d.sh.forEach(function (x) { var t = took(x); L.push("  " + dot(x.status) + " " + String(x.desc || x.cmd || "").replace(/\s+/g, " ").slice(0, 90) + D + " · " + (x.status === "running" ? "running" : x.status) + (t ? " " + t : "") + R); }); }
     if (d.sa.length) { gap(); L.push(B + "Agents" + R); d.sa.forEach(function (x) { var t = took(x); L.push("  " + dot(x.status) + " " + String(x.desc || x.name || "").replace(/\s+/g, " ").slice(0, 80) + D + (x.tools ? " · " + x.tools + " tool uses" : "") + " · " + (x.status === "running" ? "running" : x.status) + (t ? " " + t : "") + R); }); }
     return '<div class="st-fam st-famtui" data-aid="' + esc(aid) + '"><div class="st-fmode"><button type="button" class="st-fmodeb" data-st="fam-tui" title="' + esc("换回图形的样子") + '">' + esc("图形") + '</button></div><pre class="term terminal-style-ui st-ftui">' + P.toHtml(L, 400) + "</pre></div>";
   }
   // 要显示任务清单时，那块地方得看得见：VS Code 风格打开辅助侧栏（Agent 那一层），Claude App 打开右边的「后台任务」卡片
-  function revealFamily() {
-    var tw = T() && T().front ? T().front() : null, h = familyHost();
+  function revealFamily(aid, section, pane) {
+    var tw = pane?.win || T()?.front?.(), h = familyHost();
     if (!tw) return;
-    if (h === "side") { var ch = false; if (!L.side) { L.side = true; ch = true; } if (L.sideLevel === "global") { L.sideLevel = "agent"; ch = true; } if (ch) { saveL(); render(tw); } }
+    if (section && famFolded(aid, section)) toggleFamFold(aid, section);
+    if (h === "side") { var ch = false; if (sideAuto(tw)) { tw.sideForce = tw.ws.active; ch = true; } if (!L.side) { L.side = true; ch = true; } if (L.sideLevel === "global") { L.sideLevel = "agent"; ch = true; } if (ch) { saveL(); render(tw); } }
+    else if (h === "drawer" && pane) window.TSU_TDRAWER?.paint(pane);
     else if (h === "card") { var tg = tw.el.querySelector('.ca-tog[data-c="tasks"]:not(.on)'); if (tg) tg.click(); }
   }
   // 有变化（开关、⌃T、收起、做完的展开）：辅助侧栏、卡片、标签页底下都重画
@@ -715,7 +732,7 @@
     if (/^agent-done-/.test(what)) { var ad = what.slice(11); ACTD[ad] = !ACTD[ad]; return renderPanel(tw); }
     if (/^todo-wrap-/.test(what)) { if (String(window.getSelection() || "").trim()) return; var wk0 = what.slice(10); if (TWRAP[wk0]) delete TWRAP[wk0]; else TWRAP[wk0] = 1; return familyChanged(); } // 任务清单的一项：换行展开全文 / 收回
     if (what === "tasks-done") return toggleTodoDone(); // 任务清单里「n 项已完成」：展开 / 收起（侧栏、卡片、抽屉一起）
-    if (/^fam-done-(bg|sub|fg)$/.test(what)) { var fs0 = el && el.closest ? el.closest(".st-fsec") : null, fk = (fs0 ? fs0.dataset.aid : "") + ":" + what.slice(9); FDONE[fk] = !FDONE[fk]; return familyChanged(); } // 「n 个已结束」：展开 / 收起
+    if (/^fam-done-(bg|sub|fg|cron)$/.test(what)) { var fs0 = el && el.closest ? el.closest(".st-fsec") : null, fk = (fs0 ? fs0.dataset.aid : "") + ":" + what.slice(9); FDONE[fk] = !FDONE[fk]; return familyChanged(); } // 「n 个已结束」：展开 / 收起
     if (what === "side-agent") { var ap = agentPaneFor(tw); if (ap && ap !== tw.ws.active) { if (tw.ws.show) tw.ws.show(ap); if (ap.focus) ap.focus(); } return; } // 辅助侧栏标题行上 agent 的名字：切到它的标签页
     if (what === "new-agent") return newAgent(tw);
     if (what === "fam-tui") { localStorage.setItem("tsu-fam-tui", famTui() ? "0" : "1"); return familyChanged(); } // 右侧栏这一块：TUI ↔ 图形
@@ -1330,13 +1347,17 @@
   document.addEventListener("mouseover", function (e) { var r = e.target.closest && e.target.closest(IMGREF); if (r) imgPeek(r, true); }, true);
   document.addEventListener("mouseout", function (e) { var r = e.target.closest && e.target.closest(IMGREF); if (r && !(e.relatedTarget && r.contains(e.relatedTarget))) imgPeek(r, false); }, true);
   // 刚在毛玻璃上按下关掉的：这一下的 click 会落到底下那个 [Image #N] 上——别又打开（反复点就开开关关、越堆越卡）
-  var lbShut = 0;
+  var lbShut = 0, imageClick = 0;
   document.addEventListener("click", function (e) {
     var t = e.target.closest && e.target.closest(IMGREF + ", .st-prevb img, .gv-imgs img");
     if (!t) return;
     e.preventDefault(); e.stopPropagation();
     if (!LB && Date.now() - lbShut < 350) return;
-    lightbox(TSU_IMG.srcOf(t));
+    var request = ++imageClick, src = TSU_IMG.srcOf(t);
+    if (src) lightbox(src);
+    else TSU_IMG.loadUrl(peekKeyOf(t)).then(function (url) {
+      if (url && request === imageClick && t.isConnected) lightbox(url);
+    });
   }, true);
 
   // ======== 有新版本（同 VS Code 的「重启以更新」）：每分钟看一眼页面的脚本变了没有；变了状态栏右边出「有新版本」，点一下重新载入（终端会接回去）========
@@ -2933,15 +2954,75 @@
   // Office 这些：用 macOS 的「快速查看」生成预览（同访达里按空格看到的），放进原生的网页视图里看；要改就用默认 App 打开
   var OFFICE = { docx: 1, doc: 1, dotx: 1, xlsx: 1, xlsm: 1, xls: 1, pptx: 1, ppt: 1, pages: 1, numbers: 1, key: 1, rtf: 1, rtfd: 1, odt: 1, ods: 1, odp: 1 };
   var extOf = function (p) { var n = String(p).split("/").pop(), i = n.lastIndexOf("."); return i > 0 ? n.slice(i + 1).toLowerCase() : ""; };
+  function notebookLab(body, f, P, path, V) {
+    if (body.labBox) return;
+    notebookView(body, f, P);
+    var box = document.createElement("div");
+    box.className = "st-nv";
+    body.labBox = box;
+    var helper = window.TSU_UI_LOCAL.dir + "/studio/notebook_lab.py";
+    LOC().exec({cmd: "python3 " + shq(helper) + " " + shq(path)}).then(function (res) {
+      if (!body.isConnected) return;
+      var url = String(res.out || "").trim();
+      if (res.code || !/^http:\/\/127\.0\.0\.1:\d+\/lab\/tree\//.test(url)) throw new Error(res.err || "无法打开 JupyterLab");
+      body.replaceChildren(box);
+      TSU_WEB.overlay(box, url, function () { return box.isConnected && V.shown(); });
+    }).catch(function (e) {
+      if (!body.isConnected) return;
+      var warning = document.createElement("div");
+      warning.className = "st-pad";
+      warning.textContent = "当前为只读预览 · " + e.message;
+      body.prepend(warning);
+    });
+  }
+  function notebookView(body, f, P) {
+    var width = Math.max(24, Math.floor((body.clientWidth - 40) / cellW(body)));
+    var light = P.win.el.classList.contains("tl");
+    if (body.notebookText === f.text && body.notebookWidth === width && body.notebookLight === light) return;
+    body.notebookText = f.text;
+    body.notebookWidth = width;
+    body.notebookLight = light;
+    function multiline(value) { return Array.isArray(value) ? value.join("") : String(value ?? ""); }
+    function pre(value) { return "<pre>" + esc(multiline(value)) + "</pre>"; }
+    function codePreview(cell, src) {
+      var hl = window.TSU_HL, ext = nb.metadata?.language_info?.file_extension || (nb.metadata?.kernelspec?.name === "python3" ? ".py" : "");
+      var lang = hl && hl.LANG[hl.langOf("cell" + ext)];
+      if (cell.cell_type !== "code" || !lang) return pre(src);
+      var state = "";
+      return "<pre>" + src.split("\n").map(function (line) {
+        var result = hl.line(line, state, lang);
+        state = result[1];
+        return result[0];
+      }).join("\n") + "</pre>";
+    }
+    function output(o) {
+      var data = o.data || {};
+      for (var mime of ["image/png", "image/jpeg"]) {
+        if (data[mime]) return '<img loading="lazy" alt="单元输出" src="data:' + mime + ';base64,' + esc(multiline(data[mime]).replace(/[^A-Za-z0-9+/=]/g, "")) + '">';
+      }
+      if (o.traceback) return pre(o.traceback.join("\n").replace(/\x1b\[[0-9;]*m/g, ""));
+      return pre(o.text ?? data["text/plain"] ?? o.evalue ?? ("输出格式：" + Object.keys(data).join(", ")));
+    }
+    try {
+      var nb = JSON.parse(f.text);
+      if (!Array.isArray(nb.cells)) throw new Error("缺少 cells");
+      body.innerHTML = '<article class="st-notebook">' + nb.cells.map(function (cell) {
+        var src = multiline(cell.source);
+        if (cell.cell_type === "markdown" && window.TTU) return '<section><pre class="terminal-style-ui st-doc' + (light ? ' ttu-light' : '') + '">' + hlHtml(TTU.renderFile("cell.md", src, {width:width, theme:light ? "light" : "dark"}).html) + '</pre></section>';
+        return '<section><small>' + (cell.cell_type === "code" ? 'In [' + esc(String(cell.execution_count ?? " ")) + ']' : esc(cell.cell_type)) + '</small>' + codePreview(cell, src) + (cell.outputs || []).map(output).join("") + '</section>';
+      }).join("") + '</article>';
+    } catch (e) { body.innerHTML = '<div class="st-pad">无法预览笔记本：' + esc(e.message) + '。可点击编辑查看源文件。</div>'; }
+  }
   PAGES.file = {
     tabActions: function (host, P, path, V) {
       var f = FILES[path] || {}, name = String(path).split("/").pop(), out = [], again = function () { V.redraw(); P.win.syncTitles(); };
-      if (f.kind === "text") {
+      if (f.kind === "text" && !(extOf(path) === "ipynb" && window.TSU_WEB?.native() && window.TSU_UI_LOCAL?.dir && !window.nadosNative?.remote)) {
         if (f.mode === "edit") {
           if (f.dirty) out.push({ icon: ICO.save, title: "保存 (⌘S)", run: function () { saveFile(path, again); } }); // 改了才有「保存」（没改动时不出来）
           out.push({ icon: ICO.done, title: "完成", run: function () { leaveEdit(path, again); } }); // 改了没存：问保存 / 不保存 / 取消
         } else out.push({ icon: ICO.edit, title: "编辑", run: function () { f.mode = "edit"; again(); } });
       }
+      if (LOC() && extOf(path) === "ipynb" && !f.dirty) out.push({ icon: ICO.open, title: "在 JupyterLab 中打开", run: function () { T().run("jupyter lab " + shq(path), path.slice(0, path.lastIndexOf("/"))); } });
       if (LOC() && (f.kind === "office" || f.kind === "pdf")) out.push({ icon: ICO.open, title: "用默认应用打开", run: function () { LOC().exec({ cmd: "open " + T().shellEscape(path) }).catch(function () {}); } }); // 要改就在 Word / Pages / 预览 里改
       if (LOC()) out.push({ icon: ICO.reveal, title: "在访达中显示", run: function () { LOC().exec({ cmd: "open -R " + T().shellEscape(path) }).catch(function () {}); } });
       return out;
@@ -2954,10 +3035,12 @@
       var name = String(path).split("/").pop();
       // 文本：只看、编辑是同一个编辑器（只看 = 只读），切换不重建；只有不太大的 Markdown 只看时排好版（TTU）
       var rich = f.kind === "text" && f.mode !== "edit" && /^(md|markdown|mdx)$/.test(extOf(path)) && (f.text || "").length < 150000;
-      var mk = f.kind + (f.kind === "text" ? (rich ? ":rich" : ":code") : "");
+      var notebook = f.kind === "text" && f.mode !== "edit" && extOf(path) === "ipynb";
+      var mk = notebook ? "notebook" : f.kind + (f.kind === "text" ? (rich ? ":rich" : ":code") : "");
       // 名字、路径已经在标签和面包屑上了：这一行只放操作
       var head = '<div class="st-fhead" hidden></div>'; // 操作在所在那组标签条的右上角（tabActions）
       if (host.dataset.mode !== mk || !host.querySelector(".st-fbody")) {
+        releaseFileBody(host.querySelector(".st-fbody"));
         host.innerHTML = head + '<div class="st-fbody"></div>';
         host.dataset.mode = mk;
         if (!host.bound) {
@@ -2984,6 +3067,10 @@
       if (f.native) return nativeFile(body, path, f, V);
       if (f.kind === "image") { body.innerHTML = '<div class="st-img"><img src="' + f.url + '" alt=""></div>'; return; }
       if (f.kind === "pdf") { body.innerHTML = '<iframe class="st-pdf" src="' + f.url + '"></iframe>'; return; }
+      if (notebook) {
+        if (window.TSU_WEB?.native() && window.TSU_UI_LOCAL?.dir && !window.nadosNative?.remote) return notebookLab(body, f, P, path, V);
+        return notebookView(body, f, P);
+      }
       if (!rich) return editor(body, path, function () { P.win.syncTitles(); }, f.mode !== "edit"); // 改没改变了：标签上的 ●、「保存」按钮跟着（不重画编辑器）
       var cw = cellW(body), cols = Math.max(24, Math.floor((body.clientWidth - 30) / cw)), light = P.win.el.classList.contains("tl"), top = body.scrollTop, html;
       if (body.dataset.sig === f.mtime + ":" + cols + ":" + light) return;
@@ -2995,13 +3082,48 @@
       if (f.line && !f.scrolled) { f.scrolled = true; body.scrollTop = Math.max(0, (f.line - 4) * 17); }
       if (!body.ro) { body.ro = new ResizeObserver(function () { if (FILES[path] && FILES[path].mode === "view") V.redraw(); }); body.ro.observe(body); }
     },
+    detach: function (host) {
+      releaseFileBody(host.querySelector(".st-fbody"));
+      host.replaceChildren();
+      scheduleFileTrim();
+    },
     focus: function (host) { var b = host.querySelector(".st-fbody"), ed = b && b.ed; if (ed && ed.api) ed.api.focus(); else host.focus(); },
   };
+  function releaseFileBody(body) {
+    if (!body) return;
+    if (body.ro) body.ro.disconnect();
+    if (body.nv?.stop) body.nv.stop();
+    if (body.nv?.h) body.nv.h.close();
+    var ed = body.ed;
+    if (!ed) return;
+    if (ed.cmpT) ed.flush();
+    body.ed = null;
+    if (ed.api) ed.api.destroy();
+    EDS[ed.path] = (EDS[ed.path] || []).filter(other => other !== ed);
+    if (!EDS[ed.path].length) delete EDS[ed.path];
+  }
+  var trimFilesTimer = 0;
+  function scheduleFileTrim() {
+    if (trimFilesTimer) return;
+    trimFilesTimer = setTimeout(function () {
+      trimFilesTimer = 0;
+      var opened = new Set(allPanes().map(p => p.program?.page === "file" && p.program.arg));
+      var bytes = 0, count = 0;
+      Object.keys(FILES).reverse().forEach(function (path) {
+        var f = FILES[path];
+        if (opened.has(path) || f.dirty || !f.kind) return;
+        var size = Math.max(f.size || 0, (f.text || "").length * 2);
+        if (count < 16 && bytes + size <= 16 * 1024 * 1024) { count++; bytes += size; return; }
+        if (f.url) URL.revokeObjectURL(f.url);
+        delete FILES[path];
+      });
+    }, 0);
+  }
   function cellW(el) { var pr = document.createElement("span"); pr.textContent = "0".repeat(100); pr.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:12px Monaco, monospace"; el.appendChild(pr); var w = pr.offsetWidth / 100 || 7.2; pr.remove(); return w; }
   // 读进来：20 秒还没读完就说一声（不一直「读取中…」），能点「重试」；读完了又来的结果不要（已经超时了）
   function loadFile(path, done) {
     var f = FILES[path], over = false, t0 = Date.now();
-    var fin = function () { if (over) return; over = true; clearTimeout(tm); f.loadMs = Date.now() - t0; done(); };
+    var fin = function () { if (over) return; over = true; clearTimeout(tm); f.loadMs = Date.now() - t0; done(); scheduleFileTrim(); };
     var tm = setTimeout(function () { if (over) return; f.kind = "error"; f.error = "读取超时（20 秒没有读完）"; f.loaded = false; fin(); }, 20000);
     LOC().stat(path).then(function (st) {
       if (over) return;
@@ -3190,7 +3312,7 @@
     return ED;
   }
   // 影子 DOM 里编辑器用的那几条（外面 studio.css 的规则进不来）
-  var CM_SHADOW_CSS = ":host{display:block}.st-cmin,.cm-editor{height:100%}.cm-scroller{-webkit-user-select:text;user-select:text}" +
+  var CM_SHADOW_CSS = ":host{display:block}.st-cmin,.cm-editor{height:100%}.cm-scroller{overscroll-behavior-x:none;-webkit-user-select:text;user-select:text}" +
     ".cm-gutters{display:var(--st-cm-gut,flex)!important}.cm-editor .cm-content .cm-line{padding-left:var(--st-cm-pl,4px)}" +
     ".st-red{color:var(--st-red)}.st-pad{padding:12px 14px}";
   // 存：then() 存好了；fail() 没存成（写不进去、外面改过了你又选了不覆盖）
@@ -3294,15 +3416,25 @@
   // 打开几个路径：文件在编辑区打开，文件夹在访达页里打开（「打开方式」、从访达拖到不是对话、不是终端的地方都走这里）
   function openPaths(tw, paths) {
     if (!tw || !LOC()) return;
-    var h = home(), argOf = function (p) { return p === "/" ? "/" : h && p === h ? "~" : h && p.indexOf(h + "/") === 0 ? "~" + p.slice(h.length) : p.replace(/^\/+/, ""); };
-    paths.forEach(function (p) { LOC().stat(p).then(function (st) { if (st && st.type === "dir") openPage(tw, "explorer", argOf(p)); else openFile(tw, p); }, function () { openFile(tw, p); }); });
+    paths.forEach(p => openFile(tw, p));
   }
   window.addEventListener("nados-native", function (e) { var d = e.detail || {}; if (d.type === "open-files") openPending(); });
   setTimeout(openPending, 2500); // 刚启动（从访达里打开文件把 App 叫起来的）：窗口恢复完再来取
-  function openFile(tw, path, o) {
+  function explorerPath(p) {
+    var h = home();
+    return p === "/" ? "/" : h && p === h ? "~" : h && p.startsWith(h + "/") ? "~" + p.slice(h.length) : p.replace(/^\/+/, "");
+  }
+  async function openFile(tw, path, o) {
     if (!path) return;
+    if (/^\/.*\.app\/?$/i.test(path) && LOC() && window.TSU_LOCAL) {
+      TSU_LOCAL.exec({cmd: "open -R " + shq(path)}).then(result => { if (result.code) toast(result.err || "无法在访达中显示应用"); });
+      return;
+    }
     if (/\.rdp$/i.test(path) && window.TSU_RDP && TSU_RDP.native()) return TSU_RDP.openFile(path, tw); // 远程桌面的连接文件（拖进来、用它打开）：直接连
     if (!termapp() || !LOC()) { if (window.TSU_IDE && TSU_IDE.open) TSU_IDE.open(path); return; } // 网页桌面：交给编辑器
+    if (path.startsWith("~/")) path = home() + path.slice(1);
+    var st = await LOC().stat(path).catch(() => null);
+    if (st && st.type === "dir") return openPage(tw, "explorer", explorerPath(path));
     var f = FILES[path];
     if (f && o && o.line) { f.line = o.line; f.scrolled = false; }
     if (!f) FILES[path] = { kind: "", mode: "view", dirty: false, line: (o && o.line) || 0 };
@@ -3756,7 +3888,7 @@
       if (st.mtime === setMtime) return;
       setMtime = st.mtime;
       return F.read(setFile()).then(function (b) {
-        try { var j = JSON.parse(new TextDecoder().decode(b)); if (j && typeof j === "object" && !Array.isArray(j)) { var mig = migrateMini(j); localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); var fzAt = +localStorage.getItem("tsu-font-at") || 0, fzNow = +localStorage.getItem("tsu-font"); if (fzAt > st.mtime && fzNow && j.fontSize !== fzNow) { j.fontSize = fzNow; setTimeout(function () { writeKey("fontSize"); }, 0); } /* ⌘+ ⌘- 刚调过、文件比它旧：用调的那个（localStorage，几个窗口共用；不是这个窗口记着的，它可能是旧的），写回文件 */ SET = Object.assign({}, SET_DEF, j); fontAt = Math.max(fzAt, st.mtime); var fz = fzNow; if (fz && !localStorage.getItem("tsu-font-mig1")) { localStorage.setItem("tsu-font-mig1", "1"); if (+(j.fontSize || SET_DEF.fontSize) === SET_DEF.fontSize && fz !== SET_DEF.fontSize) { SET.fontSize = fz; setTimeout(function () { setv("fontSize", fz); }, 0); } } /* 以前 ⌘+ / ⌘- 只记在这台设备上、没写进设置：文件里还是默认的 13 时，一次性补进去 */ keep("st-settings", SET); applySettings(); if (mig) { setv("minimap", j.minimap); setv("panelAlign", j.panelAlign); } if (window.TSU_EXT) TSU_EXT.refresh(); document.dispatchEvent(new Event("st-settings-changed")); } } catch (e) { /* 写坏了：保留上一次好的 */ }
+        try { var j = JSON.parse(new TextDecoder().decode(b)); if (j && typeof j === "object" && !Array.isArray(j)) { var mig = migrateMini(j); localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); var fzAt = +localStorage.getItem("tsu-font-at") || 0, fzNow = +localStorage.getItem("tsu-font"); if ((fzAt > st.mtime || j.fontSize == null) && fzNow && j.fontSize !== fzNow) { j.fontSize = fzNow; setTimeout(function () { writeKey("fontSize"); }, 0); } /* ⌘+ ⌘- 刚调过、文件比它旧：用调的那个（localStorage，几个窗口共用；不是这个窗口记着的，它可能是旧的），写回文件 */ SET = Object.assign({}, SET_DEF, j); fontAt = Math.max(fzAt, st.mtime); var fz = fzNow; if (fz && !localStorage.getItem("tsu-font-mig1")) { localStorage.setItem("tsu-font-mig1", "1"); if (+(j.fontSize || SET_DEF.fontSize) === SET_DEF.fontSize && fz !== SET_DEF.fontSize) { SET.fontSize = fz; setTimeout(function () { setv("fontSize", fz); }, 0); } } /* 以前 ⌘+ / ⌘- 只记在这台设备上、没写进设置：文件里还是默认的 13 时，一次性补进去 */ keep("st-settings", SET); applySettings(); if (mig) { setv("minimap", j.minimap); setv("panelAlign", j.panelAlign); } if (window.TSU_EXT) TSU_EXT.refresh(); document.dispatchEvent(new Event("st-settings-changed")); } } catch (e) { /* 写坏了：保留上一次好的 */ }
       });
     }).catch(function () {}).then(markReady); // 文件没变 / 读不到：也算读过了
   }
@@ -3938,8 +4070,8 @@
     var lsFont = +localStorage.getItem("tsu-font"), lsFontAt = +localStorage.getItem("tsu-font-at") || 0;
     if (lsFont && lsFont !== +getv("fontSize")) {
       if (lsFontAt > fontAt) { SET.fontSize = lsFont; fontAt = lsFontAt; keep("st-settings", SET); }
-      else if (window.TSU_APP && TSU_APP.setFont) TSU_APP.setFont(+getv("fontSize"));
-    } else if (!lsFont && window.TSU_APP && TSU_APP.setFont) TSU_APP.setFont(+getv("fontSize"));
+      else if (window.TSU_APP && TSU_APP.setFont) TSU_APP.setFont(+getv("fontSize"), true);
+    } else if (!lsFont && window.TSU_APP && TSU_APP.setFont) TSU_APP.setFont(+getv("fontSize"), true);
     // 对话（TUI 画出来的字、左边的会话树）只在真的影响它们的设置变了时整段重画：深浅、字体、字号、应用风格、显示方式、语言。
     //   以前任何一项设置一动（包括同是深色的两套配色之间换、开关路径导航）都把开着的每个对话整段重画——几千行的对话一个就要一两百毫秒，换个颜色卡半秒。
     //   同深浅的配色之间换：颜色都是 CSS 变量，不用重画
@@ -4631,9 +4763,10 @@
   var meter = function (key, label, pct, desc, page) { pct = Math.max(0, Math.min(100, +pct || 0)); return { key: key, label: label, desc: desc, must: true, kind: "meter", pct: pct, text: "已用 " + Math.round(pct) + "%", page: page }; };
   // 用量：两级。第一级一张张卡片（Paimon 额度、Claude Code、Codex、任务翻译），卡片顶上一行是它的名字和 ›，点进去是第二级的明细（账、各模型、限额的窗口、重置时间）。
   //   Claude Code、Codex 只看这台 Mac 上已经有的，不去问它们的服务器
+  document.addEventListener("tsu-agy-quota", redrawSettings);
   addSettings("usage", {
     title: "用量", icon: "▦", desc: "Paimon 的余额和用量，以及本机 Codex 和 Claude Code 的用量限额",
-    pages: { paimon: { title: "Paimon 额度" }, claude: { title: "Claude Code" }, codex: { title: "Codex" }, translate: { title: "任务翻译" } },
+    pages: { paimon: { title: "Paimon 额度" }, claude: { title: "Claude Code" }, codex: { title: "Codex" }, gemini: { title: "Gemini" }, translate: { title: "任务翻译" } },
     fields: function () {
       useLoad();
       var A = window.TSU_AGENTS, me = A && A.me ? A.me() : null, login = me && me.loggedIn !== false && me.login, u = ACCT.usage, out = [];
@@ -4702,6 +4835,18 @@
         out.push({ key: "cx:src", kind: "line", rowCls: "dim", label: "来自最近一次 Codex 会话的记录（" + ago(USE.cx.at) + "）；不向 OpenAI 查询", page: "codex" });
         wins.forEach(function (x) { var w = x[1], gone = w.resets_at && w.resets_at * 1000 < Date.now(); out.push(meter("cx:" + x[0] + "2", winName(w.window_minutes || 0) + "限额", gone ? 0 : w.used_percent, w.resets_at ? resetsText(w.resets_at) : "", "codex")); });
         if (rl.credits && rl.credits.has_credits) out.push({ key: "cx:credits", label: "Codex 额度", kind: "info", value: rl.credits.unlimited ? "不限" : String(rl.credits.balance), page: "codex" });
+      }
+      if (window.TSU_AGY && TSU_AGY.enabled()) {
+        var quota = TSU_AGY.quota(), gemini = quota.data;
+        card("gemini", "Gemini", "Google Antigravity");
+        [undefined, "gemini"].forEach(function (page) {
+          var key = page ? "gemini:detail" : "gemini:week";
+          if (gemini && Number.isFinite(gemini.remaining)) {
+            out.push(meter(key, "每周限额", (1 - gemini.remaining) * 100,
+              resetsText(Date.parse(gemini.reset) / 1000), page));
+            if (page) out.push({key: "gemini:left", label: "剩余", kind: "info", value: Math.round(gemini.remaining * 100) + "%", page: page});
+          } else out.push({key: key, kind: "line", rowCls: "dim", label: quota.loading ? "正在读取…" : "暂无 Gemini 周额度数据", page: page});
+        });
       }
       // ---- 任务翻译（设置 › 对话 › 任务翻译）：用 Paimon 的额度，翻过的缓存着 ----
       if (login) {
@@ -5678,6 +5823,7 @@
     if (at.el) {
       var r = at.el.getBoundingClientRect();
       if (at.side === "right-up") { x = r.right + 4; y = r.bottom; up = true; } // 左下角的 ⚙：往上开
+      else if (at.side === "above-right") { x = r.right; y = r.top - 4; up = end = true; }
       else if (at.side === "above") { x = r.left; y = r.top - 4; up = true; }
       else if (at.side === "below-end") { x = r.left; y = r.bottom + 4; x2 = r.right; } // 优先往右展开；窗口右边放不下时原生那边改成靠右对齐
       else if (at.side === "below-right") { x = r.right; y = r.bottom + 4; end = true; } // 右边和按钮对齐、往左展开（边栏上那种按钮）
@@ -5686,7 +5832,7 @@
     // 往上开的（左下角 ⚙）：系统菜单实际比原生那边先算的高度高（macOS 27 的菜单行更高，每项约多 4px），底边会压到屏幕下沿，被折成要滚的菜单（最下面一个 ⌄）——先往上多挪这么多，整个菜单都放得下
     //   以前按每项多 4px 往上挪（4 × 项数 + 8）挪过头了：12 项的 ⚙ 菜单底边比按钮高出四十多像素（用户：「每次点开都特别偏上」）。
     //   量下来原生那边算的高度只比实际少十来像素：固定补 12px，菜单底边和按钮的底边对齐
-    if (up) y -= 12;
+    if (up && at.side !== "above-right") y -= 12;
     var back = document.activeElement;
     NM.hl = { byId: byId, pv: null, t: 0, at: Date.now() };
     nadosNative.call("menu.popup", { items: spec, x: x, y: y, up: up, end: end, x2: x2 }).then(function (id) {
@@ -5760,6 +5906,7 @@
       else if (at.side === "right") { var pr = (at.el.closest(".st-menu") || at.el).getBoundingClientRect(); x = pr.right + 2; y = r.top - 5; if (x + w > innerWidth - 4) x = pr.left - w - 2; } // 子菜单：右边放不下就放左边，不叠在上一层上面
       else if (at.side === "below-end") { x = r.left; y = r.bottom + 4; if (x + w > innerWidth - 4) x = r.right - w; } // 优先往右展开，放不下才靠右对齐
       else if (at.side === "below-right") { x = r.right - w; y = r.bottom + 4; } // 右边和按钮对齐
+      else if (at.side === "above-right") { x = r.right - w; y = r.top - h - 4; }
       else if (at.side === "above") { x = r.left; y = r.top - h - 6; } // 输入框下面那排按钮（图形界面）：往上开
       else { x = r.left; y = r.bottom + 4; }
     }
@@ -5976,7 +6123,12 @@
     var path = function (p) { var t = tilde(p || ""), segs = t.split("/").filter(Boolean); if (t[0] === "/") segs.unshift("/"); return segs.map(function (x, i) { return i === segs.length - 1 ? "<b>" + esc(x) + "</b>" : esc(x); }); };
     var base = function (p) { var t = String(p || "").replace(/\/+$/, ""); return t ? esc(t.split("/").pop() || t) : ""; };
     if (!prog) parts0 = [];
-    else if (prog.page === "file") parts0 = path(prog.arg);
+    else if (prog.page === "file") {
+      var segments = path(prog.arg);
+      var parents = segments.slice(0, -1);
+      if (parents.length > 2) parents = ["…"].concat(parents.slice(-2));
+      return '<span class="st-file-trail">' + (parents.length ? '<span class="st-file-dirs">' + parents.join(sep) + '</span>' + sep : "") + segments.slice(-1).join("") + "</span>";
+    }
     else if (prog.page) parts0 = []; // 设置、主页这些页面：名字就是标签上那个，不再写一遍
     else if (prog.agentId && /^(c[cx]|pi):/.test(prog.agentId)) { var crt = TSU_AGENTS.runtime(prog.agentId); parts0 = [/^cx:/.test(prog.agentId) ? "Codex" : /^pi:/.test(prog.agentId) ? "pi" : "Claude Code", crt && crt.info && crt.info.cwd ? base(crt.info.cwd) : "", "<b>" + esc(crt ? crt.agent.name : "") + "</b>"].filter(Boolean); }
     else if (prog.agentId) { var ag = window.TSU_AGENTS && TSU_AGENTS.get(prog.agentId), rt = ag && TSU_AGENTS.runtime(ag.id); parts0 = ["Paimon Code", ag ? "<b>" + esc(ag.name) + "</b>" : "", rt && rt.session().title && rt.session().title !== ag.name ? esc(rt.session().title) : ""].filter(Boolean); }
@@ -5988,6 +6140,7 @@
     if (!el) return;
     var filePage = P && P.program && P.program.page === "file";
     var h = P && (filePage || getv("breadcrumbs")) ? crumbHtml(P) : "";
+    if (filePage) el.dataset.filePathHint = P.program.arg; else delete el.dataset.filePathHint;
     el.style.display = h ? "" : "none";
     if (!h) return;
     if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h || "&nbsp;"; }
@@ -6011,11 +6164,13 @@
   //   灰块是看得见的那段：按住灰块拖 = 连续地滚整段；点灰块外面 = 那一行放到中间（接着还能拖）========
   var MAP_LH = 2;
   function previewSet(k, v) { if (v === null) delete SETP[k]; else SETP[k] = v; minis(); }
-  function minis() { sweepMini(); allWins().forEach(function (tw) { withSplit((tw.ws.visible ? tw.ws.visible() : [tw.ws.active])).concat(tw.sidePane && tw.sidePane.el.isConnected ? [tw.sidePane] : []).forEach(function (P) { if (P) mini(P); }); }); }
+  var minimapHidden = false;
+  function minis() { if (getv("minimap") === "hide") { if (!minimapHidden) sweepMini(); minimapHidden = true; return; } minimapHidden = false; allWins().forEach(function (tw) { withSplit((tw.ws.visible ? tw.ws.visible() : [tw.ws.active])).concat(tw.sidePane && tw.sidePane.el.isConnected ? [tw.sidePane] : []).forEach(function (P) { if (P) mini(P); }); }); }
   // 设置里「缩略图：隐藏」：哪里都不画——后台的标签页、右侧栏 / 底部面板里的对话、拆出来的格里留着的也拿掉，让出来的地方收回
+  function removeMini(m) { if (m.stopFollowing) m.stopFollowing(); m.remove(); }
   function sweepMini() {
     if (getv("minimap") !== "hide") return;
-    document.querySelectorAll(".tpane > .st-map").forEach(function (m) { m.remove(); });
+    document.querySelectorAll(".tpane > .st-map").forEach(removeMini);
     document.querySelectorAll(".tpane.st-hasmini, .tpane.st-mapclear, .tpane.st-mapfloat").forEach(function (el) { el.classList.remove("st-hasmini", "st-mapclear", "st-mapfloat"); });
   }
   var withSplit = function (ps) { var o = []; ps.forEach(function (p) { if (!p) return; o.push(p); if (p.vs && p.vs.panes) o.push.apply(o, p.vs.panes()); }); return o; }; // 标签页里拆出来的几格（vsplit.js）也各有一条
@@ -6037,7 +6192,7 @@
       P.el.addEventListener("wheel", reveal, { passive: true }); // 手动滚的才算（跟着新输出自动滚到底的不算）
     }
     var m = P.el.querySelector(":scope > .st-map");
-    if (!on) { if (m) m.remove(); return; }
+    if (!on) { if (m) removeMini(m); return; }
     if (!m) {
       m = document.createElement("div");
       m.className = "st-map";
@@ -6066,12 +6221,14 @@
   function follow(P, m) {
     var src = source(P);
     if (!src || m.followKey === src.key) return;
+    if (m.stopFollowing) m.stopFollowing();
     m.followKey = src.key;
     var raf = 0;
-    src.onScroll(function () {
+    var unsubscribe = src.onScroll(function () {
       if (raf) return;
       raf = requestAnimationFrame(function () { raf = 0; if (m.isConnected && m.followKey === src.key) paintMini(P, m, false); });
     });
+    m.stopFollowing = function () { unsubscribe(); cancelAnimationFrame(raf); };
   }
   // 画什么：一行一小条，颜色按这行是什么（你说的话、agent 的话、工具、改动的 + / -）；frac = 滚到了整段的几成（0 顶、1 底）
   function source(P) {
@@ -6084,7 +6241,7 @@
         frac: function () { return Math.min(1, b.viewportY / span()); },
         setFrac: function (f) { x.scrollToLine(Math.round(f * span())); },
         center: function (c) { x.scrollToLine(Math.max(0, Math.round(c * b.length - x.rows / 2))); },
-        onScroll: function (cb) { x.onScroll(cb); } };
+        onScroll: function (cb) { var sub = x.onScroll(cb); return () => sub.dispose(); } };
     }
     // 文件（CodeMirror）：它只画看得见的那几十行、自己的 .cm-scroller 在滚——按整篇的文字、它的语法颜色画，跟着它的滚动（以前读 DOM：只有眼前那几十行、还错位）
     var fb = prog && prog.page === "file" ? P.el.querySelector(".st-fbody") : null, cm = fb && fb.ed && fb.ed.api && fb.ed.api.view;
@@ -6096,7 +6253,7 @@
         frac: function () { return Math.min(1, scd.scrollTop / span3()); },
         setFrac: function (f) { scd.scrollTop = f * span3(); },
         center: function (c) { scd.scrollTop = c * scd.scrollHeight - scd.clientHeight / 2; },
-        onScroll: function (cb) { scd.addEventListener("scroll", cb, { passive: true }); } };
+        onScroll: function (cb) { scd.addEventListener("scroll", cb, { passive: true }); return () => scd.removeEventListener("scroll", cb); } };
     }
     var sc = prog && prog.page === "file" ? fb : P.screen;
     if (!sc) return null;
@@ -6109,7 +6266,7 @@
       frac: function () { return Math.min(1, sc.scrollTop / span2()); },
       setFrac: function (f) { sc.scrollTop = f * span2(); moved(); },
       center: function (c) { sc.scrollTop = c * sc.scrollHeight - sc.clientHeight / 2; moved(); },
-      onScroll: function (cb) { sc.addEventListener("scroll", cb, { passive: true }); } };
+      onScroll: function (cb) { sc.addEventListener("scroll", cb, { passive: true }); return () => sc.removeEventListener("scroll", cb); } };
   }
   // 文件内容的「指纹」：长度 + 语法树算到哪 + 主题（颜色）——变了才重画缩略图的颜色
   function fbSig(P) { var fb = P.el.querySelector(".st-fbody"), api = fb && fb.ed && fb.ed.api; if (!api) return ""; var st = api.view.state; return st.doc.length + ":" + st.doc.lines + ":" + (api.parsedTo ? api.parsedTo() : 0) + ":" + document.documentElement.className; }
@@ -6257,7 +6414,7 @@
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
     modal: { open: modalOpen, close: modalClose, top: function () { return MODALS[MODALS.length - 1] || null; } }, // 模态层：open(窗口元素, { cls, onBackdrop, onClose }) → M；close(M)
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
-    command: command, palette: palette, quickPick: quickPick, menu: menu, pickFiles: pickFiles, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
+    command: command, palette: palette, quickPick: quickPick, menu: menu, pickFiles: pickFiles, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, revealFamily: revealFamily, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; }, checkVersion: function () { checkVersion(true); },
     embed: function (name, fn) { EMBEDS[name] = fn; }, // 设置页里一整块交给别的文件画（kind: "embed"）

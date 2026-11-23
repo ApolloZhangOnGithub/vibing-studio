@@ -121,3 +121,9 @@
 .tov-card.busy .tov-pill > .st-ico.st-i-cc { color: #d97757; }
 html.light .tov-card.busy .tov-pill > .st-ico.st-i-cc { color: #c96442; }
 .tov-card.busy .tov-pill > .st-ico.st-i-cx { color: var(--st-hi); }
+.tov-top { gap:7px }
+.tov-strip { align-items:center; gap:4px; padding:2px }
+.tov-strip .tov-sp { display:inline-flex; align-items:center; flex-direction:row; gap:6px; margin:0; padding:4px 7px; border-radius:5px }
+.tov-strip .tov-sp.on { background:var(--st-hover2,#8882) }
+.tov-strip .tov-sp .tov-spth { box-shadow:none; border:1px solid var(--st-line,#8884); border-radius:2px }
+.tov-apps .tov-app { font-size:11px; padding:3px 7px }

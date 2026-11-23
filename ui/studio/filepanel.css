@@ -86,7 +86,7 @@ html.light .fp {
 .fp-find.none input { border-color: color-mix(in srgb, #e5534b 60%, var(--fp-line)); }
 .fp-fcount { flex: none; min-width: 48px; padding: 0 6px; color: var(--fp-faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .fp-body { position: relative; flex: 1 1 auto; min-height: 0; }
-.fp-code { position: absolute; inset: 0; overflow: auto; outline: 0; font: 12px/var(--fp-lh) ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; scrollbar-width: thin; overscroll-behavior: contain; -webkit-user-select: text; user-select: text; }
+.fp-code { position: absolute; inset: 0; overflow: auto; outline: 0; font: 12px/var(--fp-lh) ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; scrollbar-width: thin; overscroll-behavior: none contain; -webkit-user-select: text; user-select: text; }
 .fp-spacer { width: 1px; }
 .fp-lines { position: absolute; top: 0; left: 0; min-width: 100%; padding-top: 4px; will-change: transform; }
 .fp-l { display: flex; height: var(--fp-lh); white-space: pre; tab-size: 4; }

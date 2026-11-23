@@ -15,7 +15,11 @@
     return JSON.parse(result.out);
   }
   function refresh() {
-    if (!pending) pending = read().then(function (items) { sessions = items.sessions; workspaces = items.workspaces; error = ""; }, function (e) { error = e.message; }).finally(function () {
+    if (!pending) pending = read().then(function (items) { 
+      if (!Array.isArray(items.sessions) || !Array.isArray(items.workspaces)) throw new Error("无效的工作区列表");
+      sessions = items.sessions; workspaces = items.workspaces; error = "";
+      try { localStorage.setItem("tsu-sidebar-dsh-v1", JSON.stringify({sessions:sessions, workspaces:workspaces})); } catch (_) {}
+     }).catch(function (e) { error = e.message; }).finally(function () {
       scanned = Date.now(); pending = null; document.dispatchEvent(new Event("tsu-dsh"));
     });
     return pending;
@@ -34,10 +38,13 @@
         session.title = agent.name = info.title || id;
         var stat = info.path && await TSU_LOCAL.stat(info.path);
         var current = stat ? stat.size + ":" + stat.mtime : info.updated;
-        if (revision !== undefined && revision === current) return;
+        if (revision !== undefined && revision === current) {
+          if (rt.state() === "working") listeners.forEach(function (fn) { fn("status"); });
+          return;
+        }
         var history = await read(id);
         session.turns = history.turns;
-        session.effort = history.effort;
+        session.effort = agent.effort = info.selection?.reasoningEffort || history.effort;
         session.progress = history.progress;
         revision = current;
         listeners.forEach(function (fn) { fn("reset"); });
@@ -75,6 +82,29 @@
         sending = false;
         await ready();
       }
+    }
+    var catalog, selection;
+    async function settings(args) {
+      var argv = ["python3", TSU_UI_LOCAL.dir + "/studio/dsh_send.py"].concat(args);
+      var result = await TSU_LOCAL.exec({cmd: argv.map(arg => "'" + arg.replace(/'/g, "'\\''") + "'").join(" ")});
+      if (result.code) throw new Error(result.err.trim() || "DSH 设置失败");
+      return JSON.parse(result.out);
+    }
+    function routes() {
+      return (catalog?.groups || []).flatMap(group => group.models.map(m => ({
+        id: JSON.stringify([group.id, m.id]), name: m.name, desc: group.name, reasoning: m.reasoning
+      })));
+    }
+    function currentRoute() {
+      var current = selection || info.selection || {};
+      return routes().find(m => m.id === JSON.stringify([current.provider, current.model]));
+    }
+    async function select(routeId, effort) {
+      var [provider, model] = JSON.parse(routeId);
+      var result = await settings(["--select-model", JSON.stringify({sessionId: id, provider, model, reasoningEffort: effort})]);
+      selection = result.selected;
+      agent.effort = session.effort = selection.reasoningEffort || "";
+      listeners.forEach(fn => fn("config"));
     }
     function no() { return false; }
     function cwd() { return info.cwd || ""; }
@@ -130,7 +160,7 @@
         var p = session.progress;
         if (!p || !p.turn) return "";
         var states = {running: "进行中", completed: "已完成", cancelled: "已取消", interrupted: "已中断", failed: "失败"};
-        if (!rt.showDetailedStats && p.phase === "completed") return "";
+        if (!rt.showDetailedStats && (p.phase === "completed" || p.phase === "running")) return "";
         if (!rt.showDetailedStats) return states[p.phase] || p.phase || "";
         var stats = p.stats || {}, usage = p.usage || {}, pressure = p.pressure || {};
         var fields = [(stats.turns ?? p.turn) + " 轮 " + (stats.steps ?? p.steps) + " 步"];
@@ -145,22 +175,43 @@
       },
       footerFields: function () {
         var pressure = session.progress && session.progress.pressure;
-        var fields = info.model ? [[info.model, session.effort && session.effort[0].toUpperCase() + session.effort.slice(1)].filter(Boolean).join(" ")] : [];
+        var fields = [rt.model().name, agent.effort].filter(Boolean);
         if (!rt.showDetailedStats && pressure && pressure.contextWindow > 0 && pressure.pressureTokens != null)
           fields.unshift("Context " + Math.round(100 * pressure.pressureTokens / pressure.contextWindow) + "% used");
         return fields;
       },
-      model: function () { return { id: info.model || "", name: info.model || "DSH" }; },
+      prepareChoices: async function () { catalog = await settings(["--catalog"]); },
+      models: routes, efforts: function () { return (currentRoute()?.reasoning?.efforts || []).map(e => e.id); },
+      model: function () { return currentRoute() || {id: "", name: info.model || "DSH"}; },
       state: function () { return session.progress && session.progress.phase === "running" ? "working" : "idle"; }, home: cwd, cwd: cwd, ctx: function () { return {tokens: 0, window: 0, pct: 0}; },
       todo: function () { return []; }, pendingMsgs: function () { return 0; }, cost: function () { return 0; }, tail: function () { return ""; },
       more: no, historical: no, send: send, sendNow: send, canInject: no, interrupt: no, canInterrupt: no, canSendNow: no,
       takeQueued: no, detachBash: no, canCycle: no, afterReload: ready, maybeRecap: no, record: no, setGoal: no, clearGoal: no, clear: no,
-      bang: no, wakeUp: no, setAccess: no, setEffort: no, setModel: no, resume: no, recap: no };
+      bang: no, wakeUp: no, setAccess: no, setEffort: level => select(currentRoute().id, level), setModel: route => select(route), resume: no, recap: no };
     A.registerExternal(aid, rt);
     return rt;
   }
-  window.TSU_DSH = { enabled: enabled, ensure: ensure, refresh: refresh,
+  async function create(workspaceId) {
+    var args = ["python3", TSU_UI_LOCAL.dir + "/studio/dsh_send.py", "--create", workspaceId || ""];
+    var result = await TSU_LOCAL.exec({cmd: args.map(arg => "'" + arg.replace(/'/g, "'\\''") + "'").join(" ")});
+    if (result.code) throw new Error(result.err.trim() || "创建 DSH 会话失败");
+    var id = result.out.trim().split("\n").pop();
+    if (!/^session-[a-f0-9-]{36}$/i.test(id)) throw new Error("DSH 未返回会话编号");
+    await refresh();
+    await ensure(id).ready();
+    return id;
+  }
+  if (window.nadosNative?.local && !nadosNative.remote) {
+    try {
+      var cache = JSON.parse(localStorage.getItem("tsu-sidebar-dsh-v1"));
+      if (Array.isArray(cache?.sessions) && Array.isArray(cache.workspaces)) {
+        sessions = cache.sessions; workspaces = cache.workspaces;
+      }
+    } catch (_) {}
+    setTimeout(function () { if (enabled() && !scanned) refresh(); }, 0);
+  }
+  window.TSU_DSH = { create: create, enabled: enabled, ensure: ensure, refresh: refresh,
     workspaces: function () { return workspaces; },
-    list: function () { if (Date.now() - scanned > 30000) refresh(); return sessions; },
+    list: function () { if (Date.now() - scanned > 30000) refresh(); return sessions.filter(s => !s.emptyDraft); },
     status: function () { return error || (pending ? "正在读取会话…" : "没有会话"); } };
 })();

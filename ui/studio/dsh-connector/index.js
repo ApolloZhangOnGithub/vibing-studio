@@ -4,15 +4,15 @@ import path from "node:path";
 import os from "node:os";
 
 export const name = "vibing-studio-session-input";
-export const inject = ["sessionController"];
+export const inject = ["sessionController", "workspaceRegistry"];
 export function apply(ctx) {
-  const dir = path.join(os.homedir(), ".dsh", "vibing-studio-ipc");
+  const dir = path.join(process.env.DSH_HOME || path.join(os.homedir(), ".dsh"), "vibing-studio-ipc");
   fs.mkdirSync(dir, {recursive: true, mode: 0o700});
   const stat = fs.lstatSync(dir);
   if (!stat.isDirectory() || stat.uid !== process.getuid() || (stat.mode & 0o077)) {
     throw new Error("DSH 本机连接目录需要仅当前用户可访问");
   }
-  const address = path.join(dir, process.pid + ".sock");
+  const address = path.join(dir, (process.env.VIBING_DSH_BACKGROUND === "1" ? "studio-" : "") + process.pid + ".sock");
   const server = net.createServer({allowHalfOpen: true}, socket => {
     let bytes = 0;
     const chunks = [];
@@ -25,7 +25,20 @@ export function apply(ctx) {
     });
     socket.on("end", async () => {
       try {
-        const {sessionId, requestId, text} = JSON.parse(Buffer.concat(chunks));
+        const message = JSON.parse(Buffer.concat(chunks));
+        if (message.action === "catalog" || message.action === "selectModel") {
+          const value = message.action === "catalog" ? await ctx.sessionController.modelCatalog()
+            : await ctx.sessionController.selectModel(message.selection);
+          socket.end(JSON.stringify({accepted: true, value}));
+          return;
+        }
+        if (message.action === "create") {
+          const workspace = message.workspaceId || (await ctx.workspaceRegistry.create(os.homedir())).id;
+          const created = await ctx.sessionController.create({workspaceId: workspace});
+          socket.end(JSON.stringify({accepted: true, sessionId: created.sessionId}));
+          return;
+        }
+        const {sessionId, requestId, text} = message;
         if (typeof sessionId !== "string" || !/^session-[\da-f-]{36}$/i.test(sessionId) ||
             typeof requestId !== "string" || !/^[\da-f-]{36}$/i.test(requestId) ||
             typeof text !== "string" || !text.trim()) throw new Error("无效的 DSH 消息");

@@ -110,6 +110,7 @@
     var scrolls = [], swaps = [];
     var rec = function (s, d) { if (s.scrollTop || s.scrollLeft) scrolls.push([d, s.scrollTop, s.scrollLeft, s.scrollTop > 0 && s.scrollTop + s.clientHeight >= s.scrollHeight - 2]); };
     var walk = function (s, lo, hi, inside) {
+      if (inside && s.nodeType === 1 && !s.matches("canvas,textarea,select,input,video,iframe,embed,object,audio") && !s.querySelector("canvas,textarea,select,input,video,iframe,embed,object,audio")) return s.cloneNode(true);
       var d = s.cloneNode(false);
       if (s.nodeType !== 1) return d;
       var tag = s.tagName, kids = s.childNodes, i;
@@ -207,8 +208,8 @@
       caption(c);
       // 不在页面上的（要先放到屏幕外的台子上画）：这里先不复制——没排版的整页复制又慢又不准，轮到它时（pump）上台、只复制看得见的那段
       var last = LAST.get(P), same = last && (!last.w || (Math.abs(last.w - c.nat.w) < 3 && Math.abs(last.h - c.nat.h) < 3));
-      if (last && same && !P.el.isConnected) { putLast(c.view, last); c.dirty = true; c.at = Date.now(); c.seeded = true; } // 先放上一次的样子（再由下面换成新画的）——不是黑的一块；大小变了的不放（按旧大小排的，错位）
-      if (P.el.isConnected || !stageable(P)) fill(c, false);
+      if (last && same) { putLast(c.view, last); c.dirty = true; c.at = Date.now(); c.seeded = true; } // 先放上一次的样子（再由下面换成新画的）——不是黑的一块；大小变了的不放（按旧大小排的，错位）
+      if (!c.seeded && P.program?.agentId) lazyCard(c);
       try { c.obs = new MutationObserver(function () { c.dirty = true; }); c.obs.observe(P.el, { childList: true, subtree: true, characterData: true }); } catch (e) { /* 没有就不刷新 */ }
       grid.appendChild(el);
       cards.set(P, c);
@@ -412,7 +413,7 @@
       mark();
       empty.hidden = !!vis.length;
       empty.textContent = q ? "未找到标签页" : "没有打开的标签页";
-      if (queue.length && !O.pumpT) O.pumpT = setTimeout(pump, 60);
+      if (queue.length && !O.pumpT) O.pumpT = setTimeout(pump, 0);
     }
     function mark() { var a = M.active(); cards.forEach(function (c, P) { c.el.classList.toggle("sel", P === sel); c.el.classList.toggle("cur", P === a); }); }
     function setSel(P) { if (P && P !== sel) { sel = P; mark(); } }
@@ -421,7 +422,7 @@
       O.pumpT = 0;
       if (O.closing) return;
       var c = queue.shift();
-      if (c && cards.get(c.P) === c && stageable(c.P)) fill(c, true);
+      if (c && cards.get(c.P) === c && !c.hidden) fill(c, stageable(c.P));
       if (queue.length) O.pumpT = setTimeout(pump, 16);
     }
 
@@ -433,7 +434,7 @@
       M.panes().forEach(function (p) { if (p.closed) return; var k = kindOf(p); if (!cnt[k]) { cnt[k] = 0; order.push(k); } cnt[k]++; });
       if (order.length < 2 && !app) return "";
       var pill = function (k, label, n) { return '<button type="button" class="tov-app' + ((k || null) === app ? " on" : "") + '" data-app="' + (k || "") + '"><span></span>' + (n ? "<b>" + n + "</b>" : "") + "</button>"; };
-      O.appLabels = [["", "全部"]].concat(order.map(function (k) { return [k, KINDS[k] || k]; }));
+      O.appLabels = [["", "所有类型"]].concat(order.map(function (k) { return [k, KINDS[k] || k]; }));
       return '<div class="tov-apps">' + pill("", "全部", 0) + order.map(function (k) { return pill(k, KINDS[k] || k, cnt[k]); }).join("") + "</div>";
     }
     function paintApps() {
@@ -450,12 +451,12 @@
       var gs = M.groups(), wins = others(), items = [];
       paintApps();
       if (gs.length < 2 && !wins.length) { strip.hidden = true; strip.textContent = ""; O.chips = []; return; }
-      var pr = tw.panesEl.getBoundingClientRect(), tw0 = 92, th = Math.max(38, Math.min(60, Math.round(tw0 * pr.height / Math.max(1, pr.width))));
+      var pr = tw.panesEl.getBoundingClientRect(), tw0 = 28, th = Math.max(14, Math.min(18, Math.round(tw0 * pr.height / Math.max(1, pr.width))));
       var rects = gs.map(function (g) { var r = g.el ? g.el.getBoundingClientRect() : pr; return { x: (r.left - pr.left) / pr.width, y: (r.top - pr.top) / pr.height, w: r.width / pr.width, h: r.height / pr.height }; });
       var pct = function (v) { return (v * 100).toFixed(2) + "%"; };
       var mini = function (hl) { return rects.map(function (r, i) { return '<i class="tov-mini' + (hl < 0 || hl === i ? " hl" : "") + '" style="left:' + pct(0.05 + r.x * 0.9) + ";top:" + pct(0.07 + r.y * 0.86) + ";width:calc(" + pct(r.w * 0.9) + " - 3px);height:calc(" + pct(r.h * 0.86) + ' - 3px)"></i>'; }).join(""); };
       if (gs.length > 1) {
-        items.push({ label: "全部", html: mini(-1), on: !filter });
+        items.push({ label: "所有分屏", html: mini(-1), on: !filter });
         gs.forEach(function (g, i) { items.push({ g: g, label: "编辑组 " + (i + 1), html: mini(i), on: filter === g }); });
       }
       wins.forEach(function (w) { items.push({ w: w, label: w.ws && w.ws.active ? titleOf(w.ws.active) : "窗口", html: '<i class="tov-mini hl" style="left:6%;top:8%;width:88%;height:84%"></i>' }); });
@@ -646,7 +647,7 @@
         if (P.closed) { gone = true; return; }
         if (c.hidden) return;
         if (P.program && P.program.page === "web") { if (now - (c.snapAt || 0) > 4000) webSnap(c); }
-        else if (c.dirty && now - c.at > 700 && P.el.isConnected) fill(c, false);
+        else if (c.dirty && now - c.at > 700 && P.el.isConnected) fill(c, stageable(P));
         dot(c);
       });
       if (gone || M.panes().length !== cards.size) sync();

@@ -5,7 +5,18 @@ final class DesktopWindow: NSWindow {
   // 网页报上来的拖动区（CSS 像素，左上角为原点；页面不缩放时 = 窗口里的点）
   var dragRegions: [NSRect] = []
 
+  var diagramZoomRect: NSRect?
+  var onDiagramMagnify: ((CGFloat, NSPoint) -> Void)?
+
   override func sendEvent(_ event: NSEvent) {
+    if event.type == .magnify, let rect = diagramZoomRect, let cv = contentView {
+      let local = cv.convert(event.locationInWindow, from: nil)
+      let top = NSPoint(x: local.x, y: cv.isFlipped ? local.y : cv.bounds.height - local.y)
+      if rect.contains(top), let onDiagramMagnify {
+        onDiagramMagnify(event.magnification, top)
+        return
+      }
+    }
     if event.type == .leftMouseDown, !styleMask.contains(.fullScreen), let cv = contentView, !dragRegions.isEmpty {
       let p = event.locationInWindow, top = NSPoint(x: p.x, y: cv.bounds.height - p.y)
       if dragRegions.contains(where: { $0.contains(top) }) {

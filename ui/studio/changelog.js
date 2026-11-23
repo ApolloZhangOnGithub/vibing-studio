@@ -11,6 +11,38 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    {
+      "date": "2026-11-23",
+      "ver": "0.2.1.475",
+      "items": {
+        "new": [
+          [
+            "支持预览 Mermaid 流程图和缩放查看，保留正文中的图表源码。",
+            "Preview and zoom Mermaid diagrams directly from the transcript while keeping their source visible."
+          ],
+          [
+            "支持打开 Jupyter Notebook 并运行代码单元。",
+            "Open Jupyter notebooks and run individual code cells."
+          ]
+        ],
+        "improved": [
+          [
+            "Antigravity 会话支持 ACP 流式回复、思考显示和任务状态；定时任务显示计时，工具标题显示动作和任务编号。",
+            "Antigravity sessions stream replies and thinking over ACP, display schedule timers and identify tasks in tool headings."
+          ],
+          [
+            "改进长会话滚动、标签切换和文件导航，可从工具记录打开文件或预览图片。",
+            "Improved scrolling, tab switching and file navigation. Open files and preview images from tool history."
+          ]
+        ],
+        "fixed": [
+          [
+            "改进刷新时的草稿恢复、消息发送和运行状态同步；代码文件横向滚动到边缘时停止回弹。",
+            "Improved draft restoration, message delivery and running status on refresh. Code views stop bouncing at horizontal scroll boundaries."
+          ]
+        ]
+      }
+    },
     { date: "2026-11-22", ver: "0.2.1.474", items: {
       new: [
         ["接入 DeepSeek Harness 本机会话，支持读取存档、发送消息、查看工具调用和文件修改。", "Browse local DeepSeek Harness sessions, send messages and inspect tool calls and file changes."],
