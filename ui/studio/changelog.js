@@ -41,6 +41,7 @@
         ["修复 Claude Code 会话搜索遗漏混合大小写或正则匹配，以及以路径开头的会话标题被过滤。DeepSeek Harness 短暂读取失败时保留已经显示的会话。","Fixed missing case-insensitive and regex matches in Claude Code search and sessions being hidden when their titles start with paths. DeepSeek Harness retains the displayed conversation through transient read failures."],
         ["macOS 安装包中的 AGY 助手读取会话时，避免 Python 字节码缓存写入已签名的应用资源。","The bundled Antigravity session reader no longer writes Python bytecode into the signed macOS application."],
         ["修复终端多行选区从第二行起超出右侧文字边界，以及长会话恢复时分隔线与整行滚动错位。","Corrected the right edge of multi-line terminal selections and restored whole-row positioning as long conversations are resized or resumed."],
+        ["修复启动时分屏模块缺少恢复函数的问题，重新打开会话时能恢复每格的布局和视图筛选，也能再次编辑筛选预设。","Fixed the split-view module failing to initialize at startup. Reopening a conversation can now restore pane layouts and filters, and view presets can be edited again."],
       ],
     } },
     {
