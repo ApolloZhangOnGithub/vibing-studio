@@ -87,7 +87,7 @@
   function ensurePl() { if (!plReady) plReady = LOC().write(plPath(), PL).then(function () { return true; }, function (e) { plReady = null; throw e; }); return plReady; }
   function stats(sid, force) {
     var L = LOC();
-    if (!L || !L.exec || !L.ccFind || !L.write) return Promise.reject(new Error(t("这台设备上读不到会话记录", "Session records aren't available on this device")));
+    if (!L || !L.exec || !L.ccFind || !L.write) return Promise.reject(new Error(t("当前设备上读不到会话记录", "Session records aren't available on this device")));
     return L.ccFind(sid).then(function (x) {
       if (!x || !x.path) throw new Error(t("找不到这个会话的记录", "The transcript for this session wasn't found"));
       var c = cache[sid];

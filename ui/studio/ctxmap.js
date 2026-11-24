@@ -10,13 +10,13 @@
   var en = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
   var tr = function (zh, e) { return en() ? e : zh; };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
-  var LABEL = { messages: ["对话", "Messages"], extTools: ["扩展工具", "Extension tools"], extPrompts: ["扩展说明", "Extension prompts"], sysTools: ["系统工具", "System tools"],
+  var LABEL = { imageInput:["图片输入","Image input"], userText:["用户消息","User messages"], assistantText:["助手消息","Assistant messages"], toolInput:["工具使用","Tool use"], toolOutput:["工具结果","Tool results"], unclassified:["其他","Other"], cachedInput: ["缓存输入", "Cached input"], input: ["未缓存输入", "Uncached input"], output: ["输出", "Output"], used: ["已用", "Used"], messages: ["对话", "Messages"], extTools: ["扩展工具", "Extension tools"], extPrompts: ["扩展说明", "Extension prompts"], sysTools: ["工具定义", "Tool definitions"],
     system: ["系统提示", "System prompt"], memory: ["记忆文件", "Memory files"], instructions: ["你的指令", "Your instructions"], buffer: ["自动压缩预留", "Autocompact buffer"],
-    free: ["空余", "Free space"], sysAndTools: ["系统提示与工具", "System prompt & tools"], skills: ["技能", "Skills"], agents: ["自定义 agent", "Custom agents"], mcp: ["MCP 的说明", "MCP instructions"] };
+    free: ["可用", "Free space"], sysAndTools: ["系统提示与工具", "System prompt & tools"], skills: ["技能", "Skills"], agents: ["自定义 agent", "Custom agents"], mcp: ["MCP 的说明", "MCP instructions"] };
   // 每一项的名字：agents.js 给的几个中文名（文字、图片 × 3）英文时换掉；别的是工具名、文件名、技能名，原样
   var ITEM = { "文字": "Text" };
   var itemName = function (n) { var m; return !en() ? n : ITEM[n] ? ITEM[n] : (m = /^图片 × (\d+)$/.exec(n)) ? "Images × " + m[1] : n; };
-  var lab = function (p) { var l = LABEL[p.id]; return l ? tr(l[0], l[1]) : p.label || p.id; };
+  var lab = function (p) { if (p.label) return p.label; var l = LABEL[p.id]; return l ? tr(l[0], l[1]) : p.label || p.id; };
   // 1234 → 1.2k、912900 → 912.9k、1000000 → 1M
   var k = function (n) { n = Math.max(0, Math.round(+n || 0)); if (n >= 1e6) return +(n / 1e6).toFixed(n % 1e6 ? 1 : 0) + "M"; if (n >= 1000) return +(n / 1000).toFixed(1) + "k"; return String(n); };
   var pc = function (n, w) { if (!w) return "—"; var v = n / w * 100; return (v > 0 && v < 0.1 ? "<0.1" : v.toFixed(1)) + "%"; };
@@ -90,7 +90,7 @@
         return v;
       });
     };
-    go(512 << 10).then(function (v) { h.busy = false; h.at = Date.now(); if (v) { h.v = v; redraw(rt); } }, function () { h.busy = false; h.at = Date.now(); });
+    h.pending = go(512 << 10).then(function (v) { h.busy = false; h.at = Date.now(); if (v) { h.v = v; redraw(rt); } }, function () { h.busy = false; h.at = Date.now(); });
     return null;
   }
   // 每一轮都带着的 = 第一次请求的输入 − 第一句：记着的几块按字数，剩下的是工具（系统提示没记着的：系统提示与工具）；总数里别的都是对话。
@@ -101,41 +101,76 @@
     var sc = function (n) { return Math.round(n * f); }, parts = [];
     var push = function (id, n, color) { if (n > 0) parts.push({ id: id, tokens: n, color: color, items: C[id] && C[id].items.length ? C[id].items.map(function (x) { return { name: x.name, tokens: sc(x.tokens) }; }) : null }); };
     var rest = sc(fixed - known), mcp = sc(g("mcp")), ag = sc(g("agents")), sk = sc(g("skills")), sy = sc(g("system")), me = sc(g("memory"));
-    push("messages", Math.max(0, total - rest - mcp - ag - sk - sy - me), "#5b8def");
-    push("mcp", mcp, "#d9774b"); push("agents", ag, "#4caf7d"); push("skills", sk, "#b07cd8");
-    push(h.sys ? "sysTools" : "sysAndTools", rest, h.sys ? "#d4a33b" : "#9b9b9b");
-    push("system", sy, "#9b9b9b"); push("memory", me, "#c2c2c2");
+    push("messages", Math.max(0, total - rest - mcp - ag - sk - sy - me), "var(--st-blue)");
+    push("mcp", mcp, "var(--st-orange)"); push("agents", ag, "var(--st-green)"); push("skills", sk, "var(--st-lav)");
+    push(h.sys ? "sysTools" : "sysAndTools", rest, h.sys ? "var(--st-yellow)" : "var(--st-dim)");
+    push("system", sy, "var(--st-dim)"); push("memory", me, "var(--st-faint)");
     return { total: total, window: win, pct: win ? total / win * 100 : 0, estimated: true, head: true, buffer: 0, parts: parts, at: 0 };
   }
   // 连接器的会话（没有 contextBreakdown）：总数、窗口来自 rt.ctx()；会话文件的开头读到了按它分（fromHead）；还没读到：对话按会话里的文字估，剩下的算系统提示与工具
   function rough(rt) {
     var c = (rt.ctx && rt.ctx()) || {}, total = c.tokens || 0, win = c.window || 0, h = headOf(rt);
     if (h && total) return fromHead(h, total, win);
-    var msg = 0, add = function (s) { msg += est(s); };
-    var turns = (rt.session && rt.session().turns) || [];
-    turns.forEach(function (t) {
-      add(t.ask); add(t.answer); add(t.thinking);
-      (t.parts || []).forEach(function (p) { if (p.kind === "text") add(p.text); else if (p.kind === "tool") { add(JSON.stringify(p.input || {})); add(Array.isArray(p.detail) ? p.detail.join("\n") : p.detail); add(p.summary); } });
-    });
-    if (total && msg > total) msg = Math.round(total * 0.92);
-    var parts = [{ id: "messages", tokens: msg, color: "#5b8def", estimated: true }];
-    if (total > msg) parts.push({ id: "sysAndTools", tokens: total - msg, color: "#9b9b9b", estimated: true });
-    return { total: total || msg, window: win, pct: win ? (total || msg) / win * 100 : 0, estimated: true, rough: true, buffer: 0, parts: parts, at: 0 };
+    return { total: total, window: win, parts: [{ id: "used", tokens: total, color: "var(--st-blue)" }] };
+  }
+  var contextReads = new WeakMap();
+  function splitUsed(d, rt) {
+    if (!d || !d.total || d.parts.length !== 1 || d.parts[0].id !== "used") return d;
+    var turns = rt.session().turns, start = turns.length;
+    while (start && !turns[start - 1].compact) start--;
+    var counts = { userText: 0, assistantText: 0, toolInput: 0, toolOutput: 0 };
+    if (start) for (var msg of turns[start - 1].compact.entries || []) {
+      counts[msg.role === "user" ? "userText" : "assistantText"] += est(msg.text);
+    }
+    for (var t of turns.slice(start)) {
+      counts.userText += est(t.ask);
+      var hasText = false;
+      for (var part of t.parts || []) {
+        if (part.kind === "text") { counts.assistantText += est(part.text); hasText = true; }
+        if (part.kind === "tool") {
+          counts.toolInput += est(part.name) + est(JSON.stringify(part.input || {}));
+          counts.toolOutput += est(Array.isArray(part.detail) ? part.detail.join("\n") : part.detail);
+        }
+      }
+      if (!hasText) counts.assistantText += est(t.answer);
+    }
+    var snapshot;
+    if (rt.readContextParts) {
+      var read = contextReads.get(rt);
+      if (!read || (!read.busy && read.total !== d.total)) {
+        read = {total:d.total, busy:true, value:read?.value};
+        contextReads.set(rt, read);
+        read.pending = rt.readContextParts().then(value => { read.value = value; read.busy = false; redraw(rt); },
+          () => { read.busy = false; });
+      }
+      snapshot = read.value;
+      if (snapshot) counts = snapshot.counts;
+    }
+    var scale = Math.min(1, d.total / (Object.values(counts).reduce((a,b) => a+b, 0) || 1));
+    var parts = [], left = d.total;
+    for (var [id,color] of [["userText","var(--st-blue)"],["assistantText","var(--st-lav)"],["toolInput","var(--st-orange)"],["toolOutput","var(--st-green)"],["system","var(--st-yellow)"],["sysTools","var(--st-red)"],["imageInput","var(--st-cyan, #36a9b0)"]]) {
+      var tokens = Math.min(left, Math.round((counts[id] || 0) * scale));
+      if (tokens) { parts.push({id, tokens, color, estimated:true}); left -= tokens; }
+    }
+    if (!parts.length) return d;
+    if (left) parts.push({id:"unclassified", tokens:left, color:"var(--cx-other)", estimated:true});
+    return Object.assign({}, d, {parts, compactLayout:true});
   }
   function data(rt) {
     if (!rt) return null;
-    try { if (rt.contextBreakdown) return rt.contextBreakdown(); } catch (e) { console.error(e); }
-    return rough(rt);
+    try { if (rt.contextBreakdown) return splitUsed(rt.contextBreakdown(), rt); } catch (e) { console.error(e); }
+    return splitUsed(rough(rt), rt);
   }
   // 卡片里面（GUI 的弹出层、TUI 的卡片都用）
   function html(rt, opts) {
     var d = data(rt);
     if (!d) return "";
     var win = d.window || 0, used = d.total || 0, buf = d.buffer || 0, free = win ? Math.max(0, win - used - buf) : 0;
-    var rows = d.parts.slice();
-    if (buf) rows.push({ id: "buffer", tokens: buf, color: "#6d6d6d" });
-    var bar = rows.map(function (p) { return win && p.tokens ? '<i style="width:' + Math.max(0.35, p.tokens / win * 100).toFixed(2) + "%;background:" + p.color + '"></i>' : ""; }).join("");
-    var row = function (p, extra) { return '<div class="cx-r' + (extra || "") + '"><i class="cx-sq" style="background:' + (p.color || "transparent") + '"></i><span class="cx-n">' + esc(lab(p)) + (p.estimated ? '<em class="cx-est">' + esc(tr("估算", "est.")) + "</em>" : "") + '</span><span class="cx-t">' + k(p.tokens) + '</span><span class="cx-p">' + (p.deferred ? "—" : pc(p.tokens, win)) + "</span></div>"; };
+    var rows = d.parts.filter(p => !p.deferred);
+    if (buf) rows.push({ id: "buffer", tokens: buf, color: "var(--st-dim)" });
+    rows.sort((a, b) => b.tokens - a.tokens);
+    var bar = rows.map(function (p) { return win && p.tokens ? '<i style="width:' + (p.tokens / win * 100).toFixed(2) + "%;background:" + p.color + '"></i>' : ""; }).join("");
+    var row = function (p, extra) { return '<div class="cx-r' + (extra || "") + '"><i class="cx-sq" style="background:' + (p.color || "transparent") + '"></i><span class="cx-n">' + esc(lab(p)) + '</span><span class="cx-t">' + k(p.tokens) + '</span><span class="cx-p">' + (p.deferred ? "—" : pc(p.tokens, win)) + "</span></div>"; };
     var list = rows.map(function (p) { return row(p); }).join("") + (win ? row({ id: "free", tokens: free, color: "" }, " free") : "") +
       d.parts.filter(function (p) { return p.deferred; }).map(function (p) { return row(p, " def"); }).join("");
     var groups = d.parts.filter(function (p) { return p.items && p.items.length > (p.id === "messages" ? 1 : 0); }).map(function (p) {
@@ -143,22 +178,17 @@
       return '<div class="cx-g" data-g="' + esc(p.id) + '"><div class="cx-gh" role="button" tabindex="0"><i class="cx-car"></i><span class="cx-n">' + esc(lab(p)) + '</span><span class="cx-t">' + k(p.tokens) + '</span><span class="cx-p">' + items.length + "</span></div>" +
         '<div class="cx-gl" hidden>' + items.map(function (x) { return '<div class="cx-gi"><span class="cx-n">' + esc(itemName(x.name)) + '</span><span class="cx-t">' + k(x.tokens) + '</span><span class="cx-p">' + pc(x.tokens, win) + "</span></div>"; }).join("") + "</div></div>";
     }).join("");
-    var note = d.head ? tr("按会话文件估算：每轮都带着的几块按第一次请求的真实用量分，其余算对话", "Estimated from the session file: fixed parts split from the first request's real usage; the rest is messages")
-      : d.rough ? tr("按会话记录估算：系统提示与工具 = 总数 − 对话", "Estimated from the session file: system prompt & tools = total − messages")
-      : d.estimated ? tr("还没有真实用量：按字数估算", "No usage yet: estimated from text length")
-      : tr("按上一轮的真实用量换算", "Scaled to the last request's actual usage");
-    return '<div class="cx' + (opts && opts.tui ? " cx-tui" : "") + '" data-aid="' + esc(rt.agent && rt.agent.id || "") + '">' +
-      '<button class="cx-h" type="button"><span class="cx-ht">' + esc(tr("上下文窗口", "Context window")) + '</span><span class="cx-fill"></span><span class="cx-sum">' + k(used) + " / " + (win ? k(win) : "?") + (win ? " (" + (used && used / win < 0.01 ? "<1" : Math.round(used / win * 100)) + "%)" : "") + '</span><i class="cx-chev"></i></button>' +
+    var compact = d.compactLayout || rows.length === 1 && rows[0].id === "used";
+    return '<div class="cx' + (compact ? " cx-simple" : "") + (opts && opts.tui ? " cx-tui" : "") + '" data-aid="' + esc(rt.agent && rt.agent.id || "") + '">' +
+      '<div class="cx-h"><span class="cx-sum">' + esc(tr("已用", "Used")) + " " + k(used) + " / " + (win ? k(win) : "?") + (win ? " (" + (used && used / win < 0.01 ? "&lt;1" : Math.round(used / win * 100)) + "%)" : "") + '</span></div>' +
       '<div class="cx-bar">' + bar + "</div>" +
-      '<div class="cx-body"><div class="cx-rows">' + list + "</div>" + (groups ? '<div class="cx-sep"></div>' + groups : "") + '<div class="cx-note">' + esc(note) + "</div></div></div>";
+      '<div class="cx-body"><div class="cx-rows">' + list + "</div>" + (groups ? '<div class="cx-sep"></div>' + groups : "") + "</div></div>";
   }
   // 展开 / 收起：标题（整张明细）、每一组（它的每一项）
   function bind(el) {
     if (!el || el._cx) return el;
     el._cx = true;
     el.addEventListener("click", function (e) {
-      var h = e.target.closest(".cx-h");
-      if (h) { var cx = h.closest(".cx"); cx.classList.toggle("folded"); e.stopPropagation(); return; }
       var gh = e.target.closest(".cx-gh");
       if (gh) { var g = gh.parentNode, l = g.querySelector(".cx-gl"); l.hidden = !l.hidden; g.classList.toggle("open", !l.hidden); e.stopPropagation(); }
     });
@@ -179,25 +209,48 @@
     });
   }
   // 单独的一张卡片（TUI 的状态行、/context、窗口底部状态栏）：贴着 anchor，放得下就在上面
-  var cur = null;
-  function close() { if (!cur) return; cur.remove(); cur = null; document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", onKey, true); }
-  function outside(e) { if (cur && !cur.contains(e.target)) close(); }
+  var cur = null, trigger = null, triggerPane = null;
+  function sameTrigger(el) {
+    return !!(trigger && el && (trigger.contains(el) ||
+      (trigger.dataset.footerChoice && el.closest?.("[data-footer-choice]")?.dataset.footerChoice === trigger.dataset.footerChoice &&
+       triggerPane && el.closest(".tpane") === triggerPane)));
+  }
+  function close() { cur?.remove(); cur = trigger = triggerPane = null; document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", onKey, true); }
+  function outside(e) { if (trigger && !cur?.contains(e.target) && !sameTrigger(e.target)) close(); }
   function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
-  function open(rt, anchor, opts) {
+  async function open(rt, anchor, opts) {
+    var collapse = sameTrigger(anchor);
     close();
+    if (collapse) return null;
     var h = html(rt, opts);
     if (!h) return null;
+    trigger = anchor; triggerPane = anchor?.closest?.(".tpane");
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", onKey, true);
+    var read = contextReads.get(rt) || heads[rt.info?.path];
+    if (read?.busy && read.pending) {
+      var originalPane = triggerPane;
+      await read.pending;
+      if (trigger !== anchor) return null;
+      if (!anchor.isConnected && anchor.dataset.footerChoice) anchor = originalPane?.querySelector('[data-footer-choice="#agent-context"]') || anchor;
+      h = html(rt, opts);
+    }
     cur = document.createElement("div");
     cur.className = "cx-pop" + (opts && opts.tui ? " cx-pop-tui" : "");
     cur.innerHTML = h;
     document.body.appendChild(cur);
     bind(cur);
     var r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2 };
-    var w = cur.offsetWidth, ht = cur.offsetHeight, x = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)), y = r.top - ht - 6;
+    var left = r.left, summary = cur.querySelector(".cx-sum");
+    if (anchor && anchor.classList && anchor.classList.contains("cx-footer-choice") && summary) {
+      var range = document.createRange();
+      range.selectNodeContents(anchor);
+      left = range.getBoundingClientRect().left - (summary.getBoundingClientRect().left - cur.getBoundingClientRect().left);
+    }
+    var w = cur.offsetWidth, ht = cur.offsetHeight, x = Math.max(8, Math.min(innerWidth - w - 8, left)), y = r.top - ht - 6;
     cur.dataset.up = y < 8 ? "0" : "1";
     if (y < 8) y = Math.min(innerHeight - ht - 8, r.bottom + 6);
     cur.style.left = x + "px"; cur.style.top = Math.max(8, y) + "px";
-    setTimeout(function () { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", onKey, true); }, 0);
     return cur;
   }
   // 哪个 agent：点的那个标签页里的；状态栏上的就是当前标签页的

@@ -3,13 +3,13 @@
 # 快：只读最近 DAYS 天改过的文件；每个文件记着读到哪（增量缓存 ~/Library/Application Support/Vibing Studio/cc-usage.json），
 # 下次只读新写的部分。同一条回复在记录里有好几行（每个内容块一行，usage 一样）、分叉的会话会把旧回复抄一份：按 message.id 只算一次。
 # 输出一行 JSON：{ days: { "2026-09-29": { model: [回复数, 输入, 输出, 缓存读取, 缓存写入] } }, sess: { day: [会话 id…] }, ms, read, files }
-import calendar, json, os, re, sys, time
+import calendar, json, os, sys, time
 
 DAYS = 8
 HOME = os.path.expanduser("~")
 ROOT = os.path.join(HOME, ".claude", "projects")
 CACHE = os.environ.get("CC_USAGE_CACHE") or os.path.join(HOME, "Library", "Application Support", "Vibing Studio", "cc-usage.json")
-VER = 1
+VER = 2
 t0 = time.time()
 now = time.time()
 cut = time.strftime("%Y-%m-%d", time.localtime(now - (DAYS - 1) * 86400))
@@ -38,7 +38,6 @@ def day_of(ts):  # "2026-09-29T03:42:03.253Z" → 本地日期
     return d
 
 
-NUM = {k: re.compile(b'"' + k + b'":(\\d+)') for k in (b"input_tokens", b"output_tokens", b"cache_read_input_tokens", b"cache_creation_input_tokens")}
 nread = 0
 live = set()
 for dp, dn, fn in os.walk(ROOT):
@@ -70,37 +69,22 @@ for dp, dn, fn in os.walk(ROOT):
             if not line.endswith(b"\n"):
                 break  # 最后半行（还在写）：下次再读
             pos += len(line)
-            if b'"type":"assistant"' not in line:
+            if b'"assistant"' not in line:
                 continue
-            i = line.find(b'"message":{"model":"')
-            if i < 0:
+            try:
+                event = json.loads(line)
+            except (ValueError, UnicodeError):
                 continue
-            j = line.find(b'"', i + 20)
-            model = line[i + 20:j].decode("utf-8", "replace")
-            if model == "<synthetic>":
+            if not isinstance(event, dict) or event.get("type") != "assistant":
                 continue
-            k = line.find(b'"id":"', j)
-            if k < 0 or k > j + 40:
+            message = event.get("message") or {}
+            model, mid, usage = message.get("model"), message.get("id"), message.get("usage")
+            if not model or model == "<synthetic>" or not mid or mid in seen or not isinstance(usage, dict):
                 continue
-            e = line.find(b'"', k + 6)
-            mid = line[k + 6:e].decode("utf-8", "replace")
-            if mid in seen:
-                continue
-            ti = line.rfind(b'"timestamp":"')
-            if ti < 0:
-                continue
-            d = day_of(line[ti + 13:ti + 40].decode("ascii", "replace"))
+            d = day_of(event.get("timestamp") or "")
             if not d or d < cut:
                 continue
-            u = line.rfind(b'"usage":{"input_tokens":')
-            if u < 0:
-                continue
-            s = line[u:u + 400]
-            v = [0, 0, 0, 0]
-            for n, key in enumerate((b"input_tokens", b"output_tokens", b"cache_read_input_tokens", b"cache_creation_input_tokens")):
-                m = NUM[key].search(s)
-                if m:
-                    v[n] = int(m.group(1))
+            v = [usage.get(key) or 0 for key in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")]
             seen[mid] = d
             a = days.setdefault(d, {}).setdefault(model, [0, 0, 0, 0, 0])
             a[0] += 1

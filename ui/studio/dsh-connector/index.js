@@ -4,7 +4,7 @@ import path from "node:path";
 import os from "node:os";
 
 export const name = "vibing-studio-session-input";
-export const inject = ["sessionController", "workspaceRegistry"];
+export const inject = {sessionController: {required: true}, workspaceRegistry: {required: true}, deepseekAccount: {required: false}};
 export function apply(ctx) {
   const dir = path.join(process.env.DSH_HOME || path.join(os.homedir(), ".dsh"), "vibing-studio-ipc");
   fs.mkdirSync(dir, {recursive: true, mode: 0o700});
@@ -26,6 +26,14 @@ export function apply(ctx) {
     socket.on("end", async () => {
       try {
         const message = JSON.parse(Buffer.concat(chunks));
+        if (message.action === "balance") {
+          const wallet = await ctx.deepseekAccount.getBalance({
+            version: "1", locale: Intl.DateTimeFormat().resolvedOptions().locale,
+            timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60
+          });
+          socket.end(JSON.stringify({accepted: true, value: wallet}));
+          return;
+        }
         if (message.action === "catalog" || message.action === "selectModel") {
           const value = message.action === "catalog" ? await ctx.sessionController.modelCatalog()
             : await ctx.sessionController.selectModel(message.selection);
@@ -51,6 +59,10 @@ export function apply(ctx) {
       }
     });
   });
+  const balanceAddress = address + ".balance";
+  const balanceServer = net.createServer({allowHalfOpen: true}, socket => server.emit("connection", socket));
+  balanceServer.listen(balanceAddress);
+  ctx.effect(() => () => balanceServer.close());
   server.listen(address);
   ctx.effect(() => () => server.close());
 }

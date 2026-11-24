@@ -47,7 +47,7 @@ final class ClaudeCodeIndex: @unchecked Sendable {
       let lv = live[s.id]
       let title = !s.custom.isEmpty ? s.custom : lv?.named == true ? lv!.name : !s.ai.isEmpty ? s.ai : s.prompt
       if title.isEmpty { continue } // 开了就退、一句没说的
-      if s.custom.isEmpty && lv?.named != true && title.hasPrefix("/") { continue } // 只敲了个 /effort 之类
+      if s.custom.isEmpty && lv?.named != true && s.prompt.isEmpty && title.hasPrefix("/") { continue } // 只敲了个 /effort 之类
       if !seen.insert(s.project + "\u{0}" + title).inserted { continue }
       var dir = s.cwdOK ? s.cwd : ""
       if dir.isEmpty, let c = lv?.cwd, Self.sameProject(c, s.project) { dir = c }
@@ -96,28 +96,6 @@ final class ClaudeCodeIndex: @unchecked Sendable {
   }
 
   // ---- 搜：最近动过的 files 个会话里找 q（不分大小写），每个会话最多 per 处；给出那一句的前后一段、是谁说的、在文件里的位置（跳过去时从那里读）----
-  // 正则里一定会出现的一段纯字（找得到就先按字节在整个文件里找它，再细看那一行）：取最长的一段字母、数字、汉字；
-  // 有顶层的 |（几选一）就没有一定会出现的字，返回空（只能一行行看）
-  static func literalAnchor(_ re: String) -> String {
-    var best = "", cur = "", depthClass = false, esc = false, hasAlt = false
-    let chars = Array(re)
-    for (i, c) in chars.enumerated() {
-      if esc { esc = false; cur = ""; continue }
-      if c == "\\" { esc = true; if cur.count > best.count { best = cur }; cur = ""; continue }
-      if depthClass { if c == "]" { depthClass = false }; continue }
-      if c == "[" { depthClass = true; if cur.count > best.count { best = cur }; cur = ""; continue }
-      if c == "|" { hasAlt = true }
-      if c.isLetter || c.isNumber || c == "_" || c == "-" || c == " " {
-        // 后面跟着 ? * {…}：这个字可有可无，不算
-        let next = i + 1 < chars.count ? chars[i + 1] : " "
-        if next == "?" || next == "*" || next == "{" { if cur.count > best.count { best = cur }; cur = ""; continue }
-        cur.append(c)
-      } else { if cur.count > best.count { best = cur }; cur = "" }
-    }
-    if cur.count > best.count { best = cur }
-    return hasAlt ? "" : best.trimmingCharacters(in: .whitespaces)
-  }
-
   // cs：区分大小写；word：全字匹配；re：正则（同 VS Code 搜索框右边那三个）——统一成一个正则去认说的话里的每一处
   func search(_ q: String, files: Int, per: Int, cs: Bool = false, word: Bool = false, re: Bool = false) -> [[String: Any]] {
     let needle = re ? q : q.trimmingCharacters(in: .whitespaces)
@@ -125,7 +103,6 @@ final class ClaudeCodeIndex: @unchecked Sendable {
     var pattern = re ? needle : NSRegularExpression.escapedPattern(for: needle)
     if word { pattern = "(?<![\\p{L}\\p{N}_])(?:" + pattern + ")(?![\\p{L}\\p{N}_])" }
     guard let rx = try? NSRegularExpression(pattern: pattern, options: cs ? [] : [.caseInsensitive]) else { return [["error": "正则表达式无效"]] }
-    let anchor = re ? Self.literalAnchor(needle) : needle
     let fm = FileManager.default, root = base + "/projects"
     var list: [(String, Double)] = []
     for dir in (try? fm.contentsOfDirectory(atPath: root)) ?? [] {
@@ -137,58 +114,39 @@ final class ClaudeCodeIndex: @unchecked Sendable {
     }
     list.sort { $0.1 > $1.1 }
     var out: [[String: Any]] = []
-    // 先按字节找的那段字（大小写的几种写法；区分大小写就只找它本身）
-    let variants: [Data] = anchor.isEmpty ? [] : (cs ? [anchor] : Array(Set([anchor, anchor.lowercased(), anchor.uppercased(), anchor.prefix(1).uppercased() + anchor.dropFirst()]))).map { Data($0.utf8) }
     let t0 = Date()
     for (p, _) in list.prefix(files) {
       if Date().timeIntervalSince(t0) > 4 { break } // 太多了：先给这些
       guard let data = try? Data(contentsOf: URL(fileURLWithPath: p), options: .alwaysMapped) else { continue }
-      var hits: [[String: Any]] = [], total = 0, seen = Set<Int>()
-      // 整个文件里直接找这几个字（大小写的几种写法），找到了再取它所在的那一行——不逐行扫
-      var lines: [Range<Int>] = []
-      if variants.isEmpty { // 正则里没有一定会出现的字：一行一行看（慢，4 秒封顶）
-        var ls = data.startIndex
-        while ls < data.endIndex {
-          var le = ls
-          while le < data.endIndex && data[le] != 0x0A { le += 1 }
-          if le > ls { lines.append(ls..<le) }
-          ls = le + 1
-          if lines.count > 200_000 || Date().timeIntervalSince(t0) > 4 { break }
-        }
-      }
-      for v in variants {
-        var from = data.startIndex
-        while from < data.endIndex, let r = data.range(of: v, in: from..<data.endIndex) {
-          var ls = r.lowerBound
-          while ls > data.startIndex && data[ls - 1] != 0x0A { ls -= 1 }
-          var le = r.upperBound
-          while le < data.endIndex && data[le] != 0x0A { le += 1 }
-          if seen.insert(ls).inserted { lines.append(ls..<le) }
-          from = le
-          if lines.count > 4000 { break }
-        }
-      }
-      lines.sort { $0.lowerBound < $1.lowerBound }
-      for r in lines {
-        guard r.count > 20, r.count < 2_000_000 else { continue }
-        let lineStart = r.lowerBound
-        let chunk = data[r]
-        guard let j = try? JSONSerialization.jsonObject(with: Data(chunk)) as? [String: Any], let type = j["type"] as? String, type == "user" || type == "assistant", j["isMeta"] as? Bool != true else { continue }
-        // 只在说的话里找（不在工具的输入输出、JSON 的键里）
-        var texts: [String] = []
-        if let m = j["message"] as? [String: Any] {
-          if let s = m["content"] as? String { texts.append(s) }
-          if let arr = m["content"] as? [[String: Any]] { for b in arr where (b["type"] as? String) == "text" { if let t = b["text"] as? String { texts.append(t) } } }
-        }
-        for t in texts {
-          let ns = t as NSString
-          for m in rx.matches(in: t, range: NSRange(location: 0, length: ns.length)) where m.range.length > 0 {
-            total += 1
-            if hits.count < per {
-              let a = max(0, m.range.location - 40), b = min(ns.length, m.range.location + m.range.length + 60)
-              let snippet = ns.substring(with: NSRange(location: a, length: b - a)).replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-              let matched = ns.substring(with: m.range).replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-              hits.append(["role": type, "text": (a > 0 ? "…" : "") + snippet + (b < ns.length ? "…" : ""), "match": matched, "uuid": j["uuid"] as? String ?? "", "offset": lineStart - data.startIndex, "at": j["timestamp"] as? String ?? ""])
+      var hits: [[String: Any]] = [], total = 0
+      data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+        guard let start = buffer.baseAddress else { return }
+        var offset = 0
+        while offset < buffer.count {
+          if Date().timeIntervalSince(t0) > 4 { break }
+          let lineStart = offset
+          let newline = memchr(start.advanced(by: offset), 10, buffer.count - offset)
+          let end = newline.map { start.distance(to: $0) } ?? buffer.count
+          offset = end + 1
+          guard end - lineStart > 20 else { continue }
+          let line = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: start.advanced(by: lineStart)), count: end - lineStart, deallocator: .none)
+          guard let j = try? JSONSerialization.jsonObject(with: line) as? [String: Any], let type = j["type"] as? String, type == "user" || type == "assistant", j["isMeta"] as? Bool != true else { continue }
+          // 只在说的话里找（不在工具的输入输出、JSON 的键里）
+          var texts: [String] = []
+          if let m = j["message"] as? [String: Any] {
+            if let s = m["content"] as? String { texts.append(s) }
+            if let arr = m["content"] as? [[String: Any]] { for b in arr where (b["type"] as? String) == "text" { if let t = b["text"] as? String { texts.append(t) } } }
+          }
+          for t in texts {
+            let ns = t as NSString
+            for m in rx.matches(in: t, range: NSRange(location: 0, length: ns.length)) where m.range.length > 0 {
+              total += 1
+              if hits.count < per {
+                let a = max(0, m.range.location - 40), b = min(ns.length, m.range.location + m.range.length + 60)
+                let snippet = ns.substring(with: NSRange(location: a, length: b - a)).replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                let matched = ns.substring(with: m.range).replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                hits.append(["role": type, "text": (a > 0 ? "…" : "") + snippet + (b < ns.length ? "…" : ""), "match": matched, "uuid": j["uuid"] as? String ?? "", "offset": lineStart, "at": j["timestamp"] as? String ?? ""])
+              }
             }
           }
         }

@@ -4,11 +4,11 @@
   function enabled() {
     return window.nadosNative && nadosNative.local && !nadosNative.remote && TSU_CONNECTORS.on("dsh");
   }
-  async function read(id) {
+  async function read(id, helper = "dsh_sessions.py") {
     if (!enabled()) throw new Error("DSH 连接器未启用");
     var dir = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir;
     if (!dir) throw new Error("未找到本机界面目录");
-    var args = ["python3", dir + "/studio/dsh_sessions.py"];
+    var args = ["python3", dir + "/studio/" + helper];
     if (id) args.push(id);
     var result = await TSU_LOCAL.exec({cmd: args.map(function (arg) { return "'" + arg.replace(/'/g, "'\\''") + "'"; }).join(" ")});
     if (result.code) throw new Error(result.err || "读取 DSH 记录失败");
@@ -24,31 +24,53 @@
     });
     return pending;
   }
+  var balanceLabel = "", balanceChecked = 0, balanceRequest;
+  function balance() {
+    if (balanceRequest) return balanceRequest;
+    if (Date.now() - balanceChecked < 60000) return Promise.resolve();
+    balanceChecked = Date.now();
+    balanceRequest = read("--balance", "dsh_send.py").then(wallet => {
+      var totals = new Map();
+      if (wallet?.status === "ready") for (var item of [...wallet.value, ...wallet.bonusWallets]) totals.set(item.currency, (totals.get(item.currency) || 0) + Number(item.balance));
+      var items = Array.from(totals, ([currency,total]) => ({currency,total}));
+      balanceLabel = items.map(b => new Intl.NumberFormat("zh-CN", {style:"currency", currency:b.currency}).format(b.total)).join(" / ");
+    }).catch(() => { balanceLabel = ""; }).finally(() => { balanceRequest = null; });
+    return balanceRequest;
+  }
   function ensure(id) {
     var A = window.TSU_AGENTS, aid = "dsh:" + id;
     if (!enabled() || !A) return null;
     if (A.get(aid)) return A.runtime(aid);
-    var info = {}, listeners = new Set(), loading, revision, timer;
+    var info = {}, listeners = new Set(), loading, revision, timer, hasHistory = false;
     var session = { id: id, title: "DeepSeek Harness", turns: [], todo: {items: []} };
     var agent = {id: aid, current: id, name: session.title, connector: "dsh", claude: true, access: "rw"};
     function ready() {
+      var oldBalance = balanceLabel;
+      balance().then(() => { if (balanceLabel !== oldBalance) listeners.forEach(fn => fn("status")); });
       if (!loading) loading = (async function () {
         if (!scanned || Date.now() - scanned > 30000) await refresh();
         info = sessions.find(function (s) { return s.id === id; }) || {};
         session.title = agent.name = info.title || id;
         var stat = info.path && await TSU_LOCAL.stat(info.path);
         var current = stat ? stat.size + ":" + stat.mtime : info.updated;
-        if (revision !== undefined && revision === current) {
+        if (stat && hasHistory && revision === current) {
           if (rt.state() === "working") listeners.forEach(function (fn) { fn("status"); });
           return;
         }
         var history = await read(id);
+        if (!Array.isArray(history.turns)) throw new Error("无效的 DSH 会话记录");
         session.turns = history.turns;
+        hasHistory = true;
         session.effort = agent.effort = info.selection?.reasoningEffort || history.effort;
         session.progress = history.progress;
         revision = current;
         listeners.forEach(function (fn) { fn("reset"); });
-      })().catch(function (e) { session.turns = [{note: e.message}]; revision = undefined; listeners.forEach(function (fn) { fn("reset"); }); }).finally(function () {
+      })().catch(function (e) {
+        if (!hasHistory && session.turns[0]?.note !== e.message) {
+          session.turns = [{note: e.message}];
+          listeners.forEach(fn => fn("reset"));
+        }
+      }).finally(function () {
         loading = null;
       });
       return loading;
@@ -176,14 +198,15 @@
       footerFields: function () {
         var pressure = session.progress && session.progress.pressure;
         var fields = [rt.model().name, agent.effort].filter(Boolean);
+        if (balanceLabel && (selection || info.selection)?.provider === "deepseek-account") fields.unshift("remained " + balanceLabel);
         if (!rt.showDetailedStats && pressure && pressure.contextWindow > 0 && pressure.pressureTokens != null)
-          fields.unshift("Context " + Math.round(100 * pressure.pressureTokens / pressure.contextWindow) + "% used");
+          fields.unshift("Context " + Math.round(100 * pressure.pressureTokens / pressure.contextWindow) + "% Used");
         return fields;
       },
       prepareChoices: async function () { catalog = await settings(["--catalog"]); },
       models: routes, efforts: function () { return (currentRoute()?.reasoning?.efforts || []).map(e => e.id); },
       model: function () { return currentRoute() || {id: "", name: info.model || "DSH"}; },
-      state: function () { return session.progress && session.progress.phase === "running" ? "working" : "idle"; }, home: cwd, cwd: cwd, ctx: function () { return {tokens: 0, window: 0, pct: 0}; },
+      state: function () { return session.progress && session.progress.phase === "running" ? "working" : "idle"; }, home: cwd, cwd: cwd, ctx: function () { var tokens = session.progress?.pressure?.pressureTokens || 0, window = session.progress?.pressure?.contextWindow || 0; return {tokens, window, pct:window ? tokens/window*100 : 0}; },
       todo: function () { return []; }, pendingMsgs: function () { return 0; }, cost: function () { return 0; }, tail: function () { return ""; },
       more: no, historical: no, send: send, sendNow: send, canInject: no, interrupt: no, canInterrupt: no, canSendNow: no,
       takeQueued: no, detachBash: no, canCycle: no, afterReload: ready, maybeRecap: no, record: no, setGoal: no, clearGoal: no, clear: no,

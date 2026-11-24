@@ -553,30 +553,41 @@
         }
         return true;
       });
-      var working = (panes || [P]).some(function (pane) {
-        return pane && pane.program && pane.program.working && (pane.program.working() || pane._tabWorking);
+      var conversation = false, workingPane = null, waits = [];
+      (panes || [P]).forEach(function (pane) {
+        var program = pane?.program;
+        if (!program?.agentId) return;
+        conversation = true;
+        var wait = program.waitingLabel?.();
+        if (!wait && (program.working?.() || pane._tabWorking)) {
+          pane.tabBlinkStart ??= performance.now();
+          workingPane ??= pane;
+        } else {
+          delete pane.tabBlinkStart;
+          if (wait) waits.push(wait);
+        }
       });
-      var conversation = (panes || [P]).some(pane => pane && pane.program && pane.program.agentId);
-      if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
-      else if (working) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-working-dot" aria-label="运行中"></b>');
-      else if (conversation && (panes || [P]).some(pane => pane?.program?.scheduleInfo?.())) {
+      if (workingPane) {
+        var indicator = document.createElement("b");
+        indicator.className = "tab-finished-dot tab-working-dot";
+        indicator.setAttribute("aria-label", "运行中");
+        // Rebuilding a tab during streaming must preserve the 600 ms bright/dim phases.
+        indicator.style.animationDelay = -((performance.now() - workingPane.tabBlinkStart) % 1200) + "ms";
+        span.after(indicator);
+      }
+      else if (waits.length) {
         var dot = document.createElement("b");
         dot.className = "tab-finished-dot tab-schedule-dot";
-        dot.title = (panes || [P]).map(pane => pane?.program?.scheduleInfo?.()).filter(Boolean).join("\n");
+        dot.title = waits.join("\n");
         dot.setAttribute("aria-label", dot.title);
         span.after(dot);
       }
+      else if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
       else if (conversation) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
-      // agent 在跑：图标还是它自己的（Claude Code 的就是 Claude 的 logo），只是跳动起来（一下一下地放大、回落）；名字后面不挂 ✳，也不换成字符转圈。
-      //   几个一起跑：各自的节奏、相位按会话算（不齐刷刷一起跳）
       var nyou = false; try { nyou = !!(P && P.program && P.program.needsYou && P.program.needsYou()); } catch (e) { nyou = false; }
       tabEl.classList.toggle("needs", nyou); // 在等你回答 / 确认：图标变蓝（studio.css .tab.needs）
-      if (P && P.program && P.program.working && P.program.working()) {
-        tabEl.classList.add("busy");
-        if (P._sph == null) { var h = 0, id = String((P.program && P.program.agentId) || Math.random()); for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; P._sph = h; }
-        // （不跳了：在跑 / 闲着只看颜色，见 studio.css .tab.busy）
-      }
+      if (P.program?.working?.()) tabEl.classList.add("busy");
       return;
     }
     var k = addressOf(P).kind;
@@ -707,7 +718,7 @@
       { title: "帮助", place: "help", items: [
         it("欢迎", function () { if (window.TSU_WELCOME) TSU_WELCOME.open(tw); }),
         it("Vibing Studio 使用手册", function () { if (window.TSU_GUIDE) TSU_GUIDE.open(tw); else if (window.TSU_APP && TSU_APP.help) TSU_APP.help(); }),
-        S && S.showPage ? it("键盘快捷方式", function () { if (tw) S.showPage(tw, "keys", null); }) : null,
+        S && S.showPage ? it("快捷键", function () { if (tw) S.showPage(tw, "keys", null); }) : null,
         it("更新内容", function () { if (window.TSU_CHANGELOG) TSU_CHANGELOG.open(tw); }),
       ].filter(Boolean) },
     ];
@@ -765,7 +776,7 @@
     "newWindowAction:": "新建窗口", "performMiniaturize:": "最小化", "performZoom:": "缩放", "toggleFullScreen:": "进入全屏幕", "reloadPage:": "重新载入页面", "arrangeInFront:": "前置全部窗口" };
   if (window.TSU_I18N && TSU_I18N.add) TSU_I18N.add({ "编辑": "Edit", "服务": "Services", "关于 Vibing Studio": "About Vibing Studio", "隐藏 Vibing Studio": "Hide Vibing Studio", "隐藏其他": "Hide Others", "全部显示": "Show All", "退出 Vibing Studio": "Quit Vibing Studio",
     "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "拷贝": "Copy", "粘贴": "Paste", "全选": "Select All", "新建窗口": "New Window", "最小化": "Minimize", "缩放": "Zoom", "进入全屏幕": "Enter Full Screen", "重新载入页面": "Reload Page", "前置全部窗口": "Bring All to Front",
-    "Claude Code 会话": "Claude Code Sessions", "新建会话": "New Session", "键盘快捷方式": "Keyboard Shortcuts" });
+    "Claude Code 会话": "Claude Code Sessions", "新建会话": "New Session", "快捷键": "Keyboard Shortcuts" });
   setInterval(function () { if (!document.hidden) menus(); }, 1500);
   if (N) N.on("menu.action", function (d) { var f = d && ACTIONS[d.id]; if (f) try { f(); } catch (e) { console.error(e); } });
 

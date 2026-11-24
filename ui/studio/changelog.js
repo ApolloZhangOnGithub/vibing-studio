@@ -11,6 +11,38 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-24", ver: "0.2.1.476", items: {
+      new: [
+        ["点击状态行的 Context 可查看已用比例和可用空间。明细按占用从高到低排列，列出消息、工具使用、工具结果等分类，可用空间固定在最后。Codex 压缩记录可展开查看摘要和保留的消息。","Click Context to inspect the used and available window. Messages, tool use and tool results are sorted by size, with free space last. Expand a Codex compaction to read its summary and retained messages when recorded."],
+        ["Gemini 和 DeepSeek Harness 会话显示上下文用量。使用 DeepSeek 账户的会话还会显示该账户的钱包余额，并按币种汇总。","Gemini and DeepSeek Harness show context usage. Sessions using a DeepSeek account also show its wallet balance, grouped by currency."],
+        ["点击底栏额度可查看剩余比例和重置倒计时。Antigravity 分列 Gemini 和第三方模型的 5 小时与每周额度，在「设置 → 用量」也能查看这四项。","Click a footer quota to see the remaining percentage and time until reset. Antigravity lists five-hour and weekly quotas separately for Gemini and third-party models, both in the footer and in Usage settings."],
+        ["状态行菜单支持按连接器选择要显示的项目，包括上下文、额度、余额、运行模式和定时任务。","Choose which status fields to show for each connector, including context, quota, balance, run mode and scheduled tasks where supported."],
+        ["Antigravity 支持新建会话。父会话右栏可打开子代理，查看其任务和运行状态。创建、列出和管理子代理的工具记录显示具体动作和对象。","Create Antigravity sessions and open subagents from the parent conversation’s sidebar. Subagent tool entries identify the action and show the affected agents and their status."],
+        ["Antigravity 的模型与思考强度可以独立选择。模型列表有本地缓存，headless 会话在 ACP 确认切换后更新当前选择。","Select the Antigravity model and reasoning effort independently. The model list is cached locally, and headless sessions update the current selection after ACP confirms the change."],
+        ["在终端界面打开「更新内容」会使用 TUI 排版，先显示版本号再显示日期，滚轮和触控板均按整行滚动。","Release notes now use the TUI renderer in terminal mode, with the version before the date and whole-row scrolling on wheels and trackpads."],
+      ],
+      improved: [
+        ["打开设置时后台预加载各页，切页、搜索和刷新复用已加载的内容。查看「用量」时暂停后台对话重排，减少打开设置后输入和整个窗口一起卡住的情况。","Settings preloads its pages and reuses them when switching, searching or refreshing. Background transcript layout pauses while settings is open to reduce stalls when viewing Usage."],
+        ["调整设置下拉菜单、选中标记和快捷键名称。「关于」将版本、设备和路径详情放在右侧；Claude Code 无订阅时显示「无订阅」。macOS 的设置窗口控制按钮移到左侧。","Updated settings menus, selection indicators and shortcut labels. About groups version, device and path details on the right. Claude Code accounts without a subscription are identified, and macOS settings window controls appear on the left."],
+        ["分屏拖动时实时重排可见内容并对齐字符网格。标签可跨组移动，拖到内容区按中线左右分屏。长会话切换标签时保留滚动位置，减少快速滚动时的空白。","Split panes reflow while dragging and snap to the character grid. Move tabs between groups or drop on either half of a pane to split it. Long transcripts retain their scroll position across tab switches and show fewer blank areas during fast scrolling."],
+        ["改进 AGY 历史记录的增量读取。会话内容没有变化时跳过解析，后台任务继续运行时也能区分主会话的状态。","Antigravity skips transcript parsing when the underlying conversation has not changed and tracks the foreground conversation separately from its continuing background tasks."],
+        ["运行中的标签按原节奏闪黄灯，等待时显示常亮黄灯。等待后台终端时显示原因和已等待时间，后台任务和定时任务分别列出。","Running tabs keep their blinking yellow indicator across updates. Waiting tabs use steady yellow. The footer shows elapsed time while waiting for a background terminal, and scheduled tasks are listed separately from background jobs."],
+        ["Codex 的 JavaScript 工具显示执行内容、源码和输出；终端读取和 wait 显示实际输出、运行结果或剩余行数。Web Search 可点击展开查询详情。","Codex JavaScript calls show the operation, source and output. Terminal reads and waits show their output, result or additional line count. Click Web Search to inspect the queries."],
+        ["模型等选择器将确认与退出快捷键放到标题旁。状态行的上下文和额度明细可再次点击收起，展开时直接显示明细。","Pickers show confirmation and dismissal shortcuts beside their titles. Context and quota popovers open directly to their details and close on a second click."],
+        ["macOS 将本地文件读写、目录扫描和界面更新检查移出主线程，并改进子进程管道读写，减少大量输出或输入造成的窗口停顿。","On macOS, local file operations, directory scans and UI update checks run off the main thread. Subprocess pipe handling reduces stalls from large inputs and outputs."],
+        ["设置侧栏精简了入口。帮助、命令面板与设置统一使用「快捷键」；顶栏的「新版本」提示加上边框。","Simplified settings navigation and standardized the Keyboard Shortcuts label across settings, Help and the command palette. The title bar’s update indicator now has an outline."],
+      ],
+      fixed: [
+        ["修复只发图片时附件丢失、图片重复留在对话底部，以及 TUI 和 GUI 切换后图片引用位置错误。发送失败时恢复原草稿和附件，并保留发送期间新输入的文字。","Fixed missing image-only messages, duplicate pending images and misplaced attachment references when switching views. Failed sends restore the draft and attachments while preserving text typed in the meantime."],
+        ["修复上一回合已完成的工具在下一条消息下重复出现。正在执行的工具仍可在精简视图里跟踪。","Completed tools no longer reappear under the next message. Active tool calls remain visible in filtered views."],
+        ["修复 AGY 将绝对路径开头的消息误判成斜杠命令。交互终端可执行原生命令，headless 会话按其支持的命令处理。","Antigravity now treats messages starting with an absolute path as ordinary input. Interactive terminals dispatch native slash commands, while headless sessions handle the commands available to them."],
+        ["修复 AGY 子代理在工作时被标为已结束、关联任务完成后定时任务仍显示运行，以及旧 ACP 进程干扰后续发送的问题。","Fixed active subagents being marked finished, conditional schedules lingering after the watched task ends, and stale ACP processes interfering with later messages."],
+        ["修复拖动标签时预览卡住和跨组放置失效。修复状态行下划线悬停闪烁、复制正文时选中输入区装饰，以及 Codex 本地文件引用被画成实线。","Fixed stuck tab drag previews and missed cross-group drops. Footer hover underlines stay steady, transcript selection skips composer controls, and Codex file references use a single dashed underline."],
+        ["修复 Claude Code 会话搜索遗漏混合大小写或正则匹配，以及以路径开头的会话标题被过滤。DeepSeek Harness 短暂读取失败时保留已经显示的会话。","Fixed missing case-insensitive and regex matches in Claude Code search and sessions being hidden when their titles start with paths. DeepSeek Harness retains the displayed conversation through transient read failures."],
+        ["macOS 安装包中的 AGY 助手读取会话时，避免 Python 字节码缓存写入已签名的应用资源。","The bundled Antigravity session reader no longer writes Python bytecode into the signed macOS application."],
+        ["修复终端多行选区从第二行起超出右侧文字边界，以及长会话恢复时分隔线与整行滚动错位。","Corrected the right edge of multi-line terminal selections and restored whole-row positioning as long conversations are resized or resumed."],
+      ],
+    } },
     {
       "date": "2026-11-23",
       "ver": "0.2.1.475",
@@ -824,27 +856,116 @@
   try { fetch("builds.json", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { BUILDS = j; LOG.forEach(function (r) { if (!r.date && BUILDS && BUILDS[r.ver]) r.date = String(BUILDS[r.ver]).slice(0, 10); }); }, function () {}); } catch (e) { /* 没有就按写的日期 */ }
   function body() {
     return LOG.map(function (r) {
-      return '<section class="cl-rel"><div class="cl-h"><span class="cl-date">' + esc(dateOf(r.date)) + '</span><span class="cl-ver">' + esc(r.ver) + "</span></div>" +
+      return '<section class="cl-rel"><div class="cl-h"><span class="cl-ver">v' + esc(r.ver) + '</span><span class="cl-date">' + esc(dateOf(r.date)) + "</span></div>" +
         SECS.filter(function (s) { return (r.items[s[0]] || []).length; }).map(function (s) {
           return '<div class="cl-sec">' + esc(tr(s[1], s[2])) + "</div><ul>" + r.items[s[0]].map(function (x) { return "<li>" + inline(en() ? x[1] : x[0]) + "</li>"; }).join("") + "</ul>";
         }).join("") + "</section>";
     }).join("");
   }
+  function tuiMode() { return !root.classList.contains("st-gui") && !root.classList.contains("st-os-claude"); }
+  function releaseMarkdown(release) {
+    var lines = ["**v" + release.ver + "**  " + dateOf(release.date)];
+    SECS.forEach(function ([key, zh, english]) {
+      var items = release.items[key];
+      if (!items?.length) return;
+      lines.push("", "**" + tr(zh, english) + "**");
+      for (var item of items) lines.push("- " + item[en() ? 1 : 0]);
+    });
+    return lines.join("\n");
+  }
+  function renderContents(host, withTitle) {
+    var language = en(), light = window.TSU_TERM.termLight(), tui = tuiMode();
+    var key = [language, light, tui, withTitle].join("|");
+    if (host.notesKey === key) { host.refreshNotes?.(); return; }
+    host.disposeNotes?.();
+    host.notesKey = key;
+    var title = tr("更新内容", "Release Notes");
+    if (!tui) {
+      host.innerHTML = '<div class="cl ' + (withTitle ? "cl-page" : "cl-scroll") + '">' + (withTitle ? "<h1>" + esc(title) + "</h1>" : "") + body() + "</div>";
+      return;
+    }
+
+    var box = document.createElement("div");
+    box.className = "cl-tui";
+    box.tabIndex = 0;
+    box.setAttribute("aria-label", title);
+    host.replaceChildren(box);
+    var preClass = "cl-rows terminal-style-ui" + (light ? " ttu-light" : "");
+    var probe = document.createElement("pre");
+    probe.className = preClass + " cl-probe";
+    probe.textContent = "0".repeat(100);
+    probe.setAttribute("aria-hidden", "true");
+    var metric = document.createElement("div");
+    metric.className = "cl-metric";
+    metric.append(probe);
+    box.append(metric);
+    var source = LOG.map(releaseMarkdown);
+    if (withTitle) source.unshift("**" + title + "**");
+    var blocks = source.map(function () {
+      var el = document.createElement("pre");
+      el.className = preClass;
+      box.append(el);
+      return el;
+    });
+    var theme = light ? "light" : "dark", width = 0, lineHeight = 1, timer = 0, next = 0;
+    function batch() {
+      var start = performance.now();
+      do {
+        var rows = TSU_MD.lines(source[next], { width: width, theme: theme, lineNumbers: false });
+        blocks[next].innerHTML = TTU.ansiToHtml(rows.join("\n").trimEnd(), theme, { widthOf: TTU.visibleWidth, links: true });
+        next++;
+      } while (next < blocks.length && performance.now() - start < 5);
+      if (next < blocks.length) timer = setTimeout(batch, 0);
+    }
+    function reflow() {
+      if (!box.clientWidth || !probe.offsetWidth) return;
+      var cell = probe.offsetWidth / 100;
+      lineHeight = parseFloat(getComputedStyle(probe).lineHeight);
+      var cols = Math.max(2, Math.floor((box.clientWidth - 20) / cell));
+      if (cols === width) return;
+      width = cols;
+      next = 0;
+      clearTimeout(timer);
+      batch();
+    }
+    function byRows(n) {
+      var end = Math.floor((box.scrollHeight - box.clientHeight) / lineHeight);
+      box.scrollTop = Math.max(0, Math.min(end, Math.round(box.scrollTop / lineHeight) + n)) * lineHeight;
+    }
+    TSU_ROW_SCROLL(box, () => lineHeight, byRows, () => false);
+    box.addEventListener("scroll", function () { if (box.scrollTop % lineHeight) byRows(0); });
+    box.addEventListener("keydown", function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      var page = Math.max(1, Math.floor(box.clientHeight / lineHeight) - 1);
+      var steps = { ArrowUp: -1, ArrowDown: 1, PageUp: -page, PageDown: page, " ": e.shiftKey ? -page : page, Home: -Infinity, End: Infinity };
+      if (Object.hasOwn(steps, e.key)) { e.preventDefault(); e.stopPropagation(); byRows(steps[e.key]); }
+    });
+    var resize = new ResizeObserver(reflow);
+    resize.observe(box);
+    resize.observe(probe);
+    host.refreshNotes = reflow;
+    host.disposeNotes = function () {
+      resize.disconnect(); clearTimeout(timer);
+      delete host.notesKey; delete host.refreshNotes; delete host.disposeNotes;
+    };
+    reflow();
+  }
   // ---- Claude App、Pure Terminal：盖在窗口上的卡片 ----
   var cur = null, curM = null;
   // Claude App 风格：放进共用的模态层（STUDIO.modal）——底下的 App 标成 inert、焦点关掉时还回去、原生网页被盖住就藏起来；Pure Terminal 照旧
-  function close() { if (!cur) return; var w = cur, M = curM; cur = null; curM = null; w.classList.add("out"); setTimeout(function () { if (M && S && S.modal) S.modal.close(M); else w.remove(); }, 160); document.removeEventListener("keydown", onKey, true); }
+  function close() { if (!cur) return; var w = cur, M = curM; cur = null; curM = null; w.querySelector(".cl-content")?.disposeNotes?.(); w.classList.add("out"); setTimeout(function () { if (M && S && S.modal) S.modal.close(M); else w.remove(); }, 160); document.removeEventListener("keydown", onKey, true); }
   function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
   function modal() {
     if (cur) return;
     cur = document.createElement("div");
     cur.className = "cl-wrap";
     cur.innerHTML = '<div class="cl-modal" role="dialog" aria-modal="true" aria-label="' + esc(tr("更新内容", "What's new")) + '"><div class="cl-top"><b>' + esc(tr("更新内容", "What's new")) +
-      '</b><button type="button" class="cl-x" aria-label="' + esc(tr("关闭", "Close")) + '"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></div><div class="cl cl-scroll">' + body() + "</div></div>";
+      '</b><button type="button" class="cl-x" aria-label="' + esc(tr("关闭", "Close")) + '"><svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></div><div class="cl-content"></div></div>';
     cur.addEventListener("mousedown", function (e) { if (e.target === cur) close(); });
     cur.querySelector(".cl-x").addEventListener("click", close);
     if (root.classList.contains("st-os-claude") && S && S.modal) curM = S.modal.open(cur, { cls: "cl-layer", onBackdrop: close }); else document.body.appendChild(cur);
     document.addEventListener("keydown", onKey, true);
+    renderContents(cur.querySelector(".cl-content"), false);
     cur.querySelector(".cl-x").focus();
   }
   // ---- VS Code：标签页；macOS：窗口 ----
@@ -852,8 +973,9 @@
     title: function () { return tr("更新内容", "Release Notes"); },
     address: function () { return "changelog.local.paimon"; },
     icon: function () { return ICON; },
-    render: function (host) { host.innerHTML = '<div class="cl cl-page"><h1>' + esc(tr("Vibing Studio 更新内容", "Vibing Studio Release Notes")) + "</h1>" + body() + "</div>"; },
-    focus: function () {},
+    render: function (host) { renderContents(host, true); },
+    detach: function (host) { host.disposeNotes?.(); },
+    focus: function (host) { host.querySelector(".cl-tui")?.focus({preventScroll:true}); },
   };
   function open(tw) {
     var T = window.TSU_TERM;

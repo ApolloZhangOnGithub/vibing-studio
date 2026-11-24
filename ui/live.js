@@ -42,8 +42,8 @@
     function key(src) {
       if (!src) return "";
       if (typeof src === "object") {
-        if (src._ik) return src._ik;
-        src._ik = "i" + (++n);
+        if (src._itok && reg.get(src._ik)?.deref?.() === src) return src._ik;
+        Object.defineProperty(src, "_ik", { value: "i" + (++n) });
         var tok = { k: src._ik, u: "" };
         Object.defineProperty(src, "_itok", { value: tok, enumerable: false });
         reg.set(src._ik, typeof WeakRef === "function" ? new WeakRef(src) : { deref: function () { return src; } });
@@ -74,6 +74,13 @@
     function srcOf(el) { if (!el) return ""; var d = el.dataset || {}, h = /#vs-img:(\w+)/.exec((el.getAttribute && el.getAttribute("href")) || ""); return h ? url(h[1]) : d.img ? url(d.img) : d.src || el.currentSrc || el.src || ""; }
     function loadUrl(k) {
       var obj = reg.get(k)?.deref?.();
+      if (obj?.path && !obj.load && !obj.data && !obj.bytes && !obj.missing && window.TSU_LOCAL) {
+        var tok = obj._itok;
+        if (!tok.reading) tok.reading = TSU_LOCAL.read(obj.path).then(
+          bytes => { obj.bytes = bytes; }, () => { obj.missing = true; }
+        ).then(() => url(k));
+        return tok.reading;
+      }
       if (!obj?.load || obj.bytes || obj.data || obj.missing) return Promise.resolve(url(k));
       return new Promise(resolve => obj.load(() => resolve(url(k))));
     }
@@ -396,6 +403,68 @@
     if (focusBtn) focusBtn.hidden = !on;
     allPanes().forEach(function (p) { if (p.measure && p.el.offsetParent) { p.measure(); if (p.renderNow) p.renderNow(); } });
   }
+  function bindRowScroll(screen, rowHeight, scrollRows, nativeTarget) {
+    // 阻尼（同 Claude Code 在终端里滚）：一整行一整行地走，不无级滚——滚轮、触控板攒够一行走一行（触控板松手后的惯性照样一行一行走完）；
+    //   图片上照原生的顺滑滚；左右滑吃掉（对话没有横向滚动）
+    var wheelAcc = 0;
+    function rowStep(px) { // 攒着的像素够一行就走一行（正数往下）；走不动了（到头）返回 false
+      if (Math.sign(px) !== Math.sign(wheelAcc)) wheelAcc = 0;
+      wheelAcc += px;
+      var h = rowHeight(), rows = Math.trunc(wheelAcc / h);
+      if (!rows) return true;
+      wheelAcc -= rows * h;
+      var y0 = screen.scrollTop;
+      scrollRows(rows);
+      return screen.scrollTop !== y0;
+    }
+    var wheelFrame = 0, wheelPixels = 0;
+    screen.addEventListener("wheel", function (e) {
+      if (e.ctrlKey || e.metaKey) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.preventDefault(); return; }
+      if (nativeTarget(e)) { wheelAcc = 0; return; }
+      e.preventDefault();
+      wheelPixels += e.deltaMode === 1 ? e.deltaY * rowHeight() : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY;
+      if (!wheelFrame) wheelFrame = requestAnimationFrame(function () {
+        var pixels = wheelPixels; wheelPixels = wheelFrame = 0;
+        if (screen.isConnected && screen.clientHeight) rowStep(pixels);
+      });
+    }, { passive: false });
+    // 手指（iPad）：同样一整行一整行地走——跟着手指攒够一行走一行；松手后带惯性接着一行一行走、慢慢停（减速同 iOS 的 0.998/ms）；到头就停，不回弹
+    var tY = null, tT = 0, tV = 0, fling = 0;
+    var flingStop = function () { if (fling) cancelAnimationFrame(fling); fling = 0; };
+    screen.addEventListener("touchstart", function (e) {
+      flingStop();
+      if (e.touches.length !== 1 || (nativeTarget(e))) { tY = null; return; }
+      tY = e.touches[0].clientY; tT = e.timeStamp; tV = 0; wheelAcc = 0;
+    }, { passive: true });
+    screen.addEventListener("touchmove", function (e) {
+      if (tY == null || e.touches.length !== 1) return;
+      e.preventDefault();
+      var y = e.touches[0].clientY, dy = tY - y, dt = Math.max(1, e.timeStamp - tT);
+      tV = 0.8 * (dy / dt) + 0.2 * tV;
+      tY = y; tT = e.timeStamp;
+      rowStep(dy);
+    }, { passive: false });
+    var touchUp = function (e) {
+      if (tY == null) return;
+      tY = null;
+      var v = e.type === "touchend" && e.timeStamp - tT < 100 ? tV : 0; // 停住了再抬手：没有惯性
+      if (Math.abs(v) < 0.1) return;
+      var last = performance.now();
+      var step = function (now) {
+        var dt = Math.min(50, now - last); last = now;
+        v *= Math.pow(0.998, dt);
+        if (Math.abs(v) < 0.03 || !rowStep(v * dt)) { fling = 0; return; }
+        fling = requestAnimationFrame(step);
+      };
+      fling = requestAnimationFrame(step);
+    };
+    screen.addEventListener("touchend", touchUp, { passive: true });
+    screen.addEventListener("touchcancel", touchUp, { passive: true });
+
+  }
+  window.TSU_ROW_SCROLL = bindRowScroll;
+
   function Pane(tw, spec) {
     spec = spec || {};
     var paneEvents = new AbortController();
@@ -429,19 +498,28 @@
     // 调度中心、神奇效果的动画里也量得准。以前用 getBoundingClientRect——agent 在条里接着输出时量到的是缩小后的宽度，
     // 回到台上后没有尺寸变化、不会重量，中文（两格宽）就挤成一半、叠在一起
     P.measure = function () {
-      var probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;white-space:pre"; // 不折行、不占位；字体照样继承终端的
-      probe.textContent = "0".repeat(1000);
-      term.appendChild(probe);
-      P.chPx = probe.offsetWidth / 1000 || 8;
-      probe.remove();
+      if (!P.cellProbe) {
+        var probe = document.createElement("span");
+        probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;white-space:pre";
+        probe.setAttribute("aria-hidden", "true");
+        probe.textContent = "0".repeat(1000);
+        var clip = document.createElement("span");
+        clip.style.cssText = "position:absolute;width:0;height:0;overflow:hidden;visibility:hidden";
+        clip.appendChild(probe);
+        term.appendChild(clip);
+        P.cellProbe = probe;
+      }
+      P.chPx = P.cellProbe.offsetWidth / 1000 || 8;
       // 格宽变了才写（这个变量往下传：写一次整段对话都要重新算样式——对话区一变高矮就会量一次，打字多一行、拖底部都会）
       if (P.cellPx !== P.chPx) { P.cellPx = P.chPx; [term, foot, jump].forEach(function (x) { x.style.setProperty("--ttu-cell", P.chPx + "px"); }); }
       var style = getComputedStyle(term);
       P.padL = parseFloat(style.paddingLeft);
       P.rowH = parseFloat(style.lineHeight) || 17;
-      topgap.style.height = botgap.style.height = P.rowH + "px";
-      topgap.style.marginBottom = botgap.style.marginTop = -P.rowH + "px";
+      if (P.rowH !== P.gapHeight) {
+        P.gapHeight = P.rowH;
+        topgap.style.height = botgap.style.height = P.rowH + "px";
+        topgap.style.marginBottom = botgap.style.marginTop = -P.rowH + "px";
+      }
       P.cols = Math.max(24, Math.floor((term.clientWidth - P.padL - parseFloat(style.paddingRight)) / P.chPx));
       return P.cols;
     };
@@ -538,8 +616,10 @@
     P.busy = function () { return P.program && P.program.busy ? P.program.busy() : false; };
     var scrollSelectors = [".cm-scroller", ".st-fbody", ".gv-scroll", ".ss-body", ".screen"];
     var deferredView = spec.viewport || null, parkedView = null;
+    var viewportWatch = null, viewportMeasured = false;
+    if (deferredView && (!scrollSelectors.includes(deferredView.selector) || !Number.isFinite(deferredView.top))) deferredView = null;
     function readViewport() {
-      if (deferredView) return deferredView;
+      if (deferredView && !viewportMeasured) return deferredView;
       if (!el.isConnected || P.off || !screen.clientWidth && !el.clientWidth) return parkedView;
       if (P.program && P.program.agentId && !P.program.gui && !P.program.page) {
         return following ? null : {selector: ".screen", top: screen.scrollTop, left: screen.scrollLeft};
@@ -552,37 +632,72 @@
       }
       return null;
     }
-    function restoreViewport() {
-      if (!deferredView || P.off || !el.isConnected || P.closed) return;
-      var pos = deferredView, node = scrollSelectors.includes(pos.selector) && el.querySelector(pos.selector);
-      if (!node || !node.clientHeight || node.scrollHeight - node.clientHeight + 1 < pos.top) return;
-      if (node === screen) following = false;
-      node.scrollTop = pos.top;
-      node.scrollLeft = pos.left || 0;
-      if (node === screen) ownTop = node.scrollTop;
+    function pauseViewport() {
+      if (!viewportWatch) return;
+      viewportWatch.stop();
+      viewportWatch = null;
+    }
+    function finishViewport() {
+      pauseViewport();
+      deferredView = null;
+    }
+    function watchViewport() {
+      if (!deferredView || viewportWatch || P.closed || P.off || !el.isConnected) return;
+      var node = null, frame = 0, settle = 0;
+      var layout = new ResizeObserver(schedule);
+      var structure = new MutationObserver(bind);
+      function schedule() { if (!frame) frame = requestAnimationFrame(place); }
+      function bind() {
+        if (!deferredView) return;
+        var next = el.querySelector(deferredView.selector);
+        structure.disconnect(); layout.disconnect();
+        node = next;
+        structure.observe(node || el, {childList: true, subtree: !node});
+        if (node) {
+          for (var parent = node.parentElement; parent && el.contains(parent); parent = parent.parentElement)
+            structure.observe(parent, {childList: true});
+          layout.observe(node);
+          for (var child of node.children) layout.observe(child);
+        }
+        schedule();
+      }
+      function place() {
+        frame = 0;
+        if (!deferredView || P.closed || P.off || !el.isConnected) return pauseViewport();
+        if (!node || !node.isConnected) return;
+        if (!node.clientHeight) return;
+        var pos = deferredView, max = node.scrollHeight - node.clientHeight;
+        viewportMeasured = true;
+        if (node === screen) following = false;
+        node.scrollTop = Math.min(max, pos.top);
+        node.scrollLeft = pos.left || 0;
+        if (node === screen) ownTop = node.scrollTop;
+        clearTimeout(settle);
+        if (Math.abs(node.scrollTop - pos.top) < 2) settle = setTimeout(function () {
+          if (Math.abs(node.scrollTop - pos.top) < 2) finishViewport(); else schedule();
+        }, 1200);
+      }
+      viewportWatch = {stop: function () {
+        structure.disconnect(); layout.disconnect();
+        cancelAnimationFrame(frame); clearTimeout(settle);
+      }};
+      bind();
     }
     if (deferredView) {
-      var visibleTicks = 0;
-      var settleView = setInterval(function () {
-        if (P.closed || !deferredView) { clearInterval(settleView); return; }
-        restoreViewport();
-        var n = el.querySelector(deferredView.selector);
-        if (n && n.clientHeight && !P.off && Math.abs(n.scrollTop - deferredView.top) < 2 && ++visibleTicks >= 12) {
-          deferredView = null; clearInterval(settleView);
-        }
-      }, 100);
-      ["wheel","pointerdown","keydown","touchstart"].forEach(function (type) {
-        el.addEventListener(type, function () { deferredView = null; clearInterval(settleView); }, {capture:true,once:true,passive:true});
-      });
+      for (var type of ["wheel", "pointerdown", "keydown", "touchstart"]) {
+        el.addEventListener(type, finishViewport, {capture:true,once:true,passive:true,signal:paneEvents.signal});
+      }
+      queueMicrotask(watchViewport);
     }
     P.spec = function () { if (P.lostSpec && P.program === P.shell) return P.lostSpec; var s = P.program && P.program.spec ? P.program.spec() : {}; if (s.agent && P.program?.composerState) { var composer = P.program.composerState(); if (composer) s.composer = composer; } var viewport = readViewport(); if (viewport) s.viewport = viewport; if (s.agent && P.textFilter) s.textFilter = P.textFilter; if (P.vs && P.vs.state && s.agent) { var st = P.vs.state(); if (st) s.vs = st; } return s; }; // 拆成的几格、每格的筛选也记下来
     P.close = function () {
       if (P.closed) return;
+      finishViewport();
       paneEvents.abort();
       resizeObservers.forEach(function (observer) { observer.disconnect(); });
       if (jro) jro.disconnect();
       if (farIO) farIO.disconnect();
-      clearTimeout(resizeT);
+      clearTimeout(resizeT); resizeT = 0;
       cancelAnimationFrame(paintRaf);
       cancelAnimationFrame(sideRaf);
       try { noteClosed(P); } catch (e) { /* 记不了就算了 */ } if (P.vs && P.vs.close) P.vs.close(); if (P.program && P.program.detach) P.program.detach(); if (P.shell && P.shell !== P.program) P.shell.detach(); if (P.shell && P.shell.dispose) P.shell.dispose(); P.closed = true; };
@@ -598,7 +713,7 @@
     }
     // ---- 全量重画：换主题、改宽度、换程序 ----
     P.renderAll = function () {
-      if (!el.clientWidth || P.off) { P.dirty = true; return; } // 没露着（藏在同一组后面）：露出来时再画
+      if (P.off || !el.clientWidth) { P.dirty = true; return; } // 没露着（藏在同一组后面）：露出来时再画
       P.dirty = false;
       P.light = termLight();
       P.theme = P.light ? "light" : "dark";
@@ -618,8 +733,9 @@
     // 切回来（换标签页、别的组重排）：画好了、没被标脏、格数 / 字宽 / 深浅都没变——不整段重画（几千行的大会话整段重画要一两百毫秒，切一下卡一下）；
     //   离开时它在看哪儿（贴着底 / 翻到了中间）照原样回去：从页面上拿下来再放回去，滚动位置会归零——不回去就到了最顶上，还会触发往前读更早的记录
     var parked = null;
-    P.park = function () { parkedView = readViewport(); if (el.isConnected && screen.clientHeight) parked = { follow: following, top: screen.scrollTop }; if (el.isConnected && P.program && P.program.park) P.program.park(); };
+    P.park = function () { parkedView = readViewport(); pauseViewport(); if (el.isConnected && screen.clientHeight) parked = { follow: following, top: screen.scrollTop }; if (el.isConnected && P.program && P.program.park) P.program.park(); };
     P.reshow = function () {
+      watchViewport();
       var s0 = parked;
       parked = null;
       if (P.program && P.program.pty && P.drawn && !P.dirty && termLight() === P.light && P.program.xterm && P.program.xterm()) {
@@ -764,63 +880,7 @@
     if (window.ResizeObserver) { var jro = new ResizeObserver(placeJump); jro.observe(screen); jro.observe(foot); jro.observe(el); }
     screen.addEventListener("scroll", P.onScroll, { passive: true });
     jump.addEventListener("click", function () { P.toBottom(); P.onScroll(); if (!matchMedia("(hover: none)").matches) P.focus(); }); // 手机、iPad 上不把焦点给输入框：一给键盘就弹出来
-    // 阻尼（同 Claude Code 在终端里滚）：一整行一整行地走，不无级滚——滚轮、触控板攒够一行走一行（触控板松手后的惯性照样一行一行走完）；
-    //   图片上照原生的顺滑滚；左右滑吃掉（对话没有横向滚动）
-    var wheelAcc = 0;
-    function rowStep(px) { // 攒着的像素够一行就走一行（正数往下）；走不动了（到头）返回 false
-      if (Math.sign(px) !== Math.sign(wheelAcc)) wheelAcc = 0;
-      wheelAcc += px;
-      var rows = Math.trunc(wheelAcc / P.rowH);
-      if (!rows) return true;
-      wheelAcc -= rows * P.rowH;
-      var y0 = screen.scrollTop;
-      P.scrollByRows(rows);
-      return screen.scrollTop !== y0;
-    }
-    var wheelFrame = 0, wheelPixels = 0;
-    screen.addEventListener("wheel", function (e) {
-      if (e.ctrlKey || e.metaKey) return;
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.preventDefault(); return; }
-      if (!P.program?.agentId && e.target.closest?.(".fig")) { wheelAcc = 0; return; }
-      e.preventDefault();
-      wheelPixels += e.deltaMode === 1 ? e.deltaY * P.rowH : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY;
-      if (!wheelFrame) wheelFrame = requestAnimationFrame(function () {
-        var pixels = wheelPixels; wheelPixels = wheelFrame = 0;
-        if (!P.closed && !P.off) rowStep(pixels);
-      });
-    }, { passive: false });
-    // 手指（iPad）：同样一整行一整行地走——跟着手指攒够一行走一行；松手后带惯性接着一行一行走、慢慢停（减速同 iOS 的 0.998/ms）；到头就停，不回弹
-    var tY = null, tT = 0, tV = 0, fling = 0;
-    var flingStop = function () { if (fling) cancelAnimationFrame(fling); fling = 0; };
-    screen.addEventListener("touchstart", function (e) {
-      flingStop();
-      if (e.touches.length !== 1 || (!P.program?.agentId && e.target.closest?.(".fig"))) { tY = null; return; }
-      tY = e.touches[0].clientY; tT = e.timeStamp; tV = 0; wheelAcc = 0;
-    }, { passive: true });
-    screen.addEventListener("touchmove", function (e) {
-      if (tY == null || e.touches.length !== 1) return;
-      e.preventDefault();
-      var y = e.touches[0].clientY, dy = tY - y, dt = Math.max(1, e.timeStamp - tT);
-      tV = 0.8 * (dy / dt) + 0.2 * tV;
-      tY = y; tT = e.timeStamp;
-      rowStep(dy);
-    }, { passive: false });
-    var touchUp = function (e) {
-      if (tY == null) return;
-      tY = null;
-      var v = e.type === "touchend" && e.timeStamp - tT < 100 ? tV : 0; // 停住了再抬手：没有惯性
-      if (Math.abs(v) < 0.1) return;
-      var last = performance.now();
-      var step = function (now) {
-        var dt = Math.min(50, now - last); last = now;
-        v *= Math.pow(0.998, dt);
-        if (Math.abs(v) < 0.03 || !rowStep(v * dt)) { fling = 0; return; }
-        fling = requestAnimationFrame(step);
-      };
-      fling = requestAnimationFrame(step);
-    };
-    screen.addEventListener("touchend", touchUp, { passive: true });
-    screen.addEventListener("touchcancel", touchUp, { passive: true });
+    bindRowScroll(screen, () => P.rowH, P.scrollByRows, e => !P.program?.agentId && e.target.closest?.(".fig"));
 
     // ---- 对话区高度取整到整行（同终端）；零头放在最底下（输入栏下面），不夹在内容中间 ----
     var lastH = 0;
@@ -861,14 +921,19 @@
     if (P.side) observeResize(P.page, function () { if (!P.compact) return; cancelAnimationFrame(sideRaf); sideRaf = requestAnimationFrame(function () { P.fit(); }); }); // 下一帧再排（回调里直接改高度会「ResizeObserver loop」）
     var resizeT = 0;
     function check() {
-      clearTimeout(resizeT);
+      if (resizeT) return;
       // 用 setTimeout 而不是 requestAnimationFrame：后台标签页、屏幕外的 WebView 里 rAF 可能很久不来
       resizeT = setTimeout(function () {
-        if (P.dividerDragging || !el.clientWidth || P.closed || P.off) return; // 藏着的：露出来时 reshow 自己量
+        resizeT = 0;
+        if (P.closed || P.off || !el.clientWidth) return; // 藏着的：露出来时 reshow 自己量
         // 真终端：宽、高一变就让 xterm 按新大小重排（shell、Claude Code 收到新的行列数重画）——下面按我们自己的屏幕量宽度，真终端时那块是藏着的，量不出变化
         if (P.program && P.program.pty) { if (P.program.fitted) P.program.fitted(); lastH = el.clientHeight; return; }
         var ch0 = P.chPx, c0 = P.cols, cw = P.measure() !== c0 || P.chPx !== ch0;
-        if (P.dirty || (cw && !(P.program && P.program.gui))) P.renderAll(); // 图形界面：换行交给浏览器，只是变宽变窄不整段重画
+        if (cw && P.resizingDivider && !P.dirty && P.program?.resizeVisible) {
+          P.program.resizeVisible();
+          P.finishDividerLayout = true;
+          P.fit();
+        } else if (P.dirty || (cw && !(P.program && P.program.gui))) P.renderAll(); // 图形界面：换行交给浏览器，只是变宽变窄不整段重画
         else if (el.clientHeight !== lastH || cw) { P.fit(); if (P.program && P.program.fitted) P.program.fitted(); }
         P.stick();
       }, 16);
@@ -902,10 +967,10 @@
         if (keys.length) {
           if (r0 === r1) bar(r0, rows.get(r0)[0], rows.get(r0)[1]);
           else {
-            bar(r0, rows.get(r0)[0], Math.max(full, rows.get(r0)[1]));
+            bar(r0, rows.get(r0)[0], full);
             // 中间那些行：一整块（以前一行一个框，选一大段时上千个）
-            if (r1 - r0 > 1) { var mw = full; for (var rm = r0 + 1; rm < r1; rm++) mw = Math.max(mw, (rows.get(rm) || [0, 0])[1]); blocks.push('<div style="top:' + (r0 + 1) * P.rowH + "px;left:" + P.padL + "px;width:" + mw * P.chPx + "px;height:" + (r1 - r0 - 1) * P.rowH + 'px"></div>'); }
-            bar(r1, 0, rows.get(r1)[1]);
+            if (r1 - r0 > 1) { blocks.push('<div style="top:' + (r0 + 1) * P.rowH + "px;left:" + P.padL + "px;width:" + full * P.chPx + "px;height:" + (r1 - r0 - 1) * P.rowH + 'px"></div>'); }
+            bar(r1, 0, Math.min(full, rows.get(r1)[1]));
           }
         }
       }
@@ -1741,7 +1806,7 @@
     ["rename", "rename the current thread"], ["new", "start a new chat during a conversation"], ["fork", "fork the current chat"], ["init", "create an AGENTS.md file with instructions for Codex"],
     ["compact", "summarize conversation to prevent hitting the context limit"], ["goal", "set a goal for this thread (/goal clear to clear)"], ["diff", "show git diff (including untracked files)"],
     ["status", "show current session configuration and token usage"], ["mcp", "list configured MCP tools"], ["quit", "exit Codex"]];
-  window.TSU_CONNCMDS = function (conn) { return conn === "codex" ? CX_CMDS : conn === "pi" ? PI_CMDS : CC_CMDS; }; // 连接器会话的斜杠菜单（图形界面也用）
+  window.TSU_CONNCMDS = function (conn) { return conn === "agy" ? window.TSU_AGY?.commands || [] : conn === "codex" ? CX_CMDS : conn === "pi" ? PI_CMDS : CC_CMDS; }; // 连接器会话的斜杠菜单（图形界面也用）
   var COMMANDS = [
     { name: "/model", desc: "切换此 Agent 的模型" },
     { name: "/effort", desc: "推理强度：off / low / high / max" },
@@ -1797,20 +1862,91 @@
     draftsT = setTimeout(saveDrafts, 120); // 很快就记下：App 退出时页面不一定等得到 pagehide（写了一半的话不能丢）
   }
   window.addEventListener("pagehide", function () { if (draftsT) saveDrafts(); });
+  function expandedDraft(id) {
+    var draft = draftsMap()[id], text = draft?.text || "";
+    for (var paste of draft?.pastes || []) text = text.split(paste.tag).join(paste.text);
+    return text;
+  }
+  function prependDraft(id, text, images, pastes) {
+    var tail = expandedDraft(id), rest = TSU_DRAFTIMG.get(id);
+    // A restored TUI paste may have the same tag as a newly typed paste.
+    if (tail && pastes?.length) {
+      for (var paste of pastes) text = text.split(paste.tag).join(paste.text);
+      pastes = [];
+    }
+    var used = new Set(rest.map(im => im.no)), reserved = new Set(used), renamed = new Map();
+    for (var match of (text + "\n" + tail).matchAll(/\[Image #(\d+)\]/g)) reserved.add(+match[1]);
+    var next = 1, prefix = [];
+    var restored = (images || []).map(function (im) {
+      var no = im.no;
+      if (!no || used.has(no)) {
+        while (reserved.has(next)) next++;
+        no = next++; reserved.add(no);
+      }
+      used.add(no);
+      if (im.no && text.includes("[Image #" + im.no + "]")) renamed.set(im.no, no);
+      else prefix.push("[Image #" + no + "]");
+      return {...im, no};
+    });
+    var head = text.replace(/\[Image #(\d+)\]/g, (tag, n) => renamed.has(+n) ? "[Image #" + renamed.get(+n) + "]" : tag);
+    head = prefix.concat(head ? [head] : []).join(" ");
+    draftSet(id, [head, tail].filter(Boolean).join("\n"), pastes);
+    TSU_DRAFTIMG.set(id, restored.concat(rest));
+  }
+  function clearDraftOnDelivery(id, P) {
+    var draft = draftsMap()[id], images = DIMG[id];
+    return function () {
+      if (draftsMap()[id] !== draft || DIMG[id] !== images) return;
+      draftSet(id, "");
+      TSU_DRAFTIMG.set(id, []);
+      if (!P.closed && P.program?.agentId === id) P.program.syncDraft?.();
+    };
+  }
   // 输入框里附的图（还没发出去的）：按 agent 放在内存里（图大，不写 localStorage），终端界面、图形界面（Claude App 风格）都从这里拿——
   //   换界面风格时图跟着走（用户 2026-10-30：以前切过去只剩一个「[Image #1」）。字里的「[Image #N]」对着这里的 no
   var DIMG = {};
   window.TSU_DRAFTIMG = {
     get: function (id) { return (DIMG[id] || []).slice(); },
     set: function (id, images) {
-      var ready = (images || []).filter(im => im && (im.data || im.path));
+      var ready = (images || []).filter(im => im && (im.data || im.path || im.decoding));
       if (!ready.length) { delete DIMG[id]; return; }
       var previous = DIMG[id];
       if (previous?.length === ready.length && ready.every(function (im, i) {
         var old = previous[i];
-        return old.no === im.no && old.data === im.data && old.media_type === im.media_type && old.path === (im.path || "");
+        return old.no === im.no && old.data === im.data && old.media_type === im.media_type && old.path === (im.path || "") && old.decoding === im.decoding;
       })) return;
-      DIMG[id] = ready.map(im => ({ no: im.no, media_type: im.media_type, data: im.data, path: im.path || "" }));
+      DIMG[id] = ready.map(im => ({ no: im.no, media_type: im.media_type, data: im.data, path: im.path || "", decoding: im.decoding }));
+    },
+    fromFile: function (id, file, fail) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      var type = file.type === "image/png" ? "image/png" : "image/jpeg";
+      var decoding = new Promise(function (resolve) {
+        img.onerror = () => resolve("");
+        img.onload = function () {
+          try {
+            var scale = Math.min(1, 1568 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+            c.width = Math.max(1, Math.round(img.width * scale));
+            c.height = Math.max(1, Math.round(img.height * scale));
+            c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL(type, 0.9).split(",")[1] || "");
+          } catch (_) { resolve(""); }
+        };
+        img.src = url;
+      });
+      decoding.then(function (data) {
+        URL.revokeObjectURL(url);
+        var images = DIMG[id], shared = images?.find(im => im.decoding === decoding);
+        if (!shared) return;
+        if (data) { shared.data = data; delete shared.decoding; }
+        else {
+          TSU_DRAFTIMG.set(id, images.filter(im => im !== shared));
+          var d = draftsMap()[id];
+          if (d) draftSet(id, d.text.replace("[Image #" + shared.no + "]", ""), d.pastes);
+        }
+        document.dispatchEvent(new CustomEvent("tsu-draft-image", {detail: {id, decoding, data}}));
+        if (!data && fail) fail();
+      });
+      return {media_type: type, data: "", decoding};
     },
   };
   // App 退出前（原生的 applicationShouldTerminate 叫它）：写了一半的话马上记下；正在送的那一句本来就随时记着（claude.js 的 lqSave）
@@ -2086,6 +2222,11 @@
     return rt.stream ? rt.stream.turn === turn :
       rt.state && rt.state() === "working" && rt.session().turns.at(-1) === turn;
   }
+  function showToolPreview(turn, tool, rt) {
+    return isCurrentToolTurn(turn, rt) ||
+      (tool.status === "running" && rt.state?.() === "working" && !turn.stats && !turn.error &&
+       !turn.parts.some(part => part.phase === "final"));
+  }
   function toolHistoryTitle(count) {
     return "Ran " + count + " command" + (count === 1 ? "" : "s");
   }
@@ -2104,22 +2245,12 @@
     var live = isCurrentToolTurn(turn, rt);
     var parts = turn.parts || [{kind: "text", text: turn.answer}];
     var lastTool = parts.findLastIndex(function (p) { return p.kind === "tool"; });
-    var visible = parts.filter(function (p, i) {
+    return parts.filter(function (p, i) {
       if (p.kind === "tool") return mode === "body" && i === lastTool;
       if (p.kind !== "text" || !p.text) return false;
       return mode === "body" || p.phase === "final" ||
         (p.phase !== "progress" && !live && i > lastTool);
     });
-    if (mode === "body" && live && lastTool < 0) {
-      var turns = rt.session().turns;
-      for (var j = turns.indexOf(turn) - 1; j >= 0; j--) {
-        var prior = turns[j];
-        if (prior.stats || prior.error || prior.parts?.some(p => p.phase === "final")) break;
-        var tool = prior.parts?.findLast(p => p.kind === "tool");
-        if (tool) { visible.push(tool); break; }
-      }
-    }
-    return visible;
   }
   function filterButton(pane) {
     if (!pane || !pane.program || !pane.program.agentId) return "";
@@ -2440,24 +2571,35 @@
       if (!P.foot._ctxOn) { P.foot._ctxOn = true; P.foot.addEventListener("contextmenu", function (e) { var fi = P.foot._footItems; if (!fi || String(window.getSelection() || "").trim()) return; e.preventDefault(); if (window.STUDIO && STUDIO.menu) STUDIO.menu(function () { return fi(); }, { x: e.clientX, y: e.clientY }); }); }
     }
     // 底部的 ···：显示哪几块（运行状态行、状态信息；子 Agent 在辅助侧栏，它的 ··· 里开关）
+    function footerKeyFor(field) { return (agent.connector || "paimon") + "." + field; }
+    function footerEnabled(field, fallback = true) {
+      var value = cfg.connectorFooter?.[footerKeyFor(field)];
+      return value == null ? fallback : value === "on";
+    }
     function footItems() {
-      var MI = window.STUDIO && STUDIO.menuIcons ? STUDIO.menuIcons() : {}, wl = vmode("workLine"), wOn = wl !== "hidden", iOn = cfg.footInfo !== false;
-      var set = function (k, v) { return function () { if (A.setCfg(k, v)) allPanes().forEach(function (p) { if (p.renderNow) p.renderNow(); }); }; };
-      // 运行状态行：这个标签页有自己的一套筛选（Claude Code 的会话默认套着预设）时改它自己的那一套——只改设置的话被它那一套盖着，点了没反应
-      var setWork = function () {
-        var v = wOn ? "hidden" : "full";
-        if (isFull(P.view)) return viewAcc(P.view, function (prev) { P.renderNow(); if (!prev && window.TSU_VSPLIT && TSU_VSPLIT.setView) TSU_VSPLIT.setView(P, 0, P.view); }).setMode("workLine", v);
-        set("workLine", v)();
-      };
-      return [
-        { label: "添加图片…", icon: MI.image, gesture: true, run: pickImages }, { sep: true }, // 手机、iPad 上没法拖、不好粘：从相册选、拍照（长按输入框也是这个菜单）
-        { label: "运行状态行", icon: MI.workline || MI.status, checked: wOn, run: setWork },
-        { label: "状态信息", icon: MI.info || MI.eye, checked: iOn, run: set("footInfo", !iOn) },
-      ];
+      var MI = window.STUDIO?.menuIcons?.() || {};
+      function option(field, label, checked, icon) {
+        return { label, icon, checked, run: function () {
+          var prefs = Object.assign({}, cfg.connectorFooter, { [footerKeyFor(field)]: checked ? "off" : "on" });
+          A.setCfg("connectorFooter", prefs);
+          allPanes().forEach(p => { if (p.program?.agentId && A.runtime(p.program.agentId)?.agent?.connector === agent.connector) p.renderNow?.(); });
+        }};
+      }
+      var items = [{ label:"添加图片…", icon:MI.image, gesture:true, run:pickImages }, {sep:true},
+        option("workLine","运行状态行",vmode("workLine") !== "hidden",MI.workline || MI.status),
+        option("info","状态信息",footerEnabled("info",cfg.footInfo !== false),MI.info || MI.eye), {sep:true}];
+      var connector = agent.connector;
+      var fields = [["context","上下文"]];
+      if (rt.quotaLabel || rt.weeklyLabel || rt.limits) fields.push(["quota","额度"]);
+      if (connector === "dsh" || !agent.claude) fields.push(["balance","余额"]);
+      if (connector === "agy") fields.push(["mode","运行模式"],["cron","定时任务"]);
+      var icons = {context: MI.contextWindow, quota: MI.quotaGauge, balance: MI.wallet, mode: MI.sliders, cron: MI.clock};
+      return items.concat(fields.map(([key,label]) => option(key,label,footerEnabled(key),icons[key])));
     }
     V.claude = !!agent.claude;
     // 这一块显示哪些内容：编辑区里按设置（cfg——编辑区标签栏的 ··· 改的就是它）；右侧栏里的按它自己的筛选（P.view，studio.js 给）
     function vmode(k) {
+      if (k === "workLine" && cfg.connectorFooter?.[footerKeyFor(k)]) return footerEnabled(k) ? "full" : "hidden";
       var full = isFull(P.view), c = full ? vcv(P.view, k) : cv(k), on = full ? shownV(c) : P.view ? sideOn(P.view, k) : kindOn(k); // 拆分的一格、选了预设的：按它自己的一整套
       if (!(k in VMODES)) return on;
       return !on ? "hidden" : c && c !== "hidden" ? c : VMODES[k];
@@ -2472,7 +2614,7 @@
     // 附的图：字里每个「[Image #N]」对着共享的那份里 no 一样的图；字里没有的图（从图形界面过来、那边没写进字里的）补在最前面
     var imgsFromShared = function () {
       var l = window.TSU_DRAFTIMG ? TSU_DRAFTIMG.get(agentId) : [], ta = P.ta;
-      attach = l.map(function (x) { return { no: x.no, tag: "[Image #" + x.no + "]", media_type: x.media_type, data: x.data, path: x.path || "" }; });
+      attach = l.map(x => ({...x, tag: "[Image #" + x.no + "]"}));
       var miss = attach.filter(function (a) { return ta.value.indexOf(a.tag) < 0; }).map(function (a) { return a.tag; });
       if (miss.length) ta.value = miss.join(" ") + " " + ta.value;
     };
@@ -2492,7 +2634,9 @@
       draftSet(agentId,state.text,pastes);
     };
     var d0 = draftsMap()[agentId];
-    if (!P.ta.value) { if (d0) { P.ta.value = d0.text; pastes = (d0.pastes || []).slice(); } imgsFromShared(); } // 上次没发出去的（连同附的图）
+    P.ta.value = d0 ? d0.text : "";
+    pastes = (d0?.pastes || []).slice();
+    imgsFromShared();
     V.title = function () { return agent.name; }; // 在跑不在名字后面挂 ✳：标签页图标那一格换成转圈（V.working，见 drawTabs）
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
@@ -2502,6 +2646,26 @@
         var time = task.once && Number.isFinite(due) ? new Date(due).toLocaleTimeString("en-GB", {hour:"2-digit", minute:"2-digit"}) : task.cron || task.clock;
         return [time, task.desc || task.cmd].filter(Boolean).join(" · ");
       }).join("\n");
+    };
+    function agyTerminalWait() {
+      if (agent.connector !== "agy" || rt.stream) return null;
+      if (rt.state() === "working" && !/^Waiting for background terminal\b/i.test(rt.liveStatus || "")) return null;
+      return rt.tasks.find(task => task.kind === "shell" && task.status === "running");
+    }
+    var terminalWaitLabel = "Waiting for background terminal";
+    V.waitingLabel = function () {
+      var stream = rt.stream;
+      if (stream?.wait) return "Waiting for API response";
+      if (/^Waiting for\b/i.test(stream?.specialStatus || "")) return stream.specialStatus;
+      if (V.needsYou?.()) return "Waiting for your answer";
+      if (rt.tyState?.()?.state === "waiting") return "Waiting";
+      if (agyTerminalWait()) return terminalWaitLabel;
+      if (!V.working()) {
+        var stats = lastDone()?.stats;
+        if (stats?.pendAgents && liveBg().agents) return "Waiting for background agents";
+        return V.scheduleInfo();
+      }
+      return "";
     };
     V.working = function () { return !!rt.stream || (rt.state && rt.state() === "working"); };
     // 在等你：问答（AskUserQuestion 还没答）、或者它自己登记成 waiting（权限确认、要你输入）——同 Claude Code 的「needs you / awaiting input」
@@ -2521,6 +2685,13 @@
     // ---- 订阅：运行时的事件 → 重画对应的部分 ----
     var wasWorking = !!rt.stream, lastTabStatus;
     var hiddenTurns = new Set(), earlierPaused = false, laterPaused = false;
+    function resumeHistory() {
+      if (P.closed || P.program !== V || P.off || window.STUDIO?.settingsModalOpen?.()) return;
+      var gen = renderGen;
+      if (earlierPaused) { earlierPaused = false; requestAnimationFrame(function () { restTurns(gen); }); }
+      if (laterPaused) { laterPaused = false; requestAnimationFrame(function () { restTail(gen); }); }
+    }
+    document.addEventListener("st-settings-closed", resumeHistory);
     var agyFrame = 0, agyTurns = new Set();
     function paintAgyTurns() {
       agyFrame = 0;
@@ -2562,8 +2733,8 @@
           wasWorking = wk; var lvt = liveT, ldt = lastDone(); if (!wk && lvt && blocks.has(lvt)) { liveT = null; drawTurn(lvt); } if (ldt && ldt !== lvt && blocks.has(ldt)) drawTurn(ldt);
           var tsw = rt.session().turns, rcT = ldt ? tsw[tsw.indexOf(ldt) + 1] : null; if (rcT && rcT.recap !== undefined && blocks.has(rcT)) drawTurn(rcT); // 跟在它后面的回顾（做完那一行在回顾上面 ↔ 输入框下面）
         }
-        renderStatus(); renderInput();
-        var tabStatus = [V.title(), V.working(), !!V.needsYou(), P.bell, P.finishedAgent, P._tabWorking].join("|");
+        renderStatus(); if (!fsash) renderInput();
+        var tabStatus = [V.title(), V.working(), V.waitingLabel(), !!V.needsYou(), P.bell, P.finishedAgent, P._tabWorking].join("|");
         if (lastTabStatus !== tabStatus) {
           lastTabStatus = tabStatus;
           if (P.win.syncTitlesSoon) P.win.syncTitlesSoon(); else P.win.syncTitles();
@@ -2571,7 +2742,7 @@
         ccWatch();
       }
       else if (type === "tasks") {
-        if (agent.connector === "agy") P.win.syncTitlesSoon ? P.win.syncTitlesSoon() : P.win.syncTitles();
+        if (P.win) P.win.syncTitlesSoon ? P.win.syncTitlesSoon() : P.win.syncTitles();
         renderStatus(); if (panel && panel.kind === "tasks") renderInput(); if (rt.stream) drawTurn(rt.stream.turn);
         // 后台 Agent 跑完 / 还在跑的变了：对话里写着「Waiting for N background agents to finish」的那几问（和最后一问）结尾那行跟着换
         var bgs = liveBg().sig;
@@ -2710,7 +2881,27 @@
     }
     stk.addEventListener("mousedown", function (e) { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); stickyGo(); });
     stk.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); });
+    // The footer buttons are replaced when status changes. Keep hover on the pane
+    // so a stationary pointer does not lose its underline between updates.
+    var hoveredFooterKey = "";
+    function footerKey(el) {
+      return el && (el.dataset.footerChoice || el.getAttribute("href") || (el.hasAttribute("data-dsh-stat") && "dsh:" + el.dataset.dshStat)) || "";
+    }
+    function footerHover(e) {
+      var target = e.type === "pointermove" && e.target.closest?.("button,a");
+      var key = target && P.input.contains(target) ? footerKey(target) : "";
+      if (key === hoveredFooterKey) return;
+      P.input.querySelector(".footer-pointer-over")?.classList.remove("footer-pointer-over");
+      hoveredFooterKey = key;
+      if (key) target.classList.add("footer-pointer-over");
+    }
+    P.el.addEventListener("pointermove", footerHover);
+    P.el.addEventListener("pointerleave", footerHover);
     V.detach = function () {
+      P.el.removeEventListener("pointermove", footerHover);
+      document.removeEventListener("st-settings-closed", resumeHistory);
+      document.removeEventListener("tsu-draft-image", onDraftImage);
+      P.el.removeEventListener("pointerleave", footerHover);
       P.screen.removeEventListener("scroll", stickySoon);
       P.term.removeEventListener("click", onTranscriptClick);
       P.el.removeEventListener("click", onPaneAction);
@@ -2797,12 +2988,18 @@
         setTimeout(function () { d.classList.add("off"); setTimeout(function () { d.remove(); }, 600); }, 3000);
       });
     }
-    var tickN = 0, lastCtx = -1;
+    var tickN = 0, lastCtx = -1, footerSecond = -1;
     var liveNext = 0; // 在跑的那一问下一次按秒刷新用时的时间（见 tick）
     function tick() {
       tickN++;
-      renderStatus();
-      if (rt.session().ctx !== lastCtx && !panel) { lastCtx = rt.session().ctx; renderInput(); }
+      var second = Math.floor(Date.now() / 1000);
+      var context = rt.session().ctx, contextChanged = context !== lastCtx && !panel;
+      if (!fsash || agent.connector !== "codex" || second !== footerSecond || contextChanged) {
+        renderStatus();
+        if (!fsash && contextChanged) renderInput();
+        lastCtx = context;
+        footerSecond = second;
+      }
       // 在跑的工具（Running 1 shell command · 5s…）每秒刷新一次时间
       //   整问重画很贵时（一问几百次工具调用）按它的代价放慢：最多占一核的 5%（150 ms 一次 → 3 秒一次）；来了新内容照常马上画（turn 事件）
       if (tickN % 8 === 0 && rt.stream && performance.now() >= liveNext && rt.stream.turn.parts.some(function (p) { return p.status === "running"; })) { var lt0 = performance.now(); drawTurn(rt.stream.turn); var lc = performance.now() - lt0; liveNext = performance.now() + Math.max(0, lc * 20 - 1000); }
@@ -2845,7 +3042,7 @@
       // 这一问在第几个（点开 / 收起按它找到是哪一问；前面接上更早的记录时都往后挪）、后面紧跟的是不是回顾（做完那一行挪不挪）也算
       var translated = trN(t);
       renderedTranslations.set(t, translated);
-      var k = rcSig + "|" + (t.__rv || 0) + "|" + translated + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
+      var k = rcSig + (P.textFilter && isCurrentToolTurn(t, rt) ? "|current" : "") + "|" + (t.__rv || 0) + "|" + translated + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
       var rows = turnRows(t, live), h = P.join(rows);
       htmlN = rows.length;
@@ -2881,7 +3078,7 @@
     function restTurns(gen) {
       if (gen !== renderGen || P.closed || P.program !== V || !pendTurns) return;
       if (!pendTurns.length) { pendTurns = null; return; }
-      if (P.off) { earlierPaused = true; return; }
+      if (P.off || window.STUDIO?.settingsModalOpen?.()) { earlierPaused = true; return; }
       var sc = P.screen;
       if (agent.connector === "agy" && sc.clientHeight && sc.scrollTop > 8 * sc.clientHeight) {
         historyWaitingForScroll = true;
@@ -2939,23 +3136,45 @@
       blocks.forEach(function (b, t) {
         if (!b.isConnected) return;
         var y = b.getBoundingClientRect().top - top;
-        if (y >= 0 && (!best || y < best.off)) best = { turn: t, off: y }; // 上沿在对话区里、最靠上的那一问
+        if (y >= 0 && y < sc.clientHeight && (!best || y < best.off)) best = { turn: t, off: y }; // 上沿在对话区里、最靠上的那一问
         if (y < 0 && (!cover || y > cover.off)) cover = { turn: t, off: y }; // 顶上盖着的那一问（一问比一屏还长时用它）
       });
       return [best, cover];
     }
     function restTail(gen) {
       if (gen !== renderGen || P.closed || P.program !== V || !pendTail) return;
-      if (P.off) { laterPaused = true; return; }
+      if (P.off || window.STUDIO?.settingsModalOpen?.()) { laterPaused = true; return; }
       var sc = P.screen, delay = Math.max(lastInputAt + 250, lastPaneSwitchAt + 250) - performance.now();
       if (delay > 0 && (!P.following() || sc.scrollHeight - sc.scrollTop > sc.clientHeight * 3)) {
         setTimeout(function () { restTail(gen); }, delay);
         return;
       }
       var t0 = performance.now();
-      while (pendTail.length && performance.now() - t0 < 12) { var t = pendTail.shift(); if (!blocks.has(t)) placeTurn(t, statusEl); }
+      while (pendTail.length && performance.now() - t0 < 4) { var t = pendTail.shift(); if (!blocks.has(t)) placeTurn(t, statusEl); }
       if (pendTail.length) setTimeout(function () { restTail(gen); }, 0); else pendTail = null;
     }
+    V.resizeVisible = function () {
+      var viewport = P.screen.getBoundingClientRect(), children = P.out.children;
+      var lo = 0, hi = children.length, visible = [];
+      while (lo < hi) {
+        var mid = (lo + hi) >>> 1;
+        if (children[mid].getBoundingClientRect().bottom < viewport.top) lo = mid + 1;
+        else hi = mid;
+      }
+      for (var i = lo; i < children.length; i++) {
+        var block = children[i];
+        if (block.getBoundingClientRect().top > viewport.bottom) break;
+        if (block._t) visible.push(block);
+      }
+      rcSig = rcGlobal();
+      visible.forEach(function (block) {
+        setBlockHtml(block, htmlOf(block._t, liveOf(block._t)));
+        block._n = htmlN;
+        markOpened(block);
+      });
+      renderStatus();
+      renderInput();
+    };
     V.render = function (options) {
       historyWaitingForScroll = false;
       hiddenTurns.clear(); earlierPaused = laterPaused = false;
@@ -2971,6 +3190,7 @@
       P.screen.classList.toggle("filter-final", P.textFilter === "final");
       var anch = !P.footOnly && !P.following() && P.screen.clientHeight && blocks.size ? anchorNow() : null; // 清掉之前量好眼前是哪一问
       if (lower) anch = [{ turn: lower.turn, off: lower.top - P.screen.getBoundingClientRect().top }];
+      var previousIndices = idxOf;
       P.clearBlockObservations();
       P.out.innerHTML = '<span class="blk status"></span>';
       statusEl = P.out.querySelector(".status");
@@ -2981,10 +3201,19 @@
       if (!P.footOnly) { // 面板里那份（agent 的底部）：对话一条都不画——跑着的工具、上一轮的输出、压缩的分隔线都不画；只有在跑的那一行、输入框、状态信息
         bannerEl = P.block(P.rowsHtml(banner()), statusEl);
         var ts = rt.session().turns, ai = -1, aoff = 0;
-        if (anch) anch.some(function (a) { var k = a ? ts.indexOf(a.turn) : -1; if (k < 0) return false; ai = k; aoff = a.off; return true; });
+        if (anch) anch.some(function (a) {
+          if (!a) return false;
+          var k = idxOf.get(a.turn);
+          if (k === undefined && previousIndices) {
+            var old = previousIndices.get(a.turn), candidate = ts[old];
+            if (candidate && candidate.ask === a.turn.ask && candidate.at === a.turn.at) k = old;
+          }
+          if (k === undefined) return false;
+          ai = k; aoff = a.off; return true;
+        });
         if (ts.length >= 24 && !P.following() && ai >= 0) {
-          var sc = P.screen, rows = Math.ceil(sc.clientHeight / (P.rowH || 16)), got = 0, j = ai;
-          for (; j < ts.length; j++) { var bj = placeTurn(ts[j], statusEl); got += bj._n || 1; if (got >= rows * 3 && j - ai >= 2) { j++; break; } }
+          var sc = P.screen, rows = Math.ceil(sc.clientHeight / (P.rowH || 16)), got = 0, j = ai, paintStart = performance.now();
+          for (; j < ts.length; j++) { var bj = placeTurn(ts[j], statusEl); got += bj._n || 1; if (got >= rows * 3 || (j > ai && performance.now() - paintStart >= 8)) { j++; break; } }
           var ab = firstBlk = blocks.get(ts[ai]), top0 = P.out.getBoundingClientRect().top;
           var above = function () { return ab.getBoundingClientRect().top - top0; }; // 锚上面已经有多高
           var h = ai - 1;
@@ -2994,7 +3223,7 @@
           if (j < ts.length) { pendTail = ts.slice(j); setTimeout(function () { restTail(gen); }, 0); }
           anchored = true;
         }
-        else if (ts.length < 24 || !P.following() || !P.screen.clientHeight) ts.forEach(function (t) { appendTurn(t, true); });
+        else if (ts.length < 24) ts.forEach(function (t) { appendTurn(t, true); });
         else {
           var need = Math.ceil(P.screen.clientHeight / (P.rowH || 16)) * 3, got = 0, i = ts.length - 1;
           firstBlk = statusEl;
@@ -3023,7 +3252,7 @@
       var was0 = liveT, b = P.block(htmlOf(t, liveOf(t)), statusEl);
       b._t = t; blocks.set(t, b); flagMark(b, t);
       var ts1 = rt.session().turns, pv1 = ts1[ts1.indexOf(t) - 1]; // 前一问做完那一行原来在输入框下面（它曾是最后一问）：现在回到对话里它自己的位置
-      if (!quiet && pv1 && pv1 !== was0 && pv1.stats && blocks.has(pv1)) drawTurn(pv1);
+      if (!quiet && pv1 && pv1 !== was0 && (pv1.stats || P.textFilter === "body") && blocks.has(pv1)) drawTurn(pv1);
       if (was0 && was0 !== t && blocks.has(was0) && !(rt.stream && rt.stream.turn === was0)) { if (liveT === was0) liveT = null; drawTurn(was0); }
       markOpened(b);
       if (t.recap !== undefined) { var ts0 = rt.session().turns, pv0 = ts0[ts0.indexOf(t) - 1]; if (pv0 && blocks.has(pv0)) drawTurn(pv0); } // 上一问做完那一行挪到 recap 下面：上一问重画一遍（去掉它那一行）
@@ -3211,13 +3440,23 @@
         var cti = rt.session().turns.indexOf(turn), ck = cti + ":c", co = verbose || open[ck], en0 = enLang(), cp0 = turn.compact, ksz = function (n) { return F.k(n) + " tokens"; };
         var cdet = en0 ? (cp0.pre && cp0.post ? ksz(cp0.pre) + " summarized to " + F.k(cp0.post) : cp0.pre ? ksz(cp0.pre) + " summarized" : cp0.msgs ? F.plural(cp0.msgs, "message") + " summarized" : "") + (cp0.summary ? " (ctrl+o to see summary)" : "")
           : (cp0.pre && cp0.post ? ksz(cp0.pre) + " 压缩到 " + F.k(cp0.post) : cp0.pre ? "压缩了 " + ksz(cp0.pre) : cp0.msgs ? "压缩了 " + cp0.msgs + " 条消息" : "") + (cp0.summary ? "（ctrl+o 查看摘要）" : "");
-        if (agent.connector === "codex") {
-          r.text(["", D + "● Context compacted" + (cp0.duration != null ? " · " + F.dur(cp0.duration) : "") + RESET]);
-          if (co && cp0.summary) r.text([cp0.summary]);
-          return done();
-        }
         r.text([""]);
-        r.block('<span class="grp' + (co ? " open" : "") + '" data-key="' + ck + '">' + hotHtml([D + (en0 ? ITALIC : "") + "∷ " + HOT + (en0 ? "Compacted" : "已压缩") + (cdet ? " · " + cdet : "") + HOT_END + RESET]) + "</span>");
+        var heading = agent.connector === "codex"
+          ? D + HOT + "● Context compacted" + (cp0.duration != null ? " · " + F.dur(cp0.duration) : "") + HOT_END + RESET
+          : D + (en0 ? ITALIC : "") + "∷ " + HOT + (en0 ? "Compacted" : "已压缩") + (cdet ? " · " + cdet : "") + HOT_END + RESET;
+        r.block('<span class="grp' + (co ? " open" : "") + '" data-key="' + ck + '">' + hotHtml([heading]) + "</span>");
+        if (co && agent.connector === "codex" && !cp0.summary) {
+          var details = [new Date(turn.at).toLocaleString()];
+          if (cp0.retainedMessages != null) details.push(en0 ? cp0.retainedMessages + " retained messages" : "保留了 " + cp0.retainedMessages + " 条消息");
+          if (!cp0.entries?.length) details.push(en0 ? "No readable summary in this record" : "此记录未提供可读摘要");
+          r.text(details.map(line => "  " + D + line + RESET));
+          for (var entry of cp0.entries || []) {
+            var speaker = entry.role === "user" ? (en0 ? "You" : "你") : "Codex";
+            var body = entry.text.replace(/<image\b[^>]*>\s*<\/image>/gi, en0 ? "[Image]" : "[图片]");
+            r.text(["", "  " + D + speaker + RESET]);
+            for (var paragraph of body.split("\n")) r.text(wrap(paragraph, Math.max(10, P.cols - 4)).map(line => "    " + line));
+          }
+        }
         // 摘要正文按 Markdown 原样的颜色画（不整体套灰：行里的代码、列表记号会把灰色重置掉，一行灰一行黑、半行灰半行黑）
         //   回复翻译开着时摘要也翻：同回复的译文——点摘要正文换成原文（浅色底），再点换回；点上面那条分隔线才是收起（两个地方，不打架，也不要按钮）
         if (co && turn.compact.summary) {
@@ -3348,7 +3587,10 @@
         if ((p.agyAction === "ask_question" || (agent.connector === "codex" && p.name === "wait")) && p.detail?.length) {
           var expanded = pk in open ? open[pk] : verbose || m === "full";
           var rows = [toolRows(p, "call")[0]];
-          var details = expanded ? p.detail : [p.summary || p.detail[0]];
+          if (agent.connector === "codex" && p.name === "wait") {
+            appendCodexOutput(rows, p.detail, expanded, "  ⎿  ", "     ", D);
+          }
+          var details = p.name === "wait" ? [] : expanded ? p.detail : [p.summary || p.detail[0]];
           details.forEach(function (line) {
             termLines(line, Math.max(1, P.cols - 6)).forEach(function (text) {
               rows.push((rows.length === 1 ? "  ⎿  " : "     ") + D + text + RESET);
@@ -3382,23 +3624,24 @@
           }
           return;
         }
-        var lvl = p.status === "running" ? "call" : lvlOf(pk, m), tr = toolRows(p, lvl);
+        var runningWithoutSource = p.status === "running" && !(p.name === "Code" && p.input?.language === "javascript");
+        var lvl = runningWithoutSource ? "call" : lvlOf(pk, m), tr = toolRows(p, lvl);
         var attach = ccs && p.name === "SendMessage" && lvl !== "full" && !verbose; // 同 Claude Code：发消息的调用不画，结果「⎿ Message queued …」接在上一块下面（不空一行）；点它看全文
         if (!attach) r.text([""]);
         mark(p.t0);
-        if (p.status === "running" || !tr.length) r.text(tr);
+        if (runningWithoutSource || !tr.length) r.text(tr);
         else if (attach) { tr[0] = tr[0].replace(/^(\s*\S+\s+)/, "$1" + HOT) + HOT_END; r.block('<span class="grp" data-key="' + pk + '">' + hotHtml(tr) + "</span>"); }
         else if (/^\s/.test(tr[0])) r.text(tr);
         else {
           tr[0] = tr[0].replace(/^(\S+ )/, "$1" + HOT) + HOT_END; // 能点的是「Write(路径)」这几个字，不含前面的点
-          r.block('<span class="grp' + (lvl === "full" ? " open" : "") + '" data-key="' + pk + '" data-def="' + String(m || "").replace(/[^\w-]/g, "") + '">' + hotHtml(tr) + "</span>");
+          r.block('<span class="grp' + (p.name === "web_search" ? " search-tool" : "") + (lvl === "full" ? " open" : "") + '" data-key="' + pk + '" data-def="' + String(m || "").replace(/[^\w-]/g, "") + '">' + hotHtml(tr) + "</span>");
         }
         if (p.thumb && /^data:image\//.test(p.thumb) && lvl !== "call") r.block(imageRefs([p.thumb], 5));
       };
       if (P.textFilter) {
         filteredParts(turn, P.textFilter, rt).forEach(function (part) {
           if (part.kind === "tool") {
-            var current = isCurrentToolTurn(turn, rt);
+            var current = showToolPreview(turn, part, rt);
             var earlier = parts.slice(0, lastTool + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
             if (earlier.length) {
               var key = ti + ":tool-history";
@@ -4283,6 +4526,19 @@
       var full = lvl === "full", peek = lvl === "preview", D = P.DIM, dot = p.status === "error" ? RED + DOT + RESET : p.status === "running" ? D + DOT_RUN + RESET : GREEN + DOT + RESET;
       if (p.ty === "execute" && p.status === "background") dot = p.done ? (p.done.err ? RED : GREEN) + DOT + RESET : p.lost ? D + DOT + RESET : D + DOT_RUN + RESET; // 转到后台的：还在跑一闪一闪，跑完了按结果，没等到结果的淡
       if (p.ty) return tyRows(p, lvl, dot); // Teyvat 自己的工具（teyvat.js）
+      if (p.name === "Code" && p.input?.language === "javascript") {
+        var js = p.input, expandedScript = full || verbose;
+        var label = p.status === "running" ? "Running JavaScript" : "Ran JavaScript";
+        var scriptRows = [dot + " " + BOLD + label + RESET + " " + clip(js.description || "", Math.max(2, P.cols - label.length - 4))];
+        if (expandedScript) {
+          var sourceRows = codeRows(js.code, "script.js");
+          scriptRows = scriptRows.concat(sourceRows.rows);
+          if (sourceRows.more) scriptRows.push("     " + D + "+ " + sourceRows.more + " lines" + RESET);
+        }
+        if (p.detail?.length) appendCodexOutput(scriptRows, p.detail, expandedScript, "  ⎿  ", "     ", D);
+        else if (p.status !== "running") scriptRows.push("  ⎿  " + D + (p.error || "No output") + RESET);
+        return scriptRows;
+      }
       if (p.name === "Bash" && V.style !== "teyvat" && !sysTitle(p)) return bashRows(p, lvl, dot); // 同 Claude Code 2.x 的 Bash
       var cc = V.style !== "teyvat", head = sysTitle(p) || (cc && CC_NAMES[p.name]) || TOOL_NAMES[p.name] || p.name, argRaw = toolArg(p), rows, sub = "  " + D + "⎿" + RESET + "  ", pad5 = "     ";
       // 任务清单（同 Claude Code）：● Update Todos，下面每一项 ☐ 没做 / 粗体 ☐ 在做 / 灰的划掉 ☒ 做完；只看调用：只有这一行
@@ -4421,7 +4677,14 @@
           if ((full || verbose) && p.name !== "Read" && p.detail && p.detail.length) p.detail.slice(0, 400).forEach(function (l) { wrap(l, P.cols - 6).forEach(function (x) { rows.push(pad5 + x); }); });
           return rows;
         }
-        if (p.name === "web_search") { rows.push(sub + String(p.summary || "Did 1 search")); return rows; }
+        if (p.name === "web_search") {
+          rows.push(sub + String(p.summary || "Did 1 search"));
+          if (full || verbose) {
+            var details = p.detail?.length ? p.detail : p.input.queries?.length ? p.input.queries : [p.input.query];
+            details.filter(Boolean).forEach(line => wrap(line, Math.max(8, P.cols - 6)).forEach(x => rows.push(pad5 + x)));
+          }
+          return rows;
+        }
         if (p.name === "WebFetch") {
           rows.push(sub + (p.bytes !== undefined ? "Received " + BOLD + String(p.summary || "").replace(/^Received (\S+) .*$/, "$1") + RESET + (p.httpStatus ? " (" + p.httpStatus + ")" : "") : D + (p.summary || "Done") + RESET));
           if ((full || verbose) && p.detail) p.detail.slice(0, 400).forEach(function (l) { wrap(l, P.cols - 6).forEach(function (x) { rows.push(pad5 + x); }); });
@@ -4666,7 +4929,7 @@
       if (ig) { idet[ig.dataset.key + ":" + idc.dataset.i] = false; var ti0 = rt.session().turns[parseInt(ig.dataset.key, 10)]; if (ti0) drawTurn(ti0); return; }
       // 标题（能点的那几个字）：展开 / 收起；译文 / 原文那一块里任何地方：换原文 / 译文；你点开的那一块（灰底）里任何地方：收起
       var g = e.target.closest && e.target.closest(".hot") && e.target.closest(".grp");
-      if (!g) g = e.target.closest && e.target.closest(".grp.trsw, .grp.agy-question, .grp.thought-block.open");
+      if (!g) g = e.target.closest && e.target.closest(".grp.trsw, .grp.agy-question, .grp.search-tool, .grp.thought-block.open");
       if (!g) g = e.target.closest && e.target.closest(".grp.uopen");
       if (!g) return;
       var hit0 = e.target.closest(".hitem");
@@ -4774,6 +5037,22 @@
     //   ✻ Working... (12s · 1.2k tokens · reading for 3s · 1 background task, lasting 2m)   ❄ Waiting... (44s/5m) / Waiting for user...
     //   ❄ Hibernating... (2m 30s/40m · 12m 45s of diligent work · wake at 09:00)   ❄ Paused；没在跑的不画（输入框里写着发消息会先启动它）
     var waitingColor = function () { return P.light ? "146;108;0" : "255;235;120"; };
+    var terminalWaitSince = 0;
+    function terminalWaitLine(task) {
+      if (terminalWaitSince) return timedWait(terminalWaitLabel, terminalWaitSince);
+      var now = Date.now(), since = task.t0 || Date.parse(task.createdAt);
+      if (!since && /^\d{2}:\d{2}:\d{2}$/.test(task.clock || "")) {
+        var clock = new Date(now);
+        clock.setHours(...task.clock.split(":").map(Number), 0);
+        if (clock.getTime() > now) clock.setDate(clock.getDate() - 1);
+        since = clock.getTime();
+      }
+      terminalWaitSince = Math.min(now, since || now);
+      return timedWait(terminalWaitLabel, terminalWaitSince);
+    }
+    function timedWait(label, since) {
+      return rgb(waitingColor()) + TY_SNOW + " " + label + " (" + tyFe(Date.now() - since) + ")" + RESET;
+    }
     function tyStatus() {
       var st = rt.tyState ? rt.tyState() : null;
       if (!st) return "";
@@ -4827,10 +5106,12 @@
       if (!spinnerTimer) spinnerTimer = setInterval(frame, 120);
     }
     function workingLabel(started) {
-      var glyph = fsash && !rt.stream ? "\uE110" : SPIN[tickN % SPIN.length];
-      return ORANGE + glyph + " " + RESET + shimmer("Working", started || Date.now());
+      if (fsash) return ORANGE + "\uE110 Working" + RESET;
+      return ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + shimmer("Working", started || Date.now());
     }
     function workRows(fcols, indent) {
+      var terminalWait = agyTerminalWait();
+      if (!terminalWait) terminalWaitSince = 0;
       var out = [], s = rt.stream, D = P.DIM, w = Math.max(20, fcols - indent.length - 4), spinHere = !window.STUDIO || STUDIO.inline(P, "status");
       if (!s && (agent.connector === "dsh" || agent.connector === "agy") && rt.state() === "working") {
         var started = rt.workingStartedAt ? rt.workingStartedAt() : rt.session().progress.startedAt;
@@ -4840,9 +5121,8 @@
           var thinkingAt = agent.connector === "agy" && vmode("thinking") !== "hidden" && rt.thinkSince();
           var thought = thinkingAt ? thinkTint(thinkingAt, started) + thinkPhrase(null) + statusDim() : "";
           var detail = [[elapsed, thought].filter(Boolean).join(", "), hint].filter(Boolean).join(" • ");
-          var latestPart = agent.connector === "agy" && rt.session().turns.at(-1)?.parts.at(-1);
-          if (latestPart?.agyAction === "run_command" && latestPart.status === "running") {
-            out.push(indent + statusDim() + "Waiting for background terminal" + (elapsed ? " (" + elapsed + ")" : "") + RESET);
+          if (terminalWait) {
+            out.push(indent + terminalWaitLine(terminalWait));
             return out;
           }
           var label = agyShowsLiveThought() ? hint : workingLabel(started) + statusDim() + (detail ? " (" + detail + ")" : "");
@@ -4867,7 +5147,8 @@
           out.push(indent + "  " + LAV + "▰".repeat(fl) + RESET + SD0 + "▱".repeat(BW - fl) + " " + cpct + "%" + RESET);
         } else
         if (s.wait) { var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000)); out.push(indent + RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)); }
-        else if (agent.connector === "codex" && wl !== "brief") out.push(indent + (s.specialStatus ? SD + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + (s.specialStatus === "Waiting for background terminal" ? ")" : " • esc to interrupt)") + RESET);
+        else if (s.specialStatus === terminalWaitLabel) out.push(indent + timedWait(terminalWaitLabel, s.phaseAt || s.t0));
+        else if (agent.connector === "codex" && wl !== "brief") out.push(indent + (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET);
         else if (wl === "brief") out.push(indent + ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET);
         else {
           var pend = V.style !== "teyvat" && rt.pending ? rt.pending() : null;
@@ -4919,8 +5200,8 @@
           out.push(indent + link(location.origin + location.pathname + "#agy-countdown", TY_SNOW + " Waiting..." + detail));
           return out;
         }
-        if (agent.connector === "agy" && rt.tasks.some(task => task.status === "running" && task.kind === "shell")) {
-          out.push(indent + statusDim() + "Waiting for background terminal" + RESET);
+        if (terminalWait) {
+          out.push(indent + terminalWaitLine(terminalWait));
           return out;
         }
         var ld = lastDone(), dlf = ld ? doneLine(ld, true) : "";
@@ -4965,7 +5246,8 @@
         else if (s.wait) { // 这一次没成、等着重试（同 Claude Code：红的）
           var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000));
           r.text(["", RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)]);
-        } else if (agent.connector === "codex" && wl !== "brief") r.text(["", (s.specialStatus ? SD + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + (s.specialStatus === "Waiting for background terminal" ? ")" : " • esc to interrupt)") + RESET]);
+        } else if (s.specialStatus === terminalWaitLabel) r.text(["", timedWait(terminalWaitLabel, s.phaseAt || s.t0)]);
+        else if (agent.connector === "codex" && wl !== "brief") r.text(["", (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET]);
         else if (wl === "brief") r.text(["", ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET]);
         else {
           // Claude Code 风格：排着还没被读到的几句（它自己记的队 + 这边送进去的）画在转圈上面——灰底的「❯ 原话」，下面一行淡的说明（同 Claude Code）
@@ -5000,7 +5282,7 @@
       var me = A.me(), m = rt.model(), out = [];
       (cfg.statusline || []).forEach(function (f) {
         if (f === "model" && m) out.push(m.name);
-        if (f === "balance" && me && me.allowed) out.push("Balance: " + F.money(me.balance));
+        if (f === "balance" && footerEnabled("balance") && me && me.allowed) out.push("Balance: " + F.money(me.balance));
         if (f === "cost") out.push("Session: " + F.money(rt.cost()));
         if (f === "cwd") out.push(rt.cwd());
         if (f === "access") out.push("Access: " + (agent.access || "read"));
@@ -5037,12 +5319,25 @@
         });
       }, function () {});
     }
+    function agyLocalCommand(text) {
+      var cmd = rt.headless() && TSU_AGY.localAction(text);
+      if (!cmd) return false;
+      if (cmd === "/tasks") STUDIO.revealFamily(agentId,"bg",P);
+      else if (cmd === "/usage") toggleAgentQuota(P.input.querySelector("[data-quota]") || P.ta);
+      else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
+      else if (cmd === "/context") TSU_CTX.open(rt, P.ta, {tui:true});
+      else if (cmd === "/model") rt.prepareChoices().then(() => pickConnModel(true)).catch(err => P.flash(err.message, 3000));
+      else if (cmd === "/help") picker({title:"AGY", cmd:"/help", options:TSU_AGY.commands.filter(c => c[0] !== "help").map(c => ({value:c[0], label:"/" + c[0], desc:c[1]})), onPick:function(name) { if (name === "goal") { P.ta.value = "/goal "; renderInput(); } else agyLocalCommand("/" + name); }});
+      else if (cmd === "/goal") { P.ta.value = "/goal "; renderInput(); return true; }
+      else { P.flash("当前 AGY headless 会话不支持这条命令", 3000); return true; }
+      P.ta.value = ""; draftSet(agentId, ""); renderInput();
+      return true;
+    }
     function menuItems() {
       var v = P.ta.value;
       if (!/^\/\S*$/.test(v)) return [];
       if (agent.connector === "agy") {
-        var commands = [["help", "命令和快捷键"], ["model", "选择模型"], ["config", "配置"], ["agents", "可用 Agent"], ["add-dir", "添加目录"], ["artifact", "查看产物"], ["btw", "临时提问"], ["changelog", "更新记录"], ["resume", "恢复会话"], ["fork", "创建会话分支"]];
-        return commands.filter(c => ("/" + c[0]).startsWith(v)).map(c => ({name: "/" + c[0], desc: c[1]}));
+        return TSU_AGY.commands.filter(c => ("/" + c[0]).startsWith(v)).map(c => ({name: "/" + c[0], desc: c[1]}));
       }
       if (agent.claude) {
         if (agent.connector === "codex") loadCxPrompts(); else if (agent.connector !== "pi") loadSkills();
@@ -5065,9 +5360,7 @@
         hiddenTurns.clear();
         P.stick();
       }
-      var gen = renderGen;
-      if (earlierPaused) { earlierPaused = false; requestAnimationFrame(function () { restTurns(gen); }); }
-      if (laterPaused) { laterPaused = false; requestAnimationFrame(function () { restTail(gen); }); }
+      resumeHistory();
       if (inputStale) { inputStale = false; renderInput(); } if (statusStale) { statusStale = false; renderStatus(); } ccWatch(); };
     var needsAid = ""; // 底部「● N awaiting input」点了去的那个会话
     function draftImageLinks(html) {
@@ -5090,7 +5383,7 @@
         if (P.foot.style.paddingLeft !== fpx) P.foot.style.paddingLeft = fpx;
         if (fmore && fmore.style.right !== mr) fmore.style.right = mr;
       }
-      if (panel && !ABOVE[panel.kind]) return renderPanel(fcols, indent);
+      if (panel && !ABOVE[panel.kind]) { if (fmore) fmore.style.top = ""; return renderPanel(fcols, indent); }
       var agyStatus = agent.connector === "agy" && rt.session().statusLabel;
       var label = " " + agent.name + " ", ta = P.ta, v = ta.value, bang = v[0] === "!", lineCol = bang ? PINK : D;
       // 最右边留 4 格给「···」按钮（绝对定位在这一行的右端）：名字、线都不被它压着
@@ -5144,7 +5437,7 @@
       var inputLen = rows.length; // 输入框这一块（上下两条线和中间的字）有几行：在跑的那一行接在它下面
       // 状态信息（权限级别、余额、上下文、模型、在哪跑）在 agent 的底部、输入框下面（同 Claude Code；位置定死，有规律）——窗口底部的状态栏只放工作区的东西。
       // 显示不显示：设置 › 对话 › 显示 › 状态信息、对话 ··· › 显示（cfg.footInfo）
-      var toBar = false, footInfo = cfg.footInfo !== false;
+      var toBar = false, footInfo = footerEnabled("info", cfg.footInfo !== false);
       if (window.STUDIO && STUDIO.remove) { STUDIO.remove(P, "access"); STUDIO.remove(P, "statusline"); STUDIO.remove(P, "where"); }
       if (agent.claude && toBar) {
         // 连接器的会话（Claude Code、Codex）：在别处跑的，状态栏上一个短词（后台 / 另一个终端），不是一句话
@@ -5156,20 +5449,27 @@
         var liveFields = rt.liveFooter && rt.liveFooter.split(/\s*·\s*/);
         var mode = liveFields ? liveFields[0] : rt.session().mode;
         var fields = liveFields ? liveFields.slice(1).filter(field => !/^\d+\s+(lines?|turns?)$/i.test(field.trim())) : String(agyStatus || "").split(" · ");
-        if (rt.headless() && rt.preferredModel()) {
-          var preferredLabel = rt.preferredModel().name.match(/^(.*?) \((low|medium|high|xhigh|max)\)$/i);
-          fields = preferredLabel ? [preferredLabel[1], preferredLabel[2].toLowerCase()] : [rt.preferredModel().name];
+        var confirmed = rt.confirmedModel && rt.confirmedModel();
+        if (confirmed) {
+          var variant = /^(.*) \((low|medium|high|xhigh|max)\)$/i.exec(confirmed.name);
+          fields = variant ? [variant[1], variant[2].toLowerCase()] : [confirmed.name];
         }
         if (rt.headless()) fields = fields.map(value => /^(low|medium|high|xhigh|max)$/i.test(value) ? link(location.origin + location.pathname + "#cx-select-effort", value) : value);
         var modelLabel = fields.shift();
         var scheduled = (rt.schedules || []).filter(task => task.status === "running").length;
         var cronLink = scheduled && (rt.state() === "working" || vmode("workLine") === "hidden") && link(location.origin + location.pathname + "#agy-cron", "定时任务 " + scheduled);
-        var values = [cronLink, rt.weeklyLabel(), mode && rgb("175;165;0") + mode + RESET + D, modelLabel && link(location.origin + location.pathname + "#cx-select-model", modelLabel), ...fields].filter(Boolean);
+        var weekly = rt.weeklyLabel();
+        var contextLabel = Number.isFinite(rt.contextTokens) ? "Context " + rt.contextTokens.toLocaleString("en-US") + " tokens" : "";
+        if (contextLabel && rt.contextLimit > 0) contextLabel = "Context " + Math.round(100 * rt.contextTokens / rt.contextLimit) + "% Used";
+        var values = [footerEnabled("cron") && cronLink, footerEnabled("context") && contextLabel && link(location.origin + location.pathname + "#agent-context", contextLabel), footerEnabled("quota") && weekly && link(location.origin + location.pathname + "#agent-quota", weekly), footerEnabled("mode") && mode && rgb("175;165;0") + mode + RESET + D, modelLabel && link(location.origin + location.pathname + "#cx-select-model", modelLabel), ...fields].filter(Boolean);
         footerRight = D + values.join(" · ") + RESET;
       } else if (rt.footerFields || rt.models) {
         var values = rt.footerFields ? rt.footerFields() : [rt.model().name, agent.effort].filter(Boolean);
+        values = values.filter(value => /^Context /i.test(value) ? footerEnabled("context") : /^remained /i.test(value) ? footerEnabled("balance") : rt.quotaLabel && value === rt.quotaLabel() ? footerEnabled("quota") : true);
         if (rt.models || rt.efforts) {
           values = values.map(function (value) {
+            if (/^Context \d/.test(value)) return link(location.origin + location.pathname + "#agent-context", value);
+            if (rt.quotaLabel && value === rt.quotaLabel()) return link(location.origin + location.pathname + "#agent-quota", value);
             var kind = rt.models && value === rt.model().name ? "model" : rt.efforts && value === agent.effort ? "effort" : "";
             return kind ? link(location.origin + location.pathname + "#cx-select-" + kind, value) : value;
           });
@@ -5190,7 +5490,7 @@
       var tasksS = (nSh ? D + " · " + RESET + CYAN + F.plural(nSh, "shell") + RESET : "") + (nAg ? D + " · " + RESET + CYAN + F.plural(nAg, "agent") + RESET : "");
       base += tasksS;
       var left = base + hintS;
-      if ((cfg.statusline || []).indexOf("context") >= 0) {
+      if (footerEnabled("context") && (cfg.statusline || []).indexOf("context") >= 0) {
         var c = rt.ctx(), ctxs = "Ctx: " + (c.pct < 10 ? c.pct.toFixed(1) : Math.round(c.pct)) + "%";
         if (W(left) + W(ctxs) + 3 > fcols) left = base;
         if (W(left) + W(ctxs) + 3 <= fcols) left += " ".repeat(fcols - W(left) - W(ctxs) - 1) + D + ctxs + RESET;
@@ -5212,7 +5512,7 @@
           });
         }
       }
-      var work = fsash && (!panel || panel.footerChoice) ? workRows(fcols, indent) : []; // 在跑的那一行、排着的：接在输入框下面（状态行上面）
+      var work = fsash ? workRows(fcols, indent) : []; // 在跑的那一行、排着的：接在输入框下面（状态行上面）
       // 全屏只看对话（手机）：输入框贴到最下面——在跑的那一行挪到输入框上面，状态信息那两行不要（下面不留一截）
       var focusNow = root.classList.contains("st-focus");
       if (focusNow) { above = above.concat(work); work = []; rows = rows.slice(0, inputLen); }
@@ -5233,6 +5533,7 @@
         work[statusRow] = dshPills ? "DSHSTATSROW" : left + " ".repeat(Math.max(0, remaining - W(left))) + footerRight;
       }
       rows = above.concat(rows.slice(0, inputLen), work, rows.slice(inputLen));
+      if (fmore) fmore.style.top = (1 + above.length * P.rowH) + "px";
       caretRow += above.length;
       if (inMap) inMap.row0 = above.length + 1; // 字的第一行在底部的第几行（上面是面板 / 菜单、再上面一条线）
       // 拖出来的高度（拖着的时候用拖到哪儿）：最矮 = 现在这些行，最高这一格的 70%；多出来的地方给输入框（输入框变高，同 VS Code 聊天的输入框），状态行还在最下面
@@ -5279,6 +5580,7 @@
         });
       }
       if (work.some(line => line.includes("\uE110")) || above.some(line => line.includes("\uE110"))) {
+        inputMarkup = inputMarkup.replace(/(\uE110(?:<\/span>)?) Working/g, '$1 <span class="working-word">Working</span>');
         inputMarkup = inputMarkup.replace(/\uE110/g, '<span class="working-spinner" aria-hidden="true">·</span>');
       }
       if (isolateDraft && draftBody?.parentNode === P.input) setBlockHtml(P.input, inputMarkup);
@@ -5299,18 +5601,24 @@
           window.STUDIO?.revealFamily(agentId, a.hash === "#agy-cron" ? "cron" : "bg", P);
         };
       });
-      P.input.querySelectorAll('a[href*="#cx-select-"]').forEach(function (a) {
+      P.input.querySelectorAll('a[href*="#cx-select-"], a[href$="#agent-quota"], a[href$="#agent-context"]').forEach(function (a) {
         var model = a.hash === "#cx-select-model", button = document.createElement("button");
         button.type = "button"; button.className = "cx-footer-choice"; button.textContent = a.textContent;
         button.style.color = "rgb(" + P.DIM.match(/38;2;(\d+;\d+;\d+)/)[1].replace(/;/g, ",") + ")";
-        button.title = model ? "切换模型" : "切换思考强度";
+        var quota = a.hash === "#agent-quota";
+        if (quota) button.dataset.quota = "";
+        button.dataset.footerChoice = a.hash;
+        button.title = a.hash === "#agent-context" ? "上下文用量" : quota ? "查看额度" : model ? "切换模型" : "切换思考强度";
         async function choose(e) {
           e.preventDefault(); e.stopPropagation();
-          var kind = model ? "model" : "effort";
+          if (a.hash === "#agent-context") { TSU_CTX.open(rt, button, {tui:true}); return; }
+          var kind = quota ? "quota" : model ? "model" : "effort";
           if (loadingChoice?.kind === kind || panel?.footerChoice === kind) {
             loadingChoice = null; closePanel(); return;
           }
+          if (quota) { loadingChoice = null; toggleAgentQuota(button); return; }
           var request = loadingChoice = {kind};
+          if (agent.connector === "agy" && !rt.models().length) P.flash("正在获取 AGY 模型列表…", 1200);
           try { if (rt.prepareChoices) await rt.prepareChoices(); }
           catch (err) { if (loadingChoice === request) { loadingChoice = null; P.flash(err.message, 4000); } return; }
           if (loadingChoice !== request) return;
@@ -5321,13 +5629,21 @@
             options: rt.efforts().map(id => ({value: id, label: id, current: id === button.textContent.trim().toLowerCase()})),
             onPick: id => Promise.resolve(rt.setEffort(id)).catch(err => P.flash(err.message, 4000))});
         }
-        button.onpointerdown = function (e) { if (e.button === 0) choose(e); };
+        button.onpointerdown = function (e) {
+          if (e.button !== 0) return;
+          choose(e);
+        };
         button.onclick = function (e) { if (!e.detail) choose(e); };
         a.replaceWith(button);
       });
       if (dshPills) P.input.querySelectorAll("[data-dsh-stat]").forEach(function (button) {
         button.onclick = function (e) { e.stopPropagation(); rt.showStat(button, Number(button.dataset.dshStat)); };
       });
+      if (hoveredFooterKey) {
+        for (var control of P.input.querySelectorAll("button,a")) {
+          if (footerKey(control) === hoveredFooterKey) { control.classList.add("footer-pointer-over"); break; }
+        }
+      }
       if (fsash && fpad > 0) {
         var rules = P.input.querySelectorAll(".ttu-box:first-child");
         var cellWidth = Math.floor(P.chPx * 64) / 64;
@@ -5515,9 +5831,11 @@
     // /model：两级——先选提供方，再选它的模型（Esc 回到提供方）
     // 连接器的会话（Claude Code、Codex）：连接器给的模型（id 原样，带 [1m] 的是 1M 上下文），下一句起用上
     function pickConnModel(fromFooter) {
-      var cur = rt.model() || {}, who = rt.agentName && rt.agentName();
-      picker({ footerChoice: fromFooter === true ? "model" : "", title: "Select model", sub: (rt.label || "Claude Code") + (who ? " · " + who : "") + (enLang() ? " · applies from the next message" : " · 下一句起生效"), cmd: "/model",
-        options: rt.models().map(function (m) { return { value: m.id, label: m.name, current: m.id === cur.id, desc: m.desc || "" }; }), // 不写完整的模型 ID（名字就够了）
+      var cur = rt.model() || {};
+      var actual = rt.currentModelId ? rt.currentModelId() : cur.id;
+      var family = id => rt.currentModelId ? String(id || "").replace(/-(low|medium|high|xhigh|max)$/, "") : id;
+      picker({ footerChoice: fromFooter === true ? "model" : "", title: "Select model", cmd: "/model",
+        options: rt.models().map(function (m) { return { value: m.id, label: m.name, current: family(m.id) === family(actual), desc: m.desc || "" }; }), // 不写完整的模型 ID（名字就够了）
         onPick: function (id) { if (fromFooter && agent.connector === "claude-code" && rt.elsewhere()) return P.flash("外部 Claude Code 会话没有模型控制通道", 2400);
           var applied = rt.setModel(id, fromFooter === true); if (applied && applied.catch) applied.catch(err => P.flash(err.message, 4000));
           if (!fromFooter && applied) rt.record("/model", "Set model to " + id); } });
@@ -5561,8 +5879,10 @@
     }
     function effortRows(fcols, indent) {
       var D = P.DIM, e = A.EFFORTS[panel.sel];
-      return [indent + BOLD + "Effort" + RESET, ""].concat(effortSlider(fcols, indent, panel.sel),
-        [indent + D + clip(uiT(EFFORT_DESC[e]) || "", fcols - indent.length - 2) + RESET, "", indent + D + "←/→ to adjust · Enter to confirm · Esc to cancel" + RESET]);
+      var rows = [indent + BOLD + "Effort" + RESET, ""].concat(effortSlider(fcols, indent, panel.sel),
+        [indent + D + clip(uiT(EFFORT_DESC[e]) || "", fcols - indent.length - 2) + RESET]);
+      pickerHint(rows,"←/→ to adjust · Enter to confirm · Esc to cancel",fcols,indent);
+      return rows;
     }
     function effortKey(e) {
       var k = e.key;
@@ -5591,6 +5911,10 @@
       var order = k === "statusline" ? A.STATUS_FIELDS : A.FOOTER_FIELDS;
       A.setCfg(k, order.filter(function (x) { return l.indexOf(x) >= 0; }));
     }
+    function pickerHint(rows, hint, cols, indent) {
+      if (W(rows[0]) + W(hint) + 2 <= cols) rows[0] += "  " + P.DIM + hint + RESET;
+      else rows[1] = indent + P.DIM + clip(hint, Math.max(1, cols - W(indent))) + RESET;
+    }
     function pickRows(fcols, indent) {
       var rows = [indent + BOLD + uiT(panel.title) + RESET, ""], D = P.DIM, map = panel.map;
       if (panel.sub) {
@@ -5608,7 +5932,8 @@
         if (o.desc && fcols - W(line) > 5) line += (on ? "" : D) + clip(uiT(o.desc), fcols - W(line) - 2) + RESET;
         rows.push(line);
       });
-      rows.push("", indent + D + (panel.multi ? "Space to toggle · Enter when done · Esc to exit" : "Enter to confirm · Esc to exit") + RESET);
+      var hint = panel.multi ? "Space to toggle · Enter when done · Esc to exit" : "Enter to confirm · Esc to exit";
+      pickerHint(rows, hint, fcols, indent);
       return rows;
     }
     function pickKey(e) {
@@ -5680,14 +6005,19 @@
         if (whereT || mid) out.push(indent + "  " + D + [whereT, mid].filter(Boolean).join(" · ") + RESET);
         return out;
       }
-      if (!rt.footerFields && agent.connector !== "agy") out.push(indent + "  " + D + (agent.connector === "pi" ? "" : "5h: " + pcs(L && L.five) + " | 7d: " + pcs(L && L.week) + " | ") + "Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a") + RESET); // pi 没有 5 小时、7 天的限额：只写上下文
+      if (!rt.footerFields && agent.connector !== "agy") {
+        var usage = [];
+        if (agent.connector !== "pi" && footerEnabled("quota")) usage.push("5h: " + pcs(L && L.five), "7d: " + pcs(L && L.week));
+        if (footerEnabled("context")) usage.push("Ctx: " + (c && c.window ? Math.round(c.pct) + "%" : "n/a"));
+        if (usage.length) out.push(indent + "  " + D + usage.join(" | ") + RESET);
+      }
       var mode = rt.permMode ? rt.permMode() : "", look = MODE_LOOK[mode], bits = [];
       var sh = (rt.tasks || []).filter(function (x) { return x.kind === "shell" && x.status === "running"; }).length, wh = connWhere();
       if (islandRunning) bits.push(D + "← " + islandRunning + " agent" + (islandRunning === 1 ? "" : "s") + RESET);
       if (sh) bits.push(CYAN + sh + " shell" + (sh === 1 ? "" : "s") + RESET);
       if (wh) bits.push(D + wh + RESET);
       var line = look ? rgb(look[1]) + look[0] + RESET + (rt.canCycle && rt.canCycle() ? D + " (shift+tab to cycle)" + RESET : "") : "";
-      var row2 = line || bits.length ? indent + "  " + line + (line && bits.length ? D + " · " + RESET : "") + bits.join(D + " · " + RESET) : "", cl = ctxLeft();
+      var row2 = line || bits.length ? indent + "  " + line + (line && bits.length ? D + " · " + RESET : "") + bits.join(D + " · " + RESET) : "", cl = footerEnabled("context") && ctxLeft();
       if (cl) { // 右对齐在这一行的右边（同它）；放不下就单独一行
         var clS = (cl.err ? RED : D) + cl.text + RESET;
         if (row2 && W(row2) + W(cl.text) + 3 <= fcols) row2 += " ".repeat(fcols - W(row2) - W(cl.text) - 1) + clS;
@@ -6224,6 +6554,70 @@
       openAsk(q);
     }
     V.openAsk = function () { var q = rt.question && rt.question(); if (q) { askHidden = null; openAsk(q); } };
+    function toggleAgentQuota(button) {
+      var old = P.el.querySelector(".agy-quota-popup");
+      if (old && old.matches(":popover-open")) { old.hidePopover(); old.remove(); return; }
+      if (old) old.remove();
+      var box = document.createElement("div");
+      box.className = "agy-quota-popup";
+      box.setAttribute("popover", "manual");
+      box.style.cssText = "position:fixed;inset:auto;margin:0;padding:8px 12px;border:1px solid #8886;border-radius:6px;background:Canvas;color:CanvasText;box-shadow:0 3px 12px #0002;white-space:pre;font:" + getComputedStyle(button).font;
+      var names = rt.quotaBuckets ? Object.fromEntries(rt.quotaBuckets().map(b => [b.name, (rt.label || "Codex") + " · " + b.name])) : {"gemini-5h":"Gemini · 5h", "gemini-weekly":"Gemini · weekly", "3p-5h":"Third-party · 5h", "3p-weekly":"Third-party · weekly"};
+      box.style.columnGap = "0.65em";
+      function remainingTime(reset) {
+        var end = Date.parse(reset);
+        if (!(end > 0)) return "—";
+        var sec = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+        if (sec >= 86400) return Math.floor(sec / 86400) + "d " + Math.floor(sec % 86400 / 3600) + "h";
+        if (sec >= 3600) return Math.floor(sec / 3600) + "h " + Math.floor(sec % 3600 / 60) + "m";
+        if (sec >= 60) return Math.floor(sec / 60) + "m " + sec % 60 + "s";
+        return sec + "s";
+      }
+      var periodAnchor;
+      var activePeriod = button.textContent.trim().split(/\s+/)[0];
+      box.style.gridTemplateColumns = "max-content max-content max-content max-content max-content";
+      var updateRows = Object.entries(names).map(([key, name]) => {
+        var [provider, period] = name.split(" · ");
+        var cells = [provider + " ·", period, "", "left", ""].map(value => {
+          var cell = document.createElement("span");
+          cell.textContent = value;
+          box.appendChild(cell);
+          return cell;
+        });
+        if (!periodAnchor || period === activePeriod) periodAnchor = cells[1];
+        cells[2].style.textAlign = "right";
+        return buckets => {
+          var item = buckets.find(b => b.name === key);
+          cells[2].textContent = item ? Math.round(item.remaining * 100) + "%" : "—";
+          cells[4].textContent = "· " + remainingTime(item?.reset);
+        };
+      });
+      function refreshRows() {
+        var buckets = rt.quotaBuckets ? rt.quotaBuckets() : TSU_AGY.quota().data?.buckets || [];
+        updateRows.forEach(update => update(buckets));
+      }
+      refreshRows();
+      P.el.appendChild(box);
+      box.showPopover({source:button});
+      box.style.display = "grid";
+      var tick = setInterval(() => {
+        if (box.isConnected && box.matches(":popover-open")) refreshRows();
+        else clearInterval(tick);
+      }, 1000);
+      var rect = button.getBoundingClientRect();
+      box.style.left = Math.max(4, Math.min(rect.left - (periodAnchor.getBoundingClientRect().left - box.getBoundingClientRect().left), innerWidth - box.offsetWidth - 4)) + "px";
+      box.style.top = Math.max(4, rect.top - box.offsetHeight - 5) + "px";
+      var events = new AbortController();
+      function dismiss() { events.abort(); box.hidePopover(); box.remove(); }
+      box.addEventListener("click", dismiss, {signal:events.signal});
+      document.addEventListener("pointerdown", e => {
+        if (!box.contains(e.target) && !e.target.closest?.('button[title="查看额度"]')) dismiss();
+      }, {capture:true, signal:events.signal});
+      document.addEventListener("keydown", e => {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); dismiss(); }
+      }, {capture:true, signal:events.signal});
+      box.addEventListener("toggle", e => { if (e.newState === "closed") { events.abort(); box.remove(); } });
+    }
     function renderPanel(fcols, indent) {
       var rows = ["", ""]; // 顶上不画线（以前是一条淡紫的横线）
       panel.map = {};
@@ -6427,35 +6821,30 @@
       inp.click();
     }
     function addImage(file, fail) {
-      if (!file || !/^image\//.test(file.type)) return fail && fail();
-      var ta = P.ta, no = takeNo(), a = { no: no, tag: "[Image #" + no + "]", media_type: "", data: "" };
+      if (!file || !/^image\//.test(file.type)) { if (typeof fail === "function") fail(); return; }
+      var ta = P.ta, no = takeNo(), a = TSU_DRAFTIMG.fromFile(agentId, file, function () {
+        if (P.program === V && !P.closed && typeof fail === "function") fail();
+      });
+      a.no = no; a.tag = "[Image #" + no + "]";
       ta.setRangeText(a.tag, ta.selectionStart, ta.selectionEnd, "end");
       attach.push(a);
       draftSet(agentId, ta.value, pastes);
       imgsToShared();
       renderInput();
-      var img = new Image(), url = URL.createObjectURL(file);
-      img.onerror = function () { // 解不开的（有的 HEIC、TIFF）：拿掉这个号，交回去插路径
-        URL.revokeObjectURL(url);
-        var at = ta.value.indexOf(a.tag);
-        if (at >= 0) ta.setRangeText("", at, at + a.tag.length, "end");
-        attach = attach.filter(function (x) { return x !== a; });
-        renderInput();
-        if (fail) fail();
-      };
-      img.onload = function () {
-        var k = Math.min(1, 1568 / Math.max(img.width, img.height)), c = document.createElement("canvas");
-        c.width = Math.round(img.width * k);
-        c.height = Math.round(img.height * k);
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        var type = file.type === "image/png" ? "image/png" : "image/jpeg", data = c.toDataURL(type, 0.9);
-        a.media_type = type; a.data = data.slice(data.indexOf(",") + 1);
-        URL.revokeObjectURL(url);
-        imgsToShared();
-        renderInput();
-      };
-      img.src = url;
     }
+    function onDraftImage(e) {
+      if (e.detail.id !== agentId) return;
+      var im = attach.find(a => a.decoding === e.detail.decoding);
+      if (!im) return;
+      if (e.detail.data) { im.data = e.detail.data; delete im.decoding; }
+      else {
+        var at = P.ta.value.indexOf(im.tag);
+        if (at >= 0) P.ta.setRangeText("", at, at + im.tag.length, "preserve");
+        attach = attach.filter(a => a !== im);
+      }
+      renderInput();
+    }
+    document.addEventListener("tsu-draft-image", onDraftImage);
     // 输入框里超过 10000 个字（同 Claude Code 2.1.281）：前后各留 500 个字，中间收成「[...Truncated text #N +M lines...]」，原文另存、发的时候展开——
     //   中间那段里原来的粘贴块先展开进去一起收；前后的边界不切开「[Pasted text …]」「[Image …]」这种一整块
     function truncLong() {
@@ -6575,9 +6964,13 @@
         while (paras.length && !paras[paras.length - 1].trim() && full0.length === src0.length) paras.pop();
         for (var pi = 0; pi < paras.length; pi++) { if (pl.length > 12) { more = linesOf(full0) - pi; break; } pl.push.apply(pl, wrap(paras[pi].length > 2000 ? paras[pi].slice(0, 2000) : paras[pi], P.cols - 2)); }
         r.text([""]);
-        r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
+        var promptImages = q.images?.length && (agent.connector === "codex" || agent.connector === "agy") && vmode("prompts");
+        if (promptImages) {
+          var numbers = q.images.map((im,i) => im.no || i+1);
+          askBlock(r, pl.slice(0,12).join("\n").replace(/\[Image #\d+\]/g,"").trim(), "❯ ", q.images, numbers);
+        } else r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
         if (pl.length > 12 || more > 0) r.text(["  " + D + "… +" + (Math.max(0, pl.length - 12) + Math.max(0, more)) + " lines" + RESET]);
-        if (q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
+        if (!promptImages && q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
         if (q.err) {
           // 红的「未发送：原因」；下面淡的一行是这一句送的经过（失败几次、手动重试几次、第一次什么时候发的、最近一次），后面能点：
           //   重试（再送一次）、编辑（拿回输入框改，同按 ↑）、取消（这一句不发了）——编辑、取消只有这边排着的才有，都只对这一句
@@ -6694,29 +7087,39 @@
       var codexQueue = agent.connector === "codex" && k === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !items.length && rt.stream && ta.value.trim();
       if ((k === "Enter" || codexQueue) && !e.shiftKey) {
         e.preventDefault();
+        var loadingImages = attach.filter(im => im.decoding && ta.value.includes(im.tag));
+        if (loadingImages.length) {
+          var input = ta.value, ticket = V.imageSubmit = {};
+          Promise.all(loadingImages.map(im => im.decoding)).then(function (results) {
+            if (V.imageSubmit === ticket && !P.closed && P.program === V && ta.value === input && results.every(Boolean)) V.key(e);
+          });
+          return;
+        }
         if (rt.sendTerminal) {
           if (!ta.value.trim()) return;
-          if (P.terminalSendPending && !(agent.connector === "agy" && rt.headless())) {
+          if (P.terminalSendPending?.agentId === agentId && !(agent.connector === "agy" && rt.headless())) {
             P.flash("上一条消息仍在处理中，当前输入已保留", 2500);
             return;
           }
           var sendImages = attach.filter(image => ta.value.includes(image.tag));
           if (sendImages.length && agent.connector !== "agy") { P.flash("此输入方式仅支持文字", 2000); return; }
           var original = ta.value, message = items.length ? items[menuIdx].name : original;
+          if (agent.connector === "agy" && agyLocalCommand(message)) return;
           pastes.forEach(function (paste) { message = message.split(paste.tag).join(paste.text); });
-          P.terminalSendPending = true;
+          var sendTicket = P.terminalSendPending = {agentId: agentId};
           var immediate = rt.headless?.(), sentPastes = pastes;
+          var onDelivery = immediate ? null : clearDraftOnDelivery(agentId, P);
           if (immediate) { ta.value = ""; pastes = []; histIdx = -1; draftSet(agentId, ""); renderInput(); }
           if (immediate) { attach = []; imgsToShared(); }
           rt.sendTerminal(message, sendImages).then(function () {
-            if (!immediate && ta.value === original) { ta.value = ""; attach = []; imgsToShared(); pastes = []; histIdx = -1; draftSet(agentId, ""); renderInput(); }
+            if (onDelivery) onDelivery();
           }).catch(function (error) {
             if (immediate) {
-              ta.value = original + (ta.value ? "\n" + ta.value : "");
-              attach = sendImages.concat(attach); imgsToShared(); pastes = sentPastes.concat(pastes); draftSet(agentId, ta.value, pastes); renderInput();
+              prependDraft(agentId, original, sendImages, sentPastes);
+              if (!P.closed && P.program?.agentId === agentId) P.program.syncDraft?.();
             }
-            P.flash(error.message, 3500);
-          }).finally(function () { P.terminalSendPending = false; });
+            if (!P.closed && P.program?.agentId === agentId) P.flash(error.message, 3500);
+          }).finally(function () { if (P.terminalSendPending === sendTicket) P.terminalSendPending = false; });
           return;
         }
         if (rt.readOnly) { P.flash("此会话只读", 1600); return; }
@@ -6724,9 +7127,8 @@
           var draft = ta.value, message = draft;
           pastes.forEach(function (p) { message = message.split(p.tag).join(p.text); });
           if (!message.trim()) return;
-          rt.send(message, attach.filter(function (a) { return draft.includes(a.tag); })).then(function () {
-            if (ta.value === draft) { ta.value = ""; pastes = []; draftSet(agentId, ""); renderInput(); }
-          }, function (err) { P.flash(err.message, 6000); });
+          rt.send(message, attach.filter(function (a) { return draft.includes(a.tag); })).then(clearDraftOnDelivery(agentId, P),
+            function (err) { if (!P.closed && P.program?.agentId === agentId) P.flash(err.message, 6000); });
           return;
         }
         var me = A.me(), now = e.ctrlKey || e.metaKey; // ctrl+enter：答着的时候不排队，打断这一问马上发（闲着就是普通地发）
@@ -6792,7 +7194,13 @@
       if (k === "Backspace" && ta.selectionStart === ta.selectionEnd) { // 光标紧跟着「[Pasted text #N …]」「[Image #N]」：一下删掉整个（同 Claude Code）
         var upto = ta.value.slice(0, ta.selectionStart), hit = pastes.find(function (p) { return upto.slice(-p.tag.length) === p.tag; }), ih = hit ? null : attach.find(function (a) { return upto.slice(-a.tag.length) === a.tag; });
         if (hit) { e.preventDefault(); ta.setRangeText("", ta.selectionStart - hit.tag.length, ta.selectionStart, "end"); pastes.splice(pastes.indexOf(hit), 1); draftSet(agentId, ta.value, pastes); renderInput(); return; }
-        if (ih) { e.preventDefault(); ta.setRangeText("", ta.selectionStart - ih.tag.length, ta.selectionStart, "end"); attach = attach.filter(function (x) { return x !== ih; }); draftSet(agentId, ta.value, pastes); renderInput(); return; }
+        if (ih) {
+          e.preventDefault();
+          ta.setRangeText("", ta.selectionStart - ih.tag.length, ta.selectionStart, "end");
+          attach = attach.filter(im => im !== ih);
+          imgsToShared(); draftSet(agentId, ta.value, pastes); renderInput();
+          return;
+        }
       }
       if (k === "End" && e.ctrlKey) { e.preventDefault(); P.toBottom(); P.onScroll(); return; }
       var before = ta.value.slice(0, ta.selectionStart), after = ta.value.slice(ta.selectionEnd);
@@ -7356,6 +7764,7 @@
         if (sec === "pm") return [["new-pm-agent", "\uE025", "新建 Agent…"], ["new-pm-folder", "\uE026", "新建文件夹…"]];
         if (sec === "cc") return canNewIn("claude-code") || window.TSU_CLAUDE ? [["new-cc-sess", "\uE027", "新建 Claude Code 会话"]] : [];
         if (sec === "cx") return canNewIn("codex") ? [["new-cx-sess", "\uE027", "新建 Codex 会话"]] : [];
+        if (sec === "agy") return [["new-agy-sess", "\uE027", "新建 Google Antigravity 会话"]];
         if (sec === "pi") return canNewIn("pi") ? [["new-pi-sess", "\uE027", "新建 pi 会话"]] : [];
         return [];
       };
@@ -7726,7 +8135,7 @@
       }
       var agy = window.TSU_AGY;
       if (agy && agy.enabled()) {
-        out += "\n" + row("ts-fold ts-head", foldAt("agy", false), [[chev("agy"), ""], ["Google Antigravity", BOLD]], [filterAct("agy")]);
+        out += "\n" + row("ts-fold ts-head", foldAt("agy", false), [[chev("agy"), ""], ["Google Antigravity", BOLD]], headActs("agy"));
         if (!folded("agy")) {
           var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && p.program.working?.()).map(p => p.program.agentId.slice(4)));
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
@@ -7743,7 +8152,7 @@
             var key = "agy:dir:" + dir;
             var label = !dir ? "未记录工作目录" : dir === homeAgy ? "~" : homeAgy && dir.startsWith(homeAgy + "/") ? "~" + dir.slice(homeAgy.length) : dir;
             out += row("ts-fold", foldAt(key, false) + (dir ? ' data-dir="' + escHtml(dir) + '"' : ""), [["  " + chev(key, false), ""], [label, DIMC]]);
-            if (folded(key, false) && !qToks.length) return;
+            if (folded(key, false)) return;
             items.forEach(function (s) {
             var name = s.title || s.sessionId;
             out += '<span class="ts-it" data-agy="' + escHtml(s.sessionId) + '" title="' + escHtml(name) + '">' +
@@ -8225,6 +8634,14 @@
       if (act0 && act0.dataset.act === "new-pm-agent") { if (!caNew()) startEdit("agent"); return; }
       if (act0 && act0.dataset.act === "new-pm-folder") { startEdit("folder"); return; }
       if (act0 && act0.dataset.act === "new-cc-sess") { if (!(canNewIn0("claude-code") && TSU_CONNECTORS.newSession("claude-code", ""))) S.newCC(); return; }
+      if (act0 && act0.dataset.act === "new-agy-sess") {
+        TSU_AGY.create().then(S.viewAgy).catch(error => STUDIO.toast(error.message));
+        return;
+      }
+      if (act0 && act0.dataset.act === "fold-agy") {
+        TSU_AGY.list().forEach(s => setFold((treeQ ? "q:" : "") + "agy:dir:" + (s.cwd || ""), true));
+        return S.render(true);
+      }
       if (act0 && act0.dataset.act === "new-dsh-sess") {
         var spaces = TSU_DSH.workspaces();
         var createDsh = async function (ws) {
@@ -8499,7 +8916,7 @@
     ws.layout = function () {
       tw.panesEl.textContent = "";
       if (!ws.tab()) return;
-      tw.panesEl.appendChild(build(ws.tab().root));
+      tw.panesEl.appendChild(build(ws.tab().root, ws));
       ws.all().forEach(function (p) { p.el.classList.toggle("active", p === ws.active); p.el.classList.toggle("solo", ws.leaves(ws.tab().root).length === 1); });
       ws.leaves(ws.tab().root).forEach(function (l) { l.pane.renderNow(); });
       ws.syncTitles();
@@ -8730,28 +9147,50 @@
       return (inset + cells * step) / span;
     };
   }
-  function build(node) {
+  function bindDivider(bar, node, a, b, ws, apply, limit) {
+    bar.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      try { bar.setPointerCapture(e.pointerId); } catch (x) { /* 不是真指针 */ }
+      var snap = dividerSnap(node, a, b, e, limit);
+      var frame = 0, ratio = node.ratio, panes = ws.visible();
+      panes.forEach(function (p) { p.resizingDivider = true; });
+      function paint() {
+        frame = 0;
+        if (node.ratio === ratio) return;
+        node.ratio = ratio;
+        apply();
+      }
+      function move(ev) {
+        if (ev.pointerId !== e.pointerId) return;
+        ratio = snap(ev);
+        if (!frame) frame = requestAnimationFrame(paint);
+      }
+      var up = function (ev) {
+        if (ev.pointerId !== e.pointerId) return;
+        if (ev.type === "pointerup") move(ev);
+        if (frame) { cancelAnimationFrame(frame); paint(); }
+        panes.forEach(function (p) {
+          p.resizingDivider = false;
+          if (p.finishDividerLayout) { p.dirty = true; p.finishDividerLayout = false; }
+        });
+        bar.removeEventListener("pointermove", move);
+        ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (type) { bar.removeEventListener(type, up); });
+        ws.visible().forEach(function (p) { p.check(); });
+        if (ws.active) ws.active.focus();
+        persistAll();
+      };
+      bar.addEventListener("pointermove", move);
+      ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (type) { bar.addEventListener(type, up); });
+    });
+  }
+  function build(node, ws) {
     if (node.pane) { node.pane.el.style.flex = ""; return node.pane.el; }
-    var box = document.createElement("div"), a = build(node.a), b = build(node.b), bar = document.createElement("div");
+    var box = document.createElement("div"), a = build(node.a, ws), b = build(node.b, ws), bar = document.createElement("div");
     box.className = "split " + node.dir;
     bar.className = "divider";
     var apply = function () { a.style.flex = node.ratio + " 1 0"; b.style.flex = (1 - node.ratio) + " 1 0"; };
     apply();
-    bar.addEventListener("pointerdown", function (e) {
-      e.preventDefault();
-      bar.setPointerCapture(e.pointerId);
-      var snap = dividerSnap(node, a, b, e, 0.15);
-      var move = function (ev) { node.ratio = snap(ev); apply(); };
-      var up = function () {
-          bar.removeEventListener("pointermove", move);
-          ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (type) { bar.removeEventListener(type, up); });
-          ws.visible().forEach(function (p) { p.check(); });
-          if (ws.active) ws.active.focus();
-          persistAll();
-        };
-      bar.addEventListener("pointermove", move);
-      bar.addEventListener("pointerup", up);
-    });
+    bindDivider(bar, node, a, b, ws, apply, 0.15);
     box.appendChild(a);
     box.appendChild(bar);
     box.appendChild(b);
@@ -8894,36 +9333,7 @@
       bar.className = "divider";
       var apply = function () { a.style.flex = node.ratio + " 1 0"; b.style.flex = (1 - node.ratio) + " 1 0"; };
       apply();
-      bar.addEventListener("pointerdown", function (e) {
-        e.preventDefault();
-        try { bar.setPointerCapture(e.pointerId); } catch (x) { /* 不是真指针 */ }
-        var snap = dividerSnap(node, a, b, e, 0.12);
-        var panes = ws.visible(), frame = 0, ratio = node.ratio;
-        panes.forEach(function (pane) { pane.dividerDragging = true; });
-        function paint() {
-          frame = 0;
-          node.ratio = ratio;
-          apply();
-        }
-        function move(ev) {
-          if (ev.pointerId !== e.pointerId) return;
-          ratio = snap(ev);
-          if (!frame) frame = requestAnimationFrame(paint);
-        }
-        var up = function (ev) {
-          if (ev.pointerId !== e.pointerId) return;
-          if (ev.type === "pointerup") move(ev);
-          if (frame) { cancelAnimationFrame(frame); paint(); }
-          panes.forEach(function (pane) { pane.dividerDragging = false; });
-          bar.removeEventListener("pointermove", move);
-          ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (type) { bar.removeEventListener(type, up); });
-          ws.visible().forEach(function (p) { p.check(); });
-          if (ws.active) ws.active.focus();
-          persistAll();
-        };
-        bar.addEventListener("pointermove", move);
-        ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (type) { bar.addEventListener(type, up); });
-      });
+      bindDivider(bar, node, a, b, ws, apply, 0.12);
       box.appendChild(a);
       box.appendChild(bar);
       box.appendChild(b);
@@ -9418,14 +9828,15 @@
     var hit = fw && wins.find(function (w) { return w.el === fw.el && w.open; });
     return hit || wins.filter(function (w) { return w.open; }).pop() || null;
   }
-  function dropAt(x, y, allowCenter) {
+  function dropAt(x, y, allowCenter, tabPane) {
     var tw = frontTerm(), hit = null;
     if (!tw || !tw.ws.tab()) return null;
     (tw.ws.visible ? tw.ws.visible().map(function (p) { return { pane: p }; }) : tw.ws.leaves(tw.ws.tab().root)).forEach(function (l) {
       var r = l.pane.el.getBoundingClientRect();
       if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
       var fx = (x - r.left) / r.width, fy = (y - r.top) / r.height, edge = Math.min(fx, 1 - fx, fy, 1 - fy), side;
-      if (edge > 0.25 && allowCenter) side = "center";
+      if (edge > 0.25 && tabPane) side = tw.ws.groupOf(l.pane) !== tw.ws.groupOf(tabPane) ? "center" : fx < 0.5 ? "left" : "right";
+      else if (edge > 0.25 && allowCenter) side = "center";
       else side = edge === fx ? "left" : edge === 1 - fx ? "right" : edge === fy ? "top" : "bottom";
       var z = { left: [0, 0, 0.5, 1], right: [0.5, 0, 0.5, 1], top: [0, 0, 1, 0.5], bottom: [0, 0.5, 1, 0.5], center: [0, 0, 1, 1] }[side];
       hit = { ws: tw.ws, pane: l.pane, side: side, rect: { left: r.left + z[0] * r.width, top: r.top + z[1] * r.height, width: z[2] * r.width, height: z[3] * r.height } };
@@ -9487,7 +9898,7 @@
           light(null);
           if (item.kind === "vfolder") { target = null; hint.hidden = true; return; } // 文件夹不往编辑区里放
         } else light(null);
-        target = dropAt(ev.clientX, ev.clientY, item.kind === "pane" || item.kind === "agent" || item.kind === "cc" || (item.kind === "tab" && !!item.pane));
+        target = dropAt(ev.clientX, ev.clientY, item.kind === "pane" || item.kind === "agent" || item.kind === "cc", item.kind === "tab" && item.pane);
         if (target && target.side === "center" && (item.kind === "agent" || item.kind === "cc") && target.pane.program && target.pane.program.pty) target = null; // 终端里跑着东西：不替换它
         if (target && item.kind === "pane" && target.pane === item.pane) target = null;
         if (target && item.kind === "pane" && target.ws !== item.pane.win.ws) target = null;
@@ -9510,8 +9921,11 @@
         soon();
       };
       var up = function (ev) { if (ev.pointerId !== pid) return; lastEv = ev; finish(true, "up"); };
+      // WebKit can deliver the compatibility mouse event after losing the pointer stream.
+      var mouseUp = function (ev) { if (ev.button === 0) { lastEv = ev; finish(true, "mouseup"); } };
+      var mouseMove = function (ev) { if (!(ev.buttons & 1)) finish(false, "released"); };
       var cancel = function (ev) { finish(false, ev && ev.type || "cancel"); };
-      var lost = function (ev) { if (ev.pointerId === pid) finish(false, "lost"); }; // 指针被收回了（系统拿走、元素没了）
+      var lost = function (ev) { if (ev.pointerId === pid && ev.target === cap) finish(false, "lost"); }; // 指针被收回了（系统拿走、元素没了）
       var down2 = function () { finish(false, "redown"); }; // 又按下了一次：上一次的松开没收到
       var key = function (ev) { if (ev.key === "Escape" && dragging) { ev.preventDefault(); ev.stopPropagation(); finish(false, "esc"); } };
       var vis = function () { if (document.hidden) finish(false, "hidden"); };
@@ -9522,6 +9936,9 @@
         if (dragging) DRAG.why = why || ""; // 最近一次拖拽是怎么结束的（排查用）
         window.removeEventListener("pointermove", move, true);
         window.removeEventListener("pointerup", up, true);
+        window.removeEventListener("mouseup", mouseUp, true);
+        window.removeEventListener("mousemove", mouseMove, true);
+        window.removeEventListener("pagehide", cancel);
         window.removeEventListener("pointercancel", cancel, true);
         window.removeEventListener("lostpointercapture", lost, true);
         window.removeEventListener("pointerdown", down2, true);
@@ -9557,6 +9974,9 @@
       DRAG.cancel = cancel;
       window.addEventListener("pointermove", move, true);
       window.addEventListener("pointerup", up, true);
+        window.addEventListener("mouseup", mouseUp, true);
+        window.addEventListener("mousemove", mouseMove, true);
+        window.addEventListener("pagehide", cancel);
       window.addEventListener("pointercancel", cancel, true);
       window.addEventListener("lostpointercapture", lost, true);
       window.addEventListener("pointerdown", down2, true);
@@ -9935,6 +10355,7 @@
     makeView: function (P, id) { return makeView(P, id); }, applyUI: applyUI,
     // 没发出去的字（终端界面、图形界面共用一份）：draft(id) 读、draft(id, 字) 存
     draft: function (id, text) { if (text === undefined) { var d = draftsMap()[id]; return d ? d.text : ""; } draftSet(id, text); },
+    expandedDraft: expandedDraft, prependDraft: prependDraft, clearDraftOnDelivery: clearDraftOnDelivery,
     setUI: function (P, ui) { if (window.STUDIO && STUDIO.setv) STUDIO.setv("ui", ui); },
     // 右侧栏里的对话（studio.js 放进右侧栏；跟着编辑区当前的 agent 换）
     sidePane: function (tw) { if (!tw.sidePane) tw.sidePane = new Pane(tw, { side: true }); return tw.sidePane; },
@@ -9942,7 +10363,7 @@
     globalPane: function (tw) { if (!tw.globalPane) tw.globalPane = new Pane(tw, { side: true }); return tw.globalPane; },
     kinds: KINDS,
     // 对话显示的分法（右侧栏的 ··· 用同一套；图形界面、快速查看按同样的档位画）
-    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
+    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, showToolPreview: showToolPreview, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
     tsFmt: tsFmt, dayKey: dayKey, dayLabel: dayLabel, turnTime: turnTime, // 时间戳（图形界面也用）
     viewMode: function (k, view) { var c = isFull(view) ? vcv(view, k) : cv(k); return c === undefined ? VMODES[k] : c; }, // 带预览的当前值（图形界面用：指着菜单时一起变；拆出来的一格按它自己的）
     toolMode: function (p, view) { return toolModeIn(view || null, p); },

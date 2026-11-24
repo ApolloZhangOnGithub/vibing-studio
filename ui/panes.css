@@ -120,7 +120,8 @@ html.light .menu { background: rgba(246, 246, 246, 0.95); color: #1d1d1f; }
 .drag-ghost { position: fixed; z-index: 61; pointer-events: none; padding: 3px 10px; border-radius: 12px; font: 12px -apple-system, "PingFang SC", sans-serif;
   background: rgba(30, 30, 34, 0.92); color: #eee; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); white-space: nowrap; }
 .drop-hint[hidden], .drag-ghost[hidden] { display: none; }
-body.dragging, body.dragging * { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
+body.dragging iframe { pointer-events: none; }
+body.dragging { cursor: grabbing !important; user-select: none !important; -webkit-user-select: none !important; }
 
 /* 菜单栏：菜单名可点（开着时高亮）；禁用项变灰 */
 #menubar .menus { display: flex; gap: 18px; }
@@ -199,7 +200,14 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .tpane.tl .term .grp.trsw.open:hover::before { background: rgba(0, 0, 0, .085); }
 .tpane .term .grp.uopen .grp.trsw { margin: 0; padding: 0; } /* 嵌在点开的灰块里：外面那层已经伸到两边了 */
 /* 文件路径（同 Claude Code 的 FilePathLink，照 iTerm2 截图取的）：只有一条虚线，和字同色（正文 199 灰），4px 实、3px 空——不是白的，也不再叠一条点线 */
-.tpane .term a[href*="#vs-file:"], .tpane.tl .term a[href*="#vs-file:"] { background-image: linear-gradient(to right, currentColor 4px, transparent 4px); background-size: 7px 1px; background-repeat: repeat-x; background-position: 0 calc(100% - 1px); text-decoration: none; }
+.tpane .term a[href*="#vs-file:"], .tpane.tl .term a[href*="#vs-file:"] {
+  padding-bottom: 0.16em;
+  background-image: linear-gradient(to right, currentColor 4px, transparent 4px);
+  background-size: 7px 1px;
+  background-repeat: repeat-x;
+  background-position: left bottom;
+  text-decoration: none;
+}
 .tpane .term a[href*="#vs-file:"] span { background: none !important; }
 .tpane.tl .term .grp .gdet::before { background: #ececec; }
 
@@ -265,7 +273,7 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 
 /* 拖标签页：跟着指针的是标签页本身（半透明），原位淡下去 */
 .drag-ghost.tab-ghost { padding: 0; border-radius: 6px; background: transparent !important; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); opacity: .88; overflow: hidden; display: flex; }
-.drag-ghost.tab-ghost > .tab { flex: 1 1 auto; min-width: 0; margin: 0 !important; background: var(--st-bg2, #1e1e1e) !important; }
+.drag-ghost.tab-ghost > .tab { opacity: 1; flex: 1 1 auto; min-width: 0; margin: 0 !important; background: var(--st-bg2, #1e1e1e) !important; }
 .tab.st-dragsrc { opacity: .35; }
 /* 侧栏树里 Claude Code 会话前面的标志（Claude 自己的，TSU_LOGOS.claude）：等宽的树里占一格；比例字的树里在图标那一格。在答的一明一暗 */
 .ts-ccl { display: inline-block; width: 1ch; height: 1em; vertical-align: -0.14em; font-style: normal; line-height: 0; }
@@ -333,15 +341,16 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .term .cx-imgref { color: #48aaff; }
 .tpane.tl .term .cx-imgref { color: #0063b5; }
 
-.tpane .term .cx-turn a[href^="http"] {
+.tpane .term .cx-turn a[href^="http"] { color: #80aefa; }
+.tpane.tl .term .cx-turn a[href^="http"] { color: #2050a5; }
+/* Local file references also have an HTTPS address when Studio is served over HTTPS. */
+.tpane .term .cx-turn a[href^="http"]:not([href*="#vs-file:"]) {
   background-image: none;
-  color: #80aefa;
   text-decoration: underline solid currentColor;
   text-underline-offset: 2px;
   -webkit-text-decoration-skip: none;
   text-decoration-skip-ink: none;
 }
-.tpane.tl .term .cx-turn a[href^="http"] { color: #2050a5; background-image: none; }
 
 .tpane .ask.cx-prompt { padding-block: 1lh; }
 
@@ -389,7 +398,7 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .screen.filter-final > .page, .gv-scroll.filter-final > .gv-list { margin-top: auto; }
 
 .cx-footer-choice { pointer-events: auto; appearance: none; font: inherit; color: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
-.cx-footer-choice:hover { text-decoration: underline; }
+.tpane .footer-pointer-over, .tpane:has(> .agy-quota-popup:popover-open) .cx-footer-choice[data-quota], .cx-footer-choice:hover { text-decoration: underline; }
 
 /* Diagram overlays use the source link for preview and a window-centred viewer for zoom. */
 .vs-flow-panel { position:fixed; z-index:99999; width:max-content; height:max-content; max-width:calc(100vw - 8px); padding:6px; box-sizing:border-box; background:white; color:#222b37; border:1px solid #949ba366; border-radius:8px; box-shadow:0 4px 18px #0002; overflow:hidden; pointer-events:none }
@@ -408,3 +417,13 @@ a[href*="#vs-flow:"]:focus:not(:focus-visible) { outline:none }
 .vs-path-hint { position:fixed; z-index:99999; pointer-events:none; max-width:min(72ch,90vw); overflow-wrap:anywhere; padding:4px 8px; border-radius:4px; background:Canvas; color:CanvasText; border:1px solid GrayText; font:12px/1.4 ui-monospace,monospace }
 
 .agy-countdown { pointer-events:auto; cursor:default; background:transparent; border:0; padding:0; color:inherit; font:inherit; font-variant-numeric:tabular-nums; }
+
+.tpane .foot, .tpane .foot *, .tpane .jump { -webkit-user-select: none !important; user-select: none !important; }
+
+.working-word {
+  background: linear-gradient(100deg, currentColor 35%, rgb(235,159,127) 50%, currentColor 65%) 100% 50% / 300% 100%;
+  background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  animation: working-word-shine 3.4s linear infinite;
+}
+@keyframes working-word-shine { 45%, 100% { background-position: 0% 50%; } }
+@media (prefers-reduced-motion: reduce) { .working-word { animation: none; -webkit-text-fill-color: currentColor; } }

@@ -215,7 +215,8 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
             let jpg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else { return nil }
       return "data:image/jpeg;base64," + jpg.base64EncodedString()
     case "ui.stamp": // 本地界面（LocalUI.swift）：界面文件最近一次改动的时间；页面拿它提示「重新载入以更新」
-      return ["stamp": LocalUI.stamp(), "dir": LocalUI.dir?.path ?? "", "local": controller?.localOn ?? false] as [String: Any]
+      let stamp = await Task.detached(priority: .utility) { LocalUI.stamp() }.value
+      return ["stamp": stamp, "dir": LocalUI.dir?.path ?? "", "local": controller?.localOn ?? false] as [String: Any]
     case "ui.source": // 设置 › 关于：界面从哪儿读——auto（本机那份不比网站上的旧才用它）/ site / local；页面随后重新载入
       if let s = a["source"] as? String, ["auto", "site", "local"].contains(s) { UserDefaults.standard.set(s, forKey: "uiSource") }
       return ["source": LocalUI.source, "dir": LocalUI.dir?.path ?? "", "local": controller?.localOn ?? false, "localBuild": LocalUI.localBuild()] as [String: Any]

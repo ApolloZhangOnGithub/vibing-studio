@@ -257,6 +257,20 @@
   // ======== 一段会话：同 claude.js 的 Runtime（每种外壳只认这些）========
   var rts = {};
   var TOOL = { exec_command: "Bash", shell: "Bash", local_shell: "Bash", write_stdin: "TaskOutput", apply_patch: "Edit", update_plan: "TodoWrite", view_image: "Read", spawn_agent: "Agent", send_input: "SendMessage", tool_search: "ToolSearch" };
+  function scriptCall(code) {
+    var source = code.trim().replace(/^\/\/\s*@exec:[^\n]*\n/, "").trim();
+    // Prefer the expression which returned the result over setup on the same line.
+    var description = source.split("\n").find(line => line.trim() && !line.trimStart().startsWith("//"));
+    var lastLine = source.slice(source.lastIndexOf("\n") + 1).trim();
+    var writes = /(?:^|;)[ \t]*(text\()/g, call, start = -1;
+    while ((call = writes.exec(lastLine))) start = writes.lastIndex - call[1].length;
+    if (start >= 0) {
+      var statement = lastLine.slice(start).replace(/;$/, "");
+      var single = /^text\(\s*(?:await\s+)?(.+)\)$/.exec(statement);
+      description = single && !statement.includes(");") ? single[1] : statement;
+    }
+    return {name: "Code", input: {description: clip(description || source, 140), language: "javascript", code: code}};
+  }
   // 一次工具调用 → Paimon 的一格：名字对到 Claude Code 那一套（筛选、外壳都认），参数放进 input
   function toolPart(p, at) {
     var name = p.name || "", args = {}, input = {};
@@ -264,7 +278,7 @@
     if (p.type === "web_search_call") {
       var ac = p.action || {};
       if (ac.type === "open_page" || ac.type === "find_in_page") return { name: "WebFetch", input: { url: ac.url || "", prompt: ac.pattern || "" } };
-      return { name: "web_search", input: { query: ac.query || (ac.queries || [])[0] || "" } };
+      return { name: "web_search", input: { query: ac.query || (ac.queries || [])[0] || "", queries: ac.queries || [] } };
     }
     if (p.type === "local_shell_call") { var cm = (p.action && p.action.command) || []; return { name: "Bash", input: { command: Array.isArray(cm) ? cm.join(" ") : String(cm) } }; }
     if (p.type === "tool_search_call") return { name: "ToolSearch", input: { query: (p.arguments && p.arguments.query) || "" } };
@@ -275,19 +289,21 @@
       return { name: "Edit", input: { file_path: files[0] || "", files: files, patch: p.input || "" } };
     }
     if (p.type === "custom_tool_call" && name === "exec") { // 写一段脚本调别的工具（Codex 的 code mode）：按它调的第一个工具来叫
-      var code = p.input || "", inner = /tools\.(\w+)\s*\(/.exec(code), q = function (k) { var r = new RegExp(k + '\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(code); try { return r ? JSON.parse('"' + r[1] + '"') : ""; } catch (e) { return r ? r[1] : ""; } };
+      var code = p.input || "", calls = /tools\.(\w+)\s*\(/g, inner = calls.exec(code), q = function (k) { var r = new RegExp(k + '\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"').exec(code); try { return r ? JSON.parse('"' + r[1] + '"') : ""; } catch (e) { return r ? r[1] : ""; } };
       var iname = inner ? inner[1] : "";
+      if (inner && calls.test(code)) return scriptCall(code);
       if (iname === "exec_command") {
         var field = /(?:[,{]\s*)(?:cmd|"cmd"|'cmd')\s*:\s*/g;
         field.lastIndex = inner.index + inner[0].length;
         var found = field.exec(code);
-        return { name: "Bash", input: { command: found ? jsString(code.slice(field.lastIndex), code) : "" } };
+        var cmd = found && jsString(code.slice(field.lastIndex), code);
+        return cmd ? { name: "Bash", input: { command: cmd } } : scriptCall(code);
       }
-      if (iname === "write_stdin") { var sm = /session_id\s*:\s*(\d+)/.exec(code); return { name: "TaskOutput", input: { task_id: sm ? sm[1] : "", chars: q("chars") } }; } // 等一条还在跑的命令的输出（接在那条命令下面，见 pollOf）
+      if (iname === "write_stdin") { var sm = /session_id\s*:\s*(\d+)/.exec(code); return sm ? { name: "TaskOutput", input: { task_id: sm[1], chars: q("chars") } } : scriptCall(code); }
       if (iname === "web__run") return q("q") ? { name: "web_search", input: { query: q("q") } } : { name: "WebFetch", input: { url: q("ref_id") || q("url") } };
       if (iname === "apply_patch") { var pt = jsArg(code, "apply_patch"), fl = [], fm, fre = /^\*\*\* (Add|Update|Delete) File: (.+)$/gm; while ((fm = fre.exec(pt))) fl.push(fm[2].trim()); return { name: "Edit", input: { file_path: fl[0] || "", files: fl, patch: pt } }; } // 补丁本身在 tools.apply_patch("…") 的参数里
       if (iname === "view_image") return { name: "Read", input: { file_path: q("path") } };
-      return { name: "Code", input: { description: clip(code.split("\n")[0], 120), code: code } };
+      return scriptCall(code);
     }
     var mapped = TOOL[name] || name;
     if (mapped === "Bash") input = { command: args.cmd || (Array.isArray(args.command) ? args.command.join(" ") : args.command) || "", workdir: args.workdir || "" };
@@ -316,18 +332,47 @@
     return { text: String(s || ""), code: code, sess: code === null ? sess : null };
   }
   function result(p, o) {
+    p.secs = Math.max(0, Math.round(((p.turn && p.turn.last) || p.t0) - p.t0) / 1000);
+    if (p.name === "Code" && p.input.language === "javascript") {
+      var blocks = Array.isArray(o) ? o : [o], output = [], failed = false;
+      blocks.forEach(function (block) {
+        var raw = typeof block === "string" ? block : block?.text;
+        if (typeof raw !== "string") {
+          if (block?.type === "input_image" || block?.type === "image") output.push("Image");
+          return;
+        }
+        if (/^Script (completed|failed|running)\b/.test(raw)) {
+          failed = failed || /^Script failed\b/.test(raw);
+          raw = raw.replace(/^Script (?:completed|failed|running)[^\n]*\n(?:Wall time[^\n]*\n)?(?:Output:\s*\n|Output:\s*$)/, "");
+        }
+        var frame;
+        try { frame = JSON.parse(raw); } catch (e) { /* plain script output */ }
+        if (frame?.chunk_id && typeof frame.output === "string") {
+          if (frame.session_id != null) output.push("Terminal session " + frame.session_id);
+          else if (frame.exit_code != null) output.push("Exit code " + frame.exit_code);
+          raw = frame.output;
+        }
+        if (raw.trim()) output.push(raw.trimEnd());
+      });
+      p.status = failed ? "error" : "done";
+      p.detail = output.length ? output.join("\n").replace(/\r/g, "").split("\n") : [];
+      if (failed) p.error = p.detail.find(line => line.trim()) || "Script failed";
+      return;
+    }
     var r = outputOf(o), lines = r.text.replace(/\r/g, "").split("\n");
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
     p.exitCode = r.code;
     var err = r.code !== null && r.code !== 0;
-    p.secs = Math.max(0, Math.round(((p.turn && p.turn.last) || p.t0) - p.t0) / 1000);
     if (r.sess !== null && p.name === "Bash") { p.status = "running"; p.sess = r.sess; p.detail = lines.slice(-400); return; } // 还在跑：之后等它的输出接在这里（Codex 自己也是这样显示）
     p.status = err ? "error" : "done";
     if (err) { p.error = (lines.filter(Boolean).slice(-1)[0] || "exit code " + r.code).slice(0, 300); p.detail = lines; return; }
     if (p.name === "wait") {
       var raw = Array.isArray(o) ? o.map(x => x.text || "").join("\n") : String(o || "");
-      p.summary = [p.input.cell_id, raw.split("\n")[0]].filter(Boolean).join(" · ");
-      p.detail = Object.entries(p.input).map(([key, value]) => key + ": " + value).concat(raw.trimEnd().split("\n"));
+      var output = lines.find(line => line.trim() && !/^(Script (completed|running)|Wall time:|Output:|Original token count:)/i.test(line));
+      var duration = /^Wall time:\s*([\d.]+)\s*seconds?/im.exec(raw);
+      p.summary = output ? output.trim().slice(0, 160) :
+        (/Script running/i.test(raw) ? "Still running" : "Finished waiting") + (duration ? " · " + duration[1] + "s" : "");
+      p.detail = lines.length ? lines : [p.summary];
       return;
     }
     if (p.name === "Edit") {
@@ -366,7 +411,7 @@
         var next = items.map(function (item) {
           var imageNumber = 0;
           var text = item.input.map(function (part) { return part.type === "text" ? part.text : "[Image #" + (++imageNumber) + "]"; }).join(" ");
-          return { id: item.id, caption: item.input.filter(part => part.type === "text").map(part => part.text).join(" ") || "(image)", text: text, ours: true, sending: false };
+          return { id: item.id, caption: item.input.filter(part => part.type === "text").map(part => part.text).join(" "), text: text, ours: true, sending: false };
         });
         if (JSON.stringify(next) !== JSON.stringify(serverQueue)) {
           serverQueue = next;
@@ -377,17 +422,56 @@
     rt.pendingMsgs = function () { return rt.pending().length; };
     rt.pending = function () {
       var local = sentWait.slice();
+      function images(entry) {
+        if (!entry.previewImages) Object.defineProperty(entry, "previewImages", {value:(entry.paths || []).map(path => {
+          var reading, image = {path, media_type: "image/" + path.split(".").pop().toLowerCase().replace(/^jpg$/, "jpeg")};
+          image.load = function(done) { if (!reading) reading = LOC.read(path).then(buf => {image.bytes = buf;}, () => {image.missing = true;}); if (done) reading.then(done); };
+          return image;
+        })});
+        return entry.previewImages;
+      }
       serverQueue.forEach(function (entry) {
         var caption = entry.caption;
         var i = local.findIndex(function (x) { return x.text === caption; });
         if (i >= 0) local.splice(i, 1);
       });
-      return serverQueue.concat(local.map(function (x) { return { text: x.text, at: x.at, ours: true, sending: !x.q }; }));
+      return serverQueue.concat(local.map(function (x) { return { text: x.text, at: x.at, ours: true, sending: !x.q, images: images(x) }; }));
     };
     rt.takeQueued = function () { var q = rt.queued; rt.queued = null; emit("status"); return q; };
     rt.todo = function () { return sess.todo.items; };
     rt.model = function () { var m = agent.model || ""; return { id: m, name: m || "Codex", window: sess.window || 272000 }; };
     rt.state = function () { return busy ? "working" : "idle"; };
+    var contextUsage = null;
+    rt.readContextParts = async function () {
+      var path = await withPath();
+      var ui = !window.nadosNative?.remote && window.TSU_UI_LOCAL?.dir;
+      var script;
+      if (ui) script = shq(ui + "/studio/context_parts.py");
+      else {
+        var response = await fetch("studio/context_parts.py");
+        if (!response.ok) throw new Error("Cannot load context reader");
+        script = "-c " + shq(await response.text());
+      }
+      var result = await LOC.exec({cmd:"python3 " + script + " " + shq(path)});
+      return JSON.parse(result.out);
+    };
+    rt.contextBreakdown = function () {
+      var c = rt.ctx(), u = contextUsage || {}, total = c.tokens;
+      var input = Math.min(total, u.input_tokens || 0);
+      var cached = Math.min(input, u.cached_input_tokens || 0);
+      var output = Math.min(total - input, u.output_tokens || 0);
+      var parts = [
+        { id: "cachedInput", tokens: cached, color: "#5b8def" },
+        { id: "input", tokens: input - cached, color: "#78a9af" },
+        { id: "output", tokens: output, color: "#ad84bd" },
+        { id: "used", tokens: total - input - output, color: "#949ca8" }
+      ].filter(p => p.tokens > 0);
+      var baseline = Math.min(12000, c.window);
+      var capacity = c.window - baseline;
+      var occupied = Math.min(capacity, Math.max(0, total - baseline));
+      return { total: occupied, window: capacity, parts: [{ id: "used", tokens: occupied, color: "#5b8def" }],
+        requestUsage: contextUsage ? parts.filter(p => p.id !== "used") : null };
+    };
     rt.ctx = function () { var w = sess.window || 272000; return { tokens: sess.ctx, window: w, pct: sess.ctx / w * 100 }; };
     rt.home = rt.cwd = function () { return info.cwd || ""; };
     rt.cost = function () { return 0; };
@@ -420,7 +504,7 @@
     var offset = 0, pollT = 0, cur = null, byCall = {}, loading = null, running = null;
     // 它在想吗（同 Claude Code 转圈那一行的 thinking / still thinking / deep in thought：live.js 的 thinkPhrase 问 rt.thinkSince）：
     //   最后一条是要它回的（你的话、开始一问、工具的结果）、它还没写出东西（推理、回复、工具调用）——这段时间它在推理。用户 2026-10-28：Codex 以前只写 Working
-    var pendingPolls = new Set(), compactSince = 0, compactEnd = 0, compactCheck = 0, checkingCompact = false;
+    var pendingPolls = new Map(), compactSince = 0, compactEnd = 0, compactCheck = 0, checkingCompact = false;
     function phase() {
       return compactSince ? "Compacting context" : pendingPolls.size ? "Waiting for background terminal" : "";
     }
@@ -444,7 +528,7 @@
     var pendingKey = "tsu-cx-awaiting-log:" + sid, sentWait = [];
     try {
       var savedPending = JSON.parse(sessionStorage.getItem(pendingKey) || "[]");
-      if (Array.isArray(savedPending)) sentWait = savedPending.filter(x => x && typeof x.text === "string" && Number.isFinite(x.at));
+      if (Array.isArray(savedPending)) sentWait = savedPending.filter(x => x && typeof x.text === "string" && Number.isFinite(x.at)).map(x => x.paths?.length && x.text === "(image)" ? {...x, text:""} : x);
     } catch (e) {}
     function savePending() {
       try {
@@ -453,10 +537,10 @@
       } catch (e) {}
     }
     var wnorm = function (t) { return String(t || "").replace(/\r\n/g, "\n").trim(); };
-    function newTurn(text, at, imgs) { if (cur) settle(cur); cur = { ask: text, images: imgs || [], parts: [], at: at }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; if (sentWait.length) dropSent(text, at); return cur; }
-    function dropSent(text, at) {
+    function newTurn(text, at, imgs) { if (cur) settle(cur); cur = { ask: text, images: imgs || [], parts: [], at: at }; turns.push(cur); if (rt.stream) rt.stream.turn = cur; if (sentWait.length) dropSent(text, at, cur.images.length); return cur; }
+    function dropSent(text, at, imageCount) {
       var hit = sentWait.findIndex(function (x) {
-        return (!at || at >= x.at - 1000) && wnorm(x.text) === wnorm(text);
+        return (!at || at >= x.at - 1000) && (imageCount == null || (x.paths || []).length === imageCount) && wnorm(x.text) === wnorm(text);
       });
       if (hit >= 0) { sentWait.splice(hit, 1); savePending(); }
     }
@@ -468,7 +552,7 @@
       if (p.type === "function_call" && p.name === "write_stdin") { try { a = JSON.parse(p.arguments || "{}") || {}; } catch (e) { return null; } return a.session_id != null ? { sess: +a.session_id, chars: String(a.chars || "") } : null; }
       if (p.type === "custom_tool_call" && p.name === "exec") {
         var code = String(p.input || ""), calls = code.match(/tools\.(\w+)\s*\(/g) || [];
-        if (!calls.length || calls.some(function (c) { return !/write_stdin/.test(c); })) return null; // 脚本里还调了别的：照常一格
+        if (calls.length !== 1 || !/write_stdin/.test(calls[0])) return null;
         var sm = /session_id\s*:\s*(\d+)/.exec(code), cm = /chars\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(code), ch = "";
         try { ch = cm ? JSON.parse('"' + cm[1] + '"') : ""; } catch (e) { ch = cm ? cm[1] : ""; }
         return sm ? { sess: +sm[1], chars: ch } : null;
@@ -504,7 +588,23 @@
       var p = j.payload || {}, at = ts(j.timestamp);
       if (j.type === "session_meta") { info.cwd = p.cwd || info.cwd; return null; }
       if (j.type === "turn_context") { if (p.model) agent.model = p.model; var cs = p.collaboration_mode && p.collaboration_mode.settings; if (p.effort || (cs && cs.reasoning_effort)) agent.effort = effortSel || p.effort || cs.reasoning_effort; return null; }
-      if (j.type === "compacted") { compactSince = 0; compactEnd = at; if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; turns.push(c); return c; }
+      if (j.type === "compacted") { compactSince = 0; compactEnd = at; if (cur) settle(cur); cur = null; var c = { compact: { summary: String(p.message || "").trim() }, at: at }; if (Array.isArray(p.replacement_history)) c.compact.retainedMessages = p.replacement_history.filter(item => item?.type === "message").length;
+        var retained = p.retained_context || {};
+        var entries = [];
+        for (var role of ["user", "assistant"]) {
+          for (var msg of retained[role + "_messages"] || []) {
+            if (typeof msg.text === "string" && msg.text.trim()) entries.push({ role: role, text: msg.text, order: msg.order });
+          }
+        }
+        if (!entries.length && Array.isArray(p.replacement_history)) {
+          for (var item of p.replacement_history) {
+            if (item.type !== "message" || !["user", "assistant"].includes(item.role) || !Array.isArray(item.content)) continue;
+            var body = item.content.filter(part => typeof part.text === "string").map(part => part.text).join("\n");
+            if (body.trim()) entries.push({ role: item.role, text: body });
+          }
+        }
+        c.compact.entries = entries.sort((a, b) => (a.order || 0) - (b.order || 0));
+        turns.push(c); return c; }
       if (j.type === "event_msg") {
         if (p.type === "item_completed" && p.item && p.item.type === "AgentMessage") {
           var message = p.item;
@@ -542,9 +642,15 @@
             var window = windows.find(function (entry) { return entry.window_minutes === minutes; }) || (fallback && !fallback.window_minutes ? fallback : null);
             return window && typeof window.used_percent === "number" ? Math.round(window.used_percent) : null;
           }
-          sess.limits = { five: used(300, limits.primary), week: used(10080, limits.secondary), at: at };
+          sess.limits = { five: used(300, limits.primary), week: used(10080, limits.secondary), at: at,
+            buckets: windows.filter(w => Number.isFinite(w.used_percent)).map(w => {
+              var minutes = w.window_minutes || (w === limits.primary ? 300 : 10080);
+              return {name: minutes === 10080 ? "weekly" : minutes % 60 ? minutes + "m" : minutes / 60 + "h",
+                remaining: Math.min(1, Math.max(0, 1 - w.used_percent / 100)),
+                reset: w.resets_at > 0 ? new Date(w.resets_at * 1000).toISOString() : null};
+            }) };
         }
-        if (p.type === "token_count" && p.info) { var u = p.info.last_token_usage || {}; if (u.total_tokens || u.input_tokens) sess.ctx = u.total_tokens || ((u.input_tokens || 0) + (u.output_tokens || 0)); if (p.info.model_context_window) sess.window = p.info.model_context_window; return null; }
+        if (p.type === "token_count" && p.info) { var u = p.info.last_token_usage || {}; if (u.total_tokens || u.input_tokens) contextUsage = u; if (u.total_tokens || u.input_tokens) sess.ctx = u.total_tokens || ((u.input_tokens || 0) + (u.output_tokens || 0)); if (p.info.model_context_window) sess.window = p.info.model_context_window; return null; }
         if (p.item && /^(contextCompaction|context_compaction)$/i.test(p.item.type)) {
           if (p.type === "item_started") compactSince = p.started_at_ms || at;
           if (p.type === "item_completed") {
@@ -582,7 +688,7 @@
       if (/_call$/.test(p.type) && p.type !== "function_call_output") lastOut = Math.max(lastOut, at);
       if (/_call$/.test(p.type) && p.type !== "function_call_output") {
         var po = pollOf(p), tg = po && sessOf[po.sess];
-        if (po && !po.chars && (p.call_id || p.id)) pendingPolls.add(p.call_id || p.id);
+        if (po && !po.chars && (p.call_id || p.id)) pendingPolls.set(p.call_id || p.id, at);
         if (tg && (p.call_id || p.id)) { byCall[p.call_id || p.id] = { poll: tg, chars: po.chars }; return null; }
         var tp = toolPart(p, at), t3 = ensureTurn(at);
         var part = { kind: "tool", name: tp.name, input: tp.input || {}, status: p.type === "web_search_call" ? "done" : "running", id: p.call_id || p.id, t0: at, turn: t3 };
@@ -729,7 +835,7 @@
       }
       busy = v;
       if (v) tickOn();
-      if (v) rt.stream = { t0: running && runAt ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", specialStatus: phase(), phaseAt: compactSince, answer: "", ctl: { abort: function () {} } };
+      if (v) rt.stream = { t0: running && runAt ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", specialStatus: phase(), phaseAt: compactSince || pendingPolls.values().next().value || 0, answer: "", ctl: { abort: function () {} } };
       else { rt.stream = null; clearInterval(ticker); ticker = 0; if (cur) { settle(cur); emit("turn", cur); } }
       emit("status"); emit("state");
     }
@@ -738,7 +844,7 @@
     var statusCheckAt = 0, checkingStatus = false;
     function liveBusy() {
       checkCompact();
-      if (rt.stream) { rt.stream.specialStatus = phase(); rt.stream.phaseAt = compactSince; }
+      if (rt.stream) { rt.stream.specialStatus = phase(); rt.stream.phaseAt = compactSince || pendingPolls.values().next().value || 0; }
       if (proc && proc.alive()) return;
       var now = Date.now(), recent = now - (sess.updated || 0) < 60000;
       setBusy(sendingCount > 0 || !!running && (recent || live() && busy) || now - sentAt < 10000);
@@ -813,7 +919,7 @@
     };
     // 发话时带上这边选的模型、推理强度（下一句起）；附的图（[Image: "…"]，见 rt.send）→ --image=路径，话里去掉
     function runOpts() { var o = []; if (modelSel) o.push("-m", modelSel); if (effortSel) o.push("-c", "model_reasoning_effort=" + effortSel); return o; }
-    function takeShots(text) { var ims = []; text = String(text || "").replace(/\[Image: "([^"\n]+)"\] ?/g, function (all, p) { ims.push("--image=" + p); return ""; }).trim(); return { text: text || (ims.length ? "(image)" : ""), args: ims }; }
+    function takeShots(text) { var ims = []; text = String(text || "").replace(/\[Image: "([^"\n]+)"\] ?/g, function (all, p) { ims.push("--image=" + p); return ""; }).trim(); return { text: text, args: ims }; }
     rt.agentName = function () { return ""; };
     function runExec(text) {
       outBuf = "";
@@ -860,7 +966,7 @@
       }
       if (sh.args.length || steerTurn) {
         var input = sh.args.map(function (arg) { return {type: "localImage", path: arg.slice("--image=".length)}; });
-        if (!sh.args.length || sh.text !== "(image)") input.push({type: "text", text: sh.text});
+        if (sh.text) input.push({type: "text", text: sh.text});
         var request = () => steerTurn
           ? cxRpc("turn/steer", {threadId: sid, expectedTurnId: steerTurn, input: input})
           : cxSeq([["thread/resume", {threadId: sid, excludeTurns: true}], ["thread/queue/add", {threadId: sid, clientUserMessageId: crypto.randomUUID(), input: input}]]);
@@ -898,7 +1004,7 @@
     }
     async function startTurn(text, fresh) {
         var sh = takeShots(text), input = sh.args.map(arg => ({type: "localImage", path: arg.slice(8)}));
-        if (!input.length || sh.text !== "(image)") input.push({type: "text", text: sh.text});
+        if (sh.text) input.push({type: "text", text: sh.text});
         var params = {threadId: sid, input: input, model: modelSel || undefined, effort: effortSel || undefined};
         var started = await sendRpc(() => fresh ? cxRpc("turn/start", params) : cxSeq([["thread/resume", {threadId: sid, excludeTurns: true}], ["turn/start", params]]));
         if (started.result?.turn?.id) { running = started.result.turn.id; sentAt = runAt = Date.now(); setBusy(true); }
@@ -911,7 +1017,7 @@
       if (imgs.length) { saveShots(imgs).then(function (ps) { rt.send(ps.map(function (p) { return '[Image: "' + p + '"]'; }).join(" ") + (ps.length && text ? " " : "") + text, null, options); }).catch(function (e) { emit("edit", {text: text, images: imgs}); rt.record("Codex", "图片发送失败：" + e.message); }); return true; }
       if (!text) return false;
       var sh = takeShots(text);
-      sentWait.push({ text: sh.text, at: Date.now(), q: !!options?.queue });
+      sentWait.push({ paths: sh.args.map(arg => arg.slice(8)), text: sh.text, at: Date.now(), q: !!options?.queue });
       sendingCount++;
       setBusy(true);
       savePending(); emit("status");
@@ -928,7 +1034,7 @@
         }
       }).catch(function (err) {
         dropSent(sh.text, 0);
-        emit("edit", {text: sh.text === "(image)" && sh.args.length ? "" : sh.text, images: sh.args.map(arg => ({path: arg.slice(8)}))});
+        emit("edit", {text: sh.text, images: sh.args.map(arg => ({path: arg.slice(8)}))});
         rt.record("Codex", err.message); emit("status");
       }).finally(function () { sendingCount--; liveBusy(); });
       return true;
@@ -1051,8 +1157,14 @@
         var remaining = usable > 0 ? Math.max(0, usable - Math.max(0, sess.ctx - 12000)) / usable : 0;
         bits.push("Context " + (100 - Math.round(remaining * 100)) + "% used");
       }
-      if (sess.limits && sess.limits.week != null) bits.push("weekly " + Math.max(0, Math.min(100, 100 - sess.limits.week)) + "% left");
+      var quota = rt.quotaLabel();
+      if (quota) bits.push(quota);
       return bits.concat([rt.model().name, agent.effort]).filter(Boolean);
+    };
+    rt.quotaBuckets = function () { return sess.limits?.buckets || []; };
+    rt.quotaLabel = function () {
+      var buckets = rt.quotaBuckets(), main = buckets.find(w => w.name === "weekly") || buckets[0];
+      return main ? main.name + " " + Math.round(main.remaining * 100) + "% left" : "";
     };
     rt.limits = function () { return sess.limits || null; };
     // ← 那一块：这台 Mac 上的 Codex 会话——正开在 Codex 里的算「在干活」（刚写过）/「等你回复」，其余最近的 15 个是「已完成」；最前面是现在这个

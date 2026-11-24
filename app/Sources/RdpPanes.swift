@@ -109,14 +109,20 @@ enum RdpProc {
         let o = Pipe(), e = Pipe(), i = Pipe()
         p.standardOutput = o; p.standardError = e; p.standardInput = i
         do { try p.run() } catch { cont.resume(returning: Result(status: -1, out: "", err: error.localizedDescription)); return }
-        if let input { i.fileHandleForWriting.write(input.data(using: .utf8) ?? Data()) }
-        try? i.fileHandleForWriting.close()
         let timer = DispatchWorkItem { if p.isRunning { p.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
-        let od = o.fileHandleForReading.readDataToEndOfFile(), ed = e.fileHandleForReading.readDataToEndOfFile()
+        let stderr = Task.detached { e.fileHandleForReading.readDataToEndOfFile() }
+        DispatchQueue.global().async {
+          if let input { try? i.fileHandleForWriting.write(contentsOf: Data(input.utf8)) }
+          try? i.fileHandleForWriting.close()
+        }
+        let od = o.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         timer.cancel()
-        cont.resume(returning: Result(status: p.terminationStatus, out: String(decoding: od, as: UTF8.self), err: String(decoding: ed, as: UTF8.self)))
+        Task {
+          let ed = await stderr.value
+          cont.resume(returning: Result(status: p.terminationStatus, out: String(decoding: od, as: UTF8.self), err: String(decoding: ed, as: UTF8.self)))
+        }
       }
     }
   }

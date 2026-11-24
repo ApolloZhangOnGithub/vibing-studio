@@ -293,7 +293,7 @@
             for (var line of lines) {
               if (!line.trim()) continue;
               var event = JSON.parse(line);
-              if (event.delta || typeof event.thinking === "boolean") onDelta(event);
+              if (event.configured || event.delta || typeof event.thinking === "boolean") onDelta(event);
             }
           });
           if (result.code || !result.out.trim()) {
@@ -318,12 +318,24 @@
       }).catch(() => {}).finally(() => { quotaPending = null; quotaAttempted = true; document.dispatchEvent(new Event("tsu-agy-quota")); });
     }
     var modelsLoadedAt = 0;
+    try {
+      var savedModels = JSON.parse(localStorage.getItem("tsu-agy-model-list"));
+      if (Array.isArray(savedModels?.rows) && savedModels.rows.every(m => m && typeof m.id === "string" && typeof m.name === "string")) {
+        modelChoices = savedModels.rows;
+        modelsLoadedAt = Number(savedModels.at) || 0;
+      }
+    } catch (_) {}
     function prepareModels() {
       if (modelChoices.length && Date.now() - modelsLoadedAt < 60000) return Promise.resolve();
       if (!modelRequest) modelRequest = readAgy(["--models"]).then(rows => {
         if (!rows.length) throw new Error("agy 未返回可用模型");
         modelChoices = rows; modelsLoadedAt = Date.now();
+        try { localStorage.setItem("tsu-agy-model-list", JSON.stringify({rows, at: modelsLoadedAt})); } catch (_) {}
       }).finally(() => { modelRequest = null; });
+      if (modelChoices.length) {
+        modelRequest.catch(() => {});
+        return Promise.resolve();
+      }
       return modelRequest;
     }
     async function refreshAgy() {
@@ -348,7 +360,39 @@
       })();
       return pending;
     }
+    var agyCommands = [
+      ["help", "命令和快捷键"], ["goal", "设定会话目标"], ["model", "选择模型"],
+      ["config", "配置"], ["context", "上下文用量"], ["agents", "可用 Agent"],
+      ["add-dir", "添加目录"], ["artifact", "查看产物"], ["btw", "临时提问"],
+      ["changelog", "更新记录"], ["resume", "恢复会话"], ["fork", "创建会话分支"],
+      ["boost", "深度推理"], ["browser", "浏览器任务"], ["clear", "新会话"],
+      ["codesearch", "搜索代码"], ["compact", "压缩上下文"], ["copy", "复制回复"],
+      ["credits", "积分"], ["diff", "查看修改"], ["effort", "思考强度"],
+      ["exit", "退出终端"], ["feedback", "反馈"], ["grill-me", "逐项提问"],
+      ["hooks", "查看钩子"], ["keybindings", "快捷键"], ["learn", "保存规则或技能"],
+      ["logout", "退出账号"], ["mcp", "管理 MCP"], ["open", "打开文件"],
+      ["permissions", "工具权限"], ["plan", "规划任务"], ["plugin", "插件"],
+      ["rename", "重命名会话"], ["remote-control", "远程控制"], ["rewind", "回退会话"],
+      ["schedule", "定时任务"], ["skills", "技能"], ["statusline", "状态栏"],
+      ["swarm", "多智能体协作"], ["tasks", "后台任务"], ["teamwork", "团队协作"],
+      ["title", "终端标题"], ["usage", "额度"], ["voice", "语音"],
+      ["agy-customizations", "配置指南"], ["antigravity-guide", "使用指南"]
+    ];
+    var agyCommandNames = new Set(agyCommands.map(command => command[0]).concat(["quota", "settings"]));
+    function isAgyCommand(message) {
+      var token = /^\s*\/([\w-]+)(?=\s|$)/.exec(message);
+      return !!token && agyCommandNames.has(token[1]);
+    }
+    function agyLocalAction(message) {
+      var cmd = message.trim();
+      if (!isAgyCommand(cmd) || /^\/goal\s+/.test(cmd)) return "";
+      if (cmd === "/quota") return "/usage";
+      if (cmd === "/settings") return "/config";
+      return ["/tasks", "/usage", "/config", "/context", "/model", "/help", "/goal"].includes(cmd) ? cmd : "unsupported";
+    }
     window.TSU_AGY = {
+      commands: agyCommands, localAction: agyLocalAction,
+      create: async function () { var result = await readAgy(["--create"]); await refreshAgy(); return result.sessionId; },
       quota: function () {
         refreshQuota();
         return {data: Date.parse(quotaState.reset) > Date.now() ? quotaState : null, loading: !quotaAttempted && !!quotaPending};
@@ -356,7 +400,7 @@
       enabled: function () { return local() && !nadosNative.remote && C.on("agy"); },
       list: function () {
         if (Date.now() - loadedAt > 120000) refreshAgy();
-        return sessions;
+        return sessions.filter(s => !s.subagent);
       },
       status: function () { return listError || (pending ? "正在读取会话…" : "没有会话"); },
       refresh: refreshAgy
@@ -376,6 +420,7 @@
       var A = window.TSU_AGENTS, aid = "agy:" + id;
       if (!A || !TSU_AGY.enabled()) return null;
       if (A.get(aid)) return A.runtime(aid);
+      prepareModels().catch(() => {});
       var info = findSession(id) || {}, listeners = new Set(), loading;
       var session = { id: id, title: info.title || "Google Antigravity", turns: [], todo: { items: [] } };
       var agent = { id: aid, current: id, name: session.title, connector: "agy", claude: true, access: "ro" };
@@ -407,7 +452,7 @@
         if (event.role === "tool") {
           var tool = turn.parts.find(function (p) { return p.kind === "tool" && p.id === event.id; });
           if (!tool) {
-            tool = { kind: "tool", id: event.id, name: event.action || "Tool", input: {}, status: "running" };
+            tool = { kind: "tool", id: event.id, name: event.action || "Tool", input: {}, status: "running", t0: Date.parse(event.created_at) || 0 };
             turn.parts.push(tool);
           }
           if (event.file_path) {
@@ -425,6 +470,22 @@
               "Q" + (index + 1) + ": " + q.question,
               ...(Array.isArray(q.options) ? q.options.map(option => "  · " + (typeof option === "string" ? option : option.label || JSON.stringify(option))) : [])
             ]).concat(result);
+          }
+          if (event.action === "manage_subagents" || event.action === "invoke_subagent") {
+            var args = event.taskArgs || {};
+            var action = String(args.Action || "").replace(/^"|"$/g, "");
+            var body = String(event.error || event.output || "").split(/\r?\n/).filter(l => !/^(Created|Completed) At:/.test(l)).join("\n").trim();
+            var list = /^You have (\d+) active subagent\(s\):\s*([\s\S]*)$/.exec(body);
+            tool.taskHeading = event.action === "invoke_subagent" ? "Spawn subagent" : action === "list" ? "List subagents" : "Manage subagents";
+            tool.detail = body.split("\n");
+            tool.summary = body.split("\n")[0] || action || tool.taskHeading;
+            if (list) {
+              try {
+                var children = JSON.parse(list[2]).map(c => [c.role || c.type, c.state, c.stateDetail].filter(Boolean).join(" · "));
+                tool.summary = children.join("; ") || "0 active subagents";
+                tool.detail = children.concat(tool.detail);
+              } catch (_) {}
+            }
           }
           if (event.action === "manage_task") {
             var args = event.taskArgs || {};
@@ -498,7 +559,7 @@
       var pendingTurn = null, optimisticTurns = [], workingSince = 0;
       var revision = "", followTimer, checking = false;
       var screenBusy = false, nextScreen = 0;
-      var observedWorking = false, turnHashes = [], knownPrefix = "";
+      var observedWorking = false, turnHashes = [], knownPrefix = "", knownSource = "";
       var workingKey = "tsu-agy-working:" + id;
       var restoredWorking = Number(sessionStorage.getItem(workingKey)) > Date.now() - 60000;
       async function updateScreen() {
@@ -513,15 +574,24 @@
         finally { screenBusy = false; }
         var status = screen.status || "";
         // An unreadable frame during a terminal repaint has no lifecycle signal.
-        if (active && typeof screen.working !== "boolean") return;
         var tasks = active ? screen.tasks || [] : rt.recordedTasks || [];
         var schedules = tasks.filter(task => task.kind === "cron"), shells = tasks.filter(task => task.kind === "shell");
+        var children = sessions.filter(s => s.subagent && s.subagent.parent === id).map(s => ({
+          kind: "agent", id: s.sessionId, type: s.subagent.role || "Subagent", desc: s.title,
+          status: s.subagent.status, t0: Date.parse(s.subagent.createdAt || s.updatedAt)
+        }));
+        if (active && typeof screen.working !== "boolean") {
+          shells = (rt.tasks || []).filter(t => t.kind === "shell");
+          schedules = rt.schedules || [];
+        }
+        shells = shells.concat(children);
         if (JSON.stringify(rt.schedules) !== JSON.stringify(schedules) || JSON.stringify(rt.tasks) !== JSON.stringify(shells)) {
           rt.schedules = schedules;
           rt.tasks = shells;
           listeners.forEach(fn => fn("tasks"));
           ST.familyChanged();
         }
+        if (active && typeof screen.working !== "boolean") return;
         var terminalWorking = active && screen.working === true;
         if (terminalWorking) {
           if (Number(sessionStorage.getItem(workingKey)) < Date.now() - 15000) sessionStorage.setItem(workingKey, String(Date.now()));
@@ -553,27 +623,35 @@
           listeners.forEach(fn => fn("status"));
         }
         updateScreen();
-        if ((working || rt.schedules?.some(task => task.status === "running")) && rt.lastWorkingSecond !== Math.floor(Date.now()/1000)) { rt.lastWorkingSecond = Math.floor(Date.now()/1000); listeners.forEach(fn => fn("status")); }
+        if ((working || rt.schedules?.some(task => task.status === "running") || rt.tasks.some(task => task.kind === "shell" && task.status === "running")) && rt.lastWorkingSecond !== Math.floor(Date.now()/1000)) { rt.lastWorkingSecond = Math.floor(Date.now()/1000); listeners.forEach(fn => fn("status")); }
         checking = true;
         try {
           var current = await fileRevision(info.path);
-          if (listeners.size && !loading && current !== revision) await (loading = load());
+          if (listeners.size && !loading && current !== revision) await (loading = load(current));
         } catch (e) { console.warn("agy transcript refresh", e); }
         finally { checking = false; }
       }
-      async function load() {
+      async function load(observedRevision) {
         var changes = null, appended = [];
         try {
           if (!findSession(id)) await refreshAgy();
           info = findSession(id);
           if (!info) throw new Error(listError || "找不到该会话");
           session.title = agent.name = info.title || id;
-          var before = await fileRevision(info.path);
+          var before = observedRevision || await fileRevision(info.path);
           var args = ["--session", id];
-          if (knownPrefix && turnHashes.length && !optimisticTurns.length) {
+          if (knownSource) args.push("--known-source", knownSource);
+          if (knownPrefix && turnHashes.length) {
             args.push("--known-prefix", knownPrefix, "--known-turns", String(turnHashes.length - 1), "--known-last", turnHashes.at(-1));
           }
           var messages = await readAgy(args);
+          if (messages.unchanged) {
+            revision = before;
+            changes = [];
+            return;
+          }
+          rt.contextTokens = messages.contextTokens;
+          rt.contextLimit = messages.contextLimit;
           rt.finalAt = messages.finalAt || 0;
           rt.recordedTasks = messages.background || [];
           var turns = session.turns.slice(0, messages.reuseTurns || 0), turn, reuse;
@@ -582,8 +660,8 @@
           var effort = /-(low|medium|high|xhigh|max)$/.exec(model);
           var display = model.replace(/-(low|medium|high|xhigh|max)$/, "").replace(/(\d)-(\d)/g, "$1.$2").split("-").map(function (word) { return word.charAt(0).toUpperCase() + word.slice(1); }).join(" ");
           var selected = typeof messages.selectedModel === "string" && /^(.*?) (?:\((low|medium|high|xhigh|max)\))$/i.exec(messages.selectedModel);
-          if (messages.selectedModel) display = selected ? selected[1] : messages.selectedModel;
-          if (messages.selectedModel) effort = selected ? [null, selected[2].toLowerCase()] : null;
+          if (!model && messages.selectedModel) display = selected ? selected[1] : messages.selectedModel;
+          if (!model && messages.selectedModel) effort = selected ? [null, selected[2].toLowerCase()] : null;
           session.modelId = model;
           agent.effort = effort && effort[1];
           session.mode = messages.mode;
@@ -630,6 +708,7 @@
           } else session.turns = turns;
           turnHashes = hashes;
           knownPrefix = messages.prefix || "";
+          knownSource = messages.source || "";
           revision = before;
         } catch (e) { if (!session.turns.length) session.turns = [{ note: e.message, parts: [] }]; }
         finally { loading = null; listeners.forEach(function (f) { try { if (changes === null) f("reset"); else { changes.forEach(t => f("turn", t)); appended.forEach(t => f("append", t)); f("status"); } } catch (e) { console.error(e); } }); }
@@ -668,26 +747,48 @@
           return Number.isFinite(quotaState.remaining) && Date.parse(quotaState.reset) > Date.now() ?
             "weekly " + Math.round(quotaState.remaining * 100) + "% left" : "";
         },
-        preferredModel: function () { return preferred; },
+        confirmedModel: function () { return rt.headless() && preferred?.confirmed ? preferred : null; },
+        currentModelId: function () { return rt.confirmedModel()?.id || session.modelId; },
         model: function () { return (rt.headless() && preferred) || modelChoices.find(m => m.id === session.modelId) || {id: session.modelId, name: session.statusLabel}; },
-        models: function () { return modelChoices; },
+        models: function () {
+          var levels = ["low", "medium", "high", "xhigh", "max"];
+          var effortSuffix = /-(low|medium|high|xhigh|max)$/;
+          var selected = rt.model().id || "";
+          var level = levels.indexOf((selected.match(effortSuffix) || [])[1]);
+          var families = new Map();
+          for (var choice of modelChoices) {
+            var base = choice.id.replace(effortSuffix, "");
+            var rank = levels.indexOf((choice.id.match(effortSuffix) || [])[1]);
+            var distance = level < 0 ? 0 : Math.abs(rank - level);
+            var previous = families.get(base);
+            if (!previous || distance < previous.distance) {
+              families.set(base, {distance, id: choice.id,
+                name: choice.name.replace(/ \((low|medium|high|xhigh|max)\)$/i, "")});
+            }
+          }
+          return Array.from(families.values());
+        },
         prepareChoices: prepareModels,
         setModel: async function (key) {
           if (!rt.headless()) throw new Error("此会话由 agy 终端控制，请在那里切换模型");
           var choice = modelChoices.find(m => m.id === key);
           if (!choice) throw new Error("此模型不可用");
-          localStorage.setItem(modelKey, JSON.stringify(choice));
-          preferred = choice;
+          var ack = await readAgy(["--configure", id, "--model", key]);
+          if (ack.configured !== key) throw new Error("AGY 未确认模型切换");
+          preferred = {...choice, confirmed:true};
+          localStorage.setItem(modelKey, JSON.stringify(preferred));
           listeners.forEach(fn => fn("status"));
         },
         state: function () {
+          var child = findSession(id)?.subagent;
+          if (child) return child.status === "running" ? "working" : "idle";
           if (!rt.headless()) return rt.sending || rt.terminalWorking ? "working" : "idle";
           var start = workingSince || findSession(id)?.workingSince;
           if (start && rt.finalAt >= start && !pendingTurn) return "idle";
           return rt.sending || start ? "working" : "idle";
         },
         detachBash: no, takeQueued: function () { return null; },
-        ctx: function () { return { tokens: 0, window: 0, pct: 0 }; },
+        ctx: function () { var tokens = rt.contextTokens || 0, window = rt.contextLimit || 0; return {tokens, window, pct:window ? tokens/window*100 : 0}; },
         cwd: function () { return info && info.cwd || ""; },
         todo: function () { return []; },
         pendingMsgs: function () {
@@ -697,7 +798,7 @@
         tail: function () { return ""; },
         headless: function () { return !/^ttys[0-9]+$/.test(findSession(id)?.tty || ""); },
         thinkSince: function () { return rt.thinkingAt || 0; },
-        workingStartedAt: function () { return workingSince || findSession(id)?.workingSince || session.turns.at(-1)?.at; },
+        workingStartedAt: function () { return workingSince || findSession(id)?.workingSince || Date.parse(findSession(id)?.subagent?.createdAt) || session.turns.at(-1)?.at; },
         sendTerminal: async function (message, images) {
           var followup = rt.sending || !!findSession(id)?.workingSince;
           var localTurn;
@@ -716,7 +817,18 @@
             var outbound = await outboundMessage(message, images);
             if (localTurn) localTurn.wireAsk = outbound;
             var chunks = new Map(), liveThought;
-            var result = await readAgy(["--send", id, "--message=" + outbound].concat(preferred && rt.headless() ? ["--model", preferred.id] : []), function (event) {
+            var args = ["--send", id, "--message=" + outbound];
+            if (!images?.length && isAgyCommand(outbound)) args.push("--slash-command");
+            if (preferred && rt.headless()) args.push("--model", preferred.id);
+            var result = await readAgy(args, function (event) {
+              if (event.configured) {
+                if (preferred?.id === event.configured) {
+                  preferred = {...preferred, confirmed:true};
+                  localStorage.setItem(modelKey, JSON.stringify(preferred));
+                  listeners.forEach(fn => fn("status"));
+                }
+                return;
+              }
               if (typeof event.thinking === "boolean") {
                 rt.thinkingAt = event.thinking ? rt.thinkingAt || Date.now() : 0;
                 if (!event.thinking) liveThought = null;

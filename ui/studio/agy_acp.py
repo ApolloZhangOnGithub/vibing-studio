@@ -13,12 +13,17 @@ import sys
 import time
 
 
+OWNER_VERSION = "acp-config-v2"
+
+
 def endpoint(marker):
     folder = Path("/tmp") / f"vibing-agy-{os.getuid()}"
     folder.mkdir(mode=0o700, exist_ok=True)
     if folder.is_symlink() or folder.stat().st_uid != os.getuid() or folder.stat().st_mode & 0o077:
         raise PermissionError("agy 会话通信目录权限无效")
-    return str(folder / marker.name)
+    if marker.parent.name == "agy-runs":
+        return str(folder / marker.name)
+    return str(folder / (marker.parent.name + "-" + marker.name))
 
 
 def exchange(marker, request):
@@ -83,7 +88,7 @@ async def serve(marker, cwd, transcript):
             return
         lock.seek(0)
         lock.truncate()
-        lock.write(str(int(time.time() * 1000)) + "\nacp")
+        lock.write(str(int(time.time() * 1000)) + "\nacp\n" + OWNER_VERSION)
         lock.flush()
         proc = await asyncio.create_subprocess_exec("agy", "acp", cwd=cwd, stdin=-1, stdout=-1, limit=32 << 20)
         outstanding = {}
@@ -91,6 +96,7 @@ async def serve(marker, cwd, transcript):
         serial = asyncio.Lock()
         active_prompts = set()
         current = None
+        config = {}
         loaded = False
         clients = 0
         sequence = 0
@@ -163,10 +169,30 @@ async def serve(marker, cwd, transcript):
                     async with serial:
                         if not loaded:
                             await rpc("initialize", {"protocolVersion":1, "clientCapabilities":{}})
-                            await rpc("session/resume", {"sessionId":sid, "cwd":cwd, "mcpServers":[]})
+                            resumed = await rpc("session/resume", {"sessionId":sid, "cwd":cwd, "mcpServers":[]})
+                            config.update({o["id"]: o for o in resumed.get("configOptions", [])})
                             loaded = True
-                        if request.get("model") and not active_prompts:
-                            await rpc("session/set_model", {"sessionId":sid, "modelId":request["model"]})
+                        if request.get("model"):
+                            model = request["model"]
+                            choices = config.get("model", {}).get("options", [])
+                            base = next((o["value"] for o in choices if o["value"] == model), None)
+                            effort = None
+                            if not base:
+                                base, _, effort = model.rpartition("-")
+                            if choices:
+                                for key, value in (("model", base), ("thought_level", effort)):
+                                    if value and config.get(key, {}).get("currentValue") != value:
+                                        updated = await rpc("session/set_config_option", {"sessionId":sid, "configId":key, "value":value})
+                                        config.update({o["id"]: o for o in updated.get("configOptions", [])})
+                                        if config.get(key, {}).get("currentValue") != value:
+                                            raise RuntimeError("AGY 未确认模型设置：" + value)
+                            else:
+                                await rpc("session/set_model", {"sessionId":sid, "modelId":model})
+                        if request.get("configure"):
+                            emit(writer, {"result": {"configured": model}})
+                            return
+                        if request.get("model"):
+                            emit(writer, {"configured": model})
                         # ACP updates identify the session, not the originating prompt.
                         # During steering the transcript supplies authoritative turn ownership.
                         current = None if active_prompts else writer

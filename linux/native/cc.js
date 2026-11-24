@@ -86,7 +86,7 @@ class Index {
       const lv = live[s.id];
       const title = s.custom ? s.custom : lv && lv.named ? lv.name : s.ai ? s.ai : s.prompt;
       if (!title) continue;
-      if (!s.custom && !(lv && lv.named) && title.startsWith("/")) continue;
+      if (!s.custom && !(lv && lv.named) && !s.prompt && title.startsWith("/")) continue;
       const key = s.project + "\u0000" + title;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -251,34 +251,18 @@ class Index {
     if (word) pattern = "(?<![\\p{L}\\p{N}_])(?:" + pattern + ")(?![\\p{L}\\p{N}_])";
     let rx;
     try { rx = new RegExp(pattern, "gu" + (cs ? "" : "i")); } catch (e) { return [{ error: "正则表达式无效" }]; }
-    const anchor = re ? literalAnchor(needle) : needle;
-    const variants = !anchor ? [] : Array.from(new Set(cs ? [anchor] : [anchor, anchor.toLowerCase(), anchor.toUpperCase(), anchor.charAt(0).toUpperCase() + anchor.slice(1)])).map((v) => Buffer.from(v));
     const list = this.files().sort((a, b) => b.mtime - a.mtime).slice(0, files), out = [], t0 = Date.now();
     for (const f of list) {
       if (Date.now() - t0 > 4000) break; // 太多了：先给这些
       let data;
       try { data = fs.readFileSync(f.p); } catch (e) { continue; }
-      const lines = [], seen = new Set();
-      if (!variants.length) { // 正则里没有一定会出现的字：一行一行看
-        let ls = 0;
-        while (ls < data.length && lines.length <= 200000 && Date.now() - t0 <= 4000) { let le = data.indexOf(0x0a, ls); if (le < 0) le = data.length; if (le > ls) lines.push([ls, le]); ls = le + 1; }
-      }
-      for (const v of variants) {
-        let from = 0;
-        while (from < data.length && lines.length <= 4000) {
-          const r = data.indexOf(v, from);
-          if (r < 0) break;
-          let ls = data.lastIndexOf(0x0a, r); ls = ls < 0 ? 0 : ls + 1;
-          let le = data.indexOf(0x0a, r + v.length); if (le < 0) le = data.length;
-          if (!seen.has(ls)) { seen.add(ls); lines.push([ls, le]); }
-          from = le;
-        }
-      }
-      lines.sort((a, b) => a[0] - b[0]);
       const hits = [];
-      let total = 0;
-      for (const [a, b] of lines) {
-        if (b - a <= 20 || b - a >= 2000000) continue;
+      let total = 0, offset = 0;
+      while (offset < data.length && Date.now() - t0 <= 4000) {
+        const a = offset, newline = data.indexOf(0x0a, a);
+        const b = newline < 0 ? data.length : newline;
+        offset = b + 1;
+        if (b - a <= 20) continue;
         const j = parse(data, a, b);
         if (!j || (j.type !== "user" && j.type !== "assistant") || j.isMeta === true) continue;
         const texts = [], m = j.message;
@@ -288,7 +272,7 @@ class Index {
           rx.lastIndex = 0;
           let mm;
           while ((mm = rx.exec(t))) {
-            if (!mm[0].length) { rx.lastIndex++; continue; }
+            if (!mm[0].length) { rx.lastIndex += t.codePointAt(rx.lastIndex) > 0xffff ? 2 : 1; continue; }
             total++;
             if (hits.length < per) {
               const s0 = Math.max(0, mm.index - 40), e0 = Math.min(t.length, mm.index + mm[0].length + 60);
@@ -305,24 +289,4 @@ class Index {
     return out;
   }
 }
-// 正则里一定会出现的一段纯字（找得到就先按字节在整个文件里找它）；有顶层的 | 就没有，返回空
-function literalAnchor(re) {
-  let best = "", cur = "", cls = false, esc = false, alt = false;
-  const chars = Array.from(re);
-  chars.forEach((c, i) => {
-    if (esc) { esc = false; cur = ""; return; }
-    if (c === "\\") { esc = true; if (cur.length > best.length) best = cur; cur = ""; return; }
-    if (cls) { if (c === "]") cls = false; return; }
-    if (c === "[") { cls = true; if (cur.length > best.length) best = cur; cur = ""; return; }
-    if (c === "|") alt = true;
-    if (/[\p{L}\p{N}_\- ]/u.test(c)) {
-      const next = i + 1 < chars.length ? chars[i + 1] : " ";
-      if (next === "?" || next === "*" || next === "{") { if (cur.length > best.length) best = cur; cur = ""; return; }
-      cur += c;
-    } else { if (cur.length > best.length) best = cur; cur = ""; }
-  });
-  if (cur.length > best.length) best = cur;
-  return alt ? "" : best.trim();
-}
-
 module.exports = { Index: Index, norm: norm, sameProject: sameProject };

@@ -41,7 +41,7 @@
   var times = function (n) { return n + (n === 1 ? " time" : " times"); };
   var dayStart = function (at) { var d = new Date(at); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
   var dayBack = function (at, k) { var d = new Date(at); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - k).getTime(); };
-  var devName = function (id) { var SY = window.TSU_SYNC; if (!id) return ""; if (SY && SY.dev === id) return t("这台设备", "This device"); return SY && SY.deviceName ? SY.deviceName(id) : id; };
+  var devName = function (id) { var SY = window.TSU_SYNC; if (!id) return ""; if (SY && SY.dev === id) return t("当前设备", "This device"); return SY && SY.deviceName ? SY.deviceName(id) : id; };
 
   // ---- 一次调用：操作、结果的说法 ----
   var OPS = {
@@ -334,7 +334,7 @@
     if (i.dev) add(t("设备", "Device"), devName(i.dev));
     // 往 Claude Code 的会话里送的那一句（claude.js）：哪个会话、送的什么、第几次送、之前没送成几次
     if (r.svc === "cc") { add(t("会话", "Session"), i.session); add(t("内容", "Message"), i.text); if (i.tries > 1) add(t("第几次送", "Attempt"), i.tries); if (i.fails) add(t("之前没送成", "Earlier failures"), i.fails); }
-    add(t("记录来源", "Recorded by"), r.src === "server" ? t("服务器", "Server") : t("这台设备", "This device"));
+    add(t("记录来源", "Recorded by"), r.src === "server" ? t("服务器", "Server") : t("当前设备", "This device"));
     add(t("错误", "Error"), r.err);
     if (i.note) add(t("备注", "Note"), i.note);
     return '<dl class="svs-det">' + f.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl>";
@@ -372,7 +372,7 @@
       var b = (V.ssBars[g.dataset.svc] || [])[+g.dataset.i];
       if (!b) return;
       var a = b.a, head = (ss.range === "24h" && sameDay(b.from, Date.now()) ? "" : md(b.from) + " ") + hm(b.from) + " – " + hm(b.to);
-      var scope = g.dataset.svc === "translate" && ss.data && ss.data.server ? t("所有设备", "All devices") : t("这台设备", "This device");
+      var scope = g.dataset.svc === "translate" && ss.data && ss.data.server ? t("所有设备", "All devices") : t("当前设备", "This device");
       var parts = a.n ? [t(a.n + " 次调用", a.n + (a.n === 1 ? " call" : " calls"))].concat(a.fail ? [t("失败 ", "Failed ") + a.fail] : [], a.limit ? [t("受限 ", "Limited ") + a.limit] : [], a.auth ? [t("需要登录 ", "Sign-in ") + a.auth] : [], a.drop ? [t("断开 ", "Dropped ") + a.drop] : [], a.slow ? [t("较慢 ", "Slow ") + a.slow] : [])
         : [b.s === "none" ? t("开始记录之前", "Before recording began") : t("没有调用", "No calls")];
       tip.innerHTML = "<b>" + esc(svcName(g.dataset.svc)) + "</b><span>" + esc(head) + "</span><span>" + esc(parts.join(" · ")) + "</span>" +

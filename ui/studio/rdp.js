@@ -116,7 +116,7 @@
     if (V.finding) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-wait"><i class="rd-spin"></i>' + esc(t("正在连接…", "Connecting…")) + "</div>";
     // 连不上：上面一行「无法连接到此电脑」（同系统的说法），下面一行写原因
     var why = { offline: t("此电脑上的 Vibing Studio 未打开", "Vibing Studio isn’t open on this computer"), nordp: t("此电脑未开启远程桌面", "Remote Desktop is turned off on this computer"),
-      denied: t("此电脑未授权这台设备", "This computer hasn’t authorized this device"), noreply: t("此电脑没有响应", "This computer isn’t responding"),
+      denied: t("此电脑未授权当前设备", "This computer hasn’t authorized this device"), noreply: t("此电脑没有响应", "This computer isn’t responding"),
       update: t("需要更新这台 Mac 上的 Vibing Studio", "Vibing Studio on this Mac needs updating") }[V.notFound] || "";
     if (V.notFound) return '<div class="rd-cic">' + LOGO + '</div><h2 class="rd-ct">' + esc(V.devName || "") + '</h2><div class="rd-err">' + esc(t("无法连接到此电脑", "Can’t Connect to This Computer")) + "</div>" +
       (why ? '<div class="rd-msg">' + esc(why) + "</div>" : "") +

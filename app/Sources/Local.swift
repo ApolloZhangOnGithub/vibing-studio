@@ -30,8 +30,91 @@ final class Local {
                          "exec.start", "exec.kill", "proc.start", "proc.write", "proc.close", "proc.kill", "fs.read", "fs.write", "fs.stat", "fs.glob", "fs.list", "cc.sessions", "cc.find", "cc.search"]
   let cc = ClaudeCodeIndex() // 侧栏的 Claude Code 会话（ClaudeCode.swift）
 
+  private let filesystemQueue = DispatchQueue(label: "vibing.filesystem", qos: .userInitiated, attributes: .concurrent)
+  private nonisolated func filesystem(_ cmd: String, _ a: [String: Any]) throws -> Any? {
+    switch cmd {
+    case "fs.list":
+      // 一个目录里的东西（资源管理器）：[{ name, dir, size, mtime, hidden, package, link, target? }]，文件夹在前、按名字。
+      //   link：符号链接、访达的替身（图标上画小箭头）；替身指着文件夹时 dir 为真、target 是它指着的地方（点进去去那里）
+      let p = try pathArg(a)
+      let fm = FileManager.default
+      guard let names = try? fm.contentsOfDirectory(atPath: p) else { throw BridgeError.failed("Can't list \(p)") }
+      var out: [[String: Any]] = []
+      for n in names.prefix(5000) {
+        var isDir: ObjCBool = false
+        let full = (p as NSString).appendingPathComponent(n)
+        guard fm.fileExists(atPath: full, isDirectory: &isDir) else { continue }
+        let at = try? fm.attributesOfItem(atPath: full)
+        // 访达藏起来的（同访达）：点开头的、带 hidden 标记的（~/Library、/bin、/usr……）、.hidden 里列的
+        let rv = try? URL(fileURLWithPath: full).resourceValues(forKeys: [.isHiddenKey, .isPackageKey, .creationDateKey, .isSymbolicLinkKey, .isAliasFileKey])
+        let sym = rv?.isSymbolicLink ?? false, ali = !sym && (rv?.isAliasFile ?? false)
+        var dir = isDir.boolValue, target: String? = nil
+        if ali, let t = try? URL(resolvingAliasFileAt: URL(fileURLWithPath: full), options: [.withoutUI, .withoutMounting]) {
+          var td: ObjCBool = false
+          if fm.fileExists(atPath: t.path, isDirectory: &td) { dir = td.boolValue; target = t.path }
+        }
+        var e: [String: Any] = ["name": n, "dir": dir, "size": (at?[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
+                                "hidden": rv?.isHidden ?? n.hasPrefix("."), "package": rv?.isPackage ?? false, "link": sym || ali]
+        if let target = target { e["target"] = target }
+        out.append(e)
+      }
+      out.sort { a, b in
+        let da = a["dir"] as? Bool ?? false, db = b["dir"] as? Bool ?? false
+        if da != db { return da }
+        return ((a["name"] as? String) ?? "").localizedStandardCompare((b["name"] as? String) ?? "") == .orderedAscending
+      }
+      return out
+    case "fs.read":
+      let p = try pathArg(a), acc = accessArgs(a)
+      guard allowed(p, write: false, acc.access, acc.workdir, extraArg(a)) else { throw BridgeError.permission("Permission denied: \(p) (access: \(acc.access))") }
+      let max = int(a["max"], 20_000_000), off = int(a["offset"], 0)
+      guard max >= 0 else { throw BridgeError.args("max must be nonnegative") }
+      guard let h = FileHandle(forReadingAtPath: p) else { throw BridgeError.failed(FileManager.default.fileExists(atPath: p) ? "Can't read \(p)" : "No such file: \(p)") }
+      defer { try? h.close() }
+      if off > 0 { try? h.seek(toOffset: UInt64(off)) } // 从中间读（会话记录很大：只读后面一段、只读新追加的）
+      let d = (try? h.read(upToCount: max)) ?? Data()
+      return ["b64": d.base64EncodedString(), "size": d.count]
+    case "fs.write":
+      let p = try pathArg(a), acc = accessArgs(a)
+      guard allowed(p, write: true, acc.access, acc.workdir, extraArg(a)) else { throw BridgeError.permission("Permission denied: \(p) (access: \(acc.access))") }
+      let d: Data
+      if let b = a["b64"] as? String, let x = Data(base64Encoded: b) { d = x } else { d = Data(((a["text"] as? String) ?? "").utf8) }
+      try FileManager.default.createDirectory(atPath: (p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+      try d.write(to: URL(fileURLWithPath: p), options: .atomic)
+      return ["bytes": d.count]
+    case "fs.stat":
+      let p = try pathArg(a)
+      guard let at = try? FileManager.default.attributesOfItem(atPath: p) else { return nil }
+      let dir = (at[.type] as? FileAttributeType) == .typeDirectory
+      return ["type": dir ? "dir" : "file", "size": (at[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
+              "mode": (at[.posixPermissions] as? NSNumber)?.intValue ?? 0] as [String: Any]
+    case "fs.glob":
+      guard let pattern = a["pattern"] as? String, !pattern.isEmpty else { throw BridgeError.args("fs.glob { pattern, cwd }") }
+      let acc = accessArgs(a), cwd = dirOr(a["cwd"] as? String, acc.workdir)
+      let ex = extraArg(a)
+      return Local.glob(pattern, cwd: cwd, limit: int(a["limit"], 500)).filter { allowed($0, write: false, acc.access, acc.workdir, ex) }
+    default: throw BridgeError.args("unknown filesystem operation")
+    }
+  }
+
   // 慢的（扫 Claude Code 的会话文件）放到后台线程；别的照旧
   func runAsync(_ cmd: String, _ a: [String: Any]) async throws -> Any? {
+    if cmd.hasPrefix("fs.") {
+      return try await withCheckedThrowingContinuation { continuation in
+        filesystemQueue.async(flags: cmd == "fs.write" ? .barrier : []) {
+          continuation.resume(with: Result { try self.filesystem(cmd, a) })
+        }
+      }
+    }
+    if cmd == "proc.write" {
+      guard let pr = procs[try idArg(a)] else { throw BridgeError.failed("no such process") }
+      if let text = a["data"] as? String {
+        try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
+          pr.write(text, completion: done)
+        }
+      }
+      return nil
+    }
     if cmd == "cc.sessions" {
       let limit = int(a["limit"], 40), idx = cc
       return await withCheckedContinuation { (k: CheckedContinuation<Any?, Never>) in DispatchQueue.global(qos: .utility).async { k.resume(returning: idx.sessions(limit: limit)) } }
@@ -187,75 +270,12 @@ final class Local {
         onExit: { [weak self] code in DispatchQueue.main.async { MainActor.assumeIsolated { self?.procs[id] = nil; self?.out("proc.exit", ["id": id, "code": Int(code)]) } } })
       procs[id] = pr
       return ["id": id, "pid": Int(pr.pid)]
-    case "proc.write":
-      guard let pr = procs[try idArg(a)] else { throw BridgeError.failed("no such process") }
-      if let s = a["data"] as? String { pr.write(Data(s.utf8)) }
-      return nil
     case "proc.close":
       procs[try idArg(a)]?.closeInput()
       return nil
     case "proc.kill":
       procs[try idArg(a)]?.kill()
       return nil
-    case "fs.list":
-      // 一个目录里的东西（资源管理器）：[{ name, dir, size, mtime, hidden, package, link, target? }]，文件夹在前、按名字。
-      //   link：符号链接、访达的替身（图标上画小箭头）；替身指着文件夹时 dir 为真、target 是它指着的地方（点进去去那里）
-      let p = try pathArg(a)
-      let fm = FileManager.default
-      guard let names = try? fm.contentsOfDirectory(atPath: p) else { throw BridgeError.failed("Can't list \(p)") }
-      var out: [[String: Any]] = []
-      for n in names.prefix(5000) {
-        var isDir: ObjCBool = false
-        let full = (p as NSString).appendingPathComponent(n)
-        guard fm.fileExists(atPath: full, isDirectory: &isDir) else { continue }
-        let at = try? fm.attributesOfItem(atPath: full)
-        // 访达藏起来的（同访达）：点开头的、带 hidden 标记的（~/Library、/bin、/usr……）、.hidden 里列的
-        let rv = try? URL(fileURLWithPath: full).resourceValues(forKeys: [.isHiddenKey, .isPackageKey, .creationDateKey, .isSymbolicLinkKey, .isAliasFileKey])
-        let sym = rv?.isSymbolicLink ?? false, ali = !sym && (rv?.isAliasFile ?? false)
-        var dir = isDir.boolValue, target: String? = nil
-        if ali, let t = try? URL(resolvingAliasFileAt: URL(fileURLWithPath: full), options: [.withoutUI, .withoutMounting]) {
-          var td: ObjCBool = false
-          if fm.fileExists(atPath: t.path, isDirectory: &td) { dir = td.boolValue; target = t.path }
-        }
-        var e: [String: Any] = ["name": n, "dir": dir, "size": (at?[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
-                                "hidden": rv?.isHidden ?? n.hasPrefix("."), "package": rv?.isPackage ?? false, "link": sym || ali]
-        if let target = target { e["target"] = target }
-        out.append(e)
-      }
-      out.sort { a, b in
-        let da = a["dir"] as? Bool ?? false, db = b["dir"] as? Bool ?? false
-        if da != db { return da }
-        return ((a["name"] as? String) ?? "").localizedStandardCompare((b["name"] as? String) ?? "") == .orderedAscending
-      }
-      return out
-    case "fs.read":
-      let p = try pathArg(a), acc = accessArgs(a)
-      guard allowed(p, write: false, acc.access, acc.workdir, extraArg(a)) else { throw BridgeError.permission("Permission denied: \(p) (access: \(acc.access))") }
-      let max = int(a["max"], 20_000_000), off = int(a["offset"], 0)
-      guard let h = FileHandle(forReadingAtPath: p) else { throw BridgeError.failed(FileManager.default.fileExists(atPath: p) ? "Can't read \(p)" : "No such file: \(p)") }
-      defer { try? h.close() }
-      if off > 0 { try? h.seek(toOffset: UInt64(off)) } // 从中间读（会话记录很大：只读后面一段、只读新追加的）
-      let d = (try? h.read(upToCount: max)) ?? Data()
-      return ["b64": d.base64EncodedString(), "size": d.count]
-    case "fs.write":
-      let p = try pathArg(a), acc = accessArgs(a)
-      guard allowed(p, write: true, acc.access, acc.workdir, extraArg(a)) else { throw BridgeError.permission("Permission denied: \(p) (access: \(acc.access))") }
-      let d: Data
-      if let b = a["b64"] as? String, let x = Data(base64Encoded: b) { d = x } else { d = Data(((a["text"] as? String) ?? "").utf8) }
-      try FileManager.default.createDirectory(atPath: (p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-      try d.write(to: URL(fileURLWithPath: p), options: .atomic)
-      return ["bytes": d.count]
-    case "fs.stat":
-      let p = try pathArg(a)
-      guard let at = try? FileManager.default.attributesOfItem(atPath: p) else { return nil }
-      let dir = (at[.type] as? FileAttributeType) == .typeDirectory
-      return ["type": dir ? "dir" : "file", "size": (at[.size] as? NSNumber)?.intValue ?? 0, "mtime": ((at[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0) * 1000,
-              "mode": (at[.posixPermissions] as? NSNumber)?.intValue ?? 0] as [String: Any]
-    case "fs.glob":
-      guard let pattern = a["pattern"] as? String, !pattern.isEmpty else { throw BridgeError.args("fs.glob { pattern, cwd }") }
-      let acc = accessArgs(a), cwd = dirOr(a["cwd"] as? String, acc.workdir)
-      let ex = extraArg(a)
-      return Local.glob(pattern, cwd: cwd, limit: int(a["limit"], 500)).filter { allowed($0, write: false, acc.access, acc.workdir, ex) }
     default:
       throw BridgeError(code: "E_UNKNOWN_CMD", message: "unknown command \"\(cmd)\"")
     }
@@ -309,23 +329,23 @@ final class Local {
 
   // ---- 档位 ----
   // agent 自己的笔记目录（~/.paimon/MemoryData/<id>）等：档位不是 rw 也能写。只认 ~/.paimon 下面的
-  private func extraArg(_ a: [String: Any]) -> [String] {
+  nonisolated private func extraArg(_ a: [String: Any]) -> [String] {
     ((a["extra"] as? [String]) ?? []).map { ($0 as NSString).standardizingPath }.filter { Local.inside($0, home + "/.paimon") && !$0.contains("/../") }
   }
-  private func accessArgs(_ a: [String: Any]) -> (access: String, workdir: String) {
+  nonisolated private func accessArgs(_ a: [String: Any]) -> (access: String, workdir: String) {
     ((a["access"] as? String) ?? "user", dirOr(a["workdir"] as? String, home))
   }
-  private static func inside(_ p: String, _ d: String) -> Bool { p == d || p.hasPrefix(d.hasSuffix("/") ? d : d + "/") }
+  nonisolated private static func inside(_ p: String, _ d: String) -> Bool { p == d || p.hasPrefix(d.hasSuffix("/") ? d : d + "/") }
   // 真路径（内核眼里的：/var → /private/var，Seatbelt 按这个比；还不存在的文件看它所在的目录）。
   // 不用 URL.resolvingSymlinksInPath：它反而会把 /private 去掉
-  static func real(_ p: String) -> String {
+  nonisolated static func real(_ p: String) -> String {
     let s = (p as NSString).standardizingPath
     if let r = realpath(s, nil) { defer { free(r) }; return String(cString: r) }
     let dir = (s as NSString).deletingLastPathComponent, name = (s as NSString).lastPathComponent
     if dir == s || dir.isEmpty { return s }
     return (real(dir) as NSString).appendingPathComponent(name)
   }
-  func allowed(_ p: String, write: Bool, _ access: String, _ workdir: String, _ extra: [String] = []) -> Bool {
+  nonisolated func allowed(_ p: String, write: Bool, _ access: String, _ workdir: String, _ extra: [String] = []) -> Bool {
     if access == "user" || access == "rw" { return true }
     let r = Local.real(p), w = Local.real(workdir)
     let scratch = [w, tmp, "/private/tmp", home + "/.cache", home + "/.npm", home + "/Library/Caches"] + extra
@@ -384,16 +404,16 @@ final class Local {
     guard let s = a["id"] as? String, s.range(of: "^[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil else { throw BridgeError.args("missing id") }
     return s
   }
-  private func pathArg(_ a: [String: Any]) throws -> String {
+  nonisolated private func pathArg(_ a: [String: Any]) throws -> String {
     guard let s = a["path"] as? String, s.hasPrefix("/") else { throw BridgeError.args("path must be absolute") }
     return (s as NSString).standardizingPath
   }
-  private func dirOr(_ s: String?, _ d: String) -> String {
+  nonisolated private func dirOr(_ s: String?, _ d: String) -> String {
     var isDir: ObjCBool = false
     if let s, s.hasPrefix("/"), FileManager.default.fileExists(atPath: s, isDirectory: &isDir), isDir.boolValue { return s }
     return d
   }
-  private func int(_ v: Any?, _ d: Int) -> Int { (v as? Int) ?? (v as? Double).map { Int($0) } ?? d }
+  nonisolated private func int(_ v: Any?, _ d: Int) -> Int { (v as? Int) ?? (v as? Double).map { Int($0) } ?? d }
 
   // 进程现在在哪个目录（新标签页、分屏从这里开）
   static func cwdOf(_ pid: pid_t) -> String? {
@@ -404,7 +424,8 @@ final class Local {
   }
 
   // glob：* ? [..] 在一段里，** 跨目录；.git、node_modules 不进（除非模式里写了）
-  static func glob(_ pattern: String, cwd: String, limit: Int) -> [String] {
+  nonisolated static func glob(_ pattern: String, cwd: String, limit: Int) -> [String] {
+    guard limit > 0 else { return [] }
     let abs = pattern.hasPrefix("/") ? pattern : (cwd as NSString).appendingPathComponent(pattern)
     var parts = abs.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
     var base = "/"
@@ -440,7 +461,7 @@ final class Local {
       let p = u.path
       if rx.firstMatch(in: p, range: NSRange(p.startIndex..., in: p)) != nil {
         out.append((p, (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate?.timeIntervalSince1970) ?? 0))
-        if out.count >= limit * 4 { break }
+        if out.count / 4 >= limit { break }
       }
     }
     return out.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 } // 最近改过的在前（同 Claude Code 的 Glob）
@@ -661,6 +682,7 @@ final class Proc: @unchecked Sendable {
     if rc != 0 { Darwin.close(inP[1]); Darwin.close(outP[0]); Darwin.close(errP[0]); throw BridgeError.failed("spawn \(argv[0]): " + String(cString: strerror(rc))) }
     pid = p
     inFD = inP[1]
+    _ = fcntl(inFD, F_SETNOSIGPIPE, 1)
     q = DispatchQueue(label: "proc.\(p)")
     for (fd, isErr) in [(outP[0], false), (errP[0], true)] {
       _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
@@ -695,15 +717,29 @@ final class Proc: @unchecked Sendable {
     ps.resume()
     procSrc = ps
   }
-  func write(_ d: Data) {
-    guard !inClosed else { return }
-    d.withUnsafeBytes { (p: UnsafeRawBufferPointer) in
-      guard let base = p.baseAddress else { return }
-      var off = 0
-      while off < d.count { let n = Darwin.write(inFD, base + off, d.count - off); if n <= 0 { if errno == EINTR { continue }; break }; off += n }
+  private let inputQueue = DispatchQueue(label: "vibing.proc.stdin", qos: .userInitiated)
+  func write(_ text: String, completion: CheckedContinuation<Void, Error>) {
+    inputQueue.async { [self] in
+      completion.resume(with: Result {
+        guard !inClosed else { throw BridgeError.failed("process input closed") }
+        try Data(text.utf8).withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+          guard let base = bytes.baseAddress else { return }
+          var offset = 0
+          while offset < bytes.count {
+            let count = Darwin.write(inFD, base + offset, bytes.count - offset)
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { throw BridgeError.failed("process input: " + String(cString: strerror(errno))) }
+            offset += count
+          }
+        }
+      })
     }
   }
-  func closeInput() { if !inClosed { inClosed = true; Darwin.close(inFD) } }
+  func closeInput() {
+    inputQueue.async { [self] in
+      if !inClosed { inClosed = true; Darwin.close(inFD) }
+    }
+  }
   private func closed() { open -= 1; finishIfDone() }
   private func finishIfDone() { guard open <= 0, let code = exited else { return }; exited = nil; closeInput(); onExit(code) }
   func kill() {

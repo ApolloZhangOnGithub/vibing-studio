@@ -71,7 +71,7 @@
     if (/^(TodoWrite|TaskCreate|TaskUpdate|TaskList|TaskGet|intentions)$/.test(name)) return "toolTodo"; // intentions：Teyvat 的意图栈（接下来要做什么）
     return "toolOther";
   }
-  var CFG_DEFAULT = { thinking: "collapsed", tips: true, autoscroll: true, copyOnSelect: true, time: "12h", webSearch: true, webFetch: true, sandbox: true, wrap: "wrap", recap: true, taskList: true, bgList: true, subList: true, infoList: false, footInfo: true, translateTasks: "off", translateReplies: "off", translateShow: "swap",
+  var CFG_DEFAULT = { thinking: "collapsed", tips: true, autoscroll: true, copyOnSelect: true, time: "12h", webSearch: true, webFetch: true, sandbox: true, wrap: "wrap", recap: true, taskList: true, bgList: true, subList: true, infoList: false, footInfo: true, connectorFooter: {}, translateTasks: "off", translateReplies: "off", translateShow: "swap",
     statusline: ["balance", "context"], footer: ["duration"], instructions: "", defaultModel: "",
     toolRead: "call", toolBash: "preview", toolEdit: "preview", toolWeb: "call", toolAgent: "call", toolTodo: "full", toolOther: "preview", mergeReads: true, errorsFull: true, sysErrors: "full", workLine: "full", progress: "full", toolModes: {}, agentPrompt: false, agentSteps: true, agentResult: true, timestamps: "hide",
     bashOut: "preview", recaps: true, notices: true, images: true, imageShow: "hover", doneLine: true, prompts: true, answers: true, // 回顾（※ recap）：同 Claude Code 自己，默认显示
@@ -98,6 +98,7 @@
     translateTasks: { one: ["off", "display", "zh", "en", "ja", "ko", "fr", "de", "es"], about: "translate task titles, background task and subagent descriptions and the working line into a language (display = the display language); uses your credit, cached so nothing is translated twice" },
     translateShow: { one: ["swap", "only"], about: "how translated replies appear: swap = show the original first, replace it when the translation arrives; only = show nothing until the translation is ready (no original flashing)" },
     translateReplies: { one: ["off", "display", "zh", "en", "ja", "ko", "fr", "de", "es"], about: "translate the agent's replies (its messages, not tool output or code) into a language (display = the display language); uses your credit, cached per paragraph so nothing is translated twice" },
+    connectorFooter: { map: ["on", "off"], about: "status fields by connector" },
     footInfo: { bool: true, about: "show the status info (access, balance, context, model) at the bottom of the agent, under the input" },
     statusline: { some: STATUS_FIELDS, about: "fields under the input box" },
     footer: { some: FOOTER_FIELDS, about: "what the ✻ line after each answer shows" },

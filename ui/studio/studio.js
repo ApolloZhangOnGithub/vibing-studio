@@ -311,7 +311,7 @@
       var kAid = "cc:sub-" + x.id;
       return '<div class="st-sanest" style="--nd:' + depth + '">' + kids.slice().sort(taskOrder).map(function (k) { var op = !!TDET[kAid + ":" + tkey(k)], me = d.main && k.id === d.main.me; return subRow(k, kAid, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), "sub-open") + nestRows(k, kAid, depth + 1); }).join("") + "</div>";
     };
-    var row1 = function (x) { var ra = x.kind === "shell" ? aid : saAid, op = !!TDET[ra + ":" + tkey(x)], me = d.main && x.id === d.main.me; return (x.kind === "shell" ? taskRow(x, aid, "st-frow" + (op ? " wrap" : ""), "task-det") : subRow(x, ra, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), /^cc:/.test(ra) ? "sub-open" : "task-det")) + (op ? taskDet(x, ra) : "") + nestRows(x, ra, 1); };
+    var row1 = function (x) { var ra = x.kind === "shell" ? aid : saAid, op = !!TDET[ra + ":" + tkey(x)], me = d.main && x.id === d.main.me; return (x.kind === "shell" ? taskRow(x, aid, "st-frow" + (op ? " wrap" : ""), "task-det") : subRow(x, ra, "st-frow" + (op ? " wrap" : "") + (me ? " st-me" : ""), /^(cc|agy):/.test(ra) ? "sub-open" : "task-det")) + (op ? taskDet(x, ra) : "") + nestRows(x, ra, 1); };
     // 在跑的一行行列着；跑完的（完成、失败、停了）收成一行「n 个已结束」，点开看（同任务清单的「n 项已完成」）
     var rows = function (l, k, rf) {
       rf = rf || row1;
@@ -742,6 +742,7 @@
     if (/^sub-open-/.test(what)) { // 子 Agent：进去看它自己的记录（Claude Code 的：只读的标签页，已经开着就跳过去）；没有记录可看的就地看详情
       var sk = what.slice(9), sa = sk.lastIndexOf("@"), sAid = sa > 0 ? sk.slice(sa + 1) : "", sKey = sa > 0 ? sk.slice(0, sa) : sk, sRt = sAid ? tdRt(sAid) : null;
       var sT = sRt ? (sRt.tasks || []).filter(function (x) { return tkey(x) === sKey; })[0] : null;
+      if (sT && /^agy:/.test(sAid) && tw.side && tw.side.viewAgy) { tw.side.viewAgy(sT.id); return; }
       if (sT && sT.id && sT.transcript && window.TSU_CLAUDE && TSU_CLAUDE.openSub) { TSU_CLAUDE.openSub(sT, sRt, tw); return; }
       var sdk = sAid + ":" + sKey; if (TDET[sdk]) delete TDET[sdk]; else TDET[sdk] = 1; familyChanged(); return;
     }
@@ -755,7 +756,7 @@
   }
   // 连接器的介绍页（扩展详情）：辅助侧栏暂时收起（宽度给介绍页），离开这一页自动恢复——设置里的开关（L.side）不动。
   //   这时右上角的开关画成虚线的侧栏（「暂时收起」：还在、点一下就出来）；点了就这一页里开着（tw.sideForce），离开这一页再回来又收起
-  //   同样的还有：浏览器、更新内容、键盘快捷方式、设置这些「页面」——右侧栏是 Agent 的（目标、在跑的、后台任务），看网页、看说明时用不上；
+  //   同样的还有：浏览器、更新内容、快捷键、设置这些「页面」——右侧栏是 Agent 的（目标、在跑的、后台任务），看网页、看说明时用不上；
   //   对话、终端、文件（看 Agent 改的东西时常要对着它的进度）照旧
   var SIDE_OFF_PAGES = { extension: 1, web: 1, changelog: 1, keys: 1, settings: 1, explorer: 1 };
   var sideAuto = function (tw) { var P = tw && tw.ws && tw.ws.active, pg = P && P.program && P.program.page; return !!(L.side && pg && SIDE_OFF_PAGES[pg] && tw.sideForce !== P); };
@@ -1212,7 +1213,7 @@
     S = S || parts(tw); P = P || tw.ws.active; els = els || list(P);
     S.status.hidden = !getv("statusBar");
     var updates = [];
-      if (updateReady && !appUpd) updates.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">有新版本</span>');
+      if (updateReady && !appUpd) updates.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">新版本</span>');
       if (nagUpd()) updates.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
     var topHtml = S.status.hidden ? updates.join("") : "";
     if (topHtml !== (S.topUpdateHtml || "")) {
@@ -1861,8 +1862,8 @@
       var id = g.a.id, s0 = g.rt.stream, what = g.st === "working" ? (g.fg.length ? "" : "运行中") : "空闲";
       var h = '<div class="st-arow st-acn' + (g.st === "working" ? " busy" : "") + '" data-st="agent-open-' + esc(id) + '">' + logo(g) + '<span class="st-cut st-aname">' + esc(g.a.name || id) + '</span><span class="st-fill"></span><span class="st-dim st-astate">' + (g.st === "working" && s0 ? '<span class="st-tick" data-t0="' + (s0.t0 || 0) + '"></span>' : esc(what)) + "</span></div>";
       h += g.fg.map(function (p) { return fgLine(p, id); }).join("");
-      h += g.run.map(function (x) { return x.kind === "shell" ? taskRow(x, id, "st-sub") : subRow(x, id, "st-sub", /^cc:/.test(id) ? "sub-open" : "task-det"); }).join("");
-      if (g.done.length) h += '<div class="st-prw st-adone" data-st="agent-done-' + esc(id) + '"><span class="ts-chev ' + (ACTD[id] ? "d" : "r") + '"></span><span>' + esc(g.done.length + " 个已完成") + "</span></div>" + (ACTD[id] ? g.done.map(function (x) { return x.kind === "shell" ? taskRow(x, id, "st-sub") : subRow(x, id, "st-sub", /^cc:/.test(id) ? "sub-open" : "task-det"); }).join("") : "");
+      h += g.run.map(function (x) { return x.kind === "shell" ? taskRow(x, id, "st-sub") : subRow(x, id, "st-sub", /^(cc|agy):/.test(id) ? "sub-open" : "task-det"); }).join("");
+      if (g.done.length) h += '<div class="st-prw st-adone" data-st="agent-done-' + esc(id) + '"><span class="ts-chev ' + (ACTD[id] ? "d" : "r") + '"></span><span>' + esc(g.done.length + " 个已完成") + "</span></div>" + (ACTD[id] ? g.done.map(function (x) { return x.kind === "shell" ? taskRow(x, id, "st-sub") : subRow(x, id, "st-sub", /^(cc|agy):/.test(id) ? "sub-open" : "task-det"); }).join("") : "");
       return h;
     });
     groups = groups.filter(function (g, i) { if (html[i] === null) { g.keep = true; return true; } return false; }); // Paimon 的照原来的样子画（下面）
@@ -2165,14 +2166,14 @@
     return p;
   }
 
-  // ======== 键盘快捷方式（同 VS Code 的 Keyboard Shortcuts）：一张能搜的表——命令、快捷键（一个键一格）、适用于、来源 ========
+  // ======== 快捷键（同 VS Code 的 Keyboard Shortcuts）：一张能搜的表——命令、快捷键（一个键一格）、适用于、来源 ========
   // 命令面板里的命令（带快捷键的）+ 下面这些不是命令、但有快捷键的操作
   var KEYS_EXTRA = [
     { title: "聚焦地址栏", keys: "⌘L", when: "全局" }, { title: "标签页概览", keys: "⇧⌘\\", when: "全局" }, { title: "历史记录", keys: "⌘Y", when: "全局" },
     { title: "切换到第 1–8 个标签页", keys: "⌘1…⌘8", when: "编辑器组" }, { title: "切换到最后一个标签页", keys: "⌘9", when: "编辑器组" },
     { title: "放大", keys: "⌘+", when: "全局" }, { title: "缩小", keys: "⌘-", when: "全局" }, { title: "实际大小", keys: "⌘0", when: "全局" },
     { title: "切换主侧栏", keys: "⌃⌘S", when: "全局" },
-    { title: "换行（不发送）", keys: "⇧Enter", when: "输入框" }, { title: "打开文件路径", keys: "⌘+单击", when: "终端、对话" }, { title: "在浏览器中打开链接", keys: "⌘+单击", when: "终端、对话" },
+    { title: "插入换行", keys: "⇧Enter", when: "输入框" }, { title: "打开路径对应的文件", keys: "⌘+单击", when: "终端、对话" }, { title: "在浏览器中打开链接", keys: "⌘+单击", when: "终端、对话" },
   ];
   // 一串快捷键拆成一个个键帽：「⇧⌘P」→ ⇧ ⌘ P；「⌘K ⌘T」是先后两下
   function keycaps(k) {
@@ -2189,9 +2190,9 @@
     var seen = {}; rows = rows.filter(function (r) { var k = r.title + "|" + r.keys; if (seen[k]) return false; seen[k] = 1; return true; }); // 命令表和额外那几条里都有的（标签页概览）：只列一次
     return rows.sort(function (a, b) { return a.title.localeCompare(b.title, "zh-CN"); });
   }
-  // 以前单独的「键盘快捷方式」标签页：留着给恢复出来的旧标签页用；新打开的都去 设置 › 键盘快捷方式（showPage 那里转过去）
+  // 以前单独的「快捷键」标签页：留着给恢复出来的旧标签页用；新打开的都去 设置 › 快捷键（showPage 那里转过去）
   PAGES.keys = {
-    title: function () { return "键盘快捷方式"; },
+    title: function () { return "快捷键"; },
     address: function () { return "paimon.code/keys"; },
     render: function (host, P, arg, V) {
       var rows = keyRows();
@@ -2334,6 +2335,7 @@
       // 有图标的（主题：显示器 / 太阳 / 月亮）：按钮上只画图标，名字放在提示里
       ctl = '<div class="ss-opts' + (sty === "claude" ? " st-seg" : "") + (f.icons ? " ss-icons" : "") + '" role="radiogroup" data-seg-key="set:' + esc(key) + '">' + os0.map(function (o, j) { var off = na[o[0]], ic = f.icons && f.icons[o[0]]; return '<button type="button" class="ss-opt' + (o[0] === f.value ? " on" : "") + (off ? " na" : "") + '" data-i="' + i + '" data-j="' + j + '" role="radio" aria-checked="' + (o[0] === f.value) + '"' + (off ? ' disabled title="' + esc(off) + '"' : ic ? ' title="' + esc(o[1]) + '" aria-label="' + esc(o[1]) + '"' : "") + optFont(f, o) + ">" + (ic || esc(o[1])) + "</button>"; }).join("") + "</div>";
     } else ctl = '<button class="ss-dd"' + di + ' type="button"><span class="ss-ddv"' + optFont(f, [f.value]) + ">" + esc(ddLabel(f)) + '</span><i class="ss-ddc"></i></button>'; // 几选一：下拉框
+    if (f.valueDetail) ctl = '<div class="ss-value-stack">' + ctl + '<span class="ss-value-detail">' + esc(f.valueDetail) + '</span></div>';
     // 改没改过（和默认不一样）不在界面上标出来
     return '<div class="ss-row' + (setState.sel === key ? " on" : "") + (f.kind === "button" || f.kind === "info" || f.kind === "avatar" || f.kind === "nav" || f.kind === "stat" || f.kind === "keys" ? " ss-plain" : "") + (f.half ? " ss-half" : "") + " ss-k-" + (isCards ? "cards" : f.kind || "seg") + (f.rowCls ? " " + f.rowCls : "") + (f.kind === "stat" && f.cls ? " " + f.cls : "") + '" data-row="' + i + '" data-k="' + esc(key) + '"' + (f.to ? ' data-to="' + esc(f.to) + '"' : "") + ' tabindex="-1"><div class="ss-title">' +
       (newSet(key) ? '<i class="ss-newdot" title="这一版新加的设置"></i>' : "") + '<span class="ss-name">' + esc(f.label) + "</span></div>" + desc + '<div class="ss-ctl">' + ctl + "</div>" + (f.after ? f.after() : "") + "</div>";
@@ -2390,16 +2392,33 @@
     if (host.bodySig === sig && ob.length === nb.length && host.blockH) {
       for (var i = 0; i < nb.length; i++) if (nh[i] !== host.blockH[i]) ob[i].replaceWith(nb[i]);
     } else {
-      var top = B.scrollTop;
       B.replaceChildren.apply(B, Array.prototype.slice.call(tmp.childNodes)); // 一下子换好（中间不排版，不闪）
-      B.scrollTop = top;
     }
     host.bodySig = sig; host.blockH = nh;
+  }
+  function preloadSettings(host, tw, ids) {
+    var pending = ids.filter(id => !host.settingsFields.has(id));
+    function next() {
+      if (!host.isConnected || !pending.length) return;
+      var id = pending.shift();
+      try {
+        if (!host.settingsFields.has(id)) {
+          var fields = secFields(id, tw);
+          host.settingsFields.set(id, fields);
+          fields.forEach(f => { if (f.kind === "embed") EMBEDS[f.embed]?.preload?.(); });
+        }
+      } finally { if (pending.length) schedule(); }
+    }
+    function schedule() {
+      if (window.requestIdleCallback) window.requestIdleCallback(next, {timeout: 100});
+      else setTimeout(next, 16);
+    }
+    schedule();
   }
   PAGES.settings = {
     title: function () { return "设置"; },
     address: function () { return "settings"; },
-    render: function (host, P, arg) {
+    render: function (host, P, arg, cause) {
       // Claude App：设置从来不是标签页——放在编辑区里的那一页（VS Code 风格里放进去的、agent 打开的、历史里的）换成盖在窗口上的表单
       if (root.classList.contains("st-os-claude") && host.isConnected && !host.closest(".st-float") && P.win && P.win.ws && P.win.ws.all && P.win.ws.all().indexOf(P) >= 0) {
         if (!host.toFloat) { host.toFloat = true; setTimeout(function () { var w = P.win; if (w.ws.all().indexOf(P) >= 0 && w.ws.closePane) w.ws.closePane(P); floatPage(w, "settings", null); }, 0); }
@@ -2410,7 +2429,25 @@
       if (!setState.sec || ids.indexOf(setState.sec) < 0) { setState.sec = ids[0]; setState.page = ""; }
       if (setHist.i < 0) histPush();
       var q = setState.q.trim().toLowerCase(), rows = [], body = "", toc = "", tree = [], paged = !q, headTitle = "", headCrumb = "";
-      var fieldsOf = function (k) { return secFields(k, tw); }; // 别的应用风格的项不列；挂在第二级下面的分区的项在那一页里
+      var firstRender = !host.settingsFields;
+      if (firstRender) host.settingsFields = new Map();
+      cancelAnimationFrame(host.fieldsFrame);
+      clearTimeout(host.fieldsTimer);
+      var filterOnly = cause === "filter" && q && host.bodyKey?.startsWith("q:");
+      var fieldsOf = function (k) {
+        if (filterOnly && host.settingsFields.has(k)) return host.settingsFields.get(k);
+        if (paged && host.bodyKey !== "p:" + k + "/" + (setState.page || "") && host.settingsFields.has(k)) {
+          var destination = setState.sec, page = setState.page;
+          host.fieldsFrame = requestAnimationFrame(() => { host.fieldsTimer = setTimeout(() => {
+            if (!P.closed && !P.off && host.isConnected && setState.sec === destination && setState.page === page && !setState.q)
+              PAGES.settings.render(host, P, arg);
+          }, 0); });
+          return host.settingsFields.get(k);
+        }
+        var fields = secFields(k, tw);
+        host.settingsFields.set(k, fields);
+        return fields;
+      }; // 别的应用风格的项不列；挂在第二级下面的分区的项在那一页里
       if (paged) {
         // 一页：这一区的第一级（它自己的项 + 去第二级的那几行），或者它的某个第二级
         var k = setState.sec, S = SECTIONS[k], pg = secPages(S, fieldsOf(k));
@@ -2441,6 +2478,7 @@
       }
       // 左边：只有顶级分区（小节不列——右边自己滚着看）；Claude App 按组列、前面一个图标，macOS 是彩色小方块
       var lastG = null;
+      tree = tree.filter(function (section) { return section.k !== "paimon"; });
       toc = tree.map(function (t) {
         var g = t.group || "agents", gh = "";
         if (g !== lastG) { lastG = g; gh = '<div class="ss-grp">' + esc(GROUPS[g] || "") + "</div>"; }
@@ -2454,7 +2492,6 @@
       // 焦点在哪个控件（光标位置）：换掉那一行以后放回去
       var ae = document.activeElement, focus = null;
       if (ae && host.contains(ae) && !ae.classList.contains("ss-q")) { var rw0 = ae.closest(".ss-row"); focus = { k: rw0 && rw0.dataset.k, ctl: !!rw0 && ae !== rw0, j: ae.dataset && ae.dataset.j, s: ae.tagName === "INPUT" && ae.type === "text" ? [ae.selectionStart, ae.selectionEnd] : null }; }
-      closeDD();
       // 框架（左边：搜索框、分区；右边：顶上一条、内容）只在第一次、换了样子时搭；之后只换里面
       var ss = host.querySelector(":scope > .ss");
       if (!ss || ss.dataset.sty !== sty) {
@@ -2471,17 +2508,25 @@
       if (host.tocH !== toc) { var tt = TOC.scrollTop; TOC.innerHTML = toc; TOC.scrollTop = tt; host.tocH = toc; }
       if (host.headH !== headH) { HEAD.innerHTML = headH; host.headH = headH; }
       // 换了页：从最上面看；同一页重画（改了一项）：滚动一点不动——点的那一行留在原来的位置（上面的行高变了也一样）
-      var key = paged ? "p:" + setState.sec + "/" + (setState.page || "") : "q:" + q, same = host.bodyKey === key, st0 = B.scrollTop, anchor = null, ay = 0;
-      if (same && setState.sel) { anchor = B.querySelector('.ss-row[data-k="' + CSS.escape(setState.sel) + '"]'); if (anchor) ay = anchor.getBoundingClientRect().top; }
-      if (!same) { host.bodySig = null; }
-      ssBody(host, B, body);
+      var key = paged ? "p:" + setState.sec + "/" + (setState.page || "") : "q:" + q, same = host.bodyKey === key, changed = !same || host.bodyHtml !== body;
+      var st0 = 0, anchor = null, ay = 0;
+      if (changed) {
+        if (same) {
+          st0 = B.scrollTop;
+          if (setState.sel) anchor = B.querySelector('.ss-row[data-k="' + CSS.escape(setState.sel) + '"]');
+          if (anchor) ay = anchor.getBoundingClientRect().top;
+        } else host.bodySig = null;
+        ssBody(host, B, body);
+        host.bodyHtml = body;
+      }
       B.querySelectorAll(".ss-embed[data-embed]").forEach(function (el) { var fn = EMBEDS[el.dataset.embed]; if (fn && el.dataset.on !== "1") { el.dataset.on = "1"; try { fn(el, el.dataset.arg || "", tw); } catch (e) { console.error(e); } } });
       if (!same) { host.bodyKey = key; B.scrollTop = 0; }
-      else {
+      else if (changed) {
         B.scrollTop = st0;
         var a2 = anchor && B.querySelector('.ss-row[data-k="' + CSS.escape(setState.sel) + '"]');
         if (a2) { var dy = a2.getBoundingClientRect().top - ay; if (dy) B.scrollTop = st0 + dy; }
       }
+      if (DD && !DD.btn.isConnected) closeDD();
       if (focus && focus.k && !host.contains(document.activeElement)) {
         var fe = host.querySelector('.ss-row[data-k="' + CSS.escape(focus.k) + '"]');
         if (fe && focus.ctl) fe = (focus.j != null && fe.querySelector('[data-j="' + focus.j + '"]')) || fe.querySelector("input, button") || fe;
@@ -2489,10 +2534,17 @@
       }
       if (setState.jump) { settingsGo(host, setState.jump); setState.jump = ""; }
       settingsSpy(host);
+      if (firstRender) preloadSettings(host, tw, ids);
       if (!host.bound) { host.bound = true; bindSettings(host, P, arg); }
     },
     // 面板要焦点（点了面板任何地方都会来这里）：焦点已经在设置页里（点的控件、开着的下拉框）就不动；不然给整页（不是搜索框——只有 ⌘F、直接打字才去搜索框）
     focus: function (host) { var ae = document.activeElement; if (ae && host.contains(ae)) return; var ss = host.querySelector(".ss"); if (ss) ss.focus({ preventScroll: true }); },
+    detach: function (host) {
+      cancelAnimationFrame(host.fieldsFrame);
+      clearTimeout(host.fieldsTimer);
+      cancelAnimationFrame(host.navFrame);
+      if (DD && host.contains(DD.btn)) closeDD();
+    },
     tabActions: function (host, P) { return LOC() && !HYB() ? [{ icon: ICO.json, title: "打开设置 (JSON)", run: function () { openFile(P.win, setState.sec === "claude" ? ccFile() : setFile()); } }] : []; },
   };
   // ---- 两级：一个分区是一页（第一级）；有的项分到它的第二级（S.pages：{ id: { title, nav?, desc? } }，项上标 page: id——比如「通用 › 高级」）。
@@ -2502,7 +2554,7 @@
   // 常用的几项搬到「通用」（用户：通用里没几样有用的，常用的都在后面）：从原来那一页拿走、只在通用里（不重复）；改的时候还是交给原来的分区
   var GENERAL_PULL = { appearance: ["claudeTheme", "colorScheme", "ui"], view: ["translateTasks", "translateReplies", "translateShow"] };
   // 搬到「通用」的几项在那里的说明：一句、两行以内（同 Claude Desktop 的设置：每项下面一句淡的）
-  var PULL_DESC = { ui: "以终端界面（TUI）或图形界面（GUI）显示对话", colorScheme: "应用于整个窗口的配色", translateTasks: "将任务、后台任务和运行状态行翻译为所选语言", translateReplies: "将 Agent 的回复按段落翻译为所选语言；点按译文可查看原文", translateShow: "翻译时先显示原文，或在翻译完成后再显示" };
+  var PULL_DESC = { ui: "以终端界面（TUI）或图形界面（GUI）显示对话", colorScheme: "应用于整个窗口的配色" };
   var pulledTo = function (k, key) { return !!(GENERAL_PULL[k] && GENERAL_PULL[k].indexOf(key) >= 0); };
   function secFields(k, tw, raw) {
     var S = SECTIONS[k], os = getv("os") || "vscode", ok = function (f) { return f && (!f.os || f.os.indexOf(os) >= 0) && (typeof f.show !== "function" || f.show(tw)); }; // show：只在有意义时列（回复翻译关着时「译文出现方式」不列）
@@ -2510,7 +2562,7 @@
     if (!raw && GENERAL_PULL[k]) list = list.filter(function (f) { return !pulledTo(k, f.key); });
     Object.keys(SECTIONS).forEach(function (c) {
       var C = SECTIONS[c], u = String(C.under || "").split("/"), cf = [];
-      if (u[0] !== k || !u[1] || (C.show && !C.show(tw))) return;
+      if (raw || u[0] !== k || !u[1] || (C.show && !C.show(tw))) return;
       try { cf = (C.fields ? C.fields(tw) : []).filter(ok); } catch (e) { cf = []; }
       if (!cf.length) return;
       cf = cf.map(function (f) { return "head" in f ? { head: f.head } : Object.assign({}, f, { _sec: c }); });
@@ -2598,9 +2650,9 @@
   // ---- 下拉框：VS Code——点一下在它正下方展开一列（同宽），框本身不动不盖；默认那项右边写「默认」；指着的那项有说明就写在最下面。
   //      Claude App——框下面弹出一张圆角的小卡片（右边对齐），选中的那项右边一个 ✓，字体的选项用它自己的字；
   //      macOS——系统的弹出菜单（App 里是原生的 NSMenu，选中的那项打勾）。选不了的项灰着、写原因 ----
-  var DD = null;
-  function closeDD(back) { if (!DD) return; var d = DD; DD = null; d.el.remove(); d.btn.classList.remove("open", "up"); document.removeEventListener("pointerdown", d.out, true); if (back) d.btn.focus({ preventScroll: true }); }
-  function openDD(btn, f, pick) {
+  var DD = null, menuRevision = 0;
+  function closeDD(back) { menuRevision++; if (!DD) return; var d = DD; DD = null; d.el.remove(); d.btn.classList.remove("open", "up"); document.removeEventListener("pointerdown", d.out, true); if (back) d.btn.focus({ preventScroll: true }); }
+  function openDD(btn, f, pick, trigger) {
     closeDD();
     btn.focus({ preventScroll: true }); // 焦点留在这个下拉框上（↑↓ 回车在列表里走；关了回到它）——不去搜索框
     var os = f.options || [], na = f.na || {}, sty = ssStyle();
@@ -2608,14 +2660,14 @@
       return menu(os.map(function (o) { return { label: o[1] + (na[o[0]] ? "（" + na[o[0]] + "）" : ""), checked: o[0] === f.value, radio: true, disabled: !!na[o[0]], run: function () { pick(o[0]); } }; }), { el: btn, side: "below" });
     }
     var ok = function (j) { return os[j] && !na[os[j][0]]; };
-    var sel = Math.max(0, os.findIndex(function (o) { return o[0] === f.value; })), el = document.createElement("div"), pop = sty === "claude";
+    var sel = Math.max(0, os.findIndex(function (o) { return o[0] === f.value; })), el = document.createElement("div"), pop = sty === "claude" || sty === "vscode";
     el.className = "ss-ddlist" + (pop ? " ss-pop" : "");
     var paint = function () {
       var o = os[sel], dsc = !pop && o && o[2] ? o[2] : "";
       el.innerHTML = '<div class="ss-ddrows">' + os.map(function (o2, j) {
         var off = na[o2[0]];
         return '<div class="ss-ddi' + (j === sel && !off ? " on" : "") + (o2[0] === f.value ? " cur" : "") + (off ? " na" : "") + '" data-j="' + j + '"><span' + optFont(f, o2) + ">" + esc(o2[1]) + "</span>" +
-          (off ? "<em>" + esc(off) + "</em>" : "<em>" + [o2[0] === f.value ? "当前" : "", !pop && f.def !== undefined && o2[0] === f.def ? "默认" : ""].filter(Boolean).join(" · ") + "</em>") + (pop ? '<i class="ss-ddk"></i>' : "") + "</div>"; // 右边淡淡写着「当前」（和「默认」）
+          (off ? "<em>" + esc(off) + "</em>" : "<em>" + [!pop && o2[0] === f.value ? "当前" : "", !pop && f.def !== undefined && o2[0] === f.def ? "默认" : ""].filter(Boolean).join(" · ") + "</em>") + (pop ? '<i class="ss-ddk"></i>' : "") + "</div>"; // 右边淡淡写着「当前」（和「默认」）
       }).join("") + "</div>" + (dsc ? '<div class="ss-dddesc">' + esc(dsc) + "</div>" : "");
     };
     paint();
@@ -2638,7 +2690,7 @@
     }
     btn.classList.add("open");
     var on = el.querySelector(".ss-ddi.on"); if (on) on.scrollIntoView({ block: "nearest" });
-    var out = function (e) { if (!el.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closeDD(); };
+    var out = function (e) { if (!el.contains(e.target) && !btn.contains(e.target) && !trigger?.contains(e.target)) closeDD(); };
     var step = function (d) { for (var j = sel + d; j >= 0 && j < os.length; j += d) if (ok(j)) { sel = j; return; } };
     DD = { el: el, btn: btn, out: out, key: function (e) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); step(e.key === "ArrowDown" ? 1 : -1); paint(); var o1 = el.querySelector(".ss-ddi.on"); if (o1) o1.scrollIntoView({ block: "nearest" }); }
@@ -2647,14 +2699,23 @@
       else if (e.key.length === 1) { var c = e.key.toLowerCase(), n0 = os.length; for (var i = 1; i <= n0; i++) { var j = (sel + i) % n0; if (ok(j) && String(os[j][1]).toLowerCase().indexOf(c) === 0) { sel = j; paint(); break; } } }
       return true;
     } };
-    setTimeout(function () { document.addEventListener("pointerdown", out, true); }, 0);
+    document.addEventListener("pointerdown", out, true);
     el.addEventListener("mousemove", function (e) { var it = e.target.closest(".ss-ddi"); if (it && +it.dataset.j !== sel && ok(+it.dataset.j)) { sel = +it.dataset.j; paint(); } });
     el.addEventListener("mousedown", function (e) { e.preventDefault(); var it = e.target.closest(".ss-ddi"); if (!it || !ok(+it.dataset.j)) return; var o4 = os[+it.dataset.j]; closeDD(true); if (o4) pick(o4[0]); });
   }
   function bindSettings(host, P, arg) {
+    // Keep a click on settings chrome from installing a document caret across the transcript.
+    host.addEventListener("mousedown", function (e) {
+      if (e.button || e.target.closest("input, textarea, select, label, [contenteditable=true], .ss-info, .ss-mt, .ss-code, .ss-pr b")) return;
+      e.preventDefault();
+      var focusTarget = e.target.closest("button, [tabindex]") || host.querySelector(".ss");
+      if (focusTarget) focusTarget.focus({ preventScroll: true });
+      var selection = document.getSelection();
+      if (selection && selection.isCollapsed && selection.rangeCount) selection.removeAllRanges();
+    });
     var rowOf = function (el) { var r = el && el.closest(".ss-row"); return r ? host.rows[+r.dataset.row] : null; };
     var pick = function (rw) { if (!rw) return; setState.sel = rw.dataset.k; host.querySelectorAll(".ss-row.on").forEach(function (x) { if (x !== rw) x.classList.remove("on"); }); rw.classList.add("on"); };
-    var change = function (r, v, key) { Promise.resolve(SECTIONS[r.sec].change(key || r.f.key, v, P.win)).then(function () { PAGES.settings.render(host, P, arg); allWins().forEach(renderSoon); }); };
+    var change = function (r, v, key) { Promise.resolve(SECTIONS[r.sec].change(key || r.f.key, v, P.win)).then(function () { if (P.program?.host === host) P.program.redraw(); allWins().forEach(renderSoon); }); };
     // 视图预设的卡片上右键：自己存的——重命名、删除；「自定义」——删除（下次改了设置又会自动存一份）；内置的没有菜单
     host.addEventListener("contextmenu", function (e) {
       var card = e.target.closest(".ss-pcard");
@@ -2677,7 +2738,8 @@
       host.querySelectorAll(".ss-toc [data-go].on, .ss-toc .ss-ti.on").forEach(function (x) { x.classList.remove("on"); });
       g0.classList.add("on");
       host._navDown = g0.dataset.go;
-      requestAnimationFrame(function () { navTo(host, P, arg, g0.dataset.go, ""); });
+      cancelAnimationFrame(host.navFrame);
+      host.navFrame = requestAnimationFrame(function () { if (host.isConnected) navTo(host, P, arg, g0.dataset.go, ""); });
     });
     host.addEventListener("click", function (e) {
       var hb = e.target.closest("[data-hnav]");
@@ -2709,7 +2771,22 @@
       var dd = e.target.closest(".ss-dd");
       if (dd) { var r1 = rowOf(dd); pick(dd.closest(".ss-row")); if (DD && DD.btn === dd) return closeDD(true); if (r1) openDD(dd, r1.f, function (v) { if (v !== r1.f.value) change(r1, v); }); return; }
       var sb = e.target.closest(".ss-sugbtn");
-      if (sb) { var r2 = rowOf(sb); if (r2 && r2.f.suggest) Promise.resolve(r2.f.suggest()).then(function (list) { var fake = { options: (list || []).map(function (x) { return [x, x]; }), value: r2.f.value, def: r2.f.def, fontOf: r2.f.fontOf }; openDD(sb.previousElementSibling || sb, fake, function (v) { change(r2, v); }); }); return; }
+      if (sb) {
+        var r2 = rowOf(sb), anchor = sb.previousElementSibling || sb;
+        if (DD?.btn === anchor) return closeDD(true);
+        if (r2?.f.suggest) {
+          closeDD();
+          var revision = menuRevision;
+          var showSuggestions = function (list) {
+            if (menuRevision !== revision || !P.program?.shown?.() || P.program.host !== host || !host.contains(sb)) return;
+            openDD(anchor, {...r2.f, options: (list || []).map(x => [x, x])}, v => change(r2, v), sb);
+          };
+          var choices = r2.f.suggest();
+          if (Array.isArray(choices)) showSuggestions(choices);
+          else Promise.resolve(choices).then(showSuggestions);
+        }
+        return;
+      }
       var rw = e.target.closest(".ss-row");
       if (rw) { pick(rw); if (!e.target.closest("input, button, label")) rw.focus({ preventScroll: true }); }
     });
@@ -2742,7 +2819,7 @@
     // 搜索：结果换掉右边；清掉以后回到原来那一页
     var searchSet = function (v) {
       setState.q = v;
-      PAGES.settings.render(host, P, arg);
+      PAGES.settings.render(host, P, arg, "filter");
     };
     host.addEventListener("focusin", function (e) { var rw = e.target.closest && e.target.closest(".ss-row"); if (rw) pick(rw); });
     // 键盘：搜索框里 ↓ 到第一项；一项上 ↑↓ 换、空格 / 回车用它的控件（勾选框直接勾、下拉框展开）；控件里 Esc 回到这一项。
@@ -2752,7 +2829,7 @@
       if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === "f" || e.key === "F")) { e.preventDefault(); e.stopPropagation(); var qf = host.querySelector(".ss-q"); if (qf) { qf.focus(); qf.select(); } return; } // ⌘F：搜索设置
       if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
       var el = e.target, inQ = el.classList.contains("ss-q"), rw = el.classList.contains("ss-row") ? el : null;
-      var all = Array.prototype.slice.call(host.querySelectorAll(".ss-row")), at = rw ? all.indexOf(rw) : -1;
+      var all = (rw || (inQ && e.key === "ArrowDown")) ? Array.from(host.querySelectorAll(".ss-row")) : [], at = rw ? all.indexOf(rw) : -1;
       var go = function (i) { var t = all[Math.max(0, Math.min(all.length - 1, i))]; if (t) { t.focus({ preventScroll: true }); t.scrollIntoView({ block: "nearest" }); pick(t); } };
       // Esc：搜索框里有字——清掉；输入框里——回到这一行；第二级——回第一级；第一级不管（浮着的表单、Claude App 的设置：关掉）
       var up = function () { if (!setState.page || setState.q) return false; e.preventDefault(); e.stopPropagation(); navTo(host, P, arg, setState.sec, ""); return true; };
@@ -2780,8 +2857,8 @@
         return;
       }
     });
-    window.addEventListener("resize", function () { closeDD(); });
   }
+  window.addEventListener("resize", function () { closeDD(); });
   document.addEventListener("st-settings-changed", function () { redrawSettings(); });
   function settings(tw, sec) {
     tw = tw || (T() && T().front());
@@ -2802,13 +2879,13 @@
       setState.sec = sk; setState.page = page; setState.q = ""; setState.jump = jump;
     }
     var p = showPage(tw, "settings", null);
-    if (p && p.program && p.program.redraw) p.program.redraw();
+    if (p && !p.el.closest(".st-float") && p.program?.redraw) p.program.redraw();
   }
   // 已经放进编辑区的那一页：切过去；不然浮在编辑区正中
   function showPage(tw, kind, arg) {
     var hit = null;
     if (root.classList.contains("st-os-claude") && kind === "keys") return null; // Claude App：沉浸式的图形界面，不讲快捷键（键照样能用，只是不给这一页）
-    if (kind === "keys") { var kq = keysQ; keysQ = ""; settings(tw, "keys" + (kq ? ":" + kq : "")); return null; } // 键盘快捷方式在设置里（左边一项），不再单开一页
+    if (kind === "keys") { var kq = keysQ; keysQ = ""; settings(tw, "keys" + (kq ? ":" + kq : "")); return null; } // 快捷键在设置里（左边一项），不再单开一页
     if (root.classList.contains("st-os-claude") && kind === "settings") return floatPage(tw, kind, arg); // Claude App：设置是盖在整个窗口上的表单（同 Claude App）
     if (root.classList.contains("st-macos")) { tw.ws.all().forEach(function (p) { var pr = p.program; if (!hit && pr && pr.page === kind && (pr.arg || null) === (arg || null)) hit = p; }); if (hit) { tw.ws.show(hit); return hit; } return openPage(tw, kind, arg); } // macOS：每一页是一个窗口（不浮在编辑区里）
     tw.ws.all().forEach(function (p) { var pr = p.program; if (!hit && pr && pr.page === kind && (pr.arg || null) === (arg || null)) hit = p; });
@@ -2821,6 +2898,7 @@
   //   从窗口里弹出来的菜单、下拉列表、命令面板、对话框加在 body 最后，在这一层上面（z-index 更高），不是 inert。
   //   页面上的原生网页（内嵌浏览器）被它盖住就藏起来（webview.js 的 OVER 里有 .st-modal）----
   var MODALS = [], MODAL_TOP = ".st-menu, .ss-ddlist, .st-palette, .st-pop, .ca-dlgdim, .st-modal";
+  var modalBackground = new WeakMap();
   var focusables = function (el) { return Array.prototype.slice.call(el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(function (x) { return !x.disabled && x.offsetParent; }); };
   function modalOpen(win, o) {
     o = o || {};
@@ -2830,9 +2908,23 @@
     layer.appendChild(win);
     if (!win.getAttribute("role")) win.setAttribute("role", "dialog");
     win.setAttribute("aria-modal", "true");
-    var M = { layer: layer, win: win, o: o, marked: [], back: document.activeElement };
+    var M = { layer: layer, win: win, o: o, marked: [], hidden: [], back: document.activeElement };
     // 底下别的模态层（设置上面又开了对话框）也标 inert：只有最上面这一层能用；菜单、下拉列表这些弹出来的不标
-    if (!o.noInert) Array.prototype.forEach.call(document.body.children, function (el) { if (el === layer || el.inert || (el.matches(MODAL_TOP) && !el.classList.contains("st-modal")) || el.tagName === "SCRIPT" || el.tagName === "STYLE") return; el.inert = true; M.marked.push(el); });
+    if (!o.noInert) Array.prototype.forEach.call(document.body.children, function (el) {
+      if (el === layer || el.inert || (el.matches(MODAL_TOP) && !el.classList.contains("st-modal")) || el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+      // The backdrop and focus trap isolate settings. Inheriting inert through
+      // every terminal cell also forces WebKit to restyle the entire transcript.
+      if ((o.settings || settingsModalOpen()) && !el.classList.contains("st-modal")) {
+        var mark = modalBackground.get(el);
+        if (!mark) {
+          mark = { depth: 0, previous: el.getAttribute("aria-hidden") };
+          modalBackground.set(el, mark);
+          if (mark.previous !== "true") el.setAttribute("aria-hidden", "true");
+        }
+        mark.depth++;
+        M.hidden.push(el);
+      } else { el.inert = true; M.marked.push(el); }
+    });
     layer.addEventListener("pointerdown", function (e) { if (e.target === layer) { e.preventDefault(); if (o.onBackdrop) o.onBackdrop(e); } }); // 点在底上（窗口外面）：只到这一层
     layer.addEventListener("keydown", function (e) { // Tab 只在窗口里转
       if (e.key !== "Tab" || MODALS[MODALS.length - 1] !== M) return;
@@ -2843,14 +2935,23 @@
     MODALS.push(M);
     return M;
   }
+  function settingsModalOpen() { return MODALS.some(m => m.o.settings); }
   function modalClose(M) {
     var i = MODALS.indexOf(M);
     if (i < 0) return;
     MODALS.splice(i, 1);
     M.marked.forEach(function (el) { el.inert = false; });
+    M.hidden.forEach(function (el) {
+      var mark = modalBackground.get(el);
+      if (--mark.depth) return;
+      modalBackground.delete(el);
+      if (mark.previous === null) el.removeAttribute("aria-hidden");
+      else if (mark.previous !== "true") el.setAttribute("aria-hidden", mark.previous);
+    });
     M.layer.remove();
     if (M.back && M.back.isConnected && !M.back.closest("[inert]")) try { M.back.focus({ preventScroll: true }); } catch (e) { /* 焦点回不去就算了 */ }
     if (M.o.onClose) M.o.onClose();
+    if (M.o.settings) document.dispatchEvent(new Event("st-settings-closed"));
   }
   // 焦点跑到了模态层外面（也不在它上面弹出来的东西里）：拉回窗口里
   document.addEventListener("focusin", function (e) {
@@ -2860,7 +2961,8 @@
     f0.focus({ preventScroll: true });
   }, true);
   function floatPage(tw, kind, arg) {
-    var S = parts(tw), f = document.querySelector(".st-modal > .st-float");
+    parts(tw);
+    var f = MODALS.find(m => m.win.classList.contains("st-float"))?.win;
     if (f && f.pane && f.pane.program && f.pane.program.page === kind) { f.pane.program.redraw(); f.pane.focus(); return f.pane; }
     if (f) closeFloat(f);
     var p = tw.ws.newPane({ page: kind, arg: arg });
@@ -2868,8 +2970,19 @@
     f.className = "st-float";
     f.dataset.page = kind; // 设置：窄一点（floatLayout）
     f.innerHTML = '<div class="st-fbar"><span class="st-ftitle"></span><span class="st-fill"></span><span class="st-facts"></span></div><div class="st-fbox"></div>';
+    var macControls = /^Mac/.test(navigator.platform) && navigator.maxTouchPoints < 2;
+    if (macControls) {
+      var actions = f.querySelector(".st-facts");
+      actions.parentNode.prepend(actions);
+      actions.style.marginRight = "8px";
+      actions.style.flexDirection = "row-reverse";
+    }
     // 放进模态层（盖住整个窗口；Claude App 的那一层是毛玻璃：变暗、变模糊）；点底（窗口外面）关掉
-    f.modal = modalOpen(f, { cls: "st-modal-float", onBackdrop: function () { closeFloat(f); } });
+    if (kind === "settings") {
+      var caret = document.getSelection();
+      if (caret && caret.isCollapsed && caret.rangeCount) caret.removeAllRanges();
+    }
+    f.modal = modalOpen(f, { cls: "st-modal-float", settings: kind === "settings", onBackdrop: function () { closeFloat(f); } });
     f.pane = p;
     f.off = { x: 0, y: 0 };
     floatLayout(f);
@@ -2878,7 +2991,8 @@
     var bar = function () {
       if (!f.pane) return;
       var pr = f.pane.program, extra = pr && pr.tabActions ? pr.tabActions() : [];
-      f.querySelector(".st-ftitle").textContent = f.pane.title();
+      var title = f.querySelector(".st-ftitle"), name = f.pane.title();
+      if (title.textContent !== name) title.textContent = name;
       var h = extra.map(function (x, i) { return '<button data-x="' + i + '" title="' + esc(x.title) + '">' + x.icon + "</button>"; }).join("") + (extra.length ? '<i class="st-fsep"></i>' : "") +
         '<button data-f="dock" title="移到编辑区">' + ICO.dock + '</button><button data-f="max" title="' + (f.classList.contains("max") ? "还原" : "放大") + '">' + (f.classList.contains("max") ? ICO.restore : ICO.max) + '</button><button data-f="close" title="关闭 (Esc)">' + ICO.close + "</button>";
       var box = f.querySelector(".st-facts");
@@ -3877,7 +3991,7 @@
       Object.keys(j).forEach(function (k) { if ((all || PERSONAL.indexOf(k) >= 0) && JSON.stringify(SET[k]) !== JSON.stringify(j[k])) { SET[k] = j[k]; ch = true; } });
       if (ch) { keep("st-settings", SET); applySettings(); }
       if (all) localStorage.setItem(key, mac);
-    }).catch(function () { /* 读不到：先用这台设备自己的，下次打开再抄 */ });
+    }).catch(function () { /* 读不到：先用当前设备自己的，下次打开再抄 */ });
     return Promise.race([job, new Promise(function (r) { setTimeout(r, 4000); })]);
   }
   function loadSettingsFile() {
@@ -3888,7 +4002,7 @@
       if (st.mtime === setMtime) return;
       setMtime = st.mtime;
       return F.read(setFile()).then(function (b) {
-        try { var j = JSON.parse(new TextDecoder().decode(b)); if (j && typeof j === "object" && !Array.isArray(j)) { var mig = migrateMini(j); localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); var fzAt = +localStorage.getItem("tsu-font-at") || 0, fzNow = +localStorage.getItem("tsu-font"); if ((fzAt > st.mtime || j.fontSize == null) && fzNow && j.fontSize !== fzNow) { j.fontSize = fzNow; setTimeout(function () { writeKey("fontSize"); }, 0); } /* ⌘+ ⌘- 刚调过、文件比它旧：用调的那个（localStorage，几个窗口共用；不是这个窗口记着的，它可能是旧的），写回文件 */ SET = Object.assign({}, SET_DEF, j); fontAt = Math.max(fzAt, st.mtime); var fz = fzNow; if (fz && !localStorage.getItem("tsu-font-mig1")) { localStorage.setItem("tsu-font-mig1", "1"); if (+(j.fontSize || SET_DEF.fontSize) === SET_DEF.fontSize && fz !== SET_DEF.fontSize) { SET.fontSize = fz; setTimeout(function () { setv("fontSize", fz); }, 0); } } /* 以前 ⌘+ / ⌘- 只记在这台设备上、没写进设置：文件里还是默认的 13 时，一次性补进去 */ keep("st-settings", SET); applySettings(); if (mig) { setv("minimap", j.minimap); setv("panelAlign", j.panelAlign); } if (window.TSU_EXT) TSU_EXT.refresh(); document.dispatchEvent(new Event("st-settings-changed")); } } catch (e) { /* 写坏了：保留上一次好的 */ }
+        try { var j = JSON.parse(new TextDecoder().decode(b)); if (j && typeof j === "object" && !Array.isArray(j)) { var mig = migrateMini(j); localStorage.setItem(MIG_MINI, "1"); localStorage.setItem(MIG_MINI + "2", "1"); var fzAt = +localStorage.getItem("tsu-font-at") || 0, fzNow = +localStorage.getItem("tsu-font"); if ((fzAt > st.mtime || j.fontSize == null) && fzNow && j.fontSize !== fzNow) { j.fontSize = fzNow; setTimeout(function () { writeKey("fontSize"); }, 0); } /* ⌘+ ⌘- 刚调过、文件比它旧：用调的那个（localStorage，几个窗口共用；不是这个窗口记着的，它可能是旧的），写回文件 */ SET = Object.assign({}, SET_DEF, j); fontAt = Math.max(fzAt, st.mtime); var fz = fzNow; if (fz && !localStorage.getItem("tsu-font-mig1")) { localStorage.setItem("tsu-font-mig1", "1"); if (+(j.fontSize || SET_DEF.fontSize) === SET_DEF.fontSize && fz !== SET_DEF.fontSize) { SET.fontSize = fz; setTimeout(function () { setv("fontSize", fz); }, 0); } } /* 以前 ⌘+ / ⌘- 只记在当前设备上、没写进设置：文件里还是默认的 13 时，一次性补进去 */ keep("st-settings", SET); applySettings(); if (mig) { setv("minimap", j.minimap); setv("panelAlign", j.panelAlign); } if (window.TSU_EXT) TSU_EXT.refresh(); document.dispatchEvent(new Event("st-settings-changed")); } } catch (e) { /* 写坏了：保留上一次好的 */ }
       });
     }).catch(function () {}).then(markReady); // 文件没变 / 读不到：也算读过了
   }
@@ -4237,18 +4351,18 @@
   addSettings("general", {
     title: "通用", icon: "⚙", desc: "应用风格、显示风格、配色、语言、翻译、通知",
     fields: function (tw) {
-      var pull = function (sec) { if (!SECTIONS[sec]) return []; try { return secFields(sec, tw, true).filter(function (f) { return pulledTo(sec, f.key); }).map(function (f) { return Object.assign({}, f, { _sec: sec, must: true }, PULL_DESC[f.key] ? { desc: PULL_DESC[f.key] } : {}, f.key === "ui" ? { label: "Agent 显示风格" } : {}); }); } catch (e) { return []; } }; // 在通用里：「显示风格」写全是谁的；说明都显示（短的一句）
+      var pull = function (sec) { if (!SECTIONS[sec]) return []; try { return secFields(sec, tw, true).filter(function (f) { return pulledTo(sec, f.key); }).map(function (f) { return Object.assign({}, f, { _sec: sec, must: true }, { desc: PULL_DESC[f.key] || "" }, f.key === "ui" ? { label: "Agent 显示风格" } : {}); }); } catch (e) { return []; } }; // 在通用里：「显示风格」写全是谁的；说明都显示（短的一句）
       var look = pull("appearance"), ui = look.filter(function (f) { return f.key === "ui"; }), theme = look.filter(function (f) { return f.key !== "ui"; }), tr0 = pull("view");
       return [
         { key: "os", label: "应用风格", desc: "Studio 的整体界面风格", must: true, kind: "seg", options: osModesNow().map(function (x) { return [x[0], x[1]]; }), value: getv("os"), def: SET_DEF.os },
       ].concat(ui, theme, [
         { key: "lang", label: "显示语言", desc: "菜单、设置和提示使用的语言", must: true, kind: "seg", options: [["auto", LANG_AUTO()], ["en", "English"], ["zh", "简体中文"]], value: getv("lang"), def: SET_DEF.lang },
       ], tr0.length ? [{ head: "翻译" }].concat(tr0, [{ head: "" }]) : [], [
-        { key: "linkOpen", label: "打开链接", desc: "在对话和终端中点按链接时使用的浏览器", must: true, kind: "seg", options: [["builtin", "内置浏览器"], ["system", "系统浏览器"]], value: getv("linkOpen"), def: SET_DEF.linkOpen },
-        { key: "askPopup", label: "提问卡片", desc: "会话问你问题而你没在看它时，在窗口中间弹出问题卡片，可直接回答；按 Esc 稍后再答", must: true, kind: "toggle", value: getv("askPopup") === true, def: false },
-        window.nadosNative ? { key: "askFront", label: "提问时切到前台", desc: "会话问你问题时，如果 Vibing Studio 在后台，把窗口切到最前面", must: true, kind: "toggle", value: getv("askFront") === true, def: false } : null,
-        window.nadosNative ? { key: "menuBarIcon", label: "菜单栏图标", desc: "在菜单栏中显示 Vibing Studio 的图标。关闭窗口时 App 继续在后台运行，Agent 和命令不受影响", must: true, kind: "toggle", value: getv("menuBarIcon") !== false, def: true } : null,
-        { key: "agentNotify", label: "通知", desc: "App 不在前台时，Agent 完成任务后发送系统通知", must: true, kind: "seg", options: [["off", "关"], ["done", "Agent 完成时"]], value: getv("agentNotify") || "off", def: SET_DEF.agentNotify },
+        { key: "linkOpen", label: "打开链接", kind: "seg", options: [["builtin", "内置浏览器"], ["system", "系统浏览器"]], value: getv("linkOpen"), def: SET_DEF.linkOpen },
+        { key: "askPopup", label: "提问卡片", kind: "toggle", value: getv("askPopup") === true, def: false },
+        window.nadosNative ? { key: "askFront", label: "提问时切到前台", kind: "toggle", value: getv("askFront") === true, def: false } : null,
+        window.nadosNative ? { key: "menuBarIcon", label: "菜单栏图标", kind: "toggle", value: getv("menuBarIcon") !== false, def: true } : null,
+        { key: "agentNotify", label: "通知", kind: "seg", options: [["off", "关"], ["done", "Agent 完成时"]], value: getv("agentNotify") || "off", def: SET_DEF.agentNotify },
         { key: "settingsDesc", label: "设置说明", desc: "在每项设置下方显示说明", page: "advanced", kind: "seg", options: [["key", "仅必要项"], ["all", "详细"]], value: getv("settingsDesc"), def: SET_DEF.settingsDesc },
         { key: "devFeatures", label: "开发者功能", desc: "显示已暂停开发的应用风格（macOS、Pure Terminal）" + (ssStyle() === "claude" ? "" : "（⌃⌘3、⌃⌘4）"), must: true, page: "advanced", kind: "toggle", value: !!getv("devFeatures"), def: false }, // Claude App 里不提快捷键
         // 配置文件：现在这一套存一份（~/.paimon/profiles/）、换成存过的一份、回到默认——名字、头像这些个人的不跟着换
@@ -4327,9 +4441,9 @@
     }
     if (what === "profReset") ask({ title: "恢复默认设置？", text: "所有设置将恢复为默认值（名称和头像保留）。建议先保存当前设置。", ok: "恢复" }).then(function (ok) { if (ok) useProfile({}); });
   }
-  // 键盘快捷方式（同 VS Code 的 Keyboard Shortcuts，放进设置里）：一行一个命令——名字、在哪儿有用（不是全局的才写）、右边一个个键帽；设置的搜索框直接能搜
+  // 快捷键（同 VS Code 的 Keyboard Shortcuts，放进设置里）：一行一个命令——名字、在哪儿有用（不是全局的才写）、右边一个个键帽；设置的搜索框直接能搜
   addSettings("keys", {
-    title: "键盘快捷方式", icon: "⌨", desc: "查看和配置所有命令的快捷键",
+    title: "快捷键", icon: "⌨", desc: "查看命令及其快捷键",
     show: function () { return !root.classList.contains("st-os-claude"); }, // Claude App：不讲快捷键（同以前）
     fields: function () { return keyRows().map(function (r) { return { key: r.title, label: r.title, desc: r.when && r.when !== "全局" ? r.when : "", must: true, kind: "keys", keys: r.keys }; }); },
   });
@@ -4338,8 +4452,8 @@
     title: "高级", icon: "⋯", desc: "设置说明、开发者功能、长行与时间格式",
     fields: function (tw) {
       var out = [];
-      secIds(tw).forEach(function (k) {
-        if (k === "advanced") return;
+      ["general", "view"].forEach(function (k) {
+        if (!SECTIONS[k]) return;
         var fs = [];
         try { fs = secFields(k, tw).filter(function (f) { return f && f.page === "advanced"; }); } catch (e) { fs = []; }
         if (!fs.length) return;
@@ -4477,10 +4591,15 @@
     var s = Math.max(0, (Date.now() - (+t || 0)) / 1000);
     return s < 90 ? "刚刚" : s < 3600 ? Math.round(s / 60) + "分钟前" : s < 86400 ? Math.round(s / 3600) + "小时前" : Math.round(s / 86400) + "天前";
   };
-  function redrawSettings() { // 编辑区里的、浮着的（Claude App 的表单）设置页都重画
+  var settingsFrame = 0;
+  function redrawSettings() {
+    if (settingsFrame) return;
+    settingsFrame = requestAnimationFrame(function () {
+    settingsFrame = 0; // 编辑区里的、浮着的（Claude App 的表单）设置页都重画
     var ps = allPanes().slice();
-    document.querySelectorAll(".st-float").forEach(function (f) { if (f.pane && ps.indexOf(f.pane) < 0) ps.push(f.pane); });
+    MODALS.forEach(function (m) { if (m.win.pane && !ps.includes(m.win.pane)) ps.push(m.win.pane); });
     ps.forEach(function (p) { if (p.program && p.program.page === "settings" && p.program.redraw) p.program.redraw(); });
+    });
   }
   function acctUsage() {
     if (Date.now() - ACCT.uAt < 60000) return;
@@ -4543,9 +4662,9 @@
         //   同一台机器并成一台、以前版本留下的旧记录不列（TSU_SYNC.deviceList，同「设备」App）
         var dl = SY.deviceList ? SY.deviceList() : [];
         out.push({ head: "登录的设备" });
-        dl.slice(0, 9).forEach(function (d) { out.push({ key: d.self ? "devThis" : "dev:" + d.id, label: d.label, desc: d.model && d.model !== d.label ? d.model : "", kind: "info", value: d.self ? "这台设备" : Date.now() - (d.last_seen || 0) < 15 * 60000 ? "在线" : ago(d.last_seen) + "在线" }); });
+        dl.slice(0, 9).forEach(function (d) { out.push({ key: d.self ? "devThis" : "dev:" + d.id, label: d.label, desc: d.model && d.model !== d.label ? d.model : "", kind: "info", value: d.self ? "当前设备" : Date.now() - (d.last_seen || 0) < 15 * 60000 ? "在线" : ago(d.last_seen) + "在线" }); });
       } else out.push({ head: "登录的设备" });
-      out.push({ key: "logout", label: "在这台设备上退出登录", desc: "Agent 和会话将保留在账户中，重新登录后即可恢复", kind: "button", text: "退出登录", act: "logout" });
+      out.push({ key: "logout", label: "在当前设备上退出登录", desc: "Agent 和会话将保留在账户中，重新登录后即可恢复", kind: "button", text: "退出登录", act: "logout" });
       return out;
     },
     change: function (k, v) {
@@ -4689,12 +4808,33 @@
   // Codex 的限额，一条命令找完（按修改时间最新的 6 个会话记录，各自从末尾找最后一行带 rate_limits 的）：桥只来回一次——
   //   上面那种一层层列目录、一个个读的，桥忙的时候（大的会话记录正在读）一步要等好几秒，页面就一直「正在读取…」
   function codexLimitsFast() {
-    var cmd = "cd " + shq(homeDir() + "/.codex/sessions") + " 2>/dev/null || exit 0; for f in $(ls -t */*/*/rollout-*.jsonl 2>/dev/null | head -6); do l=$(tail -c 2000000 \"$f\" | grep '\"rate_limits\":{' | tail -1); if [ -n \"$l\" ]; then printf '%s\\n' \"$l\"; exit 0; fi; done";
-    return LOC().exec({ cmd: cmd }).then(function (r) {
-      var line = String(r && r.out || "").trim().split("\n").pop();
-      if (!line) return null;
-      var o = JSON.parse(line), rl = o.payload && o.payload.rate_limits;
-      return rl && (rl.primary || rl.secondary) ? { rl: rl, at: Date.parse(o.timestamp) || Date.now() } : null;
+    var script = [
+      "import heapq, json, os, pathlib",
+      "root = pathlib.Path.home() / '.codex' / 'sessions'",
+      "def recent():",
+      "    for path in root.glob('*/*/*/rollout-*.jsonl'):",
+      "        try: yield (path.stat().st_mtime_ns, path)",
+      "        except OSError: continue",
+      "for _, path in heapq.nlargest(6, recent()):",
+      "    try:",
+      "        with path.open('rb') as f:",
+      "            f.seek(max(0, f.seek(0, os.SEEK_END) - 2000000))",
+      "            lines = f.read().splitlines()",
+      "    except OSError: continue",
+      "    for line in reversed(lines):",
+      "        if b'\"rate_limits\"' not in line: continue",
+      "        try: event = json.loads(line)",
+      "        except (ValueError, UnicodeError): continue",
+      "        limits = (event.get('payload') or {}).get('rate_limits')",
+      "        if isinstance(limits, dict) and (limits.get('primary') or limits.get('secondary')):",
+      "            print(json.dumps({'rl': limits, 'timestamp': event.get('timestamp')}))",
+      "            raise SystemExit",
+    ].join("\n");
+    return LOC().exec({ cmd: "python3 -c " + shq(script) }).then(function (r) {
+      if (r.code) throw new Error("读取 Codex 限额失败");
+      if (!r.out.trim()) return null;
+      var result = JSON.parse(r.out);
+      return { rl: result.rl, at: Date.parse(result.timestamp) || Date.now() };
     });
   }
   // Claude Code 的 5 小时 / 每周限额：它的状态行命令把拿到的 JSON 存在 ~/.claude/statusline-last.json（rate_limits.five_hour / seven_day 的
@@ -4750,20 +4890,22 @@
   function useLoad() {
     var t = Date.now();
     acctUsage();
-    if (t - USE.stAt > 300000) { USE.stAt = t; fetch("/api/stats?tz=" + (-new Date().getTimezoneOffset()), { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && !j.error) { USE.st = j; redrawSettings(); } }, function () {}); }
+    if (t - USE.stAt > 300000) { USE.stAt = t; fetch("/api/stats?tz=" + (-new Date().getTimezoneOffset()), { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && !j.error) { USE.st = j; if (setState.sec === "usage" || setState.q) redrawSettings(); } }, function () {}); }
     if (!LOC()) return;
     // 读太久（桥忙、命令卡住）算超时：写原因、留着上次读到的，过一会儿（again 毫秒）再试——不会一直「正在读取…」
-    var fail = function (k, again) { return function (e) { USE[k + "Err"] = e && e.message === "timeout" ? "timeout" : String(e && e.message || e || "error"); USE[k + "At"] = Date.now() - 60000 + again; redrawSettings(); }; };
-    if (t - USE.cxAt > 60000) { USE.cxAt = t; inTime(codexLimitsFast().then(null, function () { return codexLimits(); }), 15000).then(function (x) { USE.cx = x; USE.cxErr = ""; useKeep(); redrawSettings(); }, fail("cx", 15000)); }
-    if (t - USE.ccAt > 60000) { USE.ccAt = t; inTime(claudeLocal(), 15000).then(function (x) { USE.cc = x; redrawSettings(); }, function () { if (USE.cc === undefined) USE.cc = null; USE.ccAt = Date.now() - 45000; redrawSettings(); }); }
-    if (t - USE.limAt > 20000) { USE.limAt = t; inTime(claudeLimits(), 10000).then(function (x) { USE.lim = x; useKeep(); redrawSettings(); }, function () { if (USE.lim === undefined) USE.lim = null; redrawSettings(); }); }
-    if (!USE.lokBusy && t - USE.lokAt > 60000) { USE.lokAt = t; USE.lokBusy = true; inTime(claudeUsage(), 180000).then(function (x) { USE.lokBusy = false; USE.lok = x; USE.lokErr = ""; useKeep(); redrawSettings(); }, function (e) { USE.lokBusy = false; fail("lok", 60000)(e); }); }
+    var fail = function (k, again) { return function (e) { USE[k + "Err"] = e && e.message === "timeout" ? "timeout" : String(e && e.message || e || "error"); USE[k + "At"] = Date.now() - 60000 + again; if (setState.sec === "usage" || setState.q) redrawSettings(); }; };
+    if (t - USE.cxAt > 60000) { USE.cxAt = t; inTime(codexLimitsFast().then(null, function () { return codexLimits(); }), 15000).then(function (x) { USE.cx = x; USE.cxErr = ""; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, fail("cx", 15000)); }
+    if (t - USE.ccAt > 60000) { USE.ccAt = t; inTime(claudeLocal(), 15000).then(function (x) { USE.cc = x; if (setState.sec === "usage" || setState.q) redrawSettings(); }, function () { if (USE.cc === undefined) USE.cc = null; USE.ccAt = Date.now() - 45000; if (setState.sec === "usage" || setState.q) redrawSettings(); }); }
+    if (t - USE.limAt > 20000) { USE.limAt = t; inTime(claudeLimits(), 10000).then(function (x) { USE.lim = x; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, function () { if (USE.lim === undefined) USE.lim = null; if (setState.sec === "usage" || setState.q) redrawSettings(); }); }
+    if (!USE.lokBusy && t - USE.lokAt > 60000) { USE.lokAt = t; USE.lokBusy = true; inTime(claudeUsage(), 180000).then(function (x) { USE.lokBusy = false; USE.lok = x; USE.lokErr = ""; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, function (e) { USE.lokBusy = false; fail("lok", 60000)(e); }); }
   }
   // 一条限额（同 Claude 的 Settings › Usage）：名字、什么时候重置（淡的）；右边一条细的长条、「已用 x%」
   var meter = function (key, label, pct, desc, page) { pct = Math.max(0, Math.min(100, +pct || 0)); return { key: key, label: label, desc: desc, must: true, kind: "meter", pct: pct, text: "已用 " + Math.round(pct) + "%", page: page }; };
   // 用量：两级。第一级一张张卡片（Paimon 额度、Claude Code、Codex、任务翻译），卡片顶上一行是它的名字和 ›，点进去是第二级的明细（账、各模型、限额的窗口、重置时间）。
   //   Claude Code、Codex 只看这台 Mac 上已经有的，不去问它们的服务器
-  document.addEventListener("tsu-agy-quota", redrawSettings);
+  document.addEventListener("tsu-agy-quota", function () {
+    if (setState.sec === "usage" || setState.q) redrawSettings();
+  });
   addSettings("usage", {
     title: "用量", icon: "▦", desc: "Paimon 的余额和用量，以及本机 Codex 和 Claude Code 的用量限额",
     pages: { paimon: { title: "Paimon 额度" }, claude: { title: "Claude Code" }, codex: { title: "Codex" }, gemini: { title: "Gemini" }, translate: { title: "任务翻译" } },
@@ -4795,11 +4937,12 @@
         if (rows.length) { out.push({ head: "最近的账", page: "paimon" }); ledger(rows, "paimon"); }
       }
       // ---- Claude Code：5 小时 / 每周限额（状态行拿到的那份）；最近 7 天各模型、每天（本机记录算的）----
-      var cc = USE.cc || {}, BILL = { apple_subscription: "App Store 订阅", stripe_subscription: "订阅", google_play_subscription: "Google Play 订阅" }, lim = USE.lim, k7 = USE.lok && USE.lok.days ? ccWeek(USE.lok) : null;
+      var cc = USE.cc || {}, BILL = { none: "无订阅", apple_subscription: "App Store 订阅", stripe_subscription: "订阅", google_play_subscription: "Google Play 订阅" }, lim = USE.lim, k7 = USE.lok && USE.lok.days ? ccWeek(USE.lok) : null;
       card("claude", "Claude Code", cc.billing ? BILL[cc.billing] || cc.billing : "");
       if (!LOC()) out.push({ key: "cc:none", kind: "line", rowCls: "dim", label: "仅在 App 中可读取本机的 Claude Code 数据" });
       else {
         var limRows = function (page) {
+          if (cc.billing === "none") return;
           if (!lim) return out.push({ key: "cc:lim" + page, kind: "line", rowCls: "dim", label: lim === undefined ? "正在读取限额…" : "还没有限额数据：Claude Code 的状态行刷新一次以后就有", page: page || undefined });
           [["five", "5 小时限额"], ["week", "每周限额"]].forEach(function (x) { var w = lim[x[0]]; if (!w) return; var gone = w.resets && w.resets * 1000 < Date.now(); out.push(meter("cc:" + x[0] + page, x[1], gone ? 0 : w.pct, w.resets ? resetsText(w.resets) : "", page || undefined)); });
         };
@@ -4809,7 +4952,7 @@
         // 第二级：限额（和它从哪来）、订阅、最近 7 天的合计、各模型、每天
         out.push({ head: "", page: "claude" });
         limRows("claude");
-        if (lim) out.push({ key: "cc:limsrc", kind: "line", rowCls: "dim", label: (lim.src === "statusline" ? "来自 Claude Code 状态行（" : "来自本应用启动的 Claude Code（") + ago(lim.at) + "）；不向 Claude 服务器查询", page: "claude" });
+        if (lim && cc.billing !== "none") out.push({ key: "cc:limsrc", kind: "line", rowCls: "dim", label: (lim.src === "statusline" ? "来自 Claude Code 状态行（" : "来自本应用启动的 Claude Code（") + ago(lim.at) + "）；不向 Claude 服务器查询", page: "claude" });
         if (cc.billing) out.push({ key: "cc:plan", label: "订阅方式", kind: "info", value: BILL[cc.billing] || cc.billing, page: "claude" });
         if (k7) {
           out.push({ head: "最近 7 天", page: "claude" }, { key: "cc:n", label: "回复数", kind: "info", value: String(k7.n), page: "claude" }, { key: "cc:ses", label: "会话", kind: "info", value: String(k7.ses), page: "claude" },
@@ -4825,7 +4968,7 @@
       card("codex", "Codex", plan);
       if (!LOC()) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "仅在 App 中可读取本机的 Codex 数据" });
       else if (USE.cx === undefined) out.push({ key: "cx:load", kind: "line", rowCls: USE.cxErr ? "warn" : "dim", label: USE.cxErr ? useErr(USE.cxErr) : "正在读取…" });
-      else if (!USE.cx) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "暂无本地数据（本机尚无 Codex 会话记录）" });
+      else if (!rl) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "暂无本地数据（本机尚无 Codex 会话记录）" });
       else {
         if (USE.cxErr) out.push({ key: "cx:err", kind: "line", rowCls: "dim", label: "显示的是上次读取的数据；" + useErr(USE.cxErr) });
         var wins = [["primary", rl.primary], ["secondary", rl.secondary]].filter(function (x) { return x[1]; });
@@ -4840,12 +4983,12 @@
         var quota = TSU_AGY.quota(), gemini = quota.data;
         card("gemini", "Gemini", "Google Antigravity");
         [undefined, "gemini"].forEach(function (page) {
-          var key = page ? "gemini:detail" : "gemini:week";
-          if (gemini && Number.isFinite(gemini.remaining)) {
-            out.push(meter(key, "每周限额", (1 - gemini.remaining) * 100,
-              resetsText(Date.parse(gemini.reset) / 1000), page));
-            if (page) out.push({key: "gemini:left", label: "剩余", kind: "info", value: Math.round(gemini.remaining * 100) + "%", page: page});
-          } else out.push({key: key, kind: "line", rowCls: "dim", label: quota.loading ? "正在读取…" : "暂无 Gemini 周额度数据", page: page});
+          for (var [id,label] of [["gemini-5h","Gemini · 5 小时"],["gemini-weekly","Gemini · 每周"],["3p-5h","第三方模型 · 5 小时"],["3p-weekly","第三方模型 · 每周"]]) {
+            var bucket = gemini?.buckets?.find(b => b.name === id) || (id === "gemini-weekly" && gemini);
+            var key = "gemini:" + (page || "overview") + ":" + id;
+            if (Number.isFinite(bucket?.remaining)) out.push(meter(key,label,(1-bucket.remaining)*100,bucket.reset ? resetsText(Date.parse(bucket.reset)/1000) : "",page));
+            else out.push({key,kind:"info",label,value:quota.loading ? "正在读取…" : "暂无数据",page});
+          }
         });
       }
       // ---- 任务翻译（设置 › 对话 › 任务翻译）：用 Paimon 的额度，翻过的缓存着 ----
@@ -5372,6 +5515,9 @@
   // ⚙ 管理菜单（同 VS Code 左下那个）
   var MIc = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var MI = {
+    contextWindow: MIc('<rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M4.5 6h7M4.5 9h4"/>'),
+    quotaGauge: MIc('<path d="M2.5 12a6 6 0 1 1 11 0zM8 9l3-3"/>'),
+    wallet: MIc('<rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="M14 7h-4v3h4"/>'),
     flag: MIc('<path d="M3.5 14V2.5"/><path d="M3.5 3h8.2l-1.8 3 1.8 3H3.5"/>'), // 标记这里（摘录本）
     bookmark: MIc('<path d="M4.5 2.5h7v11l-3.5-2.6-3.5 2.6z"/>'), // 收藏到摘录本
     palette: MIc('<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"/><path d="M4.6 6.4l2 1.6-2 1.6M8 9.8h3.4"/>'),
@@ -5481,7 +5627,7 @@
         return [{ header: true, label: "应用风格" }].concat(osModesNow().map(function (x) { return mi(x[1], "⌃⌘" + x[2], function () { setv("os", x[0]); }, { radio: true, checked: (getv("os", true) || "vscode") === x[0], icon: MI["os_" + x[0]] }); }),
           [{ sep: true }, { header: true, label: "Agent 显示风格" }], UI_MODES.map(function (x) { var off = !!forced && forced !== x[0]; return mi(x[1] + (off ? "（" + NA + "）" : ""), "", function () { setv("ui", x[0]); }, { radio: true, checked: getv("ui", true) === x[0], icon: MI[x[0]], disabled: off }); }));
       } }),
-      // 连接器（活动栏里就有、⇧⌘X）和键盘快捷方式（在设置里）不再单列在这里
+      // 连接器（活动栏里就有、⇧⌘X）和快捷键（在设置里）不再单列在这里
       // 两个配色合成一个「主题」（同 VS Code）
       mi("主题", "", null, { icon: MI.scheme, items: [mi("配色方案…", "⌘K ⌘T", function () { pickScheme(tw); }, { icon: MI.scheme }), mi("高亮配色…", "", function () { pickHighlight(tw); }, { icon: MI.highlight })] }),
       mi("自定义布局…", "", function () { layoutPick(tw); }, { icon: MI.layout }),
@@ -5585,7 +5731,7 @@
     var model = SY && SY.model ? SY.model() : "", osName = SY && SY.os ? SY.os() : "", name = SY && SY.name ? SY.name() : "";
     if (!osName || /^(macOS|Linux)$/.test(osName)) osName = (L0 && L0.os) || (A && (A.platform || "") === "macos" && A.os ? "macOS " + String(A.os).replace(/\.0$/, "") : osName);
     if (!model && !osName) return null;
-    return { key: "abDev", label: "这台设备", must: true, kind: "info", value: model || name || (L0 && L0.host) || "—", desc: [model && name ? name : "", osName].filter(Boolean).join(" · ") };
+    return { key: "abDev", label: "当前设备", must: true, kind: "info", value: model || name || (L0 && L0.host) || "—", valueDetail: [model && name ? name : "", osName].filter(Boolean).join(" · ") };
   }
   addSettings("about", {
     title: "关于", icon: "i", desc: "版本与更新",
@@ -5594,12 +5740,12 @@
       var en0 = !!(window.TSU_I18N && TSU_I18N.lang() === "en"), L2 = function (zh, e) { return en0 ? e : zh; }, A = appInfo, LU = window.TSU_UI_LOCAL, N = window.nadosNative, st = updState(L2);
       var day = function (s) { var d = new Date(s); return isNaN(d.getTime()) ? "" : d.toLocaleString(L2("zh-CN", "en-US"), { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
       return [
-        { key: "abVer", label: "版本", must: true, kind: "info", value: uiVer.cur || "—", desc: uiVer.built ? L2("发布于 ", "Released ") + day(uiVer.built) : "" },
-        A && A.version ? { key: "abApp", label: "App", must: true, kind: "info", value: A.version + (A.build ? L2("（构建 " + A.build + "）", " (build " + A.build + ")") : ""), desc: chipOf(A, L2) } : null,
+        { key: "abVer", label: "版本", must: true, kind: "info", value: uiVer.cur || "—", valueDetail: uiVer.built ? L2("发布于 ", "Released ") + day(uiVer.built) : "" },
+        A && A.version ? { key: "abApp", label: "App", must: true, kind: "info", value: A.version + (A.build ? L2("（构建 " + A.build + "）", " (build " + A.build + ")") : ""), valueDetail: chipOf(A, L2) } : null,
         // 这台设备：同「设备」页的那一张卡片（型号、系统都是它认出来的那一份，Linux 是发行版的名字，不是内核版本）
         devRow(A, L2),
-        { key: "abSrc", label: "界面来源", must: true, kind: "info", value: LU ? L2("本机文件夹", "Local folder") : N ? L2("网站", "Website") : L2("网页版", "Web"), desc: LU ? tilde(LU.dir) : location.host },
-        { key: "abUpd", label: "更新", must: true, kind: "button", text: st.btn, act: st.act, desc: st.text },
+        { key: "abSrc", label: "界面来源", must: true, kind: "info", value: LU ? L2("本机文件夹", "Local folder") : N ? L2("网站", "Website") : L2("网页版", "Web"), valueDetail: LU ? tilde(LU.dir) : location.host },
+        { key: "abUpd", label: "更新", must: true, kind: "button", text: st.btn, act: st.act, valueDetail: st.text },
         { key: "abLog", label: "更新内容", must: true, kind: "button", text: "查看", act: "changelog" },
         { key: "abStatus", label: "服务状态", must: true, kind: "button", text: "查看", act: "status" },
       ].filter(Boolean);
@@ -6343,7 +6489,7 @@
   command("scheme", { title: "配色方案…", keys: "⌘K ⌘T", run: function (tw) { pickScheme(tw); } });
   command("view.minimap", { title: "切换缩略图", run: function () { setv("minimap", getv("minimap") === "hide" ? SET_DEF.minimap : "hide"); } });
   command("highlight", { title: "高亮配色…", run: function (tw) { pickHighlight(tw); } });
-  command("keys", { title: "键盘快捷方式", keys: "⌘K ⌘S", when: function () { return !root.classList.contains("st-os-claude"); }, run: function (tw) { showPage(tw, "keys"); } });
+  command("keys", { title: "快捷键", keys: "⌘K ⌘S", when: function () { return !root.classList.contains("st-os-claude"); }, run: function (tw) { showPage(tw, "keys"); } });
   command("palette", { title: "命令面板", keys: "⇧⌘P", run: function (tw) { palette(tw, "cmd"); } });
   command("quickopen", { title: "快速打开", keys: "⌘P", run: function (tw) { palette(tw, "open"); } });
   command("view.crumbs", { title: "切换路径导航", run: function () { setv("breadcrumbs", !getv("breadcrumbs")); } });
@@ -6393,6 +6539,7 @@
 
   applySettings();
   window.STUDIO = {
+    settingsModalOpen: settingsModalOpen,
     layItems: function (tw) { return layItems(tw); }, layConcise: function () { return layConcise(); }, layMenu: function (tw, el) { layMenu(tw, el); }, // 手机上标签栏的那一个按钮：设置、账号、布局（标题栏收起来了）
     islandSync: function () { islandSync(); },
     // Claude Code 的推理强度（~/.claude/settings.json：这个模型单独设的，没有就是总的）；转圈那一行「thinking with max effort」用

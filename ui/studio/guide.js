@@ -84,8 +84,8 @@
         "<p>界面部分会自动更新，重新载入窗口即生效。App 本身有新版本时，状态栏显示「App 有新版本 · 重启以更新」，⚙ 上出现标记；点按后原地替换并重新打开，旧版本保留在「Application Support」中，不会移到废纸篓。</p><p>每个版本的变化见「帮助 › 更新内容」。</p>",
         "<p>The interface updates automatically and takes effect when you reload the window. When a newer version of the app itself is ready, the status bar shows “App update · Restart to update” and ⚙ shows a badge; click it to replace the app in place and reopen it. The previous version is kept in Application Support, not moved to the Trash.</p><p>See Help › Release Notes for what changed in each version.</p>"],
         see: ["styles"] },
-      { id: "keys", t: ["键盘快捷方式", "Keyboard shortcuts"], b: [
-        "<p>常用的快捷方式：</p><ul><li>[[⌘T]] 新建会话，[[⌘W]] 关闭标签页</li><li>[[⇧⌘P]] 命令面板，[[⌘,]] 设置</li><li>[[⌘B]] 主侧栏，[[⌥⌘I]] 辅助侧栏，[[⌘J]] 面板</li><li>[[⌘Y]] 历史记录</li><li>对话中：[[Esc]] 中断，[[⌃B]] 放到后台，[[⌃O]] 展开全部，[[⌃X]] [[⌃S]] 立即发送排队的消息，空输入框中按 [[↑]] 取回排队的消息</li></ul><p>完整列表见「帮助 › 键盘快捷方式」。</p>",
+      { id: "keys", t: ["快捷键", "Keyboard shortcuts"], b: [
+        "<p>常用快捷键：</p><ul><li>[[⌘T]] 新建会话，[[⌘W]] 关闭标签页</li><li>[[⇧⌘P]] 命令面板，[[⌘,]] 设置</li><li>[[⌘B]] 主侧栏，[[⌥⌘I]] 辅助侧栏，[[⌘J]] 面板</li><li>[[⌘Y]] 历史记录</li><li>对话中：[[Esc]] 中断，[[⌃B]] 放到后台，[[⌃O]] 展开全部，[[⌃X]] [[⌃S]] 立即发送排队的消息，空输入框中按 [[↑]] 取回排队的消息</li></ul><p>完整列表见「帮助 › 快捷键」。</p>",
         "<p>Frequently used shortcuts:</p><ul><li>[[⌘T]] new session, [[⌘W]] close tab</li><li>[[⇧⌘P]] Command Palette, [[⌘,]] Settings</li><li>[[⌘B]] primary side bar, [[⌥⌘I]] secondary side bar, [[⌘J]] panel</li><li>[[⌘Y]] History</li><li>In a conversation: [[Esc]] interrupt, [[⌃B]] move to background, [[⌃O]] expand all, [[⌃X]] [[⌃S]] send queued messages now, [[↑]] in an empty input takes queued messages back</li></ul><p>For the full list, choose Help › Keyboard Shortcuts.</p>"],
         see: ["send", "queue"] },
       { id: "privacy", t: ["数据与隐私", "Data and privacy"], b: [

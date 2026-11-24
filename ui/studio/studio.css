@@ -798,7 +798,7 @@ html.termapp .termwin .tlab.st-sright > .ts-grip::after { left: -1px; }
 .ss[data-sty="vscode"] .ss-opts { display: inline-flex; flex-wrap: nowrap; gap: 1px; padding: 2px; border: 1px solid var(--st-line); border-radius: 5px; background: var(--st-bg3); }
 .ss[data-sty="vscode"] .ss-opts > .ss-opt { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border: 0; border-radius: 3px; background: none; color: var(--st-fg); font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer; transition: background-color .12s, color .12s; }
 .ss[data-sty="vscode"] .ss-opts > .ss-opt:hover:not(.on):not(:disabled) { background: var(--st-hover); color: var(--st-hi); }
-.ss[data-sty="vscode"] .ss-opts > .ss-opt.on { background: var(--st-focus); color: #fff; }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt.on { background: var(--st-canvas); color: var(--st-hi); box-shadow: 0 1px 3px #0002; font-weight: 600; }
 .ss[data-sty="vscode"] .ss-opts > .ss-opt.na { color: var(--st-dim); opacity: .5; cursor: not-allowed; }
 .ss[data-sty="vscode"] .ss-opts > .ss-opt:focus-visible { outline: 1px solid var(--st-focus); outline-offset: 1px; }
 .ss[data-sty="vscode"] .ss-opts.ss-icons > .ss-opt { padding: 0 8px; }
@@ -1532,10 +1532,24 @@ html.st-noln { --st-cm-gut: none; --st-cm-pl: 14px; } /* 编辑器在影子 DOM 
 html.light .st-toast { background: rgba(250, 250, 250, .96); color: #222; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
 .termwin .bar .st-top-update + .st-lay { margin-left:4px; }
 .termwin .bar .st-top-update { margin-left:auto; display: inline-flex; align-items: center; position: relative; z-index: 2; -webkit-app-region: no-drag; }
-.termwin .bar .st-top-update .st-update { background:transparent; color:var(--st-dim); font: 12px system-ui; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+.termwin .bar .st-top-update .st-update { border: 1px solid currentColor; border-radius: 4px; background: transparent; color: var(--st-hi); font: 12px system-ui; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
 
 .st-notebook { padding: 12px 20px; }
 .st-notebook section { padding: 10px 0; border-bottom: 1px solid color-mix(in srgb,currentColor 15%,transparent); }
 .st-notebook small { opacity: .65; }
 .st-notebook pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
 .st-notebook img { display: block; max-width: 100%; height: auto; }
+
+.ss-value-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 0; max-width: 100%; text-align: right; }
+.ss-value-detail { color: var(--st-dim); overflow-wrap: anywhere; white-space: normal; }
+
+.ss[data-sty="vscode"] .ss-dd { min-width: 0; border: 0; border-radius: 8px; background: transparent; font-weight: 500; }
+.ss[data-sty="vscode"] .ss-dd:is(:hover,.open) { background: var(--st-hover); }
+.ss[data-sty="vscode"] .ss-dd:focus-visible { outline: 2px solid var(--st-focus); }
+.ss-pop { padding: 5px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-canvas); box-shadow: 0 4px 16px #0002; }
+.ss-pop .ss-ddrows { padding: 0; }
+.ss-pop .ss-ddi { height: 29px; margin: 0; border-radius: 7px; }
+.ss-pop .ss-ddi.on { background: var(--st-hover); color: var(--st-hi); }
+.ss-pop .ss-ddi.cur .ss-ddk { width: 6px; height: 12px; margin-right: 5px; border: solid var(--st-focus); border-width: 0 1.6px 1.6px 0; transform: rotate(40deg); }
+.ss[data-sty="vscode"] .ss-opts { padding: 3px; gap: 2px; border: 0; border-radius: 8px; }
+.ss[data-sty="vscode"] .ss-opts > .ss-opt { border-radius: 5px; }

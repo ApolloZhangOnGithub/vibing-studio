@@ -91,7 +91,7 @@
   };
   function model() {
     var sy = SY(), list = sy && sy.deviceList ? sy.deviceList() : null;
-    if (!list) { var app = !!(window.nadosNative && !nadosNative.remote && nadosNative.local); list = [{ id: "self", label: app ? "Mac" : t("这台设备", "This device"), kind: app ? "mac" : "web", web: !app, family: "computer", self: true, last_seen: Date.now(), ids: [] }]; }
+    if (!list) { var app = !!(window.nadosNative && !nadosNative.remote && nadosNative.local); list = [{ id: "self", label: app ? "Mac" : t("当前设备", "This device"), kind: app ? "mac" : "web", web: !app, family: "computer", self: true, last_seen: Date.now(), ids: [] }]; }
     var nodes = list.map(function (d) { return Object.assign({}, d, { rids: String(d.relay || "").split(/\s+/).filter(Boolean), acc: parseAcc(d.access) }); });
     var byRid = function (rid) { return nodes.filter(function (n) { return n.rids.indexOf(rid) >= 0; })[0]; };
     var lc = function (s) { return String(s || "").trim().toLowerCase(); };
@@ -145,7 +145,7 @@
 
   // ---- 画：账户在中间；手机、平板、网页在上面一排，电脑在下面一排，各从账户分出去；谁能用谁另画一层线 ----
   function nodeHtml(n, key) {
-    var ic = iconOf(n), st = n.self ? t("这台设备", "This device") : n.online ? t("在线", "Online") : seen(n.last_seen);
+    var ic = iconOf(n), st = n.self ? t("当前设备", "This device") : n.online ? t("在线", "Online") : seen(n.last_seen);
     return '<button type="button" class="dv-node' + (n.self ? " self" : "") + (n.online ? " on" : "") + '" data-node="' + esc(key) + '" title="' + esc(n.label) + '">' +
       '<span class="dv-ic" data-top="' + TOP[ic] + '">' + ICON[ic] + '<i class="dv-dot"></i></span><span class="dv-name">' + esc(n.label) + '</span><span class="dv-sub">' + esc(subOf(n)) + '</span><span class="dv-st">' + esc(st) + "</span></button>";
   }
@@ -355,7 +355,7 @@
       if (rc && rc.use) return rc.use(n.host, n.label);
     }
     if (a === "remove" && SY()) {
-      return confirmDo({ title: t("从账户中移除「" + n.label + "」？", "Remove “" + n.label + "” from your account?"), message: t("如果这台设备还登录着，下次打开 Vibing Studio 时会重新出现。", "If this device is still signed in, it will appear again the next time it opens Vibing Studio."), ok: t("移除", "Remove") },
+      return confirmDo({ title: t("从账户中移除「" + n.label + "」？", "Remove “" + n.label + "” from your account?"), message: t("如果当前设备还登录着，下次打开 Vibing Studio 时会重新出现。", "If this device is still signed in, it will appear again the next time it opens Vibing Studio."), ok: t("移除", "Remove") },
         function () { SY().removeDevices(n.ids).then(function () { closeCard(); if (host && V) { host._dvHtml = ""; if (V.shown()) render(host, P, V.arg, V); } }, function (err) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: t("没能移除", "Couldn’t Remove the Device"), message: String((err && err.message) || err), icon: "caution" }); }); });
     }
   }
@@ -369,7 +369,7 @@
     // 卡片底下：移除放最左边，主要的放最右边（同 macOS 的对话框）
     var acts = actsOf(n), rm = acts.filter(function (a) { return a[0] === "remove"; });
     acts = rm.concat(acts.filter(function (a) { return a[0] !== "remove"; }).reverse());
-    return { icon: ICON[iconOf(n)], title: n.label, sub: subOf(n) + (n.self ? " · " + t("这台设备", "This Device") : ""), rows: rows, acts: acts };
+    return { icon: ICON[iconOf(n)], title: n.label, sub: subOf(n) + (n.self ? " · " + t("当前设备", "This Device") : ""), rows: rows, acts: acts };
   }
   // 一条关系写成一行：名字，正在使用 / 允许于… · 上次连接…（· 在哪）
   var relLine = function (e, other) {
@@ -468,7 +468,7 @@
       }
       if (a === "share" && RH()) { Promise.resolve(RH().set(!RH().on())).then(again); return; }
       if (a === "remove") return run("remove", nn, P, host, V);
-      if (a === "signout") return confirmDo({ title: t("退出登录 " + (model().login || "") + "？", "Sign out of " + (model().login || "") + "?"), message: t("跟着账户的数据会停止同步；这台设备上的 Claude Code、Codex 会话不受影响。", "Account data stops syncing; Claude Code and Codex sessions on this device are not affected."), ok: t("退出登录", "Sign Out") }, function () { location.href = "/auth/logout"; });
+      if (a === "signout") return confirmDo({ title: t("退出登录 " + (model().login || "") + "？", "Sign out of " + (model().login || "") + "?"), message: t("跟着账户的数据会停止同步；当前设备上的 Claude Code、Codex 会话不受影响。", "Account data stops syncing; Claude Code and Codex sessions on this device are not affected."), ok: t("退出登录", "Sign Out") }, function () { location.href = "/auth/logout"; });
       if (a === "signin") { location.href = "/auth/login?next=" + encodeURIComponent(location.pathname + location.search); return; }
       if (a === "passkeys") {
         closeCard();

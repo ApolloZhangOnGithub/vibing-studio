@@ -268,5 +268,9 @@
     },
   };
   window.TSU_ECO = { reload: reload, state: function () { return state; }, mount: mount };
-  if (S.embed) S.embed("eco", function (el, kind, win) { mount(el, kind || "cc", win); });
+  if (S.embed) {
+    function ecoSettings(el, kind, win) { mount(el, kind || "cc", win); }
+    ecoSettings.preload = function () { if (!state.data.cc && !state.busy) reload(); };
+    S.embed("eco", ecoSettings);
+  }
 })();

@@ -546,7 +546,7 @@
     if (!w.fs) { // Agent Finder：同访达的「位置」——几个卷（Paimon Code）、Claude Code、Codex（连接器开着的）；置顶的 agent 放上面
       var curVol = w.a ? A.volOf(w.a.id) : w.vol || "";
       var vols = (pmVols() && A.volumes ? A.volumes() : []).map(function (v) {
-        return '<div class="xs-it' + (!w.root && curVol === v.id && (w.a || !w.path) ? " on" : "") + (v.here ? "" : " off") + '" data-side="' + esc(volKey(v.id)) + '" data-vfto="' + esc(v.id + "|") + '" title="' + esc(v.label + (v.here ? "" : tr("（这台设备连不上）", " (not reachable from here)"))) + '"><span class="xs-ic">' + (v.id === "cloud" ? CLOUD_GLYPH : glyphSvg("disk")) + '</span><span class="xs-l">' + esc(v.label) + "</span></div>";
+        return '<div class="xs-it' + (!w.root && curVol === v.id && (w.a || !w.path) ? " on" : "") + (v.here ? "" : " off") + '" data-side="' + esc(volKey(v.id)) + '" data-vfto="' + esc(v.id + "|") + '" title="' + esc(v.label + (v.here ? "" : tr("（当前设备连不上）", " (not reachable from here)"))) + '"><span class="xs-ic">' + (v.id === "cloud" ? CLOUD_GLYPH : glyphSvg("disk")) + '</span><span class="xs-l">' + esc(v.label) + "</span></div>";
       });
       connKeys().forEach(function (k) { vols.push('<div class="xs-it' + (w.conn === k && (!w.cdir || w.cdir === home()) ? " on" : "") + '" data-side="' + esc(connHome(k)) + '" data-vfto="" title="' + esc(CONN[k].name) + '"><span class="xs-ic">' + connIcon(k, null, null, false, true) + '</span><span class="xs-l">' + esc(CONN[k].name) + "</span></div>"); }); // data-vfto：右键同卷的菜单、不是放文件的地方
       var pins = pmVols() ? A.list().filter(function (a) { return a.pinned; }).map(function (a) { return row("@" + a.id, agentArg(a), bundleIcon(a), a.name, ' data-agent="' + esc(a.id) + '"'); }) : []; // Paimon Code 连接器关了：没有它的卷、置顶
@@ -569,7 +569,7 @@
   function agentPane(a) {
     var st = stateOf(a), rt = A.runtime(a.id), ss = sessionsOf(a.id), dd = dirsOf(a), dir = LOC() && !dd.cloud ? rt.home() : "", ef = EFFORT[a.effort || "high"] || ["", ""], ac = ACCESS[a.access || "read"] || ["", ""];
     var where0 = volLabelOf(A.volOf(a.id)) + (a.path ? " › " + String(a.path).split("/").join(" › ") : "");
-    var rows = [[tr("状态", "Status"), dd.here === false ? tr("在「" + volLabelOf(A.volOf(a.id)) + "」上，这台设备连不上", "On “" + volLabelOf(A.volOf(a.id)) + "”, not reachable from here") : st.label], [tr("模型", "Model"), modelName(a)], [tr("推理强度", "Effort"), tr(ef[0], ef[1])], [tr("权限", "Access"), tr(ac[0], ac[1])], [tr("会话", "Sessions"), String(ss.length)], [tr("上次活跃", "Last Active"), longDate(a.active)]];
+    var rows = [[tr("状态", "Status"), dd.here === false ? tr("在「" + volLabelOf(A.volOf(a.id)) + "」上，当前设备连不上", "On “" + volLabelOf(A.volOf(a.id)) + "”, not reachable from here") : st.label], [tr("模型", "Model"), modelName(a)], [tr("推理强度", "Effort"), tr(ef[0], ef[1])], [tr("权限", "Access"), tr(ac[0], ac[1])], [tr("会话", "Sessions"), String(ss.length)], [tr("上次活跃", "Last Active"), longDate(a.active)]];
     var fdir = dd.here === false ? "" : dir ? tilde(dir) : dd.cloud ? dd.home : ""; // 它自己的文件夹（包里的「文件」）：点了进包里看
     var more = [[tr("位置", "Where"), where0], [tr("创建时间", "Created"), longDate(a.created)], [tr("它的文件夹", "Its Folder"), fdir ? { html: '<span class="xp-link" data-go="' + esc(agentArg(a) + "/home") + '">' + esc(fdir) + "</span>" } : ""], ["ID", a.id]];
     var mini = miniOf({ kind: "agent", id: a.id, a: a }, 5), top = mini ? '<div class="xp-agcard">' + miniBox(mini, "card") + "</div>" : '<div class="xp-pvtop">' + bundleIcon(a, "huge") + "</div>"; // 有对话：它现在的样子（同访达预览文稿的内容）
@@ -590,7 +590,7 @@
   }
   // Agent Finder 的文件夹 / 卷：大图标、名字、在哪、里面几个 agent
   function vfPane(it) {
-    var up0 = vpParent(it.vpath), rows = it.volume ? [[tr("种类", "Kind"), it.vol === "cloud" ? "Cloud" : tr("Mac（Local）", "Mac (Local)")], [tr("状态", "Status"), it.off ? tr("这台设备连不上", "Not reachable from here") : tr("可以用", "Available")]]
+    var up0 = vpParent(it.vpath), rows = it.volume ? [[tr("种类", "Kind"), it.vol === "cloud" ? "Cloud" : tr("Mac（Local）", "Mac (Local)")], [tr("状态", "Status"), it.off ? tr("当前设备连不上", "Not reachable from here") : tr("可以用", "Available")]]
       : [[tr("位置", "Where"), volLabelOf(it.vol) + (up0 ? " › " + up0.split("/").join(" › ") : "")]];
     rows = rows.concat([[tr("Agent", "Agents"), String(it.n || 0)], [tr("上次活跃", "Last Active"), longDate(it.time)]]);
     return '<div class="xp-pv"><div class="xp-pvtop">' + iconOf(it, "huge") + '</div><div class="xp-pvname">' + esc(it.label || it.name) + '</div><div class="xp-pvkind">' + esc(kindName(it) + " - " + it.note) + "</div>" + infoBlock(rows) + "</div>";

@@ -59,7 +59,7 @@ def session_owner(home, session_id):
 
 def connect_host(directory, settings=False, owner=None):
     # Prefer the desktop host when both the desktop and Studio's background host exist.
-    for path in sorted(directory.glob("*.sock"), key=lambda p: (p.name.startswith("studio-"), -p.stat().st_mtime if settings else 0)):
+    for path in sorted(directory.glob("*.sock.balance" if settings and settings.get("action") == "balance" else "*.sock"), key=lambda p: (p.name.startswith("studio-"), -p.stat().st_mtime if settings else 0)):
         if owner and path.stem not in (owner, "studio-" + owner):
             continue
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -128,6 +128,8 @@ if __name__ == "__main__":
     try:
         if sys.argv[1:] == ["--install"]:
             install_connector()
+        elif sys.argv[1:] == ["--balance"]:
+            deliver(None, None, None, settings={"action": "balance"})
         elif sys.argv[1:2] == ["--catalog"]:
             deliver(None, None, None, settings={"action": "catalog"})
         elif sys.argv[1:2] == ["--select-model"]:

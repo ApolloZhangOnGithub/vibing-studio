@@ -134,6 +134,7 @@
   function title(p) {
     var a = p.input || {}, n = p.name;
     if (n === "Bash") return a.description ? clip(a.description, 90) : "运行 " + clip(a.command, 70);
+    if (n === "Code" && a.language === "javascript") return "JavaScript · " + clip(a.description || a.code, 90);
     if (n === "Read") return "读取 " + base(a.file_path);
     if (n === "Edit" || n === "MultiEdit") return "编辑 " + base(a.file_path);
     if (n === "Write") return "写入 " + base(a.file_path);
@@ -188,6 +189,13 @@
       if (vmv("agentPrompt", view) === true && a.prompt) { var pc = cut(a.prompt, 3); out += sec("任务说明", '<pre class="gv-out">' + esc(pc.t) + "</pre>" + (pc.more ? '<div class="gv-more">… 另外 ' + pc.more + " 行</div>" : "")); }
       if (vmv("agentSteps", view) !== false && steps.length) { var sv = short ? steps.slice(-3) : steps.slice(0, 50); out += sec("子 Agent 过程", sv.map(function (x) { return '<div class="gv-step">' + esc(title(x)) + "</div>"; }).join("") + (steps.length > sv.length ? '<div class="gv-more">… 共 ' + steps.length + " 步</div>" : "")); }
       if (vmv("agentResult", view) !== false && report) { var rc = cut(report, 6); out += sec("结果", '<div class="gv-md">' + md(rc.t) + "</div>" + (rc.more ? '<div class="gv-more">… 另外 ' + rc.more + " 行</div>" : "")); }
+      return out;
+    }
+    if (p.name === "Code" && a.language === "javascript") {
+      var source = a.code.split("\n");
+      out += '<pre class="gv-cmd"><code>' + codeHtml(source.slice(0, n).join("\n"), "javascript") + "</code></pre>" + more(source.length);
+      if (lines.length) out += '<pre class="gv-out' + (isErr(p) ? " err" : "") + '">' + esc(lines.slice(0, n).join("\n")) + "</pre>" + more(lines.length);
+      else if (!running(p)) out += '<div class="gv-ch">' + esc(p.error || (EN() ? "No output" : "无输出")) + "</div>";
       return out;
     }
     if (p.name === "Bash") {
@@ -337,7 +345,7 @@
         return h + TT().filteredParts(t, P.textFilter, rt).map(function (part) {
           if (part.kind === "tool") {
             var index = t.parts.indexOf(part);
-            var current = TT().isCurrentToolTurn(t, rt);
+            var current = TT().showToolPreview(t, part, rt);
             var earlier = t.parts.slice(0, index + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
             var key = ti + ":tool-history", history = "";
             if (earlier.length) {
@@ -525,6 +533,7 @@
     // 离看着的那段很远（前后三屏以外）的几问才不画（.gv-far：content-visibility: hidden，高度记着）；近处的一直排好、画好——滚动时不露白、回去也不重画
     var farIO = window.IntersectionObserver ? new IntersectionObserver(function (es) { es.forEach(function (e) { e.target.classList.toggle("gv-far", !e.isIntersecting); }); }, { root: scroll, rootMargin: "300% 0px 300% 0px" }) : null;
     function add(t, before) {
+      if (blocks.has(t)) return paintTurn(t, blocks.get(t));
       var el = document.createElement("div");
       el.className = "gv-turn";
       el._t = t;
@@ -534,10 +543,11 @@
       flagMark(el, t);
       if (farIO) farIO.observe(el);
     }
-    function redraw(t) { var el = blocks.get(t); if (el) paintTurn(t, el); else add(t); }
+    function redraw(t) { var el = blocks.get(t); if (el) paintTurn(t, el); else if (rt.session().turns.includes(t)) add(t); }
     // 输入框里的提示：连接器的会话（Claude Code、Codex）照它自己说的（后台会话能送进去、开在别的终端里只读、新会话……），同终端外壳的状态行
     var hintNow = function () { ta.placeholder = rt.hideInputHint ? "" : (rt.localQueued && rt.localQueued() ? "按 ↑ 编辑排队的消息" : "") || (V.claude && rt.hint && rt.hint()) || (rt.session().turns.length ? "回复…" : "要做什么？"); };
     function renderAll() {
+      pend.clear();
       hintNow();
       if (farIO) farIO.disconnect();
       listEl.textContent = "";
@@ -558,8 +568,9 @@
       jumpShow();
       if (scroll.scrollTop < 200 && rt.more && rt.more() && rt.earlier) rt.earlier(); // 会话记录只读了后面一段（Claude Code 的大会话）：滚到顶接着往前读
     }, { passive: true });
-    new ResizeObserver(stick).observe(listEl);
-    new ResizeObserver(stick).observe(scroll); // 对话区自己变矮 / 变高（底部多了一行在跑的、排着的、输入框长高、拖了底部）：在底下就还贴着底（排完版、画之前，不跳）
+    var scrollResize = new ResizeObserver(stick);
+    scrollResize.observe(listEl);
+    scrollResize.observe(scroll);
     // 点开 / 收起（思考、工具、一组）；链接在浏览器里开。
     //   展开着的卡片：点卡片里面空的地方（不是链接、按钮、图片，也不是在选字、不是双击）也收起——不用回到标题行去点小箭头；
     //   等 260ms 看是不是双击（双击是选词，不收），选了字不收
@@ -753,9 +764,9 @@
         if (!e.target.closest(".gv-track")) return;
         e.preventDefault();
         set(at(e.clientX));
-        var mv = function (ev) { set(at(ev.clientX)); }, up = function () { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); };
-        document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+        p.setPointerCapture(e.pointerId);
       });
+      p.addEventListener("pointermove", function (e) { if (p.hasPointerCapture(e.pointerId)) set(at(e.clientX)); });
       p.addEventListener("keydown", function (e) { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); set(cur + (e.key === "ArrowRight" ? 1 : -1)); } else if (e.key === "Enter") { closePop(); ta.focus(); } });
       p.querySelector(".gv-track").focus();
     }
@@ -840,45 +851,97 @@
       ta.style.height = h;
       if (pin) { follow = true; scroll.scrollTop = scroll.scrollHeight; }
     }
-    // 草稿（同终端界面那一份）：字里不放「[Image #N]」，图在上面一排缩略图；记下去时图的号跟在字后面——换回终端界面，字和图都在（用户 2026-10-30）
-    var TAG_RE = /\[Image #(\d+)\]\s?/g;
+    // GUI uses thumbnails. Keep the position of each actual attachment in the shared text.
+    var previousText = "", savedDraft, savedImages = [];
+    function draftText() {
+      var text = ta.value, old = previousText;
+      var lastAnchor = old === text ? 0 : attach.reduce((last, im) => Math.max(last, im.offset || 0), 0);
+      if (lastAnchor) {
+        var start = 0, end = old.length, nextEnd = text.length;
+        while (start < lastAnchor && start < nextEnd && old[start] === text[start]) start++;
+        if (start < lastAnchor) {
+          while (end > start && nextEnd > start && old[end - 1] === text[nextEnd - 1]) { end--; nextEnd--; }
+          for (var im of attach) {
+            if (im.offset > start) im.offset = im.offset >= end ? im.offset + nextEnd - end : start;
+          }
+        }
+      }
+      previousText = text;
+      if (!attach.length) return text;
+      if (attach.some(im => !im.no)) {
+        var used = new Set(attach.map(im => im.no)), next = 1;
+        for (var match of text.matchAll(/\[Image #(\d+)\]/g)) used.add(+match[1]);
+        for (var im of attach) {
+          if (!im.no) { while (used.has(next)) next++; im.no = next++; }
+        }
+      }
+      var result = "", pos = 0;
+      for (var im of attach.slice().sort((a, b) => (a.offset || 0) - (b.offset || 0))) {
+        var at = im.offset || 0;
+        result += text.slice(pos, at) + "[Image #" + im.no + "]" + (im.space ?? " ");
+        pos = at;
+      }
+      return result + text.slice(pos);
+    }
     function draftSave() {
       if (!drafts) return;
-      var nx = 0; attach.forEach(function (a) { if (a.no > nx) nx = a.no; });
-      attach.forEach(function (a) { if (!a.no) a.no = ++nx; });
-      var tags = attach.map(function (a) { return "[Image #" + a.no + "]"; }).join(" ");
-      drafts(agentId, (tags ? tags + " " : "") + ta.value);
+      savedDraft = draftText();
+      drafts(agentId, savedDraft);
       if (window.TSU_DRAFTIMG) TSU_DRAFTIMG.set(agentId, attach);
+      savedImages = window.TSU_DRAFTIMG?.get(agentId) || [];
     }
     function draftLoad() {
-      var d = drafts ? drafts(agentId) || "" : "", l = window.TSU_DRAFTIMG ? TSU_DRAFTIMG.get(agentId) : [];
-      ta.value = String(d).replace(TAG_RE, "");
-      attach = l.map(function (x) { return { no: x.no, media_type: x.media_type, data: x.data }; });
+      var d = T?.expandedDraft?.(agentId) ?? drafts?.(agentId) ?? "", l = window.TSU_DRAFTIMG?.get(agentId) || [];
+      if (d === savedDraft && l.length === savedImages.length && l.every((im, i) => im === savedImages[i])) return;
+      savedDraft = d; savedImages = l;
+      var byNo = new Map(l.map(im => [im.no, im])), removed = 0;
+      attach = [];
+      previousText = d.replace(/\[Image #(\d+)\]( ?)/g, function (tag, no, space, pos) {
+        var im = byNo.get(+no);
+        if (!im) return tag;
+        attach.push({...im, offset: pos - removed, space});
+        removed += tag.length; byNo.delete(+no);
+        return "";
+      });
+      byNo.forEach(im => attach.push({...im}));
+      ta.value = previousText;
       atts(); grow();
+    }
+    function prependDraft(text, images) {
+      T.prependDraft(agentId, text, images);
+      if (!P.closed && P.program?.agentId === agentId) P.program.syncDraft?.();
     }
     function atts() {
       attEl.hidden = !attach.length;
       sendB.classList.toggle("ready", !!(ta.value.trim() || attach.length));
-      attEl.innerHTML = attach.map(function (im, i) { return '<span class="gv-attimg"><img src="data:' + im.media_type + ";base64," + im.data + '" alt=""><button data-i="' + i + '" title="移除">×</button></span>'; }).join("");
+      attEl.innerHTML = attach.map(function (im, i) { return '<span class="gv-attimg"><img alt=""><button data-i="' + i + '" title="移除">×</button></span>'; }).join("");
+      attEl.querySelectorAll("img").forEach(function (img, i) {
+        if (attach[i].decoding) return;
+        var key = TSU_IMG.key(attach[i]);
+        TSU_IMG.loadUrl(key).then(src => { if (src && attEl.contains(img)) img.src = src; });
+      });
     }
     attEl.addEventListener("click", function (e) { var b = e.target.closest("button[data-i]"); if (b) { attach.splice(+b.dataset.i, 1); atts(); draftSave(); } });
-    function addImage(file) {
-      if (!file || !/^image\//.test(file.type)) return;
-      var img = new Image(), url = URL.createObjectURL(file);
-      img.onload = function () {
-        var k = Math.min(1, 1568 / Math.max(img.width, img.height)), c = document.createElement("canvas");
-        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        var type = file.type === "image/png" ? "image/png" : "image/jpeg", data = c.toDataURL(type, 0.9);
-        attach.push({ media_type: type, data: data.slice(data.indexOf(",") + 1) });
-        URL.revokeObjectURL(url);
-        atts(); draftSave();
-      };
-      img.src = url;
+    function addImage(file, fail) {
+      if (!file || !/^image\//.test(file.type)) { if (typeof fail === "function") fail(); return; }
+      attach.push(TSU_DRAFTIMG.fromFile(agentId, file, function () {
+        if (P.program === V && !P.closed && typeof fail === "function") fail();
+      }));
+      draftSave(); atts();
     }
+    function onDraftImage(e) {
+      if (e.detail.id !== agentId) return;
+      var im = attach.find(a => a.decoding === e.detail.decoding);
+      if (!im) return;
+      if (e.detail.data) { im.data = e.detail.data; delete im.decoding; }
+      else attach = attach.filter(a => a !== im);
+      atts();
+    }
+    document.addEventListener("tsu-draft-image", onDraftImage);
     fileIn.addEventListener("change", function () { Array.prototype.forEach.call(fileIn.files || [], addImage); fileIn.value = ""; });
     // 从访达、截图缩略图拖进来的（原生给的是路径，live.js 读成文件再交过来）：同 TUI 的 V.attachFile——当附图；不是图的插路径
-    V.attachFile = function (file, fail) { if (!file || !/^image\//.test(file.type)) { if (fail) fail(); return; } addImage(file); };
+    V.attachFile = addImage;
+    V.syncDraft = draftLoad;
     V.insertText = function (t) { ta.focus(); document.execCommand("insertText", false, t); };
     // 「+」（同 Claude App）：马上出一个小菜单——添加文件或照片…（系统的选文件窗口）、截取屏幕（有屏幕录制权限时，不拍 Vibing Studio 自己）。
     //   以前一点就直接开选文件的窗口：要等它从窗口顶上滑下来，看着像卡住了
@@ -892,7 +955,7 @@
         screenOK ? { label: "截取屏幕", icon: MI0.window, run: function () {
           nadosNative.call("screenshot", { excludeSelf: true, format: "jpeg", quality: 0.85, maxWidth: 1568 }).then(function (r) {
             var m = /^data:([^;]+);base64,(.*)$/.exec((r && r.dataURL) || "");
-            if (m) { attach.push({ media_type: m[1], data: m[2] }); atts(); ta.focus(); }
+            if (m) { attach.push({ media_type: m[1], data: m[2] }); draftSave(); atts(); ta.focus(); }
           }, function () {});
         } } : null,
       ].filter(Boolean), { el: b, side: "above" });
@@ -956,11 +1019,45 @@
     ta.addEventListener("blur", sugClose);
     function submit() {
       var v = ta.value, imgs = attach.slice();
+      var loading = imgs.filter(im => im.decoding);
+      if (loading.length) {
+        var ticket = V.imageSubmit = {};
+        Promise.all(loading.map(im => im.decoding)).then(function (results) {
+          if (V.imageSubmit === ticket && !P.closed && P.program === V && ta.value === v &&
+              imgs.length === attach.length && imgs.every((im, i) => im === attach[i]) && results.every(Boolean)) submit();
+        });
+        return;
+      }
+      if (rt.sendTerminal) {
+        if (!v.trim() && !imgs.length) return;
+        var cmd = !imgs.length && rt.headless() && TSU_AGY.localAction(v);
+        if (cmd) {
+          var local = CMDS.find(c => c.name === cmd && ["/model", "/context"].includes(cmd));
+          if (cmd === "/model") rt.prepareChoices().then(() => local.run()).catch(e => P.flash(e.message, 3000));
+          else if (local) local.run();
+          else if (cmd === "/usage") STUDIO.settings(P.win, "usage");
+          else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
+          else if (cmd === "/tasks") STUDIO.revealFamily(agentId, "bg", P);
+          else if (cmd === "/help" || cmd === "/goal") {
+            ta.value = cmd === "/help" ? "/" : "/goal ";
+            sugUpdate(); draftSave(); grow(); ta.focus(); return;
+          } else { P.flash("当前 AGY headless 会话不支持这条命令", 3000); return; }
+          ta.value = ""; draftSave(); atts(); grow();
+          return;
+        }
+        var prompt = draftText();
+        var images = imgs.map(im => ({no: im.no, tag: "[Image #" + im.no + "]", path: im.path, media_type: im.media_type, data: im.data}));
+        ta.value = ""; attach = []; draftSave(); atts(); grow();
+        rt.sendTerminal(prompt, images).catch(function (err) {
+          prependDraft(prompt, imgs);
+          if (P.program?.agentId === agentId && !P.closed) P.flash(err.message, 6000);
+        });
+        toBottom(); return;
+      }
       if (rt.agent && rt.agent.connector === "dsh") {
         if (!v.trim() && !imgs.length) return;
-        rt.send(v, imgs).then(function () {
-          if (ta.value === v) { ta.value = ""; draftSave(); atts(); grow(); }
-        }, function (err) { P.flash(err.message, 6000); });
+        rt.send(v, imgs).then(T.clearDraftOnDelivery(agentId, P),
+          function (err) { if (!P.closed && P.program?.agentId === agentId) P.flash(err.message, 6000); });
         return;
       }
       if (!v.trim() && !imgs.length) { if ((rt.queued || (rt.pending && rt.pending().some(function (q) { return q.local; }))) && rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; } // 空着回车：排着的马上发（同 Claude Code 的「Enter to send them now」）
@@ -988,10 +1085,10 @@
       if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "x" || e.key === "X")) { gCx = Date.now(); e.preventDefault(); return; }
       if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "s" || e.key === "S") && Date.now() - gCx < 2000) { gCx = 0; e.preventDefault(); if (hasQ && rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; }
       if (e.key === "Enter" && e.ctrlKey && !ta.value.trim() && !attach.length && hasQ && rt.sendNow) { e.preventDefault(); (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); return; }
-      if (e.key === "ArrowUp" && !ta.value && rt.takeQueued && (rt.queued || (rt.localQueued && rt.localQueued()))) { var q0 = rt.takeQueued(); if (q0) { e.preventDefault(); ta.value = q0.text; attach = (q0.images || []).concat(attach); atts(); grow(); status(); return; } }
+      if (e.key === "ArrowUp" && !ta.value && rt.takeQueued && (rt.queued || (rt.localQueued && rt.localQueued()))) { var q0 = rt.takeQueued(); if (q0) { e.preventDefault(); prependDraft(q0.text, q0.images); status(); return; } }
       if (e.key === "Enter" && !e.shiftKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing || e.keyCode === 229)) { e.preventDefault(); submit(); return; }
       if (e.key === "Escape") {
-        if (rt.queued && rt.takeQueued) { e.preventDefault(); var q = rt.takeQueued(); ta.value = q.text + (ta.value ? "\n" + ta.value : ""); attach = (q.images || []).concat(attach); atts(); grow(); status(); return; }
+        if (rt.queued && rt.takeQueued) { e.preventDefault(); var q = rt.takeQueued(); if (q) prependDraft(q.text, q.images); status(); return; }
         if (rt.stream && rt.interrupt && rt.interrupt()) { e.preventDefault(); return; }
       }
     });
@@ -1003,7 +1100,7 @@
       if (!b) return;
       if (b.dataset.g === "stop") { if (rt.interrupt) rt.interrupt(); }
       else if (b.dataset.g === "q-now") { if (rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); }
-      else if (b.dataset.g === "q-edit" && (rt.queued || (rt.localQueued && rt.localQueued())) && rt.takeQueued) { var q = rt.takeQueued(); if (q) { ta.value = q.text + (ta.value ? "\n" + ta.value : ""); attach = (q.images || []).concat(attach); atts(); grow(); } }
+      else if (b.dataset.g === "q-edit" && (rt.queued || (rt.localQueued && rt.localQueued())) && rt.takeQueued) { var q = rt.takeQueued(); if (q) prependDraft(q.text, q.images); }
       else return;
       status();
       ta.focus();
@@ -1017,7 +1114,13 @@
     var soon = function (t) { if (t) pend.add(t); if (raf) return; raf = requestAnimationFrame(function () { raf = 0; pend.forEach(redraw); pend.clear(); status(); }); };
     var off1 = rt.on(function (type, data) {
       if (!shown) return;
-      if (type === "append") { add(data); stick(); }
+      if (type === "append") {
+        if (P.textFilter === "body") {
+          var turns = rt.session().turns, prior = turns[turns.indexOf(data) - 1];
+          if (blocks.has(prior)) redraw(prior);
+        }
+        add(data); stick();
+      }
       else if (type === "turn") soon(data);
       else if (type === "reset") renderAll();
       else if (type === "prepend") { var h0 = scroll.scrollHeight, t0 = scroll.scrollTop; renderAll(); follow = false; scroll.scrollTop = t0 + (scroll.scrollHeight - h0); }
@@ -1050,7 +1153,16 @@
     var parkedAt = null;
     V.park = function () { if (shown && scroll.isConnected && scroll.clientHeight) parkedAt = { follow: follow, top: scroll.scrollTop }; };
     V.unpark = function () { var s0 = parkedAt; parkedAt = null; if (!shown) return; if (!s0 || s0.follow) toBottom(); else { follow = false; scroll.scrollTop = s0.top; jumpShow(); } };
-    V.detach = function () { if (host.classList.contains("gv-docked")) V.dock(null); off1(); off2(); closePop(); sugClose(); host.remove(); shown = false; }; // 输入框那一列在面板里：先搬回来，一起收走
+    V.detach = function () {
+      if (host.classList.contains("gv-docked")) V.dock(null);
+      off1(); off2();
+      document.removeEventListener("vs-clips", onClips);
+      document.removeEventListener("tsu-draft-image", onDraftImage);
+      scrollResize.disconnect(); farIO?.disconnect();
+      cancelAnimationFrame(raf); pend.clear();
+      clearInterval(tmT); clearInterval(spinT); clearTimeout(colT);
+      closePop(); sugClose(); host.remove(); shown = false;
+    };
     V.focus = function () { ta.focus({ preventScroll: true }); };
     V.exportText = function () { return rt.session().turns.map(function (t) { return (t.ask ? "> " + t.ask + "\n\n" : "") + (t.parts || []).filter(function (p) { return p.kind === "text"; }).map(function (p) { return p.text; }).join("\n\n"); }).join("\n\n"); };
     // 摘录本（clips.js）：这一处是哪一问——出处同终端界面（live.js 的 clipSrc）；标记了的那一问左边一道橙线
@@ -1077,7 +1189,8 @@
       var on = TSU_CLIPS.flagsFor(agentId).some(function (f) { var s0 = f.src || {}; return t.uuid ? s0.uuid === t.uuid : !!t.at && s0.at === t.at; });
       el.classList.toggle("vs-flag", on);
     }
-    document.addEventListener("vs-clips", function () { if (host.isConnected) blocks.forEach(function (el, t) { flagMark(el, t); }); });
+    function onClips() { if (host.isConnected) blocks.forEach(function (el, t) { flagMark(el, t); }); }
+    document.addEventListener("vs-clips", onClips);
     // 搜索结果、摘录本跳过来：滚到那一问，闪一下
     V.reveal = function (t) {
       var el = blocks.get(t);

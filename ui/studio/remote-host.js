@@ -90,7 +90,7 @@
   function gate(m) {
     var cid = m.from, ok = okMap();
     if (ok[cid]) { if (ok[cid].name !== m.cname && m.cname) { ok[cid].name = m.cname; setOk(ok); } return run(m); }
-    if (denied[cid]) return reply(cid, m.id, false, { code: "E_DENIED", message: "这台电脑没有允许这台设备" });
+    if (denied[cid]) return reply(cid, m.id, false, { code: "E_DENIED", message: "这台电脑没有允许当前设备" });
     if (pagePolicy() === "auto") { var o1 = okMap(); o1[cid] = { name: m.cname || "iPad", at: Date.now(), auto: true }; setOk(o1); return run(m); } // 同一账号：直接允许（记下来，设置里看得到、能移除）
     (waiting[cid] = waiting[cid] || []).push(m);
     if (asking[cid]) return;
@@ -101,7 +101,7 @@
       asking[cid] = false;
       var l = waiting[cid] || []; delete waiting[cid];
       if (yes) { var o2 = okMap(); o2[cid] = { name: nm, at: Date.now() }; setOk(o2); l.forEach(run); }
-      else { denied[cid] = true; l.forEach(function (x) { reply(cid, x.id, false, { code: "E_DENIED", message: "这台电脑没有允许这台设备" }); }); }
+      else { denied[cid] = true; l.forEach(function (x) { reply(cid, x.id, false, { code: "E_DENIED", message: "这台电脑没有允许当前设备" }); }); }
     });
   }
   // 这台 Mac 上的终端、命令的输出：是哪台 iPad 开的就送给哪台（这台 Mac 自己开的不往外送）
@@ -124,7 +124,7 @@
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.sys === "client-join") { clients[m.from] = m.cname || "iPad"; fire(); return; }
-      if (m.sys === "client-leave") { if (m.left > 0) return; delete clients[m.from]; Object.keys(owner).forEach(function (k) { if (owner[k] === m.from) delete owner[k]; }); Object.keys(tails).forEach(function (k) { if (tails[k].from === m.from) delete tails[k]; }); fire(); return; } // left：这台设备还开着几页（另一个窗口、远程桌面的旁路）——都关了才收拾它开的终端、程序
+      if (m.sys === "client-leave") { if (m.left > 0) return; delete clients[m.from]; Object.keys(owner).forEach(function (k) { if (owner[k] === m.from) delete owner[k]; }); Object.keys(tails).forEach(function (k) { if (tails[k].from === m.from) delete tails[k]; }); fire(); return; } // left：当前设备还开着几页（另一个窗口、远程桌面的旁路）——都关了才收拾它开的终端、程序
       if (m.sys) return;
       if (m.cmd && m.from) { lastRemote = Date.now(); clients[m.from] = m.cname || clients[m.from] || "iPad"; gate(m); }
     };

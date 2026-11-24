@@ -11,10 +11,12 @@ ROOT = Path(os.environ.get("DSH_HOME") or Path.home() / ".dsh") / "sessions"
 
 
 @contextmanager
-def records(path):
+def records(path, *, complete=False):
     with subprocess.Popen(["zstd", "-qdc", "--", str(path)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as proc:
         try:
             yield (json.loads(line) for line in proc.stdout if line.strip())
+            if complete and proc.wait() != 0:
+                raise OSError("DSH 会话记录解压不完整")
         finally:
             proc.stdout.close()
 
@@ -80,7 +82,7 @@ def transcript(path):
     started_at = None
     effort = ""
     progress = {"turn": 0, "steps": 0, "phase": ""}
-    with records(path) as rows:
+    with records(path, complete=True) as rows:
         for event in rows:
             kind = event.get("type")
             if kind == "turn/start":

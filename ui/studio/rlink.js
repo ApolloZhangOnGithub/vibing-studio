@@ -73,7 +73,7 @@
     }
     function done(m) {
       var p = pend[m.id];
-      if (!p) return; // 同一台设备另一页的回复（中转发给这台设备的每一页）
+      if (!p) return; // 同一台设备另一页的回复（中转发给当前设备的每一页）
       delete pend[m.id];
       clearTimeout(p.t);
       if (m.ok) { if (p.cmd !== "auth.prove") { L.auth = "ok"; setState("open"); } return p.resolve(m.value); }

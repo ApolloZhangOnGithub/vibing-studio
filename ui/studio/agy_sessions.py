@@ -1,7 +1,6 @@
 """Read Antigravity session metadata and transcripts from the local filesystem."""
 import argparse
 import asyncio
-import agy_acp
 import difflib
 import hashlib
 import fcntl
@@ -20,11 +19,42 @@ import json
 from pathlib import Path
 import re
 import shutil
+import uuid
 import sqlite3
 import subprocess
 import sys
 from urllib.parse import unquote, urlsplit
-from uuid import UUID
+from uuid import UUID, uuid5
+
+# This helper also runs from inside the signed macOS application bundle.
+sys.dont_write_bytecode = True
+import agy_acp
+
+
+def create_session():
+    with subprocess.Popen(["agy", "acp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as proc:
+        try:
+            for seq, (method, params) in enumerate([
+                ("initialize", {"protocolVersion": 1, "clientCapabilities": {}}),
+                ("session/new", {"cwd": str(Path.home()), "mcpServers": []})
+            ], 1):
+                proc.stdin.write(json.dumps(dict(jsonrpc="2.0", id=seq, method=method, params=params)) + "\n")
+                proc.stdin.flush()
+                for line in proc.stdout:
+                    msg = json.loads(line)
+                    if msg.get("id") == seq:
+                        if "error" in msg:
+                            raise ValueError(msg["error"]["message"])
+                        break
+                else:
+                    raise ValueError("AGY 连接已关闭")
+            sid = str(uuid.UUID(msg["result"]["sessionId"]))
+            log = Path.home() / ".gemini/antigravity-cli/brain" / sid / ".system_generated/logs/transcript.jsonl"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.touch(exist_ok=True)
+            return {"sessionId": sid}
+        finally:
+            proc.terminate()
 
 
 def transcripts():
@@ -36,6 +66,12 @@ def transcripts():
             if sid not in files or path.stat().st_mtime > files[sid].stat().st_mtime:
                 files[sid] = path
     return files
+
+
+def session_transcript(sid):
+    paths = (Path.home() / ".gemini" / folder / "brain" / sid / ".system_generated/logs/transcript.jsonl"
+             for folder in ("antigravity-cli", "antigravity"))
+    return max((p for p in paths if p.is_file()), key=lambda p: p.stat().st_mtime_ns, default=None)
 
 
 def workspace_dirs(root):
@@ -55,6 +91,21 @@ def workspace_dirs(root):
     except sqlite3.Error:
         pass
     return result
+
+
+def subagent_metadata(root):
+    db = root / "conversation_summaries.db"
+    if not db.is_file():
+        return {}
+    with closing(sqlite3.connect(db.as_uri() + "?mode=ro", uri=True)) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(conversation_summaries)")}
+        if not {"parent_conversation_id", "agent_name", "status", "killed"} <= columns:
+            return {}
+        return {sid: dict(parent=parent, role=role, updated=updated, status="stopped" if killed else
+                          "running" if status.endswith("_RUNNING") else "done")
+                for sid, parent, role, status, killed, updated in conn.execute(
+                    "SELECT conversation_id,parent_conversation_id,agent_name,status,killed,last_modified_time "
+                    "FROM conversation_summaries WHERE parent_conversation_id != ''")}
 
 
 def rows(path):
@@ -82,7 +133,7 @@ def title(path, sid):
     for row in rows(path):
         if row.get("type") == "USER_INPUT":
             return user_text(row.get("content", "")).strip()[:80] or sid
-    return sid
+    return sid if path.stat().st_size else "新会话"
 
 
 def history_rows(path):
@@ -146,6 +197,7 @@ def step_times(path):
     database = path.parents[4] / "conversations" / (path.parents[2].name + ".db")
     times = {}
     durations = {}
+    context_limit = None
     try:
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as db:
             for idx, kind, blob, payload in db.execute("SELECT idx, step_type, metadata, step_payload FROM steps WHERE step_type IN (14,15) AND status=3"):
@@ -168,19 +220,56 @@ def step_times(path):
                     continue
     except sqlite3.Error:
         pass
-    return times, durations
+    # AGY stores the effective checkpoint token limit in the executor configuration.
+    try:
+        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as db:
+            row = db.execute("SELECT data FROM executor_metadata ORDER BY idx DESC LIMIT 1").fetchone()
+            if row:
+                field = row[0]
+                for key in (10, 2, 5):
+                    field = dict(wire_fields(field))[key]
+                if isinstance(field, int) and field > 0:
+                    context_limit = field
+    except (sqlite3.Error, KeyError, TypeError, ValueError, IndexError):
+        pass
+    return times, durations, context_limit
 
 
-def history(path, known_prefix=None, known_turns=None, known_last=None):
-    times, durations = step_times(path)
+def log_revision(path):
+    try:
+        st = path.stat()
+        return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    except FileNotFoundError:
+        return None
+
+
+def history(path, known_prefix=None, known_turns=None, known_last=None, known_source=None):
+    times, durations, context_limit = step_times(path)
     events = []
     model = ""
     tools = deque()
     background = {}
     owner_start = active_since(path.parents[2].name)
+    settings_path = path.parents[4] / "settings.json"
+    settings = {}
+    if settings_path.is_file():
+        try:
+            settings = json.loads(settings_path.read_text())
+        except (OSError, ValueError):
+            pass
+    # WAL writes unrelated to displayed steps need no transcript parsing or diff generation.
+    logs = (path, path.with_name("transcript_full.jsonl"))
+    revisions = [log_revision(p) for p in logs]
+    inputs = [revisions, times, durations, context_limit, owner_start, settings.get("model"), settings.get("mode")]
+    source = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+    if known_source == source:
+        return {"unchanged": True, "source": source}
     owner_iso = datetime.fromtimestamp(owner_start / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     final_at = 0
+    context_tokens = None
     for row in history_rows(path):
+        if isinstance(row.get("input_tokens"), int):
+            context_tokens = row["input_tokens"] + (row.get("cache_read_tokens") or 0)
         if row.get("model"):
             model = row["model"]
         kind = row.get("type")
@@ -198,6 +287,10 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
             if task and task["status"] == "running" and ("finished with result:" in text or "was canceled with result:" in text or task.get("once")):
                 task["status"] = "cancelled" if "was canceled with result:" in text else "done"
                 task["endedAt"] = row.get("created_at")
+        if kind == "SYSTEM_MESSAGE" and row.get("step_index") == 0:
+            assignment = re.search(r"<SYSTEM_MESSAGE>\s*\[Message\] timestamp=\S+ sender=[0-9a-fA-F-]{36} priority=\S+ content=(.*?)\s*</SYSTEM_MESSAGE>\s*$", text, re.S)
+            if assignment:
+                kind, text = "USER_INPUT", assignment[1]
         if kind == "USER_INPUT":
             tools.clear()
             events.append(dict(role="user_message_chunk", text=user_text(text), start_ms=times.get(row.get("step_index")), created_at=row.get("created_at")))
@@ -219,7 +312,7 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
                         label = json.loads(label)
                     except ValueError:
                         pass
-                tool = dict(role="tool", id=str(len(events)), title=str(label), action=action,
+                tool = dict(role="tool", id=str(len(events)), title=str(label), action=action, created_at=row.get("created_at"),
                             kind="execute" if action == "run_command" else "tool")
                 if action in ("write_file", "edit_file") and isinstance(args.get("Path"), str):
                     tool["file_path"] = args["Path"]
@@ -238,11 +331,11 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
                         tool["diff"] = diff
                 if action == "ask_question":
                     tool["questions"] = args.get("questions") or []
-                if action == "manage_task":
+                if action in ("manage_task", "manage_subagents", "invoke_subagent"):
                     tool["taskArgs"] = args
                 if action == "schedule":
                     schedule = {}
-                    for key in ("CronExpression", "DurationSeconds", "Prompt"):
+                    for key in ("CronExpression", "DurationSeconds", "Prompt", "TimerCondition"):
                         value = args.get(key)
                         if isinstance(value, str) and value.startswith('"'):
                             try:
@@ -266,7 +359,7 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
                         desc=schedule.get("Prompt") or tool["title"], cmd=tool["title"], status="running",
                         once=bool(schedule and not schedule.get("CronExpression")),
                         createdAt=row.get("created_at"), duration=schedule.get("DurationSeconds"),
-                        cron=schedule.get("CronExpression"))
+                        cron=schedule.get("CronExpression"), condition=schedule.get("TimerCondition"))
                 args = tool.get("taskArgs") or {}
                 target = background.get(str(args.get("TaskId", "")).strip('"'))
                 states = {"DONE":"done", "COMPLETED":"done", "FAILED":"error", "CANCELLED":"cancelled", "CANCELED":"cancelled"}
@@ -279,13 +372,12 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
                     target["endedAt"] = completed[1] if completed else row.get("created_at")
                     target["status"] = "cancelled" if cancelled else states[status[1]]
             tool.update(status="failed" if row.get("error") else "completed", output=text, error=row.get("error"))
-    settings_path = path.parents[4] / "settings.json"
-    settings = {}
-    if settings_path.is_file():
-        try:
-            settings = json.loads(settings_path.read_text())
-        except (OSError, ValueError):
-            pass
+    # A conditional one-shot can end silently when its watched task finishes.
+    for timer in background.values():
+        if timer.get("once") and timer["status"] == "running":
+            watched = background.get(timer.get("condition"))
+            if watched and watched["status"] in ("done", "cancelled", "error"):
+                timer.update(status="cancelled", endedAt=watched.get("endedAt"))
     hashes = []
     starts = []
     for index, event in enumerate(events):
@@ -300,12 +392,13 @@ def history(path, known_prefix=None, known_turns=None, known_last=None):
     if 0 <= count < len(digests) and known_prefix == hashlib.sha256("".join(digests[:count]).encode()).hexdigest():
         reused = count + int(digests[count] == known_last)
     offset = starts[reused] if reused < len(starts) else len(events)
-    return {"finalAt": final_at, "background": list(background.values()), "events": events[offset:], "prefix": prefix,
+    return {"source": source if revisions == [log_revision(p) for p in logs] else None,
+            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "events": events[offset:], "prefix": prefix,
             "reuseTurns": reused, "turnHashes": digests, "model": model, "selectedModel": settings.get("model"),
             "mode": settings.get("mode") or "auto"}
 
 
-def terminal_sessions(foreground=False):
+def terminal_sessions(foreground=False, retired_marker=None):
     presence = Path.home() / ".gemini/antigravity-cli/presence"
     if not presence.is_dir():
         return {}
@@ -322,8 +415,21 @@ def terminal_sessions(foreground=False):
             owners[pid] = set()
         elif pid in owners and line.startswith("n") and line.endswith(".lock"):
             owners[pid].add(Path(line[1:]).stem)
+    retired_parents = set()
+    if retired_marker:
+        markers = [p for p in [retired_marker, *retired_marker.parent.glob("*/" + retired_marker.name)]
+                   if p.is_file() and p != activity_file(retired_marker.name)]
+    if retired_marker and markers:
+        opened = subprocess.run(["/usr/sbin/lsof", "-t", *map(str, markers)],
+                                capture_output=True, text=True, timeout=4)
+        retired_parents.update(opened.stdout.split())
     sessions = {}
     for pid, ids in owners.items():
+        if retired_parents:
+            parent = subprocess.run(["/bin/ps", "-p", pid, "-o", "ppid="],
+                                    capture_output=True, text=True).stdout.strip()
+            if parent in retired_parents:
+                continue
         fields = subprocess.run(["/bin/ps", "-p", pid, "-o", "tty=,pgid=,tpgid="],
                                 capture_output=True, text=True).stdout.split()
         if len(fields) != 3 or (foreground and fields[1] != fields[2]):
@@ -342,7 +448,51 @@ def terminal_sessions(foreground=False):
 
 
 def activity_file(sid):
-    return Path.home() / "Library/Application Support/Vibing Studio/agy-runs" / sid
+    base = Path.home() / "Library/Application Support/Vibing Studio/agy-runs"
+    # A reconnected conversation keeps its old worker alive for existing background tools.
+    route = base / (sid + ".connection")
+    if route.is_file():
+        generation = UUID(route.read_text().strip()).hex
+        return base / generation / sid
+    return base / sid
+
+
+def connection_for_send(sid):
+    marker = activity_file(sid)
+    executable = shutil.which("agy")
+    if not executable or not marker.exists():
+        return marker
+    installed = Path(executable).resolve()
+    metadata = installed.stat()
+    fields = marker.read_text().splitlines()[1:]
+    legacy_owner = fields[:1] == ["acp"] and fields != ["acp", agy_acp.OWNER_VERSION]
+    if (not legacy_owner and marker.stat().st_mtime_ns >= metadata.st_ctime_ns) or not Path(agy_acp.endpoint(marker)).exists():
+        return marker
+    if not agy_acp.turn_finished(transcripts().get(sid)):
+        return marker
+
+    # Only migrate a Studio-owned ACP child actually mapped to a replaced executable.
+    owners = subprocess.run(["/usr/sbin/lsof", "-t", str(marker)], capture_output=True, text=True).stdout.split()
+    for owner in owners:
+        children = subprocess.run(["/usr/bin/pgrep", "-P", owner, "-x", "agy"],
+                                  capture_output=True, text=True).stdout.split()
+        for child in children:
+            mapped = subprocess.run(["/usr/sbin/lsof", "-a", "-p", child, "-d", "txt", "-Fin"],
+                                    capture_output=True, text=True).stdout.splitlines()
+            inode = None
+            for field in mapped:
+                if field.startswith("i"):
+                    inode = field[1:]
+                if field.startswith("n") and (field[1:] == str(installed) or field[1:].startswith(str(installed) + ".")):
+                    if not inode or (not legacy_owner and inode == str(metadata.st_ino)):
+                        break
+                    base = marker.parent if marker.parent.name == "agy-runs" else marker.parent.parent
+                    generation = uuid5(UUID(sid), f"{metadata.st_dev}:{metadata.st_ino}:{agy_acp.OWNER_VERSION}").hex
+                    with tempfile.NamedTemporaryFile(mode="w", dir=base, delete=False) as tmp:
+                        tmp.write(generation)
+                    os.replace(tmp.name, base / (sid + ".connection"))
+                    return activity_file(sid)
+    return marker
 
 
 def active_since(sid):
@@ -362,7 +512,7 @@ def weekly_quota():
     # just the Gemini quota, never the rest of the account/status payload.
     with tempfile.TemporaryDirectory() as folder:
         sample = Path(folder) / "quota"
-        collector = "import json,sys,pathlib; q=json.load(sys.stdin).get('quota',{}).get('gemini-weekly'); q and pathlib.Path(sys.argv[1]).write_text(json.dumps(q))"
+        collector = "import json,sys,pathlib; q=json.load(sys.stdin).get('quota',{}); q and pathlib.Path(sys.argv[1]).write_text(json.dumps(q))"
         cmd = shlex.join([sys.executable, "-c", collector, str(sample)])
         settings = json.dumps({"statusLine": {"enabled": True, "command": cmd}})
         master, slave = pty.openpty()
@@ -378,9 +528,12 @@ def weekly_quota():
                         except BlockingIOError:
                             pass
                         if sample.exists() and sample.stat().st_size:
-                            q = json.loads(sample.read_text())
+                            buckets = json.loads(sample.read_text())
+                            q = buckets.get("gemini-weekly", {})
                             if isinstance(q.get("remaining_fraction"), (int, float)):
-                                return {"remaining": q["remaining_fraction"], "reset": q.get("reset_time")}
+                                return {"remaining": q["remaining_fraction"], "reset": q.get("reset_time"),
+                                        "buckets": [{"name": name, "remaining": item["remaining_fraction"], "reset": item.get("reset_time")}
+                                                    for name, item in buckets.items() if isinstance(item, dict) and isinstance(item.get("remaining_fraction"), (int, float))]}
                         if proc.poll() is not None:
                             break
                         time.sleep(0.12)
@@ -431,11 +584,13 @@ def submit_running(sid, message):
         return False
 
 
-def send_message(sid, message, model=None):
-    if not message.strip():
+def send_message(sid, message, model=None, configure=False, slash_command=False):
+    if not message.strip() and not (configure and model):
         sys.exit("消息为空")
-    marker_path = activity_file(sid)
-    request = {"message": message, "model": model}
+    marker_path = connection_for_send(sid)
+    if configure and active_since(sid) and marker_path.read_text().splitlines()[1:] != ["acp", agy_acp.OWNER_VERSION]:
+        sys.exit("当前回合使用旧版连接，结束后可切换模型")
+    request = {"message": message, "model": model, "configure": configure}
     result = agy_acp.exchange(marker_path, request)
     if result is not None:
         return result
@@ -458,9 +613,12 @@ def send_message(sid, message, model=None):
             if time.monotonic() >= until:
                 sys.exit("agy 的消息输入通道尚未就绪，草稿已保留")
             time.sleep(0.05)
-    tty = terminal_sessions().get(sid)
+    retired = marker_path.parent.parent / sid if marker_path.parent.name != "agy-runs" else None
+    tty = terminal_sessions(retired_marker=retired).get(sid)
     if tty and re.fullmatch(r"ttys[0-9]+", tty):
-        return send_iterm(sid, message)
+        if configure:
+            sys.exit("请在当前 AGY 终端切换模型")
+        return send_iterm(sid, message, slash_command=slash_command)
     if tty:
         sys.exit("此会话由外部后台进程持有，Studio 没有它的输入通道")
     path = transcripts().get(sid)
@@ -502,7 +660,7 @@ def interrupt(sid):
     return send_iterm(sid, "", cancel=True)
 
 
-def send_iterm(sid, message, cancel=False):
+def send_iterm(sid, message, cancel=False, slash_command=False):
     target = terminal_sessions(foreground=True).get(sid)
     if not target or not re.fullmatch(r"ttys[0-9]+", target[0]):
         sys.exit("该会话没有在终端前台运行")
@@ -524,7 +682,7 @@ if (count of procInfo) is not 3 then error "agy 已退出"
 if item 1 of procInfo is not item 2 of procInfo or item 3 of procInfo is not "agy" then error "agy 已离开前台"
 if item 4 of argv is "interrupt" then
 write s text (ASCII character 27) newline no
-else if msg starts with "/" and msg does not contain linefeed then
+else if item 4 of argv is "command" then
 select w
 select t
 select s
@@ -542,7 +700,8 @@ end tell
 end if
 error "找不到此会话的 iTerm2 分屏"
 end run"""
-    result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message, "interrupt" if cancel else "send"],
+    mode = "interrupt" if cancel else "command" if slash_command and "\n" not in message else "send"
+    result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message, mode],
                             input=script, capture_output=True, text=True, timeout=15)
     if result.returncode or result.stdout.strip() != "sent":
         sys.exit(result.stderr.strip() or "iTerm2 未确认输入")
@@ -604,6 +763,7 @@ def main():
     parser.add_argument("--session", type=UUID)
     parser.add_argument("--interrupt", type=UUID)
     parser.add_argument("--known-prefix")
+    parser.add_argument("--known-source")
     parser.add_argument("--known-turns", type=int)
     parser.add_argument("--known-last")
     parser.add_argument("--screen", type=UUID)
@@ -611,9 +771,14 @@ def main():
     parser.add_argument("--send-iterm", type=UUID)
     parser.add_argument("--models", action="store_true")
     parser.add_argument("--weekly", action="store_true")
+    parser.add_argument("--configure", type=UUID)
     parser.add_argument("--model")
     parser.add_argument("--message")
+    parser.add_argument("--slash-command", action="store_true", help="Submit a recognized command in the interactive terminal")
+    parser.add_argument("--create", action="store_true")
     args = parser.parse_args()
+    if args.create:
+        return create_session()
     if args.acp_owner:
         asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner))))
         return {}
@@ -625,26 +790,39 @@ def main():
                 for key, name in [row.split("\t", 1)]]
     if args.interrupt:
         return interrupt(str(args.interrupt))
+    if args.configure:
+        return send_message(str(args.configure), "", args.model, configure=True)
     if args.send:
-        return send_message(str(args.send), args.message or "", args.model)
+        return send_message(str(args.send), args.message or "", args.model, slash_command=args.slash_command)
     if args.send_iterm:
-        return send_iterm(str(args.send_iterm), args.message or "")
+        return send_iterm(str(args.send_iterm), args.message or "", slash_command=args.slash_command)
     if args.screen:
         return screen_status(str(args.screen))
-    files = transcripts()
     if args.session:
-        path = files.get(str(args.session))
+        path = session_transcript(str(args.session))
         if not path:
             sys.exit("找不到本机会话文件")
-        return history(path, args.known_prefix, args.known_turns, args.known_last)
+        return history(path, args.known_prefix, args.known_turns, args.known_last, args.known_source)
+    files = transcripts()
     try:
         terminals = terminal_sessions()
     except (OSError, subprocess.TimeoutExpired):
         terminals = None
     sources = {root: workspace_dirs(root) for root in {path.parents[4] for path in files.values()}}
+    children = {root: subagent_metadata(root) for root in sources}
     sessions = []
     for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True):
         dirs = sources[path.parents[4]].get(sid, [])
+        child = children[path.parents[4]].get(sid)
+        if child:
+            if child["status"] != "stopped" and child.get("updated") and path.stat().st_mtime > datetime.fromisoformat(child["updated"]).timestamp():
+                child["status"] = "done" if agy_acp.turn_finished(path) else "running"
+            first = next(rows(path), {})
+            child["createdAt"] = first.get("created_at")
+            assignment = re.search(r"sender=" + re.escape(child["parent"]) + r" [^\n]*?content=([^\n]+)", first.get("content", ""))
+            label = assignment[1][:120] if assignment else child["role"] or "Subagent"
+        else:
+            label = title(path, sid)
         started = active_since(sid)
         queued = 0
         if started and not Path(agy_acp.endpoint(activity_file(sid))).exists():
@@ -654,7 +832,7 @@ def main():
                 pass
         sessions.append(dict(workingSince=started, queuedInputs=queued, path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
                              tty=terminals.get(sid, "") if terminals is not None else None,
-                             sessionId=sid, title=title(path, sid),
+                             sessionId=sid, title=label, subagent=child,
                              updatedAt=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()))
     return {"sessions": sessions}
 

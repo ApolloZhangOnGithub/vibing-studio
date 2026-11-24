@@ -86,7 +86,7 @@
         V.errTitle = "";
         V.err = code === "E_OFFLINE" || V.L.state === "offline" ? t("此 Mac 上的 Vibing Studio 未打开", "Vibing Studio isn’t open on this Mac") :
           code === "E_DENIED" && /screen\./.test(msg) ? t("此 Mac 上的 Vibing Studio 需要更新", "Vibing Studio on this Mac needs updating") :
-          code === "E_DENIED" ? t("此 Mac 未授权这台设备", "This Mac hasn’t authorized this device") :
+          code === "E_DENIED" ? t("此 Mac 未授权当前设备", "This Mac hasn’t authorized this device") :
           code === "E_TIMEOUT" ? t("此 Mac 没有响应", "This Mac isn’t responding") : msg;
       }
       paint(V);

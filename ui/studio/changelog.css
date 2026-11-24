@@ -31,3 +31,12 @@ html.light .cl-x:hover { background: rgba(0, 0, 0, 0.06); }
   font: 13.5px/1.55 var(--ca-font, var(--mac-font, var(--st-font, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif))); -webkit-user-select: text; user-select: text; }
 .cl-page h1 { margin: 0 0 8px; font-size: 24px; font-weight: 600; }
 html.st-macos .cl-page { font-family: var(--mac-font); background: var(--mac-content, #1e1e20); color: var(--mac-fg, #ececef); }
+
+.cl-content { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.cl-tui { box-sizing: border-box; position: relative; height: 100%; overflow: auto; overscroll-behavior: none; outline: 0;
+  padding: 0 10px; background: var(--st-bg); -webkit-user-select: text; user-select: text; }
+.cl-modal .cl-tui { height: auto; }
+.cl-tui pre.cl-rows { --ttu-font-size: var(--tsu-fs, 12px); position: static; margin: 0; padding: 1lh 0 0; overflow: visible; }
+.cl-tui pre.cl-rows:last-child { padding-bottom: 2lh; }
+.cl-metric { position: absolute; width: 0; height: 0; overflow: hidden; }
+.cl-tui pre.cl-probe { position: absolute; width: max-content; height: 1lh; padding: 0; visibility: hidden; pointer-events: none; }
