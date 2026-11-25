@@ -3237,6 +3237,24 @@
   }
   function cellW(el) { var pr = document.createElement("span"); pr.textContent = "0".repeat(100); pr.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:12px Monaco, monospace"; el.appendChild(pr); var w = pr.offsetWidth / 100 || 7.2; pr.remove(); return w; }
   // 读进来：20 秒还没读完就说一声（不一直「读取中…」），能点「重试」；读完了又来的结果不要（已经超时了）
+  async function readImageUrl(path, size, cancelled) {
+    var parts = [];
+    for (var offset = 0; offset < size;) {
+      if (cancelled()) return null;
+      var part = await LOC().read(path, {offset, max: Math.min(4 * 1024 * 1024, size - offset)});
+      if (!part.byteLength) throw new Error("图片读取不完整");
+      parts.push(part);
+      offset += part.byteLength;
+    }
+    var ext = extOf(path);
+    return cancelled() ? null : URL.createObjectURL(new Blob(parts, {type: MIME[ext] || "image/" + ext}));
+  }
+  async function referencedImageUrl(path, cancelled) {
+    if (!LOC() || !IMG[extOf(path)]) return null;
+    var stat = await LOC().stat(path);
+    if (!stat || stat.type === "dir" || cancelled()) return null;
+    return readImageUrl(path, stat.size, cancelled);
+  }
   function loadFile(path, done) {
     var f = FILES[path], over = false, t0 = Date.now();
     var fin = function () { if (over) return; over = true; clearTimeout(tm); f.loadMs = Date.now() - t0; done(); scheduleFileTrim(); };
@@ -3252,16 +3270,10 @@
       if (nat && OFFICE[ext]) { f.kind = "office"; f.native = true; return fin(); }
       if (IMG[ext]) {
         return (async () => {
-          const parts = [];
-          for (let offset = 0; offset < st.size;) {
-            const part = await LOC().read(path, {offset, max: Math.min(4 * 1024 * 1024, st.size - offset)});
-            if (over) return;
-            if (!part.byteLength) throw new Error("图片读取不完整");
-            parts.push(part);
-            offset += part.byteLength;
-          }
+          var url = await readImageUrl(path, st.size, () => over);
+          if (!url) return;
           if (f.url) URL.revokeObjectURL(f.url);
-          f.url = URL.createObjectURL(new Blob(parts, {type: MIME[ext] || "image/" + ext}));
+          f.url = url;
           f.kind = "image";
           fin();
         })();
@@ -6602,6 +6614,6 @@
     settings: function (tw, sec) { settings(tw, sec); }, // 打开设置的某一页（"connectors/claude-code"、"appearance:tabBar"） // 当主机的页面窗口常被挡住（不看的页面平时不查）：它自己按时来查
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）
     needsList: needsList, // 有新版本了（页面的脚本在服务器上变了）：重新载入就用上
-    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview,
+    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview, referencedImageUrl: referencedImageUrl,
   };
 })();

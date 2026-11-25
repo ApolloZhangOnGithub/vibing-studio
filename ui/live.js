@@ -1174,7 +1174,7 @@
   function webLink(a) {
     return a && /^https?:$/i.test(a.protocol) && a.href.split("#")[0] !== location.href.split("#")[0];
   }
-  function hidePathHint() { if (pathHint) pathHint.remove(); pathHint = hintAnchor = null; }
+  function hidePathHint() { if (pathHint) { pathHint.remove(); if (pathHint.dataset.blob) URL.revokeObjectURL(pathHint.dataset.blob); } pathHint = hintAnchor = null; }
   function fileLinkHint(event) {
     var a = event.target.closest?.(pathTarget);
     if (!a || a === hintAnchor) return;
@@ -1182,16 +1182,36 @@
     if (!value && webLink(a)) value = a.href;
     if (!value && a.hash?.startsWith("#vs-file:")) { try { value = decodeURIComponent(a.hash.slice(9)); } catch (_) { return; } }
     if (!value) return hidePathHint();
-    if (pathHint && pathHint.textContent === value) { hintAnchor = a; return; }
+    if (pathHint && pathHint.dataset.target === value) { hintAnchor = a; return; }
     hidePathHint();
     hintAnchor = a;
     pathHint = document.createElement("div");
     pathHint.className = "vs-path-hint";
+    pathHint.dataset.target = value;
     pathHint.textContent = value;
     document.body.append(pathHint);
-    var rect = a.getBoundingClientRect(), height = pathHint.offsetHeight;
-    pathHint.style.left = Math.max(4, Math.min(rect.left, innerWidth-pathHint.offsetWidth-4))+"px";
-    pathHint.style.top = (rect.top >= height+6 ? rect.top-height-4 : rect.bottom+4)+"px";
+    var hint = pathHint;
+    function place() {
+      var rect = hintAnchor.getBoundingClientRect(), height = hint.offsetHeight;
+      hint.style.left = Math.max(4, Math.min(rect.left, innerWidth-hint.offsetWidth-4))+"px";
+      hint.style.top = (rect.top >= height+6 ? rect.top-height-4 : Math.min(innerHeight-height-4, rect.bottom+4))+"px";
+    }
+    place();
+    if (!webLink(a) && a.hash?.startsWith("#vs-file:") && window.STUDIO?.referencedImageUrl) {
+      STUDIO.referencedImageUrl(value, () => hint !== pathHint).then(async url => {
+        if (!url) return;
+        if (hint !== pathHint) { URL.revokeObjectURL(url); return; }
+        hint.dataset.blob = url;
+        var img = new Image();
+        img.alt = value.split("/").pop();
+        img.src = url;
+        await img.decode();
+        if (hint !== pathHint) return;
+        hint.className = "st-imgpeek on";
+        hint.replaceChildren(img);
+        place();
+      }).catch(() => {}); // Keep the path visible when the referenced image cannot be read.
+    }
   }
   document.addEventListener("pointerover", fileLinkHint);
   document.addEventListener("focusin", fileLinkHint);

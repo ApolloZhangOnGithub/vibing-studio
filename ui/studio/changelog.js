@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-25", ver: "0.2.2.3", items: { new: [
+      ["悬停会话里的本地图片引用可预览图片，点击文件名可打开原图。", "Hover over a local image reference in a conversation to preview it, or click its filename to open the image."]
+    ] } },
     { date: "2026-11-25", ver: "0.2.2.2", items: { fixed: [
       ["修复 macOS 状态行菜单缺少上下文和额度图标的问题。AGY 等待后台命令时显示已等待时间和已知的通知超时。", "Show context and quota icons in the native status menu. AGY background waits show elapsed time and the command’s notification timeout when available."]
     ] } },
