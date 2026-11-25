@@ -333,8 +333,8 @@
   var hiddenName = function (x) { return !!x.hidden || x.name[0] === "." || JUNK.test(x.name); };
   var visible = function (l) { return XV.hidden ? l : l.filter(function (x) { return !hiddenName(x); }); }; // 同访达：点开头的、带隐藏标记的（~/Library、/bin……）、上面那些都不显示
   function fsItem(dir, x) {
-    var p = (dir === "/" ? "" : dir) + "/" + x.name, app = x.dir && /\.app$/i.test(x.name);
-    return { kind: app ? "app" : x.dir ? "dir" : "file", name: x.name, label: nameOf(p, x.name), path: p, go: x.dir && !app ? argOf(x.target || p) : null, size: x.dir ? null : x.size, time: x.mtime, dot: hiddenName(x), link: !!x.link }; // 访达的替身指着文件夹：往里走是它指着的那个
+    var p = (dir === "/" ? "" : dir) + "/" + x.name, app = x.dir && /\.app$/i.test(x.target || x.name);
+    return { kind: app ? "app" : x.dir ? "dir" : "file", name: x.name, label: nameOf(p, x.name), path: p, target: x.target, go: x.dir && !app ? argOf(x.target || p) : null, size: x.dir ? null : x.size, time: x.mtime, dot: hiddenName(x), link: !!x.link }; // 访达的替身指着文件夹：往里走是它指着的那个
   }
   // Agent Finder 里的一个文件夹（p 空 = 整个卷）：里面（多少层都算）有几个 agent、最近什么时候有动静
   var agentsIn = function (vol) { return A.list().concat(A.archived ? A.archived() : []).filter(function (a) { return A.volOf(a.id) === vol; }); };
@@ -408,11 +408,15 @@
   var THUMBABLE = /\.(png|jpe?g|gif|webp|heic|bmp|tiff?|svg|pdf|mov|mp4|m4v|key|pages|numbers|docx?|xlsx?|pptx?|psd|ai|sketch|fig)$/i;
   function thumbOf(it, px) {
     if (!canThumb || !it.path || it.cloud) return null;
-    var want = it.kind === "app" || (it.kind === "file" && THUMBABLE.test(it.name || "")) || (it.kind === "dir" && glyphOf(it.path) === "" && /\.(app|bundle|framework|photoslibrary)$/i.test(it.name || ""));
+    var want = it.kind === "app" || (it.kind === "file" && THUMBABLE.test(it.name || "")) || it.kind === "dir";
     if (!want) return null;
-    var key = it.path + "|" + px + "|" + (it.time || 0);
+    var path = it.target || it.path;
+    // Request the standard macOS folder artwork once per size for ordinary folders.
+    var generic = it.kind === "dir" && !glyphOf(path) && !/\.(app|bundle|framework|photoslibrary)$/i.test(path);
+    if (generic) path = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericFolderIcon.icns";
+    var key = path + "|" + px + "|" + (generic ? 0 : it.time || 0);
     if (THUMB[key]) return THUMB[key];
-    if (!thumbWait[key]) { thumbWait[key] = true; thumbQ.push({ key: key, path: it.path, px: px }); thumbPump(); }
+    if (!thumbWait[key]) { thumbWait[key] = true; thumbQ.push({ key: key, path: path, px: px }); thumbPump(); }
     return null;
   }
   // 排队要缩略图：以前一个文件夹里有几百个就同时向原生要几百个（快速查看一下子全在生成），每个都慢。现在同时最多 4 个，按画的先后（上面的先）
@@ -497,7 +501,27 @@
       out.push(seg("agents", "Agent", pbIcon("agents")));
       agentTrail(w).forEach(function (x) { out.push(seg(x[0], x[1], x[2] === "agent" ? bundleIcon(w.a) : /^conn:/.test(x[2]) ? connIcon(x[2].slice(5)) : pbIcon(x[2]))); });
     }
-    return out.join('<i class="xp-pbsep">›</i>');
+    return '<span class="xp-pbtrail"><button hidden class="xp-crmore xp-pbmore" aria-label="' + tr('上级目录','Parent folders') + '">…</button>' + out.join('<i class="xp-pbsep">›</i>') + '</span>';
+  }
+  function fitPathBar(bar) {
+    if (!bar.clientWidth) return;
+    const trail = bar.firstChild, more = trail.firstChild;
+    const segments = Array.from(trail.querySelectorAll(".xp-pb"));
+    more.hidden = true;
+    for (const el of trail.children) if (el !== more) el.hidden = false;
+    if (trail.scrollWidth <= bar.clientWidth) return;
+    more.hidden = false;
+    let excess = trail.scrollWidth - bar.clientWidth;
+    const hidden = [];
+    for (const seg of segments.slice(0, -1)) {
+      if (excess <= 0) break;
+      const sep = seg.nextElementSibling;
+      excess -= seg.offsetWidth + sep.offsetWidth + 4;
+      hidden.push([seg.dataset.go, seg.textContent]);
+      seg.hidden = sep.hidden = true;
+    }
+    more.hidden = !hidden.length;
+    more.dataset.hidden = JSON.stringify(hidden);
   }
   function crumbs(w) {
     var cr = function (go, label) { return '<span class="xp-cr" data-go="' + esc(go) + '">' + esc(label) + "</span>"; }, out = [];
@@ -982,22 +1006,18 @@
     el.style.transition = "transform .26s " + QL_EASE + ", opacity .16s ease-out";
     el.style.transform = "none"; el.style.opacity = "1";
   }
-  // 内容变了（换了一项、慢的内容到了）：大小动画过去
   function qlResize(o) {
-    var el = o.el, f = el.getBoundingClientRect(), r = qlMeasure(o);
-    if (reduceMotion() || !o.shown) { qlPlace(el, r); return; }
-    qlPlace(el, { x: f.left, y: f.top, w: f.width, h: f.height });
-    void el.offsetWidth;
-    el.style.transition = ["left", "top", "width", "height"].map(function (k) { return k + " .22s " + QL_EASE; }).join(", ");
-    qlPlace(el, r);
+    qlPlace(o.el, qlMeasure(o));
+    o.el.style.transform = "none";
+    o.el.style.opacity = "1";
   }
   // 画这一项：标题行 + 内容；慢的（读文件、缩略图）好了再 ready()
   function qlFill(o, ready) {
-    var it = o.it, key = o.key, g = gui(), el = o.el, name = esc(it.label || it.name), meta = esc(metaOf(it)), fin = false;
+    var it = o.it, key = o.key, g = gui(), el = o.el, name = esc(it.label || it.name), fin = false;
     var btns = '<span class="xp-qlbtns"><button data-act="ql-open">打开</button><button data-act="ql-close" title="关闭 (空格)">×</button></span>';
     el.className = "xp-ql " + (g ? "gv" : "tui");
-    el.innerHTML = g ? '<div class="xp-qlh">' + iconOf(it) + '<div class="xp-qlt"><span class="xp-qln">' + name + '</span><span class="xp-qlm">' + meta + '</span></div><span class="xp-grow"></span>' + btns + '</div><div class="xp-qlb"></div>'
-      : '<div class="xp-qlh"><span></span><span class="xp-qln">' + name + "</span>" + btns + '</div><div class="xp-qlm">' + meta + '</div><div class="xp-qlb"></div>';
+    el.innerHTML = g ? '<div class="xp-qlh">' + iconOf(it) + '<div class="xp-qlt"><span class="xp-qln">' + name + '</span></div><span class="xp-grow"></span>' + btns + '</div><div class="xp-qlb"></div>'
+      : '<div class="xp-qlh"><span></span><span class="xp-qln">' + name + "</span>" + btns + '</div><div class="xp-qlb"></div>';
     var b = el.querySelector(".xp-qlb");
     var set = function (html, mode, tw, cols) {
       if (o.key !== key || fin) return;
@@ -1063,7 +1083,7 @@
     var key = qlKey(it);
     if (ql && V) ql.V = V;
     if (ql && ql.key === key) return ql.el; // 同一项（定时重画会走到这里）：不动
-    if (ql) { var o0 = ql; o0.it = it; o0.key = key; qlFill(o0, function () { if (ql === o0) qlResize(o0); }); return o0.el; }
+    if (ql) { if (!ql.shown) { ql.shown = true; ql.el.style.visibility = ""; ql.bg.style.opacity = "1"; } var o0 = ql; o0.it = it; o0.key = key; qlFill(o0, function () { if (ql === o0) qlResize(o0); }); return o0.el; }
     var o = ql = { it: it, key: key, V: V || null, shown: false };
     o.bg = document.createElement("div"); o.bg.className = "xp-qlbg"; document.body.appendChild(o.bg);
     o.el = document.createElement("div"); o.el.style.visibility = "hidden"; document.body.appendChild(o.el);
@@ -1084,6 +1104,12 @@
       o.M.layer.tabIndex = -1; // 焦点先放在这一层上（窗口还没显示出来、点不到）：按键都先到这里
       try { o.M.layer.focus({ preventScroll: true }); } catch (e) { /* 聚不了焦 */ }
     }
+    o.el.addEventListener("dragstart", e => {
+      if (e.target.matches(".xp-qlb img") && o.it.path && !o.it.cloud) {
+        e.dataTransfer.setData("application/x-tsu-paths", JSON.stringify([o.it.path]));
+        e.dataTransfer.effectAllowed = "copy";
+      }
+    });
     var src = qlSrc(o);
     var show = function () { if (o.shown || ql !== o) return; o.shown = true; qlZoomIn(o, qlMeasure(o), src); };
     qlFill(o, function () { if (ql !== o) return; if (!o.shown) show(); else qlResize(o); });
@@ -1144,8 +1170,8 @@
     ["gallery", "画廊", "Gallery", VSV('<rect x="1.8" y="2.3" width="12.4" height="7.4" rx="1.2"/><rect x="2" y="11.2" width="3" height="2.5" rx=".6"/><rect x="6.5" y="11.2" width="3" height="2.5" rx=".6"/><rect x="11" y="11.2" width="3" height="2.5" rx=".6"/>'), 4],
   ];
   // 分栏（同访达）：从最上面一层（主目录 / 磁盘；Agent Finder 是几个卷）一层层列到现在这个地方，每层一栏；走过的那一项在上一栏里亮着；
-  //   最后一栏是这里（文件、空文件夹、正在读都在这一栏里说，不换别的看法）。每栏顶上一行小字说这一层选中的（没选就是多数）是什么；
-  //   栏是封闭的框：竖线到底，顶上那行下面的细线连着各栏一直到右边
+  //   最后一栏是这里（文件、空文件夹、正在读都在这一栏里说，不换别的看法）。
+  //   栏是封闭的框：竖线到底
   function colChain(w) {
     if (w.fs) {
       var h = home(), path = w.path, base = h && (path === h || path.indexOf(h + "/") === 0) ? h : "/", chain = [base];
@@ -1156,24 +1182,20 @@
   }
   var goOfItem = function (it) { return it.go || (it.kind === "agent" && it.a ? agentArg(it.a) : ""); }; // 这一项往里走是哪里（文件夹、卷、agent 的包）
   var leafInCols = function (it) { return !(it.go && it.kind === "dir"); }; // 分栏里点了不开新一栏的：文件、App、agent（包是一个整体，同 .app）、会话、身份卡
-  var colKind = function (it) { return it.volume ? tr("宗卷", "Volume") : kindName(it); };
   function columnsHtml(w, V, list) {
     var chain = colChain(w), lastI = chain.length - 1;
     var cols = chain.map(function (arg, ci) {
       var last = ci === lastI, fake = { arg: arg }, items0 = last ? list : itemsOf(where(arg), fake, function () { redrawAll(); });
       if (items0 && !last) items0 = sortItems(items0);
-      var next = chain[ci + 1], hit = null, rowsH = (items0 || []).map(function (it, i) {
+      var next = chain[ci + 1], rowsH = (items0 || []).map(function (it, i) {
         var g = goOfItem(it), on = last ? i === V.sel : !!next && (g === next || (it.path && argOf(it.path) === next)), dir = !leafInCols(it);
         var was = last && V.sel < 0 && V.trail && V.trail.at === (V.arg || "") && V.trail.name === it.name; // ← 退出来之前在这一栏选着的：淡的底色（再 → 回到它）
-        if (on) hit = it;
         return '<div' + dragAttr(it) + (last ? ' data-i="' + i + '"' : "") + ' class="xp-crow' + (on ? (last || ci === lastI - 1 && V.sel < 0 ? " on" : " trail") : was ? " trail" : "") + (it.dot ? " dot" : "") + '"' + (it.path ? ' data-cpath="' + esc(it.path) + '"' : "") +
           ' data-cin="' + esc(arg) + '" data-cname="' + esc(it.name) + '"' + (dir ? ' data-cgo="' + esc(it.dflt || g) + '"' : "") + ">" + iconOf(it) + '<span class="xp-cn">' + nmH(it) + "</span>" + (dir ? '<span class="xp-carr">›</span>' : "") + "</div>";
       }).join("");
-      var kinds = {}, top = "";
-      (items0 || []).forEach(function (it) { var k = colKind(it); kinds[k] = (kinds[k] || 0) + 1; if (!top || kinds[k] > kinds[top]) top = k; });
-      var head = hit ? colKind(hit) : top, err = last && w.fs && cache[w.path] && cache[w.path].err;
+      var err = last && w.fs && cache[w.path] && cache[w.path].err;
       var empty = !items0 ? "…" : err ? tr("无法读取这个文件夹", "Can't read this folder") : !items0.length ? (last && V.q ? tr("未找到结果", "No Results") : tr("空文件夹", "Empty Folder")) : "";
-      return '<div class="xp-col" data-col="' + esc(arg) + '"><div class="xp-colh">' + esc(head) + '</div><div class="xp-colb">' + (rowsH || '<div class="xp-cempty">' + esc(empty) + "</div>") + "</div></div>";
+      return '<div class="xp-col" data-col="' + esc(arg) + '"><div class="xp-colb">' + (rowsH || '<div class="xp-cempty">' + esc(empty) + "</div>") + "</div></div>";
     });
     return '<div class="xp-cols">' + cols.join("") + '<div class="xp-col xp-colfill"></div></div>'; // 右边空出来的：空白（同访达），不画顶上那行，不像多了一栏
   }
@@ -1286,7 +1308,13 @@
         var had = host.querySelector(".xp-q"), qFocus = had && document.activeElement === had, main0 = host.querySelector(".xp-main"), top = main0 ? main0.scrollTop : 0, mFocus = main0 && document.activeElement === main0;
         var side0 = host.querySelector(".xs-scroll"), stop = side0 ? side0.scrollTop : 0, pane0 = host.querySelector(".xp-pane"), ptop = pane0 && host.dataset.psel === String(V.arg) + "|" + V.sel ? pane0.scrollTop : 0;
         var colTop = {}; host.querySelectorAll(".xp-col[data-col] > .xp-colb").forEach(function (b) { colTop[b.parentNode.dataset.col] = b.scrollTop; }); // 分栏：每一栏自己滚到哪
-        host.dataset.h = h; host.innerHTML = h; host.dataset.psel = String(V.arg) + "|" + V.sel;
+        if (host.pathObserver) host.pathObserver.disconnect();
+        host.dataset.h = h; host.innerHTML = h;
+        const bar = host.querySelector(".xp-pathbar");
+        fitPathBar(bar);
+        host.pathObserver = new ResizeObserver(() => fitPathBar(bar));
+        host.pathObserver.observe(bar);
+        host.dataset.psel = String(V.arg) + "|" + V.sel;
         host.querySelectorAll(".xp-col[data-col] > .xp-colb").forEach(function (b) {
           if (colTop[b.parentNode.dataset.col]) b.scrollTop = colTop[b.parentNode.dataset.col];
           var r = b.querySelector(".xp-crow.on, .xp-crow.trail");
@@ -1879,7 +1907,7 @@
       });
     },
     focus: function (host) { var m = host.querySelector(".xp-main"); if (m) m.focus({ preventScroll: true }); },
-    detach: function (host, P, arg, V) { if (ql && (!ql.V || ql.V === V)) quickLook(null, null, true); },
+    detach: function (host, P, arg, V) { host.pathObserver?.disconnect(); if (ql && (!ql.V || ql.V === V)) quickLook(null, null, true); },
   };
   // 快速查看那块上的按钮
   document.addEventListener("click", function (e) {

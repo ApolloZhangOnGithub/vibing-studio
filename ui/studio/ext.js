@@ -176,7 +176,8 @@
   ];
   CONN.forEach(function (x) { if (x.id === "claude-code") { x.cmd = "claude"; x.desc = "在 Vibing Studio 里用 Claude Code：所有会话，一处接着聊"; x.descEn = "Work with Claude Code in Vibing Studio: every session, picked up in one place"; } }); // 一句话（同扩展商店）：不写目录、路径
   // 这台 Mac 上找没找到命令（缓存着：下次载入时马上就有；App 里一会儿再查一次）
-  var FOUND_KEY = "tsu-conn-found";
+  var hostKey = key => window.TSU_LOCAL?.hostKey(key) || key;
+  var FOUND_KEY = hostKey("tsu-conn-found");
   var found = (function () { try { return JSON.parse(localStorage.getItem(FOUND_KEY) || "{}") || {}; } catch (e) { return {}; } })();
   var csubs = [];
   // 暂时停用：这次打开 App 期间（sessionStorage：刷新页面还在，重新打开 App 就没了）
@@ -272,21 +273,26 @@
       return m.newSession(cwd || h, String(prompt || "").trim(), opts || null);
     },
   };
-  if (window.nadosNative && nadosNative.local) setTimeout(detect, 1500);
+
   // 「设置 › 连接器」：每个一节——开关、找没找到命令（版本、在哪）；内置的 Paimon 一直开着
   document.addEventListener("DOMContentLoaded", function () {
     var ST = window.STUDIO;
     if (!ST || !ST.addSettings) return;
     var C = window.TSU_CONNECTORS, local = function () { return !!(window.nadosNative && nadosNative.local); };
       var quote = function (v) { return "'" + String(v).replace(/'/g, "'\\''") + "'"; };
-      async function readAgy(args, onDelta) {
-        var dir = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir;
-        if (!dir || !C.on("agy") || nadosNative.remote) throw new Error("请在本机 App 中启用连接器");
-        var cmd = ["python3", dir + "/studio/agy_sessions.py"].concat(args).map(quote).join(" ");
+      async function readAgy(args, onDelta, onProgress) {
+        if (!local() || !C.on("agy")) throw new Error("AGY 连接器未启用");
+        var cmd = ["python3", await TSU_LOCAL.studioHelper("agy_sessions.py")].concat(args).map(quote).join(" ");
+        if (args[0] === "--session" && typeof DecompressionStream !== "undefined") cmd = "VIBING_PACK_HISTORY=1 " + cmd;
         var controller = new AbortController(), timer = args[0] === "--send" ? null : setTimeout(function () { controller.abort(); }, 45000);
         try {
           var carry = "";
-          var result = await TSU_LOCAL.exec({ cmd: cmd }, controller.signal, onDelta && function (chunk, channel) {
+          // The relay can reconnect between exec.data and exec.exit. A completed
+          // snapshot remains readable even when its completion event is lost.
+          var ticket = args[0] === "--session" && !args.includes("--known-prefix") && window.nadosNative.remote && typeof DecompressionStream !== "undefined" ? crypto.randomUUID() : "";
+          var target = ticket && "/tmp/vibing-history-" + ticket + ".gz";
+          if (ticket) cmd = "VIBING_HISTORY_TOKEN=" + quote(ticket) + " " + cmd;
+          var execution = TSU_LOCAL.exec({ cmd: cmd }, controller.signal, onDelta && function (chunk, channel) {
             if (channel !== 1) return;
             var lines = (carry + chunk).split("\n");
             carry = lines.pop();
@@ -296,17 +302,55 @@
               if (event.configured || event.delta || typeof event.thinking === "boolean") onDelta(event);
             }
           });
+          var result;
+          if (ticket) {
+            var finished = false;
+            execution.finally(() => { finished = true; }).catch(() => {});
+            while (!finished && !controller.signal.aborted) {
+              await Promise.race([execution, new Promise(resolve => setTimeout(resolve, 400))]);
+              if (finished) break;
+              var stat = await TSU_LOCAL.stat(target).catch(() => null);
+              if (stat?.size) {
+                result = {code:0, out:JSON.stringify({historyFile:target, bytes:stat.size}), err:""};
+                controller.abort();
+                break;
+              }
+            }
+          }
+          result ||= await execution;
           if (result.code || !result.out.trim()) {
             var reason = result.err.trim().split(/\r?\n/).pop() || "agy 未返回会话数据";
             console.warn("agy", args[0], result.err);
             throw new Error(reason.slice(0, 150));
           }
-          return JSON.parse(args[0] === "--send" ? result.out.trim().split("\n").pop() : result.out);
+          var data = JSON.parse(args[0] === "--send" ? result.out.trim().split("\n").pop() : result.out);
+          if (args[0] !== "--session" || !data.historyFile) return data;
+          if (!/\/vibing-history-[a-zA-Z0-9_-]+\.gz$/.test(data.historyFile) || !Number.isSafeInteger(data.bytes) || data.bytes <= 0)
+            throw new Error("AGY 历史记录格式错误");
+          try {
+            var chunkSize = 512 * 1024, chunks = [], received = 0;
+            for (var offset = 0; offset < data.bytes; offset += 3 * chunkSize) {
+              var batch = [];
+              for (var pos = offset; pos < Math.min(offset + 3 * chunkSize, data.bytes); pos += chunkSize) {
+                let size = Math.min(chunkSize, data.bytes - pos);
+                batch.push(TSU_LOCAL.read(data.historyFile, {offset:pos, max:size}).then(chunk => {
+                  if (chunk.byteLength !== size) throw new Error("AGY 历史记录传输不完整");
+                  received += size;
+                  onProgress?.(received / data.bytes);
+                  return chunk;
+                }));
+              }
+              chunks.push(...await Promise.all(batch));
+            }
+            return await new Response(new Blob(chunks).stream().pipeThrough(new DecompressionStream("gzip"))).json();
+          } finally {
+            TSU_LOCAL.exec({cmd: "rm -f -- " + quote(data.historyFile)}).catch(() => {});
+          }
         } finally { clearTimeout(timer); }
       }
     var sessions = [], sessionSignature = "", pending, loadedAt = 0, listError = "";
     var quotaAttempted = false, quotaState = {}, quotaNext = 0, quotaPending, modelChoices = [], modelRequest;
-    try { quotaState = JSON.parse(localStorage.getItem("tsu-agy-weekly") || "{}"); } catch (_) {}
+    try { quotaState = JSON.parse(localStorage.getItem(hostKey("tsu-agy-weekly")) || "{}"); } catch (_) {}
     function refreshQuota() {
       if (quotaPending || Date.now() < quotaNext) return;
       quotaNext = Date.now() + 60000;
@@ -314,12 +358,12 @@
         if (!Number.isFinite(q.remaining)) return;
         quotaState = q;
         quotaNext = Date.now() + 300000;
-        localStorage.setItem("tsu-agy-weekly", JSON.stringify(q));
+        localStorage.setItem(hostKey("tsu-agy-weekly"), JSON.stringify(q));
       }).catch(() => {}).finally(() => { quotaPending = null; quotaAttempted = true; document.dispatchEvent(new Event("tsu-agy-quota")); });
     }
     var modelsLoadedAt = 0;
     try {
-      var savedModels = JSON.parse(localStorage.getItem("tsu-agy-model-list"));
+      var savedModels = JSON.parse(localStorage.getItem(hostKey("tsu-agy-model-list")));
       if (Array.isArray(savedModels?.rows) && savedModels.rows.every(m => m && typeof m.id === "string" && typeof m.name === "string")) {
         modelChoices = savedModels.rows;
         modelsLoadedAt = Number(savedModels.at) || 0;
@@ -330,7 +374,7 @@
       if (!modelRequest) modelRequest = readAgy(["--models"]).then(rows => {
         if (!rows.length) throw new Error("agy 未返回可用模型");
         modelChoices = rows; modelsLoadedAt = Date.now();
-        try { localStorage.setItem("tsu-agy-model-list", JSON.stringify({rows, at: modelsLoadedAt})); } catch (_) {}
+        try { localStorage.setItem(hostKey("tsu-agy-model-list"), JSON.stringify({rows, at: modelsLoadedAt})); } catch (_) {}
       }).finally(() => { modelRequest = null; });
       if (modelChoices.length) {
         modelRequest.catch(() => {});
@@ -349,7 +393,7 @@
             changed = true;
             sessions = rows;
             sessionSignature = signature;
-            try { localStorage.setItem("tsu-sidebar-agy-v1", signature); } catch (_) {}
+            try { localStorage.setItem(hostKey("tsu-sidebar-agy-v1"), signature); } catch (_) {}
           }
           listError = "";
         } catch (e) { listError = e.message; }
@@ -397,7 +441,7 @@
         refreshQuota();
         return {data: Date.parse(quotaState.reset) > Date.now() ? quotaState : null, loading: !quotaAttempted && !!quotaPending};
       },
-      enabled: function () { return local() && !nadosNative.remote && C.on("agy"); },
+      enabled: function () { return local() && C.on("agy"); },
       list: function () {
         if (Date.now() - loadedAt > 120000) refreshAgy();
         return sessions.filter(s => !s.subagent);
@@ -405,9 +449,9 @@
       status: function () { return listError || (pending ? "正在读取会话…" : "没有会话"); },
       refresh: refreshAgy
     };
-    if (local() && !nadosNative.remote) {
+    if (local()) {
       try {
-        var cachedSessions = JSON.parse(localStorage.getItem("tsu-sidebar-agy-v1"));
+        var cachedSessions = JSON.parse(localStorage.getItem(hostKey("tsu-sidebar-agy-v1")));
         if (Array.isArray(cachedSessions)) sessions = cachedSessions;
       } catch (_) {}
       setTimeout(function () { if (TSU_AGY.enabled() && !loadedAt) refreshAgy(); }, 0);
@@ -460,6 +504,17 @@
             tool.input.file_path = event.file_path;
             if (event.lines) tool.detail = event.lines;
             if (event.diff) tool.diff = event.diff;
+          }
+          if (event.action === "update_steps" && event.steps != null) {
+            var steps = Array.isArray(event.steps) ? event.steps : [event.steps];
+            tool.detail = steps.map((step, i) => {
+              if (typeof step === "string") return step;
+              var status = String(step?.status || "").replace(/_/g, " ");
+              return (i + 1) + ". " + [step?.title || JSON.stringify(step), status].filter(Boolean).join(" · ");
+            });
+            tool.taskHeading = (event.status === "completed" ? "Updated " : "Update ") + steps.length + (steps.length === 1 ? " step" : " steps");
+            tool.summary = tool.detail[0] || tool.taskHeading;
+            if (event.error) tool.detail.push(String(event.error));
           }
           if (event.action === "ask_question") {
             var questions = Array.isArray(event.questions) ? event.questions.filter(q => q && q.question) : [];
@@ -541,7 +596,7 @@
           tool.agyError = event.error;
           if (event.status === "failed") { tool.status = "error"; tool.out = "Antigravity 报告工具执行失败"; }
           if (event.status === "completed") tool.status = "done";
-          if (event.output) tool.out = event.output;
+          if (event.output) tool.out = tool.name === "web_search" ? event.output.replace(/^(?:(?:Created|Completed) At:[^\n]*\n)+/, "") : event.output;
         } else if (event.role === "thinking") {
           turn.parts.push({ kind: "agyThinking", text: event.text, seconds: event.seconds });
           turn.thinking = turn.thinking ? turn.thinking + "\n\n" + event.text : event.text;
@@ -557,9 +612,19 @@
         }
       }
       var pendingTurn = null, optimisticTurns = [], workingSince = 0;
+      var acknowledgedStart = 0, displayedStart = 0;
       var revision = "", followTimer, checking = false;
       var screenBusy = false, nextScreen = 0;
       var observedWorking = false, turnHashes = [], knownPrefix = "", knownSource = "";
+      var waitingSince = 0;
+      function backgroundWaitSince() {
+        var explicit = /^Waiting for background terminal\b/i.test(rt.liveStatus || "");
+        var waiting = !rt.stream && (explicit || (rt.state() !== "working" &&
+          rt.tasks.some(task => task.kind === "shell" && task.status === "running")));
+        if (!waiting) waitingSince = 0;
+        else if (!waitingSince) waitingSince = Date.now();
+        return waitingSince;
+      }
       var workingKey = "tsu-agy-working:" + id;
       var restoredWorking = Number(sessionStorage.getItem(workingKey)) > Date.now() - 60000;
       async function updateScreen() {
@@ -618,6 +683,7 @@
         if (!document.hidden) refreshQuota();
         if (!info.path || loading || checking || !TSU_AGY.enabled()) return;
         var working = rt.state() === "working";
+        backgroundWaitSince();
         if (working !== observedWorking) {
           observedWorking = working;
           listeners.forEach(fn => fn("status"));
@@ -631,29 +697,24 @@
         } catch (e) { console.warn("agy transcript refresh", e); }
         finally { checking = false; }
       }
+      var cacheChecked = false;
+      function historyProgress(value) {
+        if (rt.historyProgress === value) return;
+        rt.historyProgress = value;
+        listeners.forEach(f => f("historyProgress"));
+      }
       async function load(observedRevision) {
         var changes = null, appended = [];
-        try {
-          if (!findSession(id)) await refreshAgy();
-          info = findSession(id);
-          if (!info) throw new Error(listError || "找不到该会话");
-          session.title = agent.name = info.title || id;
-          var before = observedRevision || await fileRevision(info.path);
-          var args = ["--session", id];
-          if (knownSource) args.push("--known-source", knownSource);
-          if (knownPrefix && turnHashes.length) {
-            args.push("--known-prefix", knownPrefix, "--known-turns", String(turnHashes.length - 1), "--known-last", turnHashes.at(-1));
-          }
-          var messages = await readAgy(args);
-          if (messages.unchanged) {
-            revision = before;
-            changes = [];
-            return;
-          }
+        var scope = hostKey("agy-history:" + (window.TSU_UID || 0) + ":" + id);
+        function applyMessages(messages) {
           rt.contextTokens = messages.contextTokens;
           rt.contextLimit = messages.contextLimit;
           rt.finalAt = messages.finalAt || 0;
           rt.recordedTasks = messages.background || [];
+          session.todo.items = (messages.steps || []).filter(step => step?.title).map((step, index) => ({
+            id: String(step.id ?? index + 1), subject: step.title,
+            status: step.status === "done" ? "completed" : step.status || "pending"
+          }));
           var turns = session.turns.slice(0, messages.reuseTurns || 0), turn, reuse;
           var hashes = messages.turnHashes || [], previous = session.turns;
           var model = messages.model || "";
@@ -709,9 +770,47 @@
           turnHashes = hashes;
           knownPrefix = messages.prefix || "";
           knownSource = messages.source || "";
+        }
+        try {
+          if (!cacheChecked) {
+            cacheChecked = true;
+            historyProgress(-1);
+            var cached = await TSU_LOCAL.cachedHistory(scope).catch(() => []);
+            var head = cached.shift();
+            if (head && cached.length === head.turnHashes?.length) {
+              applyMessages({...head, reuseTurns: 0, events: cached.flat()});
+              listeners.forEach(f => f("reset"));
+              historyProgress(null);
+            }
+          }
+          if (!findSession(id)) await refreshAgy();
+          info = findSession(id);
+          if (!info) throw new Error(listError || "找不到该会话");
+          session.title = agent.name = info.title || id;
+          var before = observedRevision || await fileRevision(info.path);
+          var args = ["--session", id];
+          if (knownSource) args.push("--known-source", knownSource);
+          if (knownPrefix && turnHashes.length) {
+            args.push("--known-prefix", knownPrefix, "--known-turns", String(turnHashes.length - 1), "--known-last", turnHashes.at(-1));
+          }
+          var messages = await readAgy(args, null, rt.historyProgress != null ? historyProgress : null);
+          if (messages.unchanged) {
+            revision = before;
+            changes = [];
+            return;
+          }
+          var oldPrefix = knownPrefix;
+          applyMessages(messages);
+          var {events, ...metadata} = messages;
+          var pages = [];
+          for (var event of events) {
+            if (!pages.length || event.role === "user_message_chunk") pages.push([]);
+            pages.at(-1).push(event);
+          }
+          TSU_LOCAL.cacheHistory(scope, metadata, pages, messages.reuseTurns || 0, oldPrefix).catch(() => {});
           revision = before;
         } catch (e) { if (!session.turns.length) session.turns = [{ note: e.message, parts: [] }]; }
-        finally { loading = null; listeners.forEach(function (f) { try { if (changes === null) f("reset"); else { changes.forEach(t => f("turn", t)); appended.forEach(t => f("append", t)); f("status"); } } catch (e) { console.error(e); } }); }
+        finally { historyProgress(null); loading = null; listeners.forEach(function (f) { try { if (changes === null) f("reset"); else { changes.forEach(t => f("turn", t)); appended.forEach(t => f("append", t)); f("status"); } } catch (e) { console.error(e); } }); }
       }
       async function outboundMessage(message, images) {
         var outbound = message;
@@ -790,7 +889,7 @@
         detachBash: no, takeQueued: function () { return null; },
         ctx: function () { var tokens = rt.contextTokens || 0, window = rt.contextLimit || 0; return {tokens, window, pct:window ? tokens/window*100 : 0}; },
         cwd: function () { return info && info.cwd || ""; },
-        todo: function () { return []; },
+        todo: function () { return session.todo.items; },
         pendingMsgs: function () {
           return Math.max(optimisticTurns.filter(entry => entry.followup).length, findSession(id)?.queuedInputs || 0);
         },
@@ -798,17 +897,24 @@
         tail: function () { return ""; },
         headless: function () { return !/^ttys[0-9]+$/.test(findSession(id)?.tty || ""); },
         thinkSince: function () { return rt.thinkingAt || 0; },
-        workingStartedAt: function () { return workingSince || findSession(id)?.workingSince || Date.parse(findSession(id)?.subagent?.createdAt) || session.turns.at(-1)?.at; },
+        backgroundWaitSince: backgroundWaitSince,
+        workingStartedAt: function () {
+          var ownerStart = findSession(id)?.workingSince;
+          if (workingSince) return workingSince;
+          if (ownerStart) return ownerStart === acknowledgedStart ? displayedStart : ownerStart;
+          return Date.parse(findSession(id)?.subagent?.createdAt) || session.turns.at(-1)?.at;
+        },
         sendTerminal: async function (message, images) {
-          var followup = rt.sending || !!findSession(id)?.workingSince;
+          var followup = rt.sending || rt.state() === "working";
           var localTurn;
-          if (!followup) rt.sending = true;
+          if (!followup) { rt.sending = true; waitingSince = 0; }
           if (rt.headless()) {
             var at = Date.now();
-            localTurn = {ask:message, at:at, parts:[]};
+            localTurn = {ask:message, at:at, parts:[], pendingDelivery:true};
             if (images?.length) localTurn.images = images.map(im => im.path && !im.data ? attachment(im.path) : im);
             optimisticTurns.push({turn:localTurn, followup, start:session.turns.length - optimisticTurns.length});
-            workingSince = at; pendingTurn = localTurn;
+            if (!followup) workingSince = at;
+            pendingTurn = localTurn;
             session.turns.push(localTurn);
             listeners.forEach(fn => fn("append", localTurn));
             listeners.forEach(fn => fn("status"));
@@ -828,6 +934,10 @@
                   listeners.forEach(fn => fn("status"));
                 }
                 return;
+              }
+              if (localTurn?.pendingDelivery && (event.delta || event.thinking)) {
+                localTurn.pendingDelivery = false;
+                listeners.forEach(fn => fn("turn", localTurn));
               }
               if (typeof event.thinking === "boolean") {
                 rt.thinkingAt = event.thinking ? rt.thinkingAt || Date.now() : 0;
@@ -858,7 +968,11 @@
               part.text += event.delta;
               listeners.forEach(fn => fn("turn", turn));
             });
-            if (workingSince) {
+            if (localTurn?.pendingDelivery && !result?.queued) {
+              localTurn.pendingDelivery = false;
+              listeners.forEach(fn => fn("turn", localTurn));
+            }
+            if (localTurn) {
               await refreshAgy();
               if (loading) await loading;
               await (loading = load());
@@ -874,12 +988,15 @@
             }
             throw error;
           } finally {
-            if (!localTurn || workingSince === localTurn.at) {
+            if (!followup) {
+              // The connector can acknowledge a prompt before its worker finishes.
+              acknowledgedStart = findSession(id)?.workingSince || 0;
+              displayedStart = workingSince || acknowledgedStart;
+              rt.sending = false;
               rt.thinkingAt = 0;
               rt.streamingText = false;
               workingSince = 0;
             }
-            if (!followup) rt.sending = false;
             var latest = session.turns.at(-1);
             if (latest) listeners.forEach(fn => fn("turn", latest));
             listeners.forEach(fn => fn("status"));

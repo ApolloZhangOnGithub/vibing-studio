@@ -541,6 +541,17 @@
     if (a.kind === "file") { if (window.TSU_FICON) return TSU_FICON(a.path); var e = String(a.path || "").split(".").pop().toLowerCase(), x = EXT_ICON[e] || ["cfg", "≡"]; return '<i class="st-ico st-i-' + x[0] + '">' + x[1] + "</i>"; } // 文件：同「文件」视图的图标（ficons.js）
     return { claude: '<i class="st-ico st-i-cc">' + CLG() + '</i>', codex: '<i class="st-ico st-i-cx">' + CXL() + '</i>', pi: '<i class="st-ico st-i-cx st-i-pi">' + PIL() + '</i>', teyvat: '<i class="st-ico st-i-ty">' + TYL() + '</i>', paimon: '<i class="st-ico st-i-pm">' + PMAV() + '</i>', shell: '<i class="st-ico st-i-svg st-i-sh"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.8"/><path d="M4.6 6.2l2 1.8-2 1.8M8.4 10.1h3"/></svg></i>', history: '<i class="st-ico st-i-cfg">◷</i>' }[a.kind] || '<i class="st-ico st-i-sh">›_</i>';
   }
+  // An absolute start time keeps new, restored and background tabs on the
+  // same phase. The compositor keeps ticking while transcript JS is busy.
+  const animateWorkingLights = false;
+  function pulseWorkingDot(dot) {
+    var pulse = dot.animate([
+      { opacity: 1, offset: 0, easing: "steps(1, end)" },
+      { opacity: 0, offset: 0.5, easing: "steps(1, end)" },
+      { opacity: 1, offset: 1 }
+    ], { duration: 1200, iterations: Infinity });
+    pulse.startTime = -(performance.timeOrigin % 1200);
+  }
   function fav(tabEl, P, panes) {
     var span = tabEl.querySelector("span");
     if (!span) return;
@@ -559,11 +570,9 @@
         if (!program?.agentId) return;
         conversation = true;
         var wait = program.waitingLabel?.();
-        if (!wait && (program.working?.() || pane._tabWorking)) {
-          pane.tabBlinkStart ??= performance.now();
+        if (!wait && program.working?.()) {
           workingPane ??= pane;
         } else {
-          delete pane.tabBlinkStart;
           if (wait) waits.push(wait);
         }
       });
@@ -571,9 +580,8 @@
         var indicator = document.createElement("b");
         indicator.className = "tab-finished-dot tab-working-dot";
         indicator.setAttribute("aria-label", "运行中");
-        // Rebuilding a tab during streaming must preserve the 600 ms bright/dim phases.
-        indicator.style.animationDelay = -((performance.now() - workingPane.tabBlinkStart) % 1200) + "ms";
         span.after(indicator);
+        if (animateWorkingLights) pulseWorkingDot(indicator);
       }
       else if (waits.length) {
         var dot = document.createElement("b");

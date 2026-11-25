@@ -106,6 +106,14 @@ async function site(req, env, url) {
   // 打开网址就是 App 本身（Vibing Studio 的工作台，terminal.html），同 iPhone、iPad 的 App；桌面模拟器（一个假的 macOS）只在 /simulator
   const PAGE = { "/": "/terminal", "/index.html": "/terminal", "/simulator": "/", "/simulator.html": "/" };
   const assetPath = isPage ? (PAGE[url.pathname] || (/\.html$/.test(url.pathname) ? url.pathname.slice(0, -5) : url.pathname)) : url.pathname;
+  // Start the authenticated relay while the browser is still parsing the workbench.
+  // These two scripts must run in order, before other modules capture the native bridge.
+  const bootstrapPaths = ["studio/svclog.js", "remote.js"];
+  const bootstrap = !env.DEV_STATIC && assetPath === "/terminal" && req.method === "GET"
+    ? Promise.all(bootstrapPaths.map(async path => {
+        const asset = await env.ASSETS.fetch(new URL("/" + path, url));
+        return asset.ok ? await asset.text() : null;
+      })).catch(() => []) : null;
   const r = env.DEV_STATIC ? await devStatic(req, env, assetPath !== url.pathname ? new URL(url.origin + assetPath + url.search) : url) : await env.ASSETS.fetch(pinned || assetPath !== url.pathname ? new Request(url.origin + assetPath, req) : req); // 本地开发（dev/run.mjs）：静态文件直接从 public/ 读，改了不重启
   const h = new Headers(r.headers);
   h.set("cache-control", isPage ? "no-store" : pinned && r.ok ? "private, max-age=31536000, immutable" : "private, no-cache"); // 只给登录了的人：别让中间的缓存存一份给别人
@@ -114,6 +122,13 @@ async function site(req, env, url) {
     // 配了真沙盒（TSU_SBX）：文件只在服务器上那一份，浏览器里不放示例文件、连不上时等它回来，不在这台设备上另存
     const sbx = !!(env.SANDBOX_URL && env.SANDBOX_KEY);
     let html = (await r.text()).replace('<meta charset="utf-8">', `<meta charset="utf-8">\n<script>window.TSU_UID = ${Number(s.id) || 0}; window.TSU_SBX = ${sbx};</script>`);
+    if (bootstrap) {
+      const scripts = await bootstrap;
+      bootstrapPaths.forEach((path, i) => {
+        if (scripts[i]) html = html.replace('<script src="' + path + '"></script>',
+          () => "<script>" + scripts[i].replace(/<\/script/gi, "<\\/script") + "</script>");
+      });
+    }
     // 站内的 .js / .css（<script src>、<link href>，相对路径）带上版本号：见上面 pinned
     if (ver) html = html.replace(/(<(?:script|link)\b[^>]*?\s(?:src|href)=")(?![a-z][\w+.-]*:|\/\/)([\w./-]+\.(?:js|css))(")/gi, (m, a, p, z) => a + p + "?v=" + ver + z);
     h.delete("content-length");

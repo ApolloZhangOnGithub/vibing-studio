@@ -43,6 +43,7 @@
     use: function (dev, name) {
       // App 里：那台 Mac 开一个窗口（已经开着就叫到前面）；空的 = 断开 = 关掉这个窗口
       if (hybrid) return dev ? LN.call("remote.open", { mac: dev, name: name || "" }) : LN.call("window.close");
+      if (dev && dev === mac && up && firstOk && state === "open" && !authNow) return;
       if (dev) localStorage.setItem(KEY, dev); else localStorage.removeItem(KEY);
       if (name) localStorage.setItem("vs-remote-mac-name", name);
       var u = new URLSearchParams(location.search); u.set("mac", dev || "off"); // 别的参数（?open= 要开的会话）留着
@@ -167,17 +168,18 @@
   if (!mac && q.get("mac") !== "off") { // 点过「只用网页版」（?mac=off）的不再自己连
     var findMac = function () {
       boot("finding");
-      window.TSU_REMOTE.pick().then(function (hosts) {
+      window.TSU_REMOTE.pick().then(function showHosts(hosts) {
         hosts = (hosts || []).filter(function (h) { return h && h.device; });
         if (hosts.length === 1) { boot("connecting", { mac: hosts[0].name || "" }); return window.TSU_REMOTE.use(hosts[0].device, hosts[0].name); }
         if (!hosts.length) return say(tr("没有在线的电脑", "No Computer Is Online"), tr("在此电脑的 Vibing Studio 中打开「设置 › 通用 › 其他设备使用这台电脑」，然后重试。", "On that computer, open Vibing Studio and turn on Settings › General › Allow Other Devices to Use This Computer, then try again."), true);
+        if (!document.body) { document.addEventListener("DOMContentLoaded", function () { showHosts(hosts); }, {once:true}); return; }
         say(tr("选择要连接的电脑", "Choose a Computer"), "", false);
         var acts = veil.querySelector(".rm-acts");
         acts.querySelectorAll("[data-mac]").forEach(function (b) { b.remove(); });
         hosts.forEach(function (h) { var b = document.createElement("button"); b.type = "button"; b.dataset.mac = h.device; b.textContent = h.name || h.device; b.onclick = function () { window.TSU_REMOTE.use(h.device, h.name); }; acts.insertBefore(b, acts.firstChild); });
       });
     };
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", findMac); else findMac();
+    findMac();
   }
   if (!mac) return;
   // 这台设备在中转里的编号（各页、各窗口共用）；这一页的会话号（每次连接都确认时按它认，刷新还是同一个）；这一页发出去的请求编号的前缀（同一台设备开着几页，回复各认各的）
@@ -309,7 +311,7 @@
     if (!m.ok && m.error && m.error.code === "E_OFFLINE" && p.msg) { offQ.push(p.msg); return; } // 中转说那台不在：排着，等它回来（host-online）再发；超时照旧
     delete pend[m.id];
     clearTimeout(p.t);
-    if (m.ok) { if (p.cmd === "info") hostInfo = m.value; if (p.cmd !== "auth.prove" && !firstOk) { firstOk = true; clearTimeout(waitT); clearTimeout(connT); if (authNow && authNow !== "code") { authNow = ""; if (authCard) authCard.hidden = true; } badge(); } boot("ready"); return p.resolve(m.value); } // Mac 回话了：能用了
+    if (m.ok) { if (p.cmd === "info") hostInfo = m.value; if (p.cmd !== "auth.prove" && !firstOk) { firstOk = true; performance.mark("studio-host-ready"); clearTimeout(waitT); clearTimeout(connT); if (authNow && authNow !== "code") { authNow = ""; if (authCard) authCard.hidden = true; } badge(); } if (firstOk) boot("ready"); return p.resolve(m.value); } // Mac 回话了：能用了
     var e = new Error((m.error && m.error.message) || tr("此电脑上的操作没有完成", "The operation didn’t complete on this computer")); e.code = (m.error && m.error.code) || "E_FAILED";
     if (e.code === "E_DENIED" && /没有允许|未授权/.test(e.message) && p.cmd !== "auth.code") { state = "denied"; boot("denied"); badge(); authShow("denied", /重新载入/.test(e.message) ? e.message : ""); return p.reject(e); }
     p.reject(e);
@@ -412,6 +414,7 @@
       stat: function (path) { return LN.call("fs.stat", { path: path }); },
     };
   }
+  devKey().catch(function () {}); // Prepare the signing key while the WebSocket opens.
   connect();
   // 对话的翻译设置照 Mac 上的（任务翻译、回复翻译、译文出现方式）：iPad 自己的默认是关着的——Mac 上早翻好的，这边一直是原文。App 的窗口用这台自己的设置
   if (!hybrid) window.addEventListener("load", function () {

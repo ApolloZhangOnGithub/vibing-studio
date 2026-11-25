@@ -155,13 +155,110 @@
       ph.style.cssText = d.style.cssText;
       if (d.parentNode) d.parentNode.replaceChild(ph, d);
     });
-    c.classList.remove("active");
+    c.classList.remove("active", "tpoff");
+    c.querySelectorAll(".gv-far").forEach(block => block.classList.remove("gv-far"));
     c.removeAttribute("id");
     c.querySelectorAll("[id]").forEach(function (e) { e.removeAttribute("id"); });
     c.setAttribute("inert", "");
     c.setAttribute("aria-hidden", "true");
     return { el: c, scrolls: scrolls };
   }
+
+  let hoverTab, hoverPane, hoverCard, stopPreviewUpdates;
+  function dismissTabPreview() {
+    stopPreviewUpdates?.();
+    stopPreviewUpdates = null;
+    hoverPane?.classList.remove("tov-live-hover");
+    hoverPane?.style.removeProperty("--tov-transform");
+    hoverPane = null;
+    hoverCard?.remove();
+    hoverTab = hoverCard = null;
+  }
+  document.addEventListener("pointerover", function (event) {
+    const tab = event.target.closest?.(".tab");
+    if (tab === hoverTab) return;
+    dismissTabPreview();
+    if (event.buttons || event.pointerType === "touch" || !tab?._p || cur) return;
+    hoverTab = tab;
+    const P = tab._p, pane = P.el, group = pane.parentElement;
+    const width = pane.clientWidth, height = pane.clientHeight;
+    if (!group || !width || !height) return;
+    const area = group.getBoundingClientRect(), rect = tab.getBoundingClientRect();
+    const scale = Math.min(1, 320 / width, 210 / height, area.width / width);
+    const left = Math.max(area.left, Math.min(rect.left, area.right - width * scale));
+    const top = rect.bottom <= area.top + 2 ? area.top + 4 :
+      Math.max(area.top, Math.min(rect.bottom + 4, area.bottom - height * scale - 4));
+    if (pane.classList.contains("tpoff") && P.program?.page !== "web") {
+      hoverPane = pane;
+      pane.style.setProperty("--tov-transform", "translate(" + (left - area.left) + "px," + (top - area.top) + "px) scale(" + scale + ")");
+      let frame = 0;
+      const paint = () => {
+        frame = 0;
+        if (hoverPane !== pane || !P.off || P.closed) return;
+        if (P.dirty || !P.drawn || P.program?.hasPendingPreview?.()) {
+          // Measure at normal size. Keep the selected pane and keyboard focus in place.
+          pane.classList.remove("tov-live-hover");
+          P.off = false;
+          try { P.reshow(); }
+          finally { P.park(); P.off = true; pane.classList.add("tov-live-hover"); }
+        }
+      };
+      const schedule = () => { if (!frame) frame = requestAnimationFrame(paint); };
+      const rt = P.program?.agentId && window.TSU_AGENTS?.runtime(P.program.agentId);
+      const unsubscribe = rt?.on?.(schedule);
+      stopPreviewUpdates = () => { cancelAnimationFrame(frame); unsubscribe?.(); };
+      pane.classList.add("tov-live-hover");
+      schedule();
+      return;
+    }
+    const card = hoverCard = document.createElement("div");
+    card.className = "tov-hover";
+    card.setAttribute("inert", "");
+    Object.assign(card.style, {width:width * scale + "px", height:height * scale + "px", left:left + "px", top:top + "px"});
+    const mount = () => (pane.closest(".termwin") || document.body).append(card);
+    const setImage = url => {
+      if (!url || hoverCard !== card) return false;
+      const img = new Image();
+      img.src = url;
+      card.replaceChildren(img);
+      mount();
+      return true;
+    };
+    if (P.program?.page === "web" && canSnap()) {
+      const cached = SNAP.get(P.program);
+      if (cached) setImage(cached);
+      else { card.textContent = titleOf(P) || P.program.arg; mount(); }
+      if (!cached || visibleWeb(P)) snapWeb(P).then(setImage);
+      return;
+    }
+    const fallback = () => {
+      if (hoverCard !== card) return;
+      const snap = cloneEl(pane);
+      Object.assign(snap.el.style, {width:width + "px", height:height + "px", transform:"scale(" + scale + ")", transformOrigin:"top left"});
+      card.append(snap.el);
+      mount();
+      for (const [node, y, x, bottom] of snap.scrolls) {
+        node.scrollTop = bottom ? node.scrollHeight : y;
+        node.scrollLeft = x;
+      }
+    };
+    if (cmds?.includes("page.snapshot") && !N.remote) {
+      const r = pane.getBoundingClientRect();
+      N.call("page.snapshot", {x:r.x, y:r.y, w:r.width, h:r.height, width:Math.ceil(width * scale * devicePixelRatio)}).then(url => { if (!setImage(url)) fallback(); }, fallback);
+      return;
+    }
+    fallback();
+  });
+  document.addEventListener("pointerout", function (event) {
+    if (hoverTab && !hoverTab.contains(event.relatedTarget)) dismissTabPreview();
+  });
+  for (const event of ["pointerdown", "keydown", "dragstart", "scroll"]) {
+    document.addEventListener(event, function (e) {
+      if (hoverTab && (event !== "scroll" || !hoverCard?.contains(e.target) && (e.target === document || e.target.contains?.(hoverTab)))) dismissTabPreview();
+    }, true);
+  }
+  window.addEventListener("blur", dismissTabPreview);
+  window.addEventListener("resize", dismissTabPreview);
 
   function Overview(tw, opts) {
     var O = { tw: tw, closing: false }, M = model(tw), app = (opts && opts.app) || null;
@@ -209,7 +306,6 @@
       // 不在页面上的（要先放到屏幕外的台子上画）：这里先不复制——没排版的整页复制又慢又不准，轮到它时（pump）上台、只复制看得见的那段
       var last = LAST.get(P), same = last && (!last.w || (Math.abs(last.w - c.nat.w) < 3 && Math.abs(last.h - c.nat.h) < 3));
       if (last && same) { putLast(c.view, last); c.dirty = true; c.at = Date.now(); c.seeded = true; } // 先放上一次的样子（再由下面换成新画的）——不是黑的一块；大小变了的不放（按旧大小排的，错位）
-      if (!c.seeded && P.program?.agentId) lazyCard(c);
       try { c.obs = new MutationObserver(function () { c.dirty = true; }); c.obs.observe(P.el, { childList: true, subtree: true, characterData: true }); } catch (e) { /* 没有就不刷新 */ }
       grid.appendChild(el);
       cards.set(P, c);
@@ -235,17 +331,15 @@
       return !!pr && !P.closed && (!P.el.parentNode || P.off) && pr.page !== "web" && !pr.pty && !P.el.querySelector("iframe, embed, object, video, audio"); // 藏在同一组后面的（挪到屏幕外的）也一样放上台子
     };
     function stageIn(P) {
-      // 不在眼前的会话：不搬到台子上重排（几千行的会话量一遍、排一遍就是概览打开慢的大头）——卡片上是它最后两问的字（lazyCard）
-      if (P.program && P.program.agentId) return false;
       if (!stage) { stage = document.createElement("div"); stage.className = "tov-stage"; host.appendChild(stage); }
       var nt = cards.get(P) ? cards.get(P).nat : { w: O.W, h: O.H };
       stage.style.width = nt.w + "px"; stage.style.height = nt.h + "px";
       stage.appendChild(P.el);
-      P.el.classList.remove("tpoff"); P.off = false; staged = true; // 台子上要画出来；收起时编辑区再把它放回它那一组（ws.layout）
+      P.el.classList.remove("tpoff"); P.off = false; if (!P.program?.agentId) staged = true; // 台子上要画出来；收起时编辑区再把它放回它那一组（ws.layout）
       // 画过、没变的：P.reshow 只量一下尺寸、回到原来看的位置；后来又有新内容（标脏了）的：也不整段重画，用上次画的那份（贴着底看）
       try {
-        if (P.reshow && !P.dirty) P.reshow();
-        else if (!(P.program && P.program.agentId) && P.renderNow) P.renderNow(); // 页面（历史记录、设置、访达……）：这次还没画过的先画一遍（不然复制出来是黑的一块），画页面不贵
+        if (P.drawn && P.reshow && !P.dirty) P.reshow();
+        else if (P.renderNow) P.renderNow(); // 页面（历史记录、设置、访达……）：这次还没画过的先画一遍（不然复制出来是黑的一块），画页面不贵
         else if (P.fit) { P.fit(); if (P.screen) P.screen.scrollTop = P.screen.scrollHeight; }
         else P.renderNow();
       } catch (e) { /* 画不出来：用原来的 */ }
@@ -254,57 +348,28 @@
     function fill(c, fresh) {
       var P = c.P;
       if (P.closed) return;
-      if (fresh && stageable(P) && stageIn(P) === false) { if (!c.seeded) lazyCard(c); return; } // 有上一次的样子就留着它，不换成图标
-      var snap = cloneEl(P.el);
-      c.view.textContent = "";
-      c.view.appendChild(snap.el);
-      snap.scrolls.forEach(function (s) { try { if (s[3]) s[0].scrollTop = s[0].scrollHeight; else s[0].scrollTop = s[1]; s[0].scrollLeft = s[2]; } catch (e) { /* 不能滚 */ } });
-      special(c, snap.el);
-      c.dirty = false;
-      c.at = Date.now();
-      dot(c);
-    }
-    // 还没画过的：卡片上一个大图标 + 名字 + 地址（同 Safari 还没载入的标签页），点它照常切过去
-    // 会话的字：最后两问（❯ 你说的话、● 回答的头几行），同对话里的样子；拿不到就是 null
-    function convText(P) {
-      var id = P.program && P.program.agentId, A = window.TSU_AGENTS, rt = null;
-      try { rt = id && A && A.runtime ? A.runtime(id) : null; } catch (e) { rt = null; }
-      var ts = rt && rt.session ? (rt.session().turns || []) : [], out = [];
-      var asks = ts.filter(function (t) { return t && t.ask !== undefined && !t.system; }).slice(-2);
-      if (!asks.length) return null;
-      asks.forEach(function (t) {
-        if (out.length) out.push("");
-        String(t.ask || "").split("\n").slice(0, 2).forEach(function (l, i) { out.push((i ? "  " : "❯ ") + l); });
-        var ans = String(t.answer || (t.parts || []).filter(function (x) { return x.kind === "text"; }).map(function (x) { return x.text; }).join("\n") || "").replace(/\n{3,}/g, "\n\n").trim();
-        if (ans) { out.push(""); ans.split("\n").slice(0, 14).forEach(function (l, i) { out.push((i ? "  " : "● ") + l); }); }
-      });
-      return out.slice(-40).join("\n");
-    }
-    function lazyCard(c) {
-      var P = c.P, info = document.createElement("div"), fake = document.createElement("div");
-      var tx = convText(P);
-      if (tx) { // 有字：画成同终端预览那样的一块（底色同对话区）
-        var pre = document.createElement("pre"), sc = getComputedStyle(P.el);
-        pre.className = "tov-xtext tov-conv";
-        pre.textContent = tx;
-        if (sc.backgroundColor && !/rgba\(0, 0, 0, 0\)|transparent/.test(sc.backgroundColor)) pre.style.background = sc.backgroundColor;
-        if (sc.color) pre.style.color = sc.color;
-        c.view.textContent = "";
-        c.view.appendChild(pre);
-        c.dirty = false; c.at = Date.now(); c.lazy = true;
-        dot(c);
-        return;
+      // Parked tabs normally keep their laid-out viewport. Read it without
+      // activating the editor or rebuilding its transcript on a tab switch.
+      var agent = !!P.program?.agentId;
+      var parked = agent && P.drawn && P.el.isConnected && P.el.clientWidth > 0;
+      var stageAgent = agent && fresh && !parked;
+      var parent = P.el.parentNode, next = P.el.nextSibling, wasOff = P.off;
+      try {
+        if (fresh && !parked) stageIn(P);
+        var snap = cloneEl(P.el);
+        c.view.replaceChildren(snap.el);
+        snap.scrolls.forEach(function (s) { s[0].scrollTop = s[3] ? s[0].scrollHeight : s[1]; s[0].scrollLeft = s[2]; });
+        special(c, snap.el);
+        c.seeded = true;
+        c.dirty = false;
+        c.at = Date.now();
+      } finally {
+        if (stageAgent && stage && P.el.parentNode === stage) {
+          if (P.park) P.park();
+          P.off = wasOff; P.el.classList.toggle("tpoff", !!wasOff);
+          if (parent) parent.insertBefore(P.el, next); else P.el.remove();
+        }
       }
-      fake.innerHTML = "<span></span>";
-      if (window.TSU_BROWSER && TSU_BROWSER.fav) try { TSU_BROWSER.fav(fake, P); } catch (e) { /* 没有图标 */ }
-      var ico = fake.querySelector(".bfav, svg, img");
-      info.className = "tov-web tov-lazy";
-      info.innerHTML = (ico ? ico.outerHTML : ICON.globe) + "<b></b><span></span>";
-      info.querySelector("b").textContent = titleOf(P);
-      info.querySelector("span").textContent = addrOf(P);
-      c.view.textContent = "";
-      c.view.appendChild(info);
-      c.dirty = false; c.at = Date.now(); c.lazy = true;
       dot(c);
     }
     // 终端（xterm 画在画布上）：写成文字；内嵌网页：原生截图，截不到就是图标、名字、网址
@@ -349,7 +414,7 @@
       d.style.animationDuration = dur.toFixed(2) + "s";
       d.style.animationDelay = (-((Date.now() / 1000 + off) % dur)).toFixed(2) + "s";
     }
-    function dot(c) { var d = c.el.querySelector(".tov-dot"), busy = false, wk = false; try { busy = !!(c.P.busy && c.P.busy()); wk = !!(c.P.program && c.P.program.working && c.P.program.working()); } catch (e) { busy = false; } c.el.classList.toggle("busy", wk); d.hidden = !busy && !c.P.bell; d.classList.toggle("bell", !busy && !!c.P.bell); if (busy) breath(d, String((c.P.program && c.P.program.agentId) || c.P.id || "")); }
+    function dot(c) { var d = c.el.querySelector(".tov-dot"), busy = false, wk = false; try { busy = !!(c.P.busy && c.P.busy()); wk = !!(c.P.program && c.P.program.working && c.P.program.working()); } catch (e) { busy = false; } c.el.classList.toggle("busy", wk); d.hidden = !busy && !wk && !c.P.bell; d.classList.toggle("bell", !busy && !!c.P.bell); if (busy || wk) breath(d, String((c.P.program && c.P.program.agentId) || c.P.id || "")); }
 
     // ---- 哪些格子、排在哪 ----
     function list() {
@@ -529,7 +594,7 @@
       function finish() {
         if (finished) return;
         finished = true;
-        cards.forEach(function (c, P) { var v = c.view && c.view.firstChild; if (v && !c.lazy && !P.closed) keepLast(P, v, null, c.nat); });
+        cards.forEach(function (c, P) { var v = c.view && c.view.firstChild; if (v && !P.closed) keepLast(P, v, null, c.nat); });
         ov.remove();
         if (stage) { while (stage.firstChild) stage.removeChild(stage.firstChild); stage.remove(); }
         if (staged && tw.ws && tw.ws.layout) try { tw.ws.layout(); } catch (e) { /* 布局出错不挡关概览 */ } // 放上过台子的：回到它那一组里（藏着），不留在页面外

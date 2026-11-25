@@ -88,8 +88,18 @@ async def serve(marker, cwd, transcript):
             return
         lock.seek(0)
         lock.truncate()
-        lock.write(str(int(time.time() * 1000)) + "\nacp\n" + OWNER_VERSION)
+        owner_start = int(time.time() * 1000)
+        lock.write(str(owner_start) + "\nacp\n" + OWNER_VERSION)
         lock.flush()
+        # The owner may stay alive across several prompts to service background tools.
+        # Publish the current prompt separately so the owner lock retains its meaning.
+        turn_file = marker.with_suffix(".turn")
+        def publish_turn(start):
+            pending = turn_file.with_suffix(".turn.tmp")
+            pending.write_text(f"{owner_start} {start}")
+            pending.replace(turn_file)
+
+        publish_turn(0)
         proc = await asyncio.create_subprocess_exec("agy", "acp", cwd=cwd, stdin=-1, stdout=-1, limit=32 << 20)
         outstanding = {}
         background = set()
@@ -196,12 +206,16 @@ async def serve(marker, cwd, transcript):
                         # ACP updates identify the session, not the originating prompt.
                         # During steering the transcript supplies authoritative turn ownership.
                         current = None if active_prompts else writer
+                        if not active_prompts:
+                            publish_turn(int(time.time() * 1000))
                         active_prompts.add(writer)
                     try:
                         await rpc("session/prompt", {"sessionId":sid, "prompt":prompt_parts(request["message"])})
                         emit(writer, {"result":{"sent":True}})
                     finally:
                         active_prompts.discard(writer)
+                        if not active_prompts:
+                            publish_turn(0)
                         if current is writer:
                             current = None
             except Exception as error:
@@ -226,6 +240,7 @@ async def serve(marker, cwd, transcript):
                         last_activity = time.monotonic()
         finally:
             address.unlink(missing_ok=True)
+            turn_file.unlink(missing_ok=True)
             proc.stdin.close()
             try:
                 await asyncio.wait_for(proc.wait(), 3)

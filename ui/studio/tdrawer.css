@@ -175,7 +175,7 @@ html.termapp .tpane .term .blk.status.live, html.termapp .tpane.tl .term .blk.st
 .tpane > .st-fsash.hot::before, .tpane > .st-fsash.hot::after, .gv-bottom > .gv-fsash.hot::before, .gv-bottom > .gv-fsash.hot::after { transition: none; } /* .hot：测试截图用（窗口在后面时动画不走）*/
 html.st-drag-y iframe, html.st-drag-y webview { pointer-events: none !important; } /* 拖着的时候划过网页、终端：它们不抢指针 */
 /* 底部自己一块：淡淡的底色、上沿一条细线（sash 就在这条线上）；右上角「···」（没有 ×：输入框在这里） */
-html.termapp .tpane.agentfoot > .foot { background: transparent; border-top: 0; padding-top: 2px; padding-bottom: 4px; } /* 底部（输入框那一块）和上面对话一样的底色：不另起一块灰的，也就没有下面那条黑边 */
+html.termapp .tpane.agentfoot > .foot { margin-top: auto; background: transparent; border-top: 0; padding-top: 2px; padding-bottom: 4px; } /* 底部（输入框那一块）和上面对话一样的底色：不另起一块灰的，也就没有下面那条黑边 */
 .tpane.agentfoot > .foot > .st-fmore { position: absolute; top: 1px; right: 6px; z-index: 8; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 18px; padding: 0; border: 0; border-radius: 5px;
   background: color-mix(in srgb, var(--st-bg) 93%, var(--st-fg) 7%); color: var(--st-dim); cursor: pointer; }
 .tpane.agentfoot > .foot > .st-fmore:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover2, rgba(128, 128, 128, .2)); }

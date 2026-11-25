@@ -132,6 +132,7 @@
 
   // ---- 一次工具调用：一句话说它做了什么（同 Claude App：有 description 就用它）----
   function title(p) {
+    if (p.agyAction === "update_steps" && p.taskHeading) return p.taskHeading;
     var a = p.input || {}, n = p.name;
     if (n === "Bash") return a.description ? clip(a.description, 90) : "运行 " + clip(a.command, 70);
     if (n === "Code" && a.language === "javascript") return "JavaScript · " + clip(a.description || a.code, 90);
@@ -209,6 +210,10 @@
       return out;
     }
     if (p.diff) { var dn = lvl === "peek" ? 12 : lvl === "card" ? 60 : 2000; return '<div class="gv-ch">' + esc(p.summary || "") + '</div><div class="gv-diff">' + diffHtml(p.diff.slice(0, dn)) + "</div>" + (p.diff.length > dn ? (k && lvl !== "peek" ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">… 另外 ' + (p.diff.length - dn) + " 行改动</button>" : '<div class="gv-more">… 另外 ' + (p.diff.length - dn) + " 行改动</div>") : lvl === "all" && k && p.diff.length > 60 ? '<button type="button" class="gv-more gv-morebtn" data-more="' + esc(k) + '">' + (EN() ? "Show less" : "收起") + "</button>" : ""); }
+    if (p.agyAction === "search_web" && (p.out || p.agyError)) {
+      var result = String(p.agyError || p.out).split("\n");
+      return '<div class="gv-md">' + md(result.slice(0, n).join("\n")) + "</div>" + more(result.length);
+    }
     if (p.name === "web_search" && p.results) return '<div class="gv-ch">' + esc(p.summary || "搜索结果") + "</div>" + p.results.slice(0, short ? 3 : 100).map(function (x) { return '<div class="gv-res"><a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.title) + '</a><span class="gv-dim">' + esc(x.url) + "</span></div>"; }).join("") + (short && p.results.length > 3 ? '<div class="gv-more">… 另外 ' + (p.results.length - 3) + " 条结果</div>" : "");
     var headL = p.summary || (isErr(p) ? p.error : "");
     if (headL) out += '<div class="gv-ch' + (isErr(p) ? " err" : "") + '">' + esc(headL) + "</div>";
@@ -232,6 +237,16 @@
     // 同名的 Claude Code 会话：标签页、窗口标题上名字后面淡淡地带短 id（同终端界面，见 live.js titleInto）
     V.titleTag = function () { return /^cc:/.test(agentId) && window.TSU_CLAUDE && TSU_CLAUDE.dupTag ? TSU_CLAUDE.dupTag(agentId.slice(3), agent.name) : ""; };
     V.working = function () { return !!rt.stream || (rt.state && rt.state() === "working"); };
+    V.waitingLabel = function () {
+      if (rt.stream?.wait) return "Waiting for API response";
+      if (/^Waiting for\b/i.test(rt.stream?.specialStatus || "")) return rt.stream.specialStatus;
+      if (rt.question?.() || rt.info?.live?.status === "waiting") return "Waiting for your answer";
+      if (rt.tyState?.()?.state === "waiting") return "Waiting";
+      if (agent.connector !== "agy") return "";
+      if (rt.backgroundWaitSince()) return "Waiting for background terminal";
+      if (V.working()) return "";
+      return rt.schedules?.some(t => t.status === "running") ? "Waiting" : "";
+    };
     V.busy = function () { return false; };
     V.spec = function () { return { sh: P.shell.spec().sh, agent: agentId, ui: "gui" }; };
     V.tabActions = function () { return window.TSU_TERM && TSU_TERM.agentTabActions ? TSU_TERM.agentTabActions(agentId) : []; }; // 同终端界面：macOS 风格的窗口标题栏里 ··· 显示方式与内容
@@ -246,7 +261,7 @@
       '<div class="gv-bottom"><button class="gv-jump" title="滚动到底部" hidden>' + ICON.down + '</button><div class="gv-col"><div class="gv-todo" hidden></div>' +
       '<div class="gv-comp"><div class="gv-att" hidden></div><textarea rows="1" spellcheck="false"></textarea><button class="gv-send" title="发送 (↵)"></button></div>' +
       '<div class="gv-bar"><button class="gv-chip gv-plus" data-c="attach" title="添加图片"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg></button>' +
-      '<button class="gv-chip" data-c="access"></button><div class="gv-live" hidden></div><span class="gv-fill"></span><button class="gv-chip" data-c="model"></button><button class="gv-chip" data-c="effort"></button>' +
+      '<button class="gv-chip" data-c="access"></button><div class="gv-live" hidden></div><span class="gv-fill"></span><button class="gv-chip" data-c="context" hidden></button><button class="gv-chip" data-c="quota" title="查看额度" hidden></button><span class="gv-chip gv-mode" hidden></span><button class="gv-chip" data-c="model"></button><button class="gv-chip" data-c="effort"></button>' +
       '<button class="gv-chip gv-ring" data-c="ctx" title=""><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle class="gv-ringv" cx="10" cy="10" r="7"/></svg></button></div>' +
       '<input type="file" accept="image/*" multiple hidden></div></div>'; // 在跑的那一行（.gv-live）在下面那一排的左边：和右边的模型同一行、对齐（用户定的）
     P.el.appendChild(host);
@@ -309,7 +324,7 @@
     function turnHtml0(t, ti) {
       var h = "";
       // 连接器那边压缩了上下文（Claude Code、Codex）：一条分隔线，点开是它写的摘要——不是用户的气泡
-      if (P.textFilter && (t.compact || t.recap !== undefined || t.cmd !== undefined || t.bash !== undefined || t.system || (t.note && t.ask === undefined))) return "";
+      if (P.textFilter && ((t.compact && P.textFilter !== "body") || t.recap !== undefined || t.cmd !== undefined || t.bash !== undefined || t.system || (t.note && t.ask === undefined))) return "";
       if (t.compact) { // 压缩了上下文：一条分隔线（点开是摘要）；中英文照界面语言
         var ck = ti + ":c", co = !!open[ck], en1 = !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"), kt = t.compact.pre ? esc(String(Math.round(t.compact.pre / 1000))) + "k tokens" : "", kp = t.compact.post ? esc(String(Math.round(t.compact.post / 100) / 10)) + "k" : "";
         var ctl = en1 ? "Compacted" + (kt ? " · " + kt + " summarized" + (kp ? " to " + kp : "") : "") : "已压缩" + (kt ? " · " + kt + (kp ? " 压缩到 " + kp : "") : ""); // 同 TUI：压缩前、压缩后各多少
@@ -334,41 +349,46 @@
         if (!(t.parts && t.parts.length)) return sh;
         h += sh;
       }
-      var ask = String(t.ask || "");
-      if ((P.textFilter || on("prompts")) && (ask.trim() || (t.images && t.images.length))) {
-        // 图片：悬停预览（默认，[Image #N] 指着看、点了放大）/ 直接显示（缩略图）——设置 › 对话 › 图片
-        var inl = ((A && A.cfg && A.cfg.imageShow) || "hover") === "inline";
-        var imh = t.images && t.images.length ? (inl ? '<div class="gv-imgs">' + t.images.map(function (im) { return '<img src="' + TSU_IMG.of(im) + '" alt="">'; }).join("") + "</div>" : '<div class="gv-imgrefs">' + t.images.map(function (im, i) { return '<span class="st-imgref" data-img="' + TSU_IMG.key(im) + '" data-name="Image #' + (im && im.no ? im.no : i + 1) + '">[Image #' + (im && im.no ? im.no : i + 1) + "]</span>"; }).join(" ") + "</div>") : "";
-        h += '<div class="gv-user">' + tsEl(t.at) + '<div class="gv-bubble">' + imh + esc(ask).replace(/\n/g, "<br>") + "</div></div>";
+      var prompts = t.leadingPrompts || [];
+      if (!t.promptMoved) prompts = prompts.concat(t);
+      for (var prompt of prompts) {
+        var ask = String(prompt.ask || "");
+        if ((P.textFilter || on("prompts")) && (ask.trim() || (prompt.images && prompt.images.length))) {
+          // 图片：悬停预览（默认，[Image #N] 指着看、点了放大）/ 直接显示（缩略图）——设置 › 对话 › 图片
+          var inl = ((A && A.cfg && A.cfg.imageShow) || "hover") === "inline";
+          var imh = prompt.images && prompt.images.length ? (inl ? '<div class="gv-imgs">' + prompt.images.map(function (im) { return '<img src="' + TSU_IMG.of(im) + '" alt="">'; }).join("") + "</div>" : '<div class="gv-imgrefs">' + prompt.images.map(function (im, i) { return '<span class="st-imgref" data-img="' + TSU_IMG.key(im) + '" data-name="Image #' + (im && im.no ? im.no : i + 1) + '">[Image #' + (im && im.no ? im.no : i + 1) + "]</span>"; }).join(" ") + "</div>") : "";
+          h += '<div class="gv-user">' + tsEl(prompt.submittedAt || prompt.at) + '<div class="gv-bubble' + (prompt.pendingDelivery ? ' vs-queue-row' : '') + '">' + (prompt.pendingDelivery ? TT().queueIcon() : "") + imh + esc(ask).replace(/\n/g, "<br>") + "</div></div>";
+        }
       }
       if (P.textFilter) {
         return h + TT().filteredParts(t, P.textFilter, rt).map(function (part) {
           if (part.kind === "tool") {
             var index = t.parts.indexOf(part);
-            var current = TT().showToolPreview(t, part, rt);
-            var earlier = t.parts.slice(0, index + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
+            var earlier = t.parts.slice(0, t.beforeCompaction ? index + 1 : index).filter(function (item) { return item.kind === "tool"; });
             var key = ti + ":tool-history", history = "";
             if (earlier.length) {
               var details = open[key] ? earlier.map(function (item) {
                 return '<div class="gv-st">' + esc(title(item)) + '</div>' + detail(item, "all", rt, P.view);
               }).join("") : "";
               history = '<div class="gv-group' + (open[key] ? ' open' : '') + '" data-k="' + key +
-                '"><button class="gv-sum">' + TT().toolHistoryTitle(earlier.length) + '<i></i></button>' +
+                '"><button class="gv-sum">' + TT().toolHistoryTitle(earlier) + '<i></i></button>' +
                 (open[key] ? '<div class="gv-card gv-rows">' + details + '</div>' : '') + '</div>';
             }
-            return '<div class="gv-ai latest-tool">' + history + (current ? '<div class="dense-latest-gui' + (open[ti + ":t" + index] ? " expanded" : "") + '">' + toolOne(part, ti + ":t" + index, "preview", false, true) + "</div>" : "") + "</div>";
+            if (t.beforeCompaction) return history;
+            return '<div class="gv-ai latest-tool">' + history + '<div class="dense-latest-gui' + (open[ti + ":t" + index] ? " expanded" : "") + '">' + toolOne(part, ti + ":t" + index, "preview", false, true) + "</div></div>";
           }
-          return '<div class="gv-ai"><div class="gv-md">' + md(part.text) + '</div></div>';
+          var i = t.parts?.indexOf(part) ?? -1;
+          return '<div class="gv-ai"><div class="gv-md" data-reply="' + i + '">' + md(part.text) + '</div></div>';
         }).join("");
       }
       var ai = "";
       var tm = vm("thinking") || "hidden", dl = detailMode();
       if (dl === "full" && tm === "hidden") tm = "collapsed";
-      if ((t.thought || t.thinking) && tm !== "hidden") { // 思考：一行（点开看）/ 展开
+      if ((t.thought || t.thinking) && tm !== "hidden" && !t.parts?.some(p => p.kind === "agyThinking" || p.kind === "thinking")) { // 思考：一行（点开看）/ 展开
         var k0 = ti + ":th", o0 = k0 in open ? open[k0] : tm === "expanded" || dl === "full";
-        ai += '<div class="gv-think' + (o0 ? " open" : "") + '" data-k="' + k0 + '"><button class="gv-sum">' + (t.thought ? "思考了 " + t.thought + " 秒" : "思考") + "<i></i></button>" + (o0 && t.thinking ? '<div class="gv-det gv-thought">' + md(t.thinking) + "</div>" : "") + "</div>";
+        ai += '<div class="gv-think' + (o0 ? " open" : "") + '" data-k="' + k0 + '"><button class="gv-sum">' + (t.thought ? "思考了 " + t.thought + " 秒" : "思考") + "<i></i></button>" + (o0 && t.thinking ? '<div class="gv-det gv-thought">' + md(window.TSU_TRANSLATE?.thought(t.thinking, agentId, !!rt.stream && rt.stream.turn === t, cfg.translateShow === "only").body || t.thinking) + "</div>" : "") + "</div>";
       }
-      var parts = t.parts || [{ kind: "text", text: t.answer || "" }], group = [], gi = 0, merge = vm("mergeReads") !== false, live = !!(rt.stream && rt.stream.turn === t), lastTool = -1;
+      var parts = t.parts || [{ kind: "text", text: t.answer || "" }], group = [], gi = 0, merge = vm("mergeReads") !== false, live = TT().isCurrentToolTurn(t, rt), lastTool = -1;
       parts.forEach(function (p, i) { if (p.kind === "tool") lastTool = i; });
       // 最新的：最后一问（有工具调用的那一问里最后的那一次）——它所在的那一组展开、它露出结果的前几行
       var tsAll = rt.session().turns, latestTi = -1;
@@ -391,13 +411,18 @@
           group.push(p);
           return;
         }
+        if ((p.kind === "agyThinking" || p.kind === "thinking") && tm === "hidden") return;
         flushG();
-        if (p.kind === "thinking") {
-          if (tm !== "hidden") {
-            var key = ti + ":th" + i, expanded = open[key] === true;
-            var label = Number.isFinite(p.seconds) ? "思考了 " + p.seconds + " 秒" : "思考";
-            ai += '<div class="gv-think' + (expanded ? ' open' : '') + '" data-k="' + key + '"><button class="gv-sum">' + label + '<i></i></button>' + (expanded ? '<div class="gv-det gv-thought">' + md(p.text) + '</div>' : '') + '</div>';
-          }
+        if (p.kind === "agyThinking" || p.kind === "thinking") {
+          var key = ti + ":th" + i, expanded = tm === "expanded" || open[key] === true;
+          var label = Number.isFinite(p.seconds) ? "Thought for " + Number(p.seconds.toFixed(1)) + "s" : "Thought";
+          if (expanded && p.text) {
+            var body = window.TSU_TRANSLATE?.thought(p.text, agentId, p.streaming, cfg.translateShow === "only");
+            var translated = body?.ready && tm === "expanded", original = translated && open[key];
+            ai += '<div class="gv-thought' + (translated ? " gv-tr" + (original ? " on" : "") : "") + '"' +
+              (translated ? ' data-tr="' + key + '"' : tm === "expanded" ? "" : ' data-k="' + key + '"') + '>' +
+              md(original ? p.text : body?.body || p.text) + '</div>';
+          } else ai += '<div class="gv-think" data-k="' + key + '"><button class="gv-sum">' + label + '</button></div>';
           return;
         }
         if (p.kind === "notice") { // 一轮中间读进去的通知：后台命令的按「后台任务通知」，子 agent 跑完的按「Agent 消息 › 子 Agent 报告」
@@ -411,10 +436,10 @@
         // 回复翻译（translate.js 的 reply）：说完了的一段有译文就换上（还在流的那段照原文）。没有「原文 / 译文」按钮：
         //   译文那一块指上去淡淡一层高亮，点一下换成原文（浅色底）；原文那块里任何地方点一下换回译文（划选文字、点链接不算）
         var agyFinal = agentId.startsWith("agy:") && i > lastTool && (!live || p.whole);
-        var trk = ti + ":tr" + i, ptx = String(p.text), trd = !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.reply ? TSU_TRANSLATE.reply(ptx, agentId) : null, showO = !!(!agyFinal && trd && open[trk]);
+        var trk = ti + ":tr" + i, ptx = String(p.text), trd = !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.reply ? TSU_TRANSLATE.reply(ptx, agentId) : null, showO = !!(trd && open[trk]);
         if (trd && !showO) ptx = trd;
         else if (!trd && !(live && i === parts.length - 1 && !p.whole) && window.TSU_TRANSLATE && TSU_TRANSLATE.replyPending && (function () { try { return ((typeof A.cfg === "function" ? A.cfg() : A.cfg) || {}).translateShow === "only"; } catch (e) { return false; } })() && TSU_TRANSLATE.replyPending(ptx)) { ai += '<div class="gv-md gv-trwait">…</div>'; return; } // 只显示译文：还没翻好的段落先是一个淡的 …
-        var mdT = function (x) { var h0 = md(x); return trd && !agyFinal ? '<div class="gv-tr' + (showO ? " on" : "") + '" data-tr="' + trk + '">' + h0 + "</div>" : h0; };
+        var mdT = function (x) { var h0 = md(x); return trd ? '<div class="gv-tr' + (showO ? " on" : "") + '" data-tr="' + trk + '">' + h0 + "</div>" : h0; };
         // 最后一次调用工具之后的话是最终回复；夹在工具调用之间的是过程说明（完整 / 一行：灰的第一句，点开看全 / 隐藏；在跑的这一问，最后那段也先算过程说明）
         var tAt = p.at || (!live && i > lastTool && t.stats && t.stats.at) || lastEnd;
         if ((!live || agyFinal) && i > lastTool) { if (on("answers")) { if (dl === "brief") finalA += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); else ai += tsw(tAt, '<div class="gv-md">' + mdT(ptx) + "</div>"); } return; }
@@ -520,20 +545,50 @@
       var d = ref.getBoundingClientRect().top - a.top;
       if (Math.abs(d) >= 1) scroll.scrollTop += d;
     }
+    // Body-filtered sessions can contain hundreds of completed paragraphs in one turn.
+    // Queue translations only for text in or near the viewport.
+    var nearReplies = new Set();
+    function translateReply(el) {
+      var turn = el.closest(".gv-turn")?._t, index = Number(el.dataset.reply);
+      if (!turn) return;
+      var part = turn.parts?.[index], source = part?.text || turn.answer;
+      if (!source || (TT().isCurrentToolTurn(turn, rt) && part === turn.parts?.at(-1) && !part?.whole)) return;
+      var translated = window.TSU_TRANSLATE?.reply(source, agentId);
+      var pending = !translated && cfg.translateShow === "only" && window.TSU_TRANSLATE?.replyPending(source);
+      var original = !!open[el.dataset.tr];
+      var value = original ? source : translated || (pending ? "…" : source);
+      if (el._display !== value) { el.innerHTML = md(value); el._display = value; }
+      el.classList.toggle("gv-tr", !!translated);
+      el.classList.toggle("on", original && !!translated);
+    }
+    var replyIO = new IntersectionObserver(entries => {
+      for (var entry of entries) {
+        if (entry.isIntersecting) { nearReplies.add(entry.target); if (!P.off) translateReply(entry.target); }
+        else nearReplies.delete(entry.target);
+      }
+    }, {root:scroll, rootMargin:"160px 0px"});
     function paintTurn(t, el) {
       var ti = rt.session().turns.indexOf(t), h = turnHtml(t, ti);
-      if (el.dataset.h !== h) { var an = anchorOf(); el.dataset.h = h; el.innerHTML = h; tickTm(el); fitCmds(el); reanchor(an); }
+      if (el.dataset.h !== h) { var an = anchorOf(); el.dataset.h = h;
+        el.querySelectorAll("[data-reply]").forEach(node => { replyIO.unobserve(node); nearReplies.delete(node); });
+        el.innerHTML = h;
+        el.querySelectorAll("[data-reply]").forEach(node => {
+          node.dataset.tr = ti + ":tr" + node.dataset.reply; replyIO.observe(node);
+        });
+        tickTm(el); fitCmds(el); reanchor(an); }
+      else if (P.textFilter && !P.off) el.querySelectorAll("[data-reply]").forEach(node => { if (nearReplies.has(node)) translateReply(node); });
       el.hidden = !h;
     }
     // 限了高的命令：真放不下才淡出去、露出「展开完整命令」
     function fitCmds(box) { box.querySelectorAll(".gv-cmd.gv-clip").forEach(function (pre) { var over = pre.scrollHeight > pre.clientHeight + 2, b = pre.nextElementSibling; pre.classList.toggle("gv-over", over); if (b && b.classList.contains("gv-cmdmore")) b.hidden = !over; }); }
     // 在跑的用时（.gv-tick，data-t0 是起点）：只换这几个字，不重画整问；一秒一次，看不见的时候不走
     function tickTm(box) { var now = Date.now(); (box || listEl).querySelectorAll(".gv-tick").forEach(function (x) { var ms = now - (+x.dataset.t0 || now), v = ms >= 1000 ? durC(ms) : ""; if (x.textContent !== v) x.textContent = v; }); }
-    var tmT = setInterval(function () { if (!host.isConnected) { clearInterval(tmT); return; } if (P.off || document.hidden || !rt.stream) return; tickTm(listEl); }, 1000);
+    var tmT = setInterval(function () { if (!shown || !host.isConnected || P.off || document.hidden) return; if (rt.stream) tickTm(listEl); else if (V.working() || V.waitingLabel()) status(); }, 1000);
     // 离看着的那段很远（前后三屏以外）的几问才不画（.gv-far：content-visibility: hidden，高度记着）；近处的一直排好、画好——滚动时不露白、回去也不重画
-    var farIO = window.IntersectionObserver ? new IntersectionObserver(function (es) { es.forEach(function (e) { e.target.classList.toggle("gv-far", !e.isIntersecting); }); }, { root: scroll, rootMargin: "300% 0px 300% 0px" }) : null;
+    var farIO = window.IntersectionObserver ? new IntersectionObserver(function (es) { es.forEach(function (e) { var wasFar = e.target.classList.contains("gv-far"); e.target.classList.toggle("gv-far", !e.isIntersecting); if (wasFar && e.isIntersecting && !P.off && !P.textFilter && e.target.isConnected) redraw(e.target._t); }); }, { root: scroll, rootMargin: "300% 0px 300% 0px" }) : null;
     function add(t, before) {
       if (blocks.has(t)) return paintTurn(t, blocks.get(t));
+      if (!blocks.size) scroll.classList.add("transcript-at-end");
       var el = document.createElement("div");
       el.className = "gv-turn";
       el._t = t;
@@ -547,9 +602,11 @@
     // 输入框里的提示：连接器的会话（Claude Code、Codex）照它自己说的（后台会话能送进去、开在别的终端里只读、新会话……），同终端外壳的状态行
     var hintNow = function () { ta.placeholder = rt.hideInputHint ? "" : (rt.localQueued && rt.localQueued() ? "按 ↑ 编辑排队的消息" : "") || (V.claude && rt.hint && rt.hint()) || (rt.session().turns.length ? "回复…" : "要做什么？"); };
     function renderAll() {
+      scroll.classList.toggle("transcript-at-end", !!P.textFilter || rt.session().turns.length > 0);
       pend.clear();
       hintNow();
       if (farIO) farIO.disconnect();
+      replyIO.disconnect(); nearReplies.clear();
       listEl.textContent = "";
       blocks = new Map();
       rt.session().turns.forEach(function (t) { add(t); });
@@ -568,6 +625,9 @@
       jumpShow();
       if (scroll.scrollTop < 200 && rt.more && rt.more() && rt.earlier) rt.earlier(); // 会话记录只读了后面一段（Claude Code 的大会话）：滚到顶接着往前读
     }, { passive: true });
+    var pullEarlier = () => { if (scroll.scrollTop < 2 && rt.more?.()) rt.earlier?.(); };
+    scroll.addEventListener("wheel", e => { if (e.deltaY < 0) pullEarlier(); }, {passive:true});
+    scroll.addEventListener("touchmove", pullEarlier, {passive:true});
     var scrollResize = new ResizeObserver(stick);
     scrollResize.observe(listEl);
     scrollResize.observe(scroll);
@@ -594,6 +654,7 @@
       if (sw && !String(document.getSelection()) && !e.target.closest("a[href], button, .gv-sum, .gv-imgs img")) {
         e.preventDefault();
         open[sw.dataset.tr] = !sw.classList.contains("on");
+        if (sw.hasAttribute("data-reply")) { translateReply(sw); return; }
         var tEl0 = sw.closest(".gv-turn"), t0 = null;
         blocks.forEach(function (el, k) { if (el === tEl0) t0 = k; });
         if (t0 != null) paintTurn(t0, tEl0);
@@ -639,7 +700,9 @@
       var ts = rt.session ? rt.session().turns : [], lt = null;
       for (var j = ts.length - 1; j >= 0 && j >= ts.length - 6; j--) if (ts[j] && ts[j].stats) { lt = ts[j]; break; }
       if (!lt) return "";
-      var st = lt.stats, secs = st.secs || 0, tx = (st.verb || "Worked") + " for " + (secs >= 3600 ? Math.floor(secs / 3600) + "h " + Math.floor(secs % 3600 / 60) + "m" : secs >= 60 ? Math.floor(secs / 60) + "m " + (secs % 60) + "s" : secs + "s");
+      var st = lt.stats, ms = st.ms ?? (st.secs == null ? NaN : st.secs * 1000);
+      if (!Number.isFinite(ms) || ms < 0) return "";
+      var tx = (st.verb || "Worked") + " for " + A.fmt.ccDur(ms);
       var at = st.at ? new Date(st.at) : null;
       if (at && !isNaN(at.getTime())) tx += " · done " + at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
       return '<div class="gv-spin gv-donel"><span class="gv-dim">' + esc(tx) + "</span></div>";
@@ -651,23 +714,34 @@
       if (spinT) return;
       spinT = setInterval(function () {
         var i = liveEl.querySelector(".gv-spin > i");
-        if (!i || liveEl.hidden || !rt.stream || !liveEl.isConnected) { clearInterval(spinT); spinT = 0; return; }
+        if (!i || liveEl.hidden || !V.working() || !liveEl.isConnected) { clearInterval(spinT); spinT = 0; return; }
         if (document.hidden) return;
         i.textContent = SPIN_G[++spinN % SPIN_G.length];
       }, 120);
     }
     function status() {
       var s = rt.stream, wl = vm("workLine") || "full"; // 运行状态行：完整 / 简洁（转圈和用时）/ 隐藏（Esc、对话 ··· 照样能停）
+      var prefs = cfg.connectorFooter || {}, customWork = prefs[(agent.connector || "paimon") + ".workLine"];
+      if (customWork) wl = customWork === "on" ? "full" : "hidden";
+      var waiting = !s && V.waitingLabel();
+      if (!s && V.working() && !waiting) {
+        var start = rt.workingStartedAt?.() || rt.session()?.progress?.startedAt || rt.session()?.turns.at(-1)?.at;
+        s = {t0:start, firstAt:true, verb:rt.liveStatus || "Working"};
+      }
       var STOPB = ""; // 不再画「■ 停止」（用户不要：跑着的时候没事不打断；要停用 Esc、对话 ···）。以前还和强度滑条的刻度撞了类名，跑到输入框下面压着 +
       liveEl.hidden = !s || wl === "hidden";
-      if (!s && wl !== "hidden" && appLogo()) { var dh = doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
+      if (!s && wl !== "hidden" && (V.claude || appLogo())) {
+        var task = waiting && (rt.tasks || []).concat(rt.schedules || []).find(t => t.status === "running" && (waiting === "Waiting" ? t.cron || t.once : t.kind === "shell"));
+        var since = waiting === "Waiting for background terminal" ? rt.backgroundWaitSince?.() : task && (Number(task.t0) || Date.parse(task.createdAt));
+        var dh = waiting ? '<div class="gv-spin gv-wait">✳ ' + esc(waiting) + (since ? ' · ' + A.fmt.ccDur(Math.max(0, Date.now() - since)) : '') + '</div>' : doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
+      var elapsedFrom = s?.specialStatus === "Waiting for background terminal" ? s.phaseAt : s?.t0;
       var lg = s ? appLogo() : "", ic0 = lg ? '<i class="gv-logo">' + lg + "</i>" : "<i>·</i>";
-      if (s && wl === "brief") { var hb = '<div class="gv-spin brief">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + dur(Date.now() - s.t0) + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
+      if (s && wl === "brief") { var hb = '<div class="gv-spin brief">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
       else if (s && wl !== "hidden") {
         var act = (rt.todo ? rt.todo() : []).filter(function (x) { return x.status === "in_progress" && x.activeForm; })[0];
         // 同终端界面（Claude Code）：在做的任务的 activeForm，没有就是这一问随机的那个词（Concocting… Swirling…）；等模型、思考中写在后面淡的那段
         var label = s.wait ? "等待重试" : s.specialStatus ? s.specialStatus : act ? trG(act.activeForm) : s.verb || "Working", phase = s.wait || s.specialStatus ? "" : !s.firstAt ? "等待模型" : s.thinking ? "思考中" : "";
-        var h = '<div class="gv-spin">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + dur(Date.now() - s.t0) + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
+        var h = '<div class="gv-spin">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
         if (liveEl.dataset.h !== h) { liveEl.dataset.h = h; liveEl.innerHTML = h; }
         spinGo();
       }
@@ -690,9 +764,13 @@
       var canNow = !!rt.sendNow && pq.some(function (q) { return q.local; }), canEdit = !!rt.takeQueued && (!!rt.queued || !!(rt.localQueued && rt.localQueued()));
       var qh = pq.length ? pq.map(function (q) {
         if (q.from) return '<div class="gv-pq gv-pqfrom"><span class="gv-dim">@' + esc(q.from) + " · </span>" + esc(clip(q.text, 200)) + "</div>";
-        return '<div class="gv-user gv-pq"><div class="gv-bubble">' + esc(q.text).replace(/\n/g, "<br>") + "</div></div>";
-      }).join("") + '<div class="gv-pqh"><span class="gv-dim">排队中 · ctrl+x ctrl+s ' + (canNow ? '</span><button type="button" class="gv-qlink" data-g="q-now" title="中断当前回合，将排队的消息合并后立即发送">' + (EN() ? "send now" : "立即发送") + "</button>" : "立即发送</span>") + // 「立即发送」这几个字就能点（用户：比另外一个按钮顺手）
- (canEdit ? '<button type="button" class="gv-qb" data-g="q-edit" title="移回输入框编辑 (↑)">编辑</button>' : "") + "</div>"
+        if (q.err && agent.connector === "codex") {
+          var caption = (q.images || []).map((im, i) => "[Image #" + (i + 1) + "]").concat(q.text).join(" ");
+          return '<div class="gv-user gv-pq"><div class="gv-bubble">' + esc(caption) + '</div></div><div class="gv-pqh">未发送：' + esc(q.err) + ' <button type="button" data-g="q-retry" data-li="' + q.li + '" data-at="' + q.at + '">重试</button></div>';
+        }
+        return '<div class="gv-user gv-pq"><div class="gv-bubble vs-queue-row">' + TT().queueIcon(q.delivery) + esc(q.text).replace(/\n/g, "<br>") + "</div></div>";
+      }).join("") + (pq.every(q => q.err || q.delivery) ? "" : '<div class="gv-pqh"><span class="gv-dim">排队中 · ctrl+x ctrl+s ' + (canNow ? '</span><button type="button" class="gv-qlink" data-g="q-now" title="中断当前回合，将排队的消息合并后立即发送">' + (EN() ? "send now" : "立即发送") + "</button>" : "立即发送</span>") + // 「立即发送」这几个字就能点（用户：比另外一个按钮顺手）
+ (canEdit ? '<button type="button" class="gv-qb" data-g="q-edit" title="移回输入框编辑 (↑)">编辑</button>' : "") + "</div>")
         : pm ? '<div class="gv-pqh"><span class="gv-dim">' + esc(pm + " 条消息等它下一步读到") + "</span></div>" : "";
       qEl.hidden = !qh;
       if (qEl.dataset.h !== qh) { qEl.dataset.h = qh; qEl.innerHTML = qh; }
@@ -708,19 +786,33 @@
     function bar() {
       var m = rt.model() || {}, c = rt.ctx ? rt.ctx() : null, set = function (k, html, show) { var b = inCol('[data-c="' + k + '"]'); b.hidden = !show; if (b.dataset.h !== html) { b.dataset.h = html; b.innerHTML = html; } };
       set("access", '<svg viewBox="0 0 16 16"><path d="M5 7V5a3 3 0 0 1 6 0v2"/><rect x="3.5" y="7" width="9" height="6.5" rx="1.2"/></svg>' + esc(ACC[agent.access || "read"] || agent.access), !V.claude);
-      var modelLabel = m.name || m.id || "模型";
+      var fields = rt.footerFields?.() || [], modelLabel = m.name || m.id || "模型";
+      var effort = rt.currentEffort?.() || agent.effort || "", mode = "", session = rt.session();
+      var context = fields.find(value => /^Context /i.test(value));
+      var quota = rt.weeklyLabel?.() || rt.quotaLabel?.() || "";
       if (agent.connector === "agy") {
-        var session = rt.session();
-        modelLabel = rt.liveFooter || [session.mode, session.statusLabel].filter(Boolean).join(" · ") || modelLabel;
-        modelLabel = [rt.liveStatus, modelLabel].filter(Boolean).join(" · ");
+        var live = rt.liveFooter?.split(/\s*·\s*/) || [];
+        mode = live.shift() || session.mode || "";
+        var variant = rt.confirmedModel?.()?.name || live.join(" · ") || session.statusLabel || m.name || "";
+        var parts = variant.match(/^(.*?)\s*(?:·\s*|\()(low|medium|high|xhigh|max)\)?(?:\s*·.*)?$/i);
+        modelLabel = parts ? parts[1].trim() : variant;
+        effort = parts ? parts[2].toLowerCase() : "";
       }
-      if (rt.footerFields) modelLabel = rt.footerFields().join(" · ");
-      set("model", esc(modelLabel), true); // 连接器的会话：模型（真在用的，带 1M）；后面不再挂会话名（用户：没有意义）
-      set("effort", "推理 " + esc(EFF[agent.effort || "high"] || agent.effort), !V.claude);
+      var enabled = key => cfg.connectorFooter?.[(agent.connector || "paimon") + "." + key] !== "off";
+      var info = cfg.connectorFooter?.[(agent.connector || "paimon") + ".info"] ?? (cfg.footInfo === false ? "off" : "on");
+      if (!context && c?.window && c.tokens > 0) context = "Context " + Math.round(c.pct) + "% used";
+      var balance = fields.find(value => /^remained /i.test(value));
+      set("quota", esc(quota || balance || ""), info === "on" && (quota && enabled("quota") || balance && enabled("balance")));
+      inCol('[data-c="quota"]').disabled = !quota;
+      set("context", esc(context || ""), !!context && V.claude && info === "on" && enabled("context"));
+      var modeEl = inCol(".gv-mode");
+      if (modeEl.textContent !== mode) modeEl.textContent = mode; modeEl.hidden = !mode || info !== "on" || !enabled("mode");
+      set("model", esc(modelLabel), !!modelLabel);
+      set("effort", V.claude ? esc(effort) : "推理 " + esc(EFF[agent.effort || "high"] || agent.effort), V.claude ? !!effort : true);
       var pct = c && c.pct ? Math.min(100, c.pct) : 0, ring = inCol(".gv-ringv"), R = 2 * Math.PI * 7;
       ring.style.strokeDasharray = (R * pct / 100).toFixed(1) + " " + R.toFixed(1);
       inCol(".gv-ring").title = "上下文 " + Math.round(pct) + "%";
-      inCol(".gv-ring").hidden = !!(A && A.cfg && A.cfg.footInfo === false); // 状态信息关了（设置 › 对话 › 显示、对话 ···）：上下文这一圈也收起（权限、模型、推理强度是按钮，留着）
+      inCol(".gv-ring").hidden = V.claude || info !== "on" || !enabled("context"); // 状态信息关了（设置 › 对话 › 显示、对话 ···）：上下文这一圈也收起（权限、模型、推理强度是按钮，留着）
       inCol('[data-c="attach"]').hidden = true; // 「+」不要了（点了只有一个「添加文件或照片…」，还常常没反应）：图片拖进来、粘贴照样行
     }
     // ---- 浮层：贴在按钮上面，点外面 / Esc 关 ----
@@ -824,16 +916,33 @@
       p.focus();
     }
     var ACC_DESC = { none: "只能读写自己的文件夹", read: "可以读取其他位置，不能修改", rw: "可以读写其他位置" };
-    host.querySelector(".gv-bar").addEventListener("click", function (e) {
+    var choiceRequest = 0;
+    host.querySelector(".gv-bar").addEventListener("click", async function (e) {
       var b = e.target.closest("[data-c]");
       if (!b) return;
       var k = b.dataset.c;
       if (k === "attach") return plusMenu(b);
       if (k === "access") return listPop(b, Object.keys(ACC).map(function (a) { return { label: ACC[a], desc: ACC_DESC[a], on: (agent.access || "read") === a, run: function () { rt.setAccess(a); bar(); } }; }));
+      var request = ++choiceRequest;
+      if (k === "quota") return TT().showAgentQuota(P, rt, b);
+      if (k === "context") return window.TSU_CTX ? TSU_CTX.open(rt, b, {}) : ctxPop(b);
+      if (V.claude && (k === "model" || k === "effort")) {
+        try {
+          await rt.prepareChoices?.();
+          if (request !== choiceRequest || !b.isConnected) return;
+          var cur = rt.currentModelId?.() || rt.model()?.id;
+          var family = id => agent.connector === "agy" ? String(id || "").replace(/-(low|medium|high|xhigh|max)$/, "") : id;
+          var choices = k === "effort" ? (rt.efforts?.() || []).map(id => ({id, name:id})) : rt.models?.() || [];
+          if (!choices.length) return P.flash("当前模型没有可切换的选项", 2500);
+          return listPop(b, choices.map(x => ({
+            label:x.name, on:k === "effort" ? x.id === b.textContent.trim() : family(x.id) === family(cur),
+            run:() => Promise.resolve(k === "effort" ? rt.setEffort(x.id) : rt.setModel(x.id)).then(bar, err => P.flash(err.message, 4000))
+          })));
+        } catch (error) { return P.flash(error.message, 4000); }
+      }
       if (k === "effort") return effortPop(b);
       if (k === "ctx") return ctxPop(b);
-      // 模型：Paimon 的走提供方 › 模型；连接器的会话（Claude Code、Codex）列连接器给的（id 原样，[1m] 也在），选了下一句起用上
-      if (k === "model") return !V.claude ? modelPop(b) : rt.models ? listPop(b, rt.models().map(function (x) { return { label: x.name, desc: "", on: (rt.model() || {}).id === x.id, run: function () { rt.setModel(x.id); bar(); } }; })) : null;
+      if (k === "model") return modelPop(b);
     });
 
     // ---- 输入 ----
@@ -1017,14 +1126,14 @@
       c.run();
     }
     ta.addEventListener("blur", sugClose);
-    function submit() {
+    function submit(queue = false) {
       var v = ta.value, imgs = attach.slice();
       var loading = imgs.filter(im => im.decoding);
       if (loading.length) {
         var ticket = V.imageSubmit = {};
         Promise.all(loading.map(im => im.decoding)).then(function (results) {
           if (V.imageSubmit === ticket && !P.closed && P.program === V && ta.value === v &&
-              imgs.length === attach.length && imgs.every((im, i) => im === attach[i]) && results.every(Boolean)) submit();
+              imgs.length === attach.length && imgs.every((im, i) => im === attach[i]) && results.every(Boolean)) submit(queue);
         });
         return;
       }
@@ -1068,8 +1177,9 @@
       if (c) return c.run();
       if (!V.claude && v.trim()[0] === "!" && rt.bang) { rt.bang(v.trim().slice(1).trim()); toBottom(); return; }
       // 连接器自己的斜杠命令（Codex 的 /model、/effort、/new……，pi 的）：交给它的命令处理（同终端界面）；它不认的照常当话发
+      if (agent.connector === "codex" && !imgs.length && v.trim() === "/effort") return inCol('[data-c="effort"]').click();
       if (V.claude && rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { toBottom(); return; }
-      rt.send(v, imgs);
+      rt.send(v, imgs, queue ? {queue:true} : undefined);
       toBottom();
     }
     var gCx = 0; // ctrl+x 按下的时间（等 ctrl+s）
@@ -1080,6 +1190,12 @@
         if ((e.key === "Enter" && !e.shiftKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing || e.keyCode === 229)) || e.key === "Tab") { e.preventDefault(); sugPick(sug.sel); return; }
         if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); sugClose(); return; }
       }
+      if (agent.connector === "codex" && e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
+          !e.isComposing && (ta.value.trim() || attach.length)) {
+        e.preventDefault();
+        submit(true);
+        return;
+      }
       // 排着的马上发：ctrl+x ctrl+s（同 Claude Code）、ctrl+enter（输入框空着时）；排着的拿回来改：空着按 ↑
       var hasQ = !!rt.queued || (rt.pending && rt.pending().some(function (q) { return q.local; }));
       if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "x" || e.key === "X")) { gCx = Date.now(); e.preventDefault(); return; }
@@ -1089,7 +1205,7 @@
       if (e.key === "Enter" && !e.shiftKey && !(window.TSU_IME ? TSU_IME(e) : e.isComposing || e.keyCode === 229)) { e.preventDefault(); submit(); return; }
       if (e.key === "Escape") {
         if (rt.queued && rt.takeQueued) { e.preventDefault(); var q = rt.takeQueued(); if (q) prependDraft(q.text, q.images); status(); return; }
-        if (rt.stream && rt.interrupt && rt.interrupt()) { e.preventDefault(); return; }
+        if (V.working() && rt.interrupt && rt.interrupt()) { e.preventDefault(); return; }
       }
     });
     sendB.addEventListener("click", function () { submit(); ta.focus(); }); // 在跑的时候也是发送：排在后面（停止在在跑那一行、Esc、对话 ···）
@@ -1099,6 +1215,7 @@
       var b = e.target.closest("[data-g]");
       if (!b) return;
       if (b.dataset.g === "stop") { if (rt.interrupt) rt.interrupt(); }
+      else if (b.dataset.g === "q-retry") rt.retryOne?.(+b.dataset.li, +b.dataset.at);
       else if (b.dataset.g === "q-now") { if (rt.sendNow) (rt.sendQueuedNow ? rt.sendQueuedNow() : rt.sendNow("", [])); }
       else if (b.dataset.g === "q-edit" && (rt.queued || (rt.localQueued && rt.localQueued())) && rt.takeQueued) { var q = rt.takeQueued(); if (q) prependDraft(q.text, q.images); }
       else return;
@@ -1113,6 +1230,7 @@
     var pend = new Set(), raf = 0;
     var soon = function (t) { if (t) pend.add(t); if (raf) return; raf = requestAnimationFrame(function () { raf = 0; pend.forEach(redraw); pend.clear(); status(); }); };
     var off1 = rt.on(function (type, data) {
+      if (type === "historyProgress") return;
       if (!shown) return;
       if (type === "append") {
         if (P.textFilter === "body") {
@@ -1130,6 +1248,11 @@
     });
     var off2 = A.on(function (type) { if (shown && (type === "me" || type === "cfg")) { bar(); if (type === "cfg") renderAll(); } });
 
+    V.retranslate = function () {
+      if (P.off || !shown) { P.dirty = true; return; }
+      if (P.textFilter) nearReplies.forEach(translateReply);
+      else listEl.querySelectorAll(".gv-turn:not(.gv-far)").forEach(el => redraw(el._t));
+    };
     V.refreshStatus = function () { status(); }; // 任务清单换了位置、⌃T（studio.js）：输入框上方那一块重画
     V.render = function (options) {
       var lower = null, edge = scroll.getBoundingClientRect().bottom;
@@ -1138,7 +1261,6 @@
         if (rect.height && rect.top < edge && (!lower || rect.top > lower.top))
           lower = { turn: turn, top: rect.top, bottom: rect.bottom };
       });
-      scroll.classList.toggle("filter-final", P.textFilter === "final");
       host.hidden = false;
       if (!shown) { shown = true; draftLoad(); }
       else if (document.activeElement !== ta) draftLoad(); // 又露出来（换回这个风格、别处改过草稿）：照共享的那份
@@ -1158,7 +1280,7 @@
       off1(); off2();
       document.removeEventListener("vs-clips", onClips);
       document.removeEventListener("tsu-draft-image", onDraftImage);
-      scrollResize.disconnect(); farIO?.disconnect();
+      scrollResize.disconnect(); farIO?.disconnect(); replyIO.disconnect(); nearReplies.clear();
       cancelAnimationFrame(raf); pend.clear();
       clearInterval(tmT); clearInterval(spinT); clearTimeout(colT);
       closePop(); sugClose(); host.remove(); shown = false;

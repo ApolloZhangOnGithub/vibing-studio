@@ -91,6 +91,7 @@ html:not(.st-gui) .xb-ic.tile { border-radius: 16%; }
 .xp { flex: 1; min-width: 0; min-height: 0; display: flex; color: var(--st-fg); font: var(--st-fs, calc(13px * var(--st-fk, 1)))/1.5 var(--st-font); -webkit-user-select: none; user-select: none;
   --gv-mono: var(--st-font); --gv-box: color-mix(in srgb, var(--st-fg) 6%, var(--st-bg)); --gv-code: var(--st-orange); }
 html.st-gui .xp { font: calc(13px * var(--st-fk, 1))/1.5 var(--st-guifont, -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif); --gv-mono: ui-monospace, "SF Mono", Menlo, monospace; --gv-code: #ef7d6f; }
+html.termapp .st-pg.st-pg-explorer .xp { font-size: 13px; font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: auto; }
 html.light.st-gui .xp { --gv-code: #c4372b; }
 .xp :is(.xp-pre, .xp-md, .xp-md *) { -webkit-user-select: text; user-select: text; } /* 文件的内容能选、能拷贝；别的（界面）不能 */
 .xp-q { -webkit-user-select: text; user-select: text; }
@@ -311,7 +312,6 @@ html.light .xp-qlbg { background: rgba(0, 0, 0, 0.06); }
 .xp-ql.gv .xp-qlh { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--st-line); background: var(--st-bg2); }
 .xp-ql.gv .xp-qlt { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.3; } /* 名字、说明占剩下的宽度、放不下省略——右边的「打开」「×」不会被挤出去 */
 .xp-ql.gv .xp-qlh > .xp-grow { display: none; }
-.xp-ql.gv .xp-qlm { color: var(--st-dim); font-size: calc(12px * var(--st-fk, 1)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xp-qlb .gv-user { display: flex; justify-content: flex-end; margin: 12px 0; }
 .xp-qlb .gv-bubble { max-width: 78%; background: var(--st-ask); color: var(--st-hi); border-radius: 14px; padding: 8px 14px; }
 /* 终端界面（VS Code + Claude Code TUI）：等宽字、方的、一圈细线；标题行像终端窗口（名字在正中），下面一行淡色的信息 */
@@ -320,7 +320,6 @@ html.light .xp-qlbg { background: rgba(0, 0, 0, 0.06); }
 .xp-ql.tui .xp-qln { font-weight: 700; text-align: center; }
 .xp-ql.tui .xp-qlbtns { justify-self: end; }
 .xp-ql.tui .xp-qlbtns button { border-radius: 2px; padding: 0 8px; height: 20px; line-height: 18px; background: none; font: inherit; }
-.xp-ql.tui .xp-qlm { flex: none; padding: 3px 12px; color: var(--st-dim); border-bottom: 1px solid var(--st-line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92em; }
 .xp-ql.tui .xp-qlb { padding: 12px 16px; }
 .xp-ql.tui .gv-md { font: inherit; }
 .xp-ql.tui .gv-md code { font: inherit; font-size: 0.95em; border-radius: 2px; }
@@ -346,11 +345,10 @@ html.light .xp-qlbg { background: rgba(0, 0, 0, 0.06); }
 /* 每一栏是一个封闭的框：竖线到底；顶上一行小字（这一层是什么）、下面一条细线；最后一栏右边空出来的（.xp-colfill）是空白，不像多了一栏 */
 .xp-col { flex: none; width: 230px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--st-line); }
 .xp-colfill { flex: 1 0 24px; border-right: 0; }
-.xp-colh { flex: none; height: 24px; line-height: 24px; padding: 0 12px; box-sizing: border-box; font-size: calc(11px * var(--st-fk, 1)); color: var(--st-dim); border-bottom: 1px solid var(--st-line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .xp-colb { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 6px; scrollbar-width: thin; }
 .xp-cempty { padding: 12px 8px; color: var(--st-dim); font-size: calc(12px * var(--st-fk, 1)); text-align: center; }
 .xp-crow { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border-radius: 5px; white-space: nowrap; cursor: default; }
-.xp-crow .xp-ic { transform: scale(.72); transform-origin: left center; margin-right: -6px; }
+.xp-crow .xp-ic { width: 16px; height: 16px; }
 .xp-crow .xb-ic { width: 16px; height: 16px; }
 .xp-crow .xp-cn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .xp-crow .xp-carr { flex: none; color: var(--st-dim); font-size: calc(13px * var(--st-fk, 1)); }
@@ -387,8 +385,11 @@ html:not(.st-macos) .xs-foot > .xs-seg { flex: 1; min-width: 0; }
 html:not(.st-macos) .xs-seg > button { height: calc(24px * var(--st-fk, 1)); font-size: calc(12px * var(--st-fk, 1)); line-height: 1; }
 html:not(.st-macos) .xp-status { height: var(--xp-band); box-sizing: border-box; padding: 0 12px; line-height: 1; }
 html:not(.st-macos) .xp-pb { line-height: 1; }
-.xp-pathbar { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; white-space: nowrap; }
-.xp-pb { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; color: var(--st-dim); cursor: default; min-width: 0; }
+.xp-pathbar { direction: rtl; text-align: left; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.xp-pbtrail [hidden] { display: none; }
+.xp-pbmore { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.xp-pbtrail { display: inline-flex; direction: ltr; align-items: center; gap: 2px; vertical-align: middle; }
+.xp-pb { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; color: var(--st-dim); cursor: default; min-width: 0; }
 .xp-pb > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .xp-pb:hover { background: var(--st-hover); color: var(--st-fg); }
 /* 路径条上的小图标（同侧栏、列表）：线条图标用侧栏的强调色；普通文件夹是列表里那个蓝色的文件夹；agent 是它的记号。和字竖着居中 */

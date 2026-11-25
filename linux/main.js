@@ -94,7 +94,7 @@ function setupLocalUI() {
 //     页面上「重启以更新」点一下就用新的那份重开。
 //   deb 装的（在 /opt 里，要 root 才能换）：只告诉页面有新版本、下载地址（自己装）。一小时看一次；页面也能叫它马上看
 const UPD = { state: "none", version: "", url: "", kind: process.env.APPIMAGE ? "appimage" : "deb", err: "", busy: false, at: 0 };
-const buildOf = (v) => +(String(v || "").split(".")[3] || 0);
+const versionOrder = new Intl.Collator("en", { numeric: true });
 function updEmit() { for (const w of wins.values()) { try { w.bridge.emit("app.update", Object.assign({}, UPD)); } catch (e) { /* 窗口关了 */ } } }
 async function checkUpdate() {
   if (UPD.busy || HEADLESS) return;
@@ -103,7 +103,7 @@ async function checkUpdate() {
     const r = await net.fetch(SERVICE + "/downloads/linux.json", { cache: "no-store" });
     if (!r.ok) throw new Error("linux.json: HTTP " + r.status); // 没登录（下载要登录）、还没发过
     const m = await r.json(), arch = process.arch === "arm64" ? "arm64" : "x64";
-    if (!(buildOf(m.version) > buildOf(VS_VER))) { UPD.state = "none"; UPD.err = ""; return; }
+    if (!/^\d+(?:\.\d+){2,4}$/.test(m.version) || versionOrder.compare(m.version, VS_VER) <= 0) { UPD.state = "none"; UPD.err = ""; return; }
     if (UPD.kind === "appimage") {
       if (UPD.state === "ready" && UPD.version === m.version) return;
       // 网站上一个文件最多 25 MB：AppImage 切成几段放（tools/release-linux.sh），这里一段段下、接起来、核对 sha256 再换

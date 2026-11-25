@@ -11,6 +11,120 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-25", ver: "0.2.2", items: { improved: [
+      ["公开版本使用三段版本号，日常更新增加第四段。", "Public releases use three version components. Routine updates add a fourth."],
+      ["访达使用系统字体和图标，支持应用替身、窄窗口路径导航和居中的图片缩放。", "Finder uses system fonts and icons, resolves app aliases, adapts breadcrumbs to narrow windows and opens zoomable images centered."],
+      ["悬停标签即时预览；文件引用可跳转到行。会话区分排队和追发消息，加载历史时保留当前记录。", "Preview tabs on hover and follow file references to a line. Conversations distinguish queued messages from follow-ups and preserve existing history while loading."]
+    ], fixed: [
+      ["补全状态栏菜单中上下文、额度、余额、运行模式与定时任务的图标。", "Show icons for context, quota, balance, run mode and scheduled tasks in the status menu."],
+      ["快速查看与设置浮窗打开时，拖到输入框的图片正确进入草稿。", "Attach images dropped on the composer while Quick Look or Settings is open."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.19", items: { improved: [
+      ["访达分栏使用系统字体与文件夹图标，应用替身显示目标图标。移除分栏类型标题，窄窗口的路径栏优先显示当前目录。", "Use system typography and folder icons in Finder columns, show target icons for app aliases, remove column type headers, and prioritize the current folder in narrow breadcrumbs."],
+      ["快速查看切换文件时直接调整大小，移除文件信息副行。图片居中打开，支持滚轮与触控板缩放。", "Switch Quick Look items without resizing animations or a metadata subtitle. Open images centered and zoom with the wheel or trackpad."]
+    ], fixed: [
+      ["浮窗打开时，拖至会话输入框的图片仍作为草稿附件。", "Attach images dropped on the composer while a floating panel is open."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.18", items: { improved: [
+      ["会话状态黄灯常亮，读取历史记录时移除顶部加载条。", "Keep yellow session indicators steady and remove the top progress bar when loading conversation history."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.17", items: { improved: [
+      ["文件路径栏支持打开上级目录，代码第 1 行紧接路径栏显示。", "Open parent folders from the breadcrumb trail and remove the extra space above line one."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.16", items: { improved: [
+      ["待发消息的排队图标移至消息行左侧。", "Show the queue indicator at the left edge of pending messages."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.15", items: { fixed: [
+      ["修复切走会话后悬停标签预览空白的问题；历史消息到达时同步更新预览。", "Render pending conversation updates in tab previews, including history that arrives while hovering."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.14", items: { fixed: [
+      ["正文视图中，工具下方出现回复时，折叠预览只占内容实际所需的行数。", "Size collapsed tool previews to their content when a reply follows."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.13", items: { improved: [
+      ["打开工作台时按需加载代码编辑器和流程图。", "Load the code editor and diagram renderer on demand."],
+      ["悬停后台标签可立即查看原面板，保留代码、终端内容和滚动位置。", "Preview a background tab in place, preserving its editor, terminal and scroll position."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.12", items: { added: [
+      ["悬停标签可预览会话内容。", "Hover over a tab to preview its contents."]
+    ], fixed: [
+      ["文件引用支持跳转到指定行，再次打开时复用已有标签。", "Open file references at the cited line and reuse the existing tab."],
+      ["Codex 连续发送的消息分别显示等待发送或等待当前回合接收的状态。", "Distinguish messages waiting to send from follow-ups being delivered to the current Codex turn."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.11", items: { fixed: [
+      ["移动标签后只显示当前会话的输入框和状态行。展开窗口底栏时，新版本入口只显示在底栏。", "Show only the active tab’s composer and status after reordering tabs. Show the update notice only in the bottom bar when it is visible."],
+      ["正文视图将上下文压缩前的工具收进可展开的历史记录。", "Group pre-compaction tools in expandable history in the body view."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.10", items: { fixed: [
+      ["Codex 的 TUI 和 GUI 都可连续按 Tab 逐条排队，切换回合时也能提交。终端在完成状态与随后排队的消息之间保留一行间距。", "Queue multiple Codex messages with Tab in both TUI and GUI, including between turns. Leave one terminal row between a completed turn and the following pending messages."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.9", items: { fixed: [
+      ["Codex 排队消息确认送达或重新读取历史后，仍按原提交顺序显示。", "Preserve local prompt order after Codex delivers queued messages and when reopening the conversation."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.8", items: { fixed: [
+      ["Codex 区分当前回合追加与 Tab 排队，保留带图消息的提交顺序。输入历史翻到末尾时恢复原草稿。", "Distinguish Codex steering from Tab-queued messages, preserve submission order for attachments, and restore the draft at the end of input history."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.7", items: { fixed: [
+      ["AGY 显示思考正文时保留 Working 状态行。连续回合分别计时，同一回合追加消息时保留原计时。", "Keep Working visible during AGY reasoning. Start a new timer for each turn and preserve it when queuing follow-ups."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.6", items: { fixed: [
+      ["修复终端输入加号和数字时的漏字、重字。后台终端等待状态显示本次等待的时长。", "Fix missing or doubled terminal input for plus signs and digits. Show the elapsed time of the current background terminal wait."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.5", items: { fixed: [
+      ["AGY 会话追加排队消息时保留当前回合的运行计时。", "Keep the active AGY turn timer when queuing a follow-up."],
+      ["修复 macOS 终端退格删除汉字时的 UTF-8 输入损坏与光标错位。", "Preserve UTF-8 input and cursor alignment when erasing Chinese characters in the macOS terminal."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.4", items: { fixed: [
+      ["修复折叠视图的译文刷新，以及图形界面将分段思考重复显示在回合开头的问题。", "Refresh translations in collapsed views and keep individually recorded reasoning in its original position in the GUI."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.3", items: { fixed: [
+      ["修复命令输出预览中下载进度刷新的续行缩进。", "Keep download progress aligned in command output previews when the terminal rewrites a line."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.2", items: { improved: [
+      ["待发消息使用细线时钟图标，与首行文字居中对齐。", "Queued messages show a small clock aligned with the first line."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489.1", items: { improved: [
+      ["日常更新使用第五段版本号，每次更新递增。", "Routine updates increment the fifth version number."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.489", items: { fixed: [
+      ["待发送的消息右侧显示排队图标。AGY 网页搜索按搜索类别展示，可展开查看结果。", "Queued messages show a queue icon. AGY web searches are identified separately and expand to show their results."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.488", items: { fixed: [
+      ["会话筛选同时保留运行中和已打开的对话，切换标签页后仍能在侧栏找到空闲对话。", "The session filter includes running conversations and open tabs, including idle tabs in the background."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.487", items: { fixed: [
+      ["打开 AGY 和 Codex 会话时显示加载进度，复用本机的历史记录缓存并读取变化的内容。", "Show loading progress when opening AGY and Codex sessions and reuse cached history for incremental reads."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.485", items: { fixed: [
+      ["AGY 长会话分块读取历史记录。修复 Codex 运行中筛选遗漏会话，以及到顶后无法继续翻阅历史的问题。", "Read large AGY transcripts in chunks, include active Codex sessions in the sidebar, and continue loading earlier messages at the top."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.484", items: { fixed: [
+      ["显示思考状态时隐藏中断快捷键提示。", "Hide the interrupt hint while showing thinking status."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.483", items: { fixed: [
+      ["正文视图保留每条回复的最后一次工具调用。之前的调用可以展开查看。", "Keep the last tool call visible in each reply in body view and group earlier calls in expandable history."],
+      ["Codex 服务拒绝发送时保留消息和图片，可逐条重试。", "Keep rejected Codex messages and attachments available for individual retry."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.482", items: { fixed: [
+      ["分屏输入框和工作状态行底部对齐。设置蓝点和顶栏新版本提示同步显示和收起。", "Align split-pane composers and status lines. Show and dismiss the settings badge and title bar update notice together."],
+      ["运行中的标签共享闪烁节奏，切换标签或会话刷新后仍保持一致。浏览器在加载工作区时同步建立主机连接。", "Working tabs keep the same blink phase when switching or updating tabs. Browsers start the host connection alongside workbench loading."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.481", items: { fixed: [
+      ["顶栏恢复「新版本」入口。浏览器提前查找在线设备，再次选择已连接的设备时保留当前连接。", "Restore the title bar update button. The browser starts device discovery earlier and keeps its connection when the current device is selected again."],
+      ["Codex 浏览器操作显示结果标题。运行中的会话使用最新的活动状态更新标签指示灯。", "Show browser action titles in Codex transcripts and use current thread activity for tab indicators."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.480", items: { fixed: [
+      ["查看更新后，设置蓝点不再为同一项更新重复出现。", "After you view an update, the settings badge stays dismissed for that update."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.479", items: { fixed: [
+      ["工作标签共用黄灯闪烁时钟，切换标签和分屏后保持同步，等待中的黄灯保持常亮。", "Working tab indicators stay in phase across tab changes and split panes. Waiting indicators remain steadily lit."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.478", items: { fixed: [
+      ["恢复未发送草稿中的图片，修复 macOS 原地更新后反复提示重启的问题。", "Restore unsent image attachments and fix repeated restart prompts after an in-place macOS update."],
+      ["打开当前 Mac 时直接回到工作区，远程连接会提前建立并准备设备认证。", "Opening the current Mac returns to its workspace. Remote connections and device authentication now start earlier."]
+    ] } },
+    { date: "2026-11-25", ver: "0.2.1.477", items: {
+      fixed: [["修复网页 Agents 侧栏漏列 Codex、AGY 和 DSH 会话的问题，按连接设备读取会话列表。", "The Agents sidebar now reads Codex, AGY and DSH sessions from the connected computer."]]
+    } },
     { date: "2026-11-24", ver: "0.2.1.476", items: {
       new: [
         ["点击状态行的 Context 可查看已用比例和可用空间。明细按占用从高到低排列，列出消息、工具使用、工具结果等分类，可用空间固定在最后。Codex 压缩记录可展开查看摘要和保留的消息。","Click Context to inspect the used and available window. Messages, tool use and tool results are sorted by size, with free space last. Expand a Codex compaction to read its summary and retained messages when recorded."],

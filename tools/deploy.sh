@@ -4,7 +4,13 @@
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"; WEB="$HERE/web"
 cd "$HERE"
-SITE_ONLY=0; [ "${1:-}" = "--site-only" ] && SITE_ONLY=1 # 只把已经装好的这一版传到网站（上一次传失败了的时候），版本号不再 +1
+case "${1:-}" in
+  "") MODE=alpha ;;
+  --release) MODE=release ;;
+  --site-only) MODE=site ;;
+  *) echo "usage: $0 [--release | --site-only]" >&2; exit 2 ;;
+esac
+SITE_ONLY=0; [ "$MODE" = site ] && SITE_ONLY=1 # 只把已经装好的这一版传到网站（上一次传失败了的时候），版本号不再 +1
 setopt null_glob
 # iCloud 同步冲突留下的副本（「live 2.js」「Info 2.plist」这种）：不发出去，先挪开（2026-10-15 查出一个 600 KB 的旧 live.js 跟着部署了十天）
 DUP=$(find ui app/Sources linux -path '*/node_modules' -prune -o -path ui/downloads -prune -o -name '* [2-9].*' -print 2>/dev/null)
@@ -17,22 +23,41 @@ python3 "$HERE/tools/smoke_headless.py" "$HERE/ui" > "$SMOKE/smoke.out" 2>&1 || 
 grep "^smoke:" "$SMOKE/smoke.out"
 python3 "$HERE/tools/check-sync.py" # 原生和页面里换版本的那几步一样
 if [ $SITE_ONLY = 0 ]; then
-B=$(( $(cat "$HERE/tools/ui-build.txt" 2>/dev/null || echo 328) + 1 )); echo $B > "$HERE/tools/ui-build.txt"
-# 版本号一律四段：x.y.z.构建号（x.y.z 在 tools/version-base.txt，手动改；构建号每部署一次 +1）——界面、App、Linux 版、GitHub 发行版都用这一个
-BASE=$(cat "$HERE/tools/version-base.txt" 2>/dev/null || echo 0.2.1)
-V=$(printf '{"version":"%s.%s","build":%s,"built":"%s"}' "$BASE" "$B" "$B" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
-print -r -- "$V" > "$HERE/ui/version.json"; echo "ui version: $BASE.$B"
-# 每一版什么时候发的（更新内容按它分日期：changelog.js 里只写版本号的条目，日期从这里取）
-python3 - "$HERE/ui/builds.json" "$BASE.$B" <<'PY'
-import json, sys, time, os
-p, v = sys.argv[1], sys.argv[2]
-d = {}
-if os.path.exists(p):
-    try: d = json.load(open(p))
-    except Exception: d = {}
-d[v] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=0)
-PY
+# 日常部署递增第四段；--release 递增第三段，发布三段正式版。
+python3 - "$MODE" <<'PYVERSION'
+import fcntl
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+version_file = Path("ui/version.json")
+history_file = Path("ui/builds.json")
+base_file = Path("tools/version-base.txt")
+with Path("tools/ui-build.txt").open("r+") as counter:
+    fcntl.flock(counter, fcntl.LOCK_EX)
+    base = base_file.read_text().strip()
+    major, minor, patch = map(int, base.split("."))
+    current = json.loads(version_file.read_text())
+    history = json.loads(history_file.read_text())
+    if sys.argv[1] == "release":
+        version = f"{major}.{minor}.{patch + 1}"
+        base_file.write_text(version + "\n")
+    else:
+        prefix = base + "."
+        alpha = int(current["version"][len(prefix):]) if current["version"].startswith(prefix) else 0
+        version = f"{base}.{alpha + 1}"
+    build = max(int(counter.read()), current["build"]) + 1
+    now = datetime.now(timezone.utc)
+    manifest = dict(version=version, build=build, built=now.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    history[version] = now.astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+    history_file.write_text(json.dumps(history, ensure_ascii=False, indent=0))
+    version_file.write_text(json.dumps(manifest, separators=(",", ":")) + "\n")
+    counter.seek(0)
+    counter.write(str(build) + "\n")
+    counter.truncate()
+    print("ui version:", version)
+PYVERSION
 U="$HOME/Library/Application Support/Vibing Studio/ui"
 mkdir -p "$U" && rsync -a --exclude downloads "$HERE/ui/" "$U/" && touch "$U/terminal.html" && defaults write beer.paimon.terminal uiDir "$U" && echo "local ui: $U" # downloads/（发出去的 App）不拷
 fi

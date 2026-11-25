@@ -253,6 +253,7 @@ final class RemoteHost: NSObject {
         clients[from] = (m["cname"] as? String) ?? "iPad"
         if let l = m["loc"] as? String, !l.isEmpty { locs[from] = l }
         notify()
+        if proven[from] == nil && !denied.contains(from) { challenge(from) }
         if let p = codes[from], p.until > Date() { authState(from, "code") } else if asking.contains(where: { $0 == from || $0.hasPrefix(from + "|") }) { authState(from, "asking") } // 那边刷新了页面：接着等它
       }
       else if sys == "client-leave" {

@@ -44,6 +44,7 @@ enum AppUpdate {
     "[ -d \"$APP\" ] && /usr/bin/ditto -c -k --keepParent \"$APP\" \"$R/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).zip\"",
     // 原地换：文件夹不动，里面换成新的
     "if [ -d \"$APP\" ]; then /usr/bin/rsync -a --delete \"$NEW/\" \"$APP/\"; else /usr/bin/ditto \"$NEW\" \"$APP\"; fi",
+    "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then /usr/bin/xattr -dr com.apple.FinderInfo \"$APP\" 2>/dev/null; /usr/bin/xattr -dr com.apple.ResourceFork \"$APP\" 2>/dev/null; fi",
     // 换坏了（签名不对）：用刚打的 zip 放回去
     "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then Z=$(ls -1t \"$R\"/*.zip 2>/dev/null | head -1); if [ -n \"$Z\" ]; then mv \"$APP\" \"$T/Vibing Studio broken $(date +%H%M%S).app\"; /usr/bin/ditto -x -k \"$Z\" \"$(dirname \"$APP\")\"; fi; fi",
     // 放好的那份已经换上了：它自己不再留着当一个 App

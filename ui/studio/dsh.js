@@ -2,13 +2,11 @@
   "use strict";
   var sessions = [], workspaces = [], pending, scanned = 0, error = "";
   function enabled() {
-    return window.nadosNative && nadosNative.local && !nadosNative.remote && TSU_CONNECTORS.on("dsh");
+    return window.nadosNative && nadosNative.local && TSU_CONNECTORS.on("dsh");
   }
   async function read(id, helper = "dsh_sessions.py") {
     if (!enabled()) throw new Error("DSH 连接器未启用");
-    var dir = window.TSU_UI_LOCAL && TSU_UI_LOCAL.dir;
-    if (!dir) throw new Error("未找到本机界面目录");
-    var args = ["python3", dir + "/studio/" + helper];
+    var args = ["python3", await TSU_LOCAL.studioHelper(helper)];
     if (id) args.push(id);
     var result = await TSU_LOCAL.exec({cmd: args.map(function (arg) { return "'" + arg.replace(/'/g, "'\\''") + "'"; }).join(" ")});
     if (result.code) throw new Error(result.err || "读取 DSH 记录失败");
@@ -18,7 +16,7 @@
     if (!pending) pending = read().then(function (items) { 
       if (!Array.isArray(items.sessions) || !Array.isArray(items.workspaces)) throw new Error("无效的工作区列表");
       sessions = items.sessions; workspaces = items.workspaces; error = "";
-      try { localStorage.setItem("tsu-sidebar-dsh-v1", JSON.stringify({sessions:sessions, workspaces:workspaces})); } catch (_) {}
+      try { localStorage.setItem(TSU_LOCAL.hostKey("tsu-sidebar-dsh-v1"), JSON.stringify({sessions:sessions, workspaces:workspaces})); } catch (_) {}
      }).catch(function (e) { error = e.message; }).finally(function () {
       scanned = Date.now(); pending = null; document.dispatchEvent(new Event("tsu-dsh"));
     });
@@ -98,7 +96,7 @@
         var previous = JSON.parse(sessionStorage.getItem(requestKey) || "null");
         var requestId = previous && previous.text === text ? previous.id : crypto.randomUUID();
         sessionStorage.setItem(requestKey, JSON.stringify({id: requestId, text: text}));
-        await deliver(["python3", TSU_UI_LOCAL.dir + "/studio/dsh_send.py", id, requestId]);
+        await deliver(["python3", await TSU_LOCAL.studioHelper("dsh_send.py"), id, requestId]);
         sessionStorage.removeItem(requestKey);
       } finally {
         sending = false;
@@ -107,7 +105,7 @@
     }
     var catalog, selection;
     async function settings(args) {
-      var argv = ["python3", TSU_UI_LOCAL.dir + "/studio/dsh_send.py"].concat(args);
+      var argv = ["python3", await TSU_LOCAL.studioHelper("dsh_send.py")].concat(args);
       var result = await TSU_LOCAL.exec({cmd: argv.map(arg => "'" + arg.replace(/'/g, "'\\''") + "'").join(" ")});
       if (result.code) throw new Error(result.err.trim() || "DSH 设置失败");
       return JSON.parse(result.out);
@@ -215,7 +213,7 @@
     return rt;
   }
   async function create(workspaceId) {
-    var args = ["python3", TSU_UI_LOCAL.dir + "/studio/dsh_send.py", "--create", workspaceId || ""];
+    var args = ["python3", await TSU_LOCAL.studioHelper("dsh_send.py"), "--create", workspaceId || ""];
     var result = await TSU_LOCAL.exec({cmd: args.map(arg => "'" + arg.replace(/'/g, "'\\''") + "'").join(" ")});
     if (result.code) throw new Error(result.err.trim() || "创建 DSH 会话失败");
     var id = result.out.trim().split("\n").pop();
@@ -224,9 +222,9 @@
     await ensure(id).ready();
     return id;
   }
-  if (window.nadosNative?.local && !nadosNative.remote) {
+  if (window.nadosNative?.local) {
     try {
-      var cache = JSON.parse(localStorage.getItem("tsu-sidebar-dsh-v1"));
+      var cache = JSON.parse(localStorage.getItem(TSU_LOCAL.hostKey("tsu-sidebar-dsh-v1")));
       if (Array.isArray(cache?.sessions) && Array.isArray(cache.workspaces)) {
         sessions = cache.sessions; workspaces = cache.workspaces;
       }

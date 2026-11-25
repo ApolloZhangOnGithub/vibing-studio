@@ -259,7 +259,7 @@
     if (pmOn()) A.list().forEach(function (a) { add(a, false); }); // Paimon Code 连接器关了：边栏里没有它的会话
     if (archived && A.archived && pmOn()) A.archived().forEach(function (a) { add(a, true); });
     // 开着的 Claude Code、Codex 会话（这个窗口里有它的标签页）：它的运行时已经起来了，状态照它的（在这里说的话它正在答）；没开着的不去建运行时
-    var openSt = {};
+    var openSt = {}, openIds = window.TSU_TERM?.openSessionIds?.() || new Set();
     if (w.ws && w.ws.all) w.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^(c[cx]|pi|dsh|agy|ty):/.test(ag)) { try { var r0 = A.runtime(String(ag)); if (r0 && r0.state) openSt[String(ag)] = r0.state(); } catch (e) { /* 还没起来 */ } } });
     var stNow = function (aid, busy) { return openSt[aid] === "working" || busy ? "working" : openSt[aid] === "waiting" ? "waiting" : "idle"; };
     // Claude Code 的会话（连接器开着才有）：边栏树里那一份；live = 在别的终端里开着（busy：正在干活）
@@ -267,10 +267,10 @@
     cc.forEach(function (x) { var k0 = "cc:" + x.id; if (EXTS.arch[k0] && !archived) return; var t = +new Date(x.mtime || x.updated || x.t || 0) || 0; out.push({ kind: "cc", id: x.id, name: EXTS.name[k0] || x.title || x.id, dim: !EXTS.name[k0] && !!x.dimTitle, pinned: !!EXTS.pin[k0], arch: !!EXTS.arch[k0], t: t, c: +new Date(x.created || x.ctime || 0) || t, state: stNow("cc:" + x.id, x.live && x.live.status === "busy"), live: !!x.live, cwd: x.cwd || "", job: x.job || "", env: "cc" }); });
     // Codex 的会话（连接器开着才有，codex.js）：最近的 60 个（搜的时候全部）；归档的只在看「已归档」时列
     var CX = window.TSU_CODEX;
-    if (CX) CX.list().filter(function (x) { return archived || !(x.archived || EXTS.arch["cx:" + x.id]); }).slice(0, Q.trim() ? Infinity : 60).forEach(function (x) { var k1 = "cx:" + x.id; out.push({ kind: "cx", id: x.id, name: EXTS.name[k1] || x.title || x.id, dim: !EXTS.name[k1] && !!x.dimTitle, pinned: !!EXTS.pin[k1], arch: !!(x.archived || EXTS.arch[k1]), t: x.mtime || 0, c: x.mtime || 0, state: stNow("cx:" + x.id, x.live && x.live.status === "busy"), cwd: x.cwd || "", env: "cx" }); });
+    if (CX) CX.list().filter(function (x) { return archived || !(x.archived || EXTS.arch["cx:" + x.id]); }).filter((x,i) => Q.trim() || i < 60 || x.live || openIds.has("cx:" + x.id)).forEach(function (x) { var k1 = "cx:" + x.id; out.push({ kind: "cx", id: x.id, name: EXTS.name[k1] || x.title || x.id, dim: !EXTS.name[k1] && !!x.dimTitle, pinned: !!EXTS.pin[k1], arch: !!(x.archived || EXTS.arch[k1]), t: x.mtime || 0, c: x.mtime || 0, state: stNow("cx:" + x.id, x.live && x.live.status === "busy"), cwd: x.cwd || "", env: "cx" }); });
     // pi 的会话（连接器开着才有，pi.js）：同 Codex——最近的 60 个（搜的时候全部）；名字是 pi 自己的（改名写进它的记录）
     var PI = window.TSU_PI;
-    if (PI) PI.list().filter(function (x) { return archived || !EXTS.arch["pi:" + x.id]; }).slice(0, Q.trim() ? Infinity : 60).forEach(function (x) { var k2 = "pi:" + x.id; out.push({ kind: "pi", id: x.id, name: x.title || x.id, dim: !!x.dimTitle, pinned: !!EXTS.pin[k2], arch: !!EXTS.arch[k2], t: x.mtime || 0, c: x.mtime || 0, state: stNow(k2, x.live && x.live.status === "busy"), live: !!x.live, cwd: x.cwd || "", env: "pi" }); });
+    if (PI) PI.list().filter(function (x) { return archived || !EXTS.arch["pi:" + x.id]; }).filter((x,i) => Q.trim() || i < 60 || x.live || openIds.has("pi:" + x.id)).forEach(function (x) { var k2 = "pi:" + x.id; out.push({ kind: "pi", id: x.id, name: x.title || x.id, dim: !!x.dimTitle, pinned: !!EXTS.pin[k2], arch: !!EXTS.arch[k2], t: x.mtime || 0, c: x.mtime || 0, state: stNow(k2, x.live && x.live.status === "busy"), live: !!x.live, cwd: x.cwd || "", env: "pi" }); });
     // Teyvat 的 agent（连接器开着才有，teyvat.js）：没归档的都列；在做什么照它自己的状态（工作中 = working，等待 / 休眠 = waiting）
     if (connOn("dsh")) TSU_DSH.list().forEach(function (x) {
       var key = "dsh:" + x.id;
@@ -283,7 +283,7 @@
       if (EXTS.arch[key] && !archived) return;
       out.push({ kind: "agy", id: x.sessionId, name: EXTS.name[key] || x.title || x.sessionId,
         pinned: !!EXTS.pin[key], arch: !!EXTS.arch[key], t: time, c: time,
-        state: stNow(key), live: !!x.tty, cwd: x.cwd || "", env: "agy" });
+        state: stNow(key, !!x.workingSince), live: !!x.tty && x.tty !== "??", cwd: x.cwd || "", env: "agy" });
     });
     var TY = window.TSU_TEYVAT;
     if (TY) TY.list().filter(function (x) { return archived || !EXTS.arch["ty:" + x.id]; }).forEach(function (x) { var k3 = "ty:" + x.id; out.push({ kind: "ty", id: x.id, name: x.name || x.id, pinned: !!EXTS.pin[k3], arch: !!EXTS.arch[k3], t: x.mtime || 0, c: x.created || x.mtime || 0, state: x.state === "working" ? "working" : x.state === "waiting" || x.state === "hibernating" ? "waiting" : "idle", env: "ty" }); });
@@ -369,6 +369,7 @@
     if (cur !== lastCur) { lastCur = cur; if (cur && UNREAD[cur]) { delete UNREAD[cur]; changed = true; } }
     R.all.forEach(function (x) { var k = keyOf(x.kind, x.id); if (PREVST[k] === "working" && x.state !== "working" && k !== cur && !UNREAD[k]) { UNREAD[k] = 1; changed = true; } PREVST[k] = x.state; });
     if (changed) keep("st-claude-unread", UNREAD);
+    var openIds = window.TSU_TERM?.openSessionIds?.() || new Set();
     var curId = function (x) { return isConnK(x.kind) ? x.kind + ":" + x.id === cur : x.id === cur; };
     // 列表的标题行（在列表上面、不跟着滚）：「会话」和搜索、筛选——分段的标题上不再放按钮（按钮不会跟着第一段跳来跳去）
     var side = w.ca.side, lhe = side.querySelector(".ca-lhead");
@@ -380,13 +381,13 @@
     var searching = !!Q.trim(), h = "";
     R.secs.filter(function (s) { return s.items.length; }).forEach(function (s) {
       // 这一段的漏斗开着（同 VS Code 风格左边树）：只列在跑、等着你、有新消息的（正看着的那个也留着）
-      var only = !!(s.conn && TSU_CONNECTORS.runningFilter(s.conn, secSt(s.key).only)), its = only ? s.items.filter(function (x) { return x.state !== "idle" || curId(x) || UNREAD[keyOf(x.kind, x.id)]; }) : s.items;
+      var only = !!(s.conn && TSU_CONNECTORS.runningFilter(s.conn, secSt(s.key).only)), its = only ? s.items.filter(function (x) { return x.state !== "idle" || x.live || openIds.has(keyOf(x.kind,x.id)); }) : s.items;
       var shown = its, hid = 0, full = searching || !!secSt(s.key).all, long = its.length > MAXN + 2;
-      var head = long ? its.filter(function (x, i) { return i < MAXN || curId(x) || x.state !== "idle" || UNREAD[keyOf(x.kind, x.id)]; }) : its; // 收着时露出来的那几行
+      var head = long ? its.filter(function (x, i) { return i < MAXN || openIds.has(keyOf(x.kind,x.id)) || curId(x) || x.state !== "idle" || UNREAD[keyOf(x.kind, x.id)]; }) : its; // 收着时露出来的那几行
       var rest = long && full && !searching ? its.filter(function (x) { return head.indexOf(x) < 0; }) : []; // 展开后多出来的：画在「收起」下面（按钮不挪位置，同 Show more 原地变 Show less）
       if (!full && long) { shown = head; hid = its.length - shown.length; } else if (rest.length) shown = head;
       var nm = s.conn ? CONN[s.conn].name : "", add = s.conn && canNewIn(s.conn) ? '<button class="ca-ib ca-shadd" data-new="' + s.conn + '" title="' + esc(tr("新建 " + nm + " 会话", "New " + nm + " session")) + '">' + IC.plus + "</button>" : "";
-      if (s.conn) add = '<button class="ca-ib ca-shflt' + (only ? " on" : "") + '" data-only="' + esc(s.key) + '" title="' + esc(only ? tr("显示全部", "Show all") : tr("仅显示运行中", "Show running only")) + '">' + (only ? IC.funnelOn : IC.funnel) + "</button>" + add;
+      if (s.conn) add = '<button class="ca-ib ca-shflt' + (only ? " on" : "") + '" data-only="' + esc(s.key) + '" title="' + esc(only ? tr("显示全部", "Show all") : tr("显示运行中或已打开", "Show running or open")) + '">' + (only ? IC.funnelOn : IC.funnel) + "</button>" + add;
       h += '<div class="ca-sec' + (s.conn ? " ca-csec" : "") + '" data-key="' + esc(s.key) + '"><div class="ca-sh ca-shx" data-fold="' + esc(s.key) + '" role="button" tabindex="0"><i class="ca-fchev">' + IC.down + "</i>" +
         '<span class="ca-shl">' + esc(s.label) + '</span><span class="ca-cnt">' + (only ? its.length + " / " + s.items.length : its.length) + '</span><span class="ca-fill"></span>' + add + "</div>" +
         '<div class="ca-sbody"><div class="ca-sbody-in">' + shown.map(function (x) { return row(x, curId(x)); }).join("") +
@@ -974,7 +975,7 @@
         });
         ta.addEventListener("paste", function (e) { var fs = e.clipboardData && e.clipboardData.files; if (fs && fs.length) { e.preventDefault(); Array.prototype.forEach.call(fs, function (f) { addDraftImage(f, host); }); } });
         file.addEventListener("change", function () { Array.prototype.forEach.call(file.files || [], function (f) { addDraftImage(f, host); }); file.value = ""; });
-        host.addEventListener("click", function (e) {
+        host.addEventListener("click", async function (e) {
           var b = e.target.closest("[data-c]"), x = e.target.closest(".ca-new-att button[data-i]");
           if (x) { DRAFT.images.splice(+x.dataset.i, 1); return paintDraft(host); }
           if (!b) return;
@@ -985,8 +986,12 @@
           if (c === "conn") return connMenu(host, b);
           if (c === "access") return S.menu(Object.keys(ACC_L).map(function (k) { return { label: tr(ACC_L[k][0], ACC_L[k][1]), radio: true, close: true, checked: DRAFT.access === k, run: function () { DRAFT.access = k; paintDraft(host); } }; }), { el: b, side: "above" });
           var dk0 = draftConn();
-          if (c === "effort" && (dk0 === "cc" || dk0 === "cx")) { var eAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, effs = eAPI && eAPI.efforts ? eAPI.efforts() : []; return S.menu([{ label: tr("默认", "Default"), radio: true, close: true, checked: !DRAFT.ce[dk0], run: function () { delete DRAFT.ce[dk0]; paintDraft(host); } }].concat(effs.map(function (v) { return { label: v, radio: true, close: true, checked: DRAFT.ce[dk0] === v, run: function () { DRAFT.ce[dk0] = v; paintDraft(host); } }; })), { el: b, side: "above" }); }
-          if (c === "model" && (dk0 === "cc" || dk0 === "cx")) { var mAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, ml = mAPI && mAPI.modelList ? mAPI.modelList() : [], cur0 = DRAFT.cm[dk0] || (mAPI && mAPI.defModel ? mAPI.defModel() : ""); var mi0 = function (x) { return { label: x.name || x.id, value: x.def ? tr("默认", "Default") : "", radio: true, close: true, checked: x.id === cur0, run: function () { DRAFT.cm[dk0] = x.id; paintDraft(host); } }; }; var main0 = ml.filter(function (x) { return !x.more; }).map(mi0), more0 = ml.filter(function (x) { return x.more; }).map(mi0); return S.menu(main0.concat(more0.length ? [{ sep: true }, { label: tr("更多模型", "More models"), items: more0 }] : []).concat(ml.length ? [] : [{ label: tr("没有可用的模型", "No models available"), disabled: true }]), { el: b, side: "above" }); }
+          if ((c === "effort" || c === "model") && dk0 === "cx") {
+            await window.TSU_CODEX?.prepareChoices();
+            if (!b.isConnected || draftConn() !== dk0) return;
+          }
+          if (c === "effort" && (dk0 === "cc" || dk0 === "cx")) { var eAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, effs = eAPI && eAPI.efforts ? eAPI.efforts(DRAFT.cm[dk0]) : []; return S.menu([{ label: tr("默认", "Default"), radio: true, close: true, checked: !DRAFT.ce[dk0], run: function () { delete DRAFT.ce[dk0]; paintDraft(host); } }].concat(effs.map(function (v) { return { label: v, radio: true, close: true, checked: DRAFT.ce[dk0] === v, run: function () { DRAFT.ce[dk0] = v; paintDraft(host); } }; })), { el: b, side: "above" }); }
+          if (c === "model" && (dk0 === "cc" || dk0 === "cx")) { var mAPI = dk0 === "cc" ? window.TSU_CLAUDE : window.TSU_CODEX, ml = mAPI && mAPI.modelList ? mAPI.modelList() : [], cur0 = DRAFT.cm[dk0] || (mAPI && mAPI.defModel ? mAPI.defModel() : ""); var mi0 = function (x) { return { label: x.name || x.id, value: x.def ? tr("默认", "Default") : "", radio: true, close: true, checked: x.id === cur0, run: function () { DRAFT.cm[dk0] = x.id; if (dk0 === "cx" && !mAPI.efforts(x.id).includes(DRAFT.ce.cx)) delete DRAFT.ce.cx; paintDraft(host); } }; }; var main0 = ml.filter(function (x) { return !x.more; }).map(mi0), more0 = ml.filter(function (x) { return x.more; }).map(mi0); return S.menu(main0.concat(more0.length ? [{ sep: true }, { label: tr("更多模型", "More models"), items: more0 }] : []).concat(ml.length ? [] : [{ label: tr("没有可用的模型", "No models available"), disabled: true }]), { el: b, side: "above" }); }
           if (c === "effort") return S.menu(((Ag() && Ag().EFFORTS) || ["off", "low", "high", "max"]).map(function (k) { return { label: tr(EFF_L[k] ? EFF_L[k][0] : k, EFF_L[k] ? EFF_L[k][1] : k), radio: true, close: true, checked: DRAFT.effort === k, run: function () { DRAFT.effort = k; paintDraft(host); } }; }), { el: b, side: "above" });
           if (c === "model") return modelMenu(host, b);
         });

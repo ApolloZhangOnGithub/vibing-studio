@@ -267,7 +267,7 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 }
 
 /* 状态点（live.js 的 DOT）：TTU 给的一格宽的框里画一个实心圆，颜色跟着所在的字（绿 / 红 / 灰）；同 Claude Code 的 ⏺ */
-.tpane .tdot.blink, .tab .tab-working-dot { animation: tdot-blink 1.2s steps(1, end) infinite; } /* 在跑的工具：灰点一闪一闪（同 Claude Code 的 ToolUseLoader：亮 600ms、灭 600ms） */
+.tpane .tdot.blink { animation: tdot-blink 1.2s steps(1, end) infinite; } /* 在跑的工具：灰点一闪一闪（同 Claude Code 的 ToolUseLoader：亮 600ms、灭 600ms） */
 @keyframes tdot-blink { 50% { opacity: 0; } }
 .tpane .tdot { display: inline-block; width: calc(var(--ttu-cell, 1ch) * 0.94); height: calc(var(--ttu-cell, 1ch) * 0.94); margin-left: calc(var(--ttu-cell, 1ch) * 0.03); border-radius: 50%; background: currentColor; vertical-align: 0.03em; }
 
@@ -390,12 +390,15 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .st-tacts button[data-t="text-filter"] svg { width: 15px; flex: none; }
 
 .tpane .dense-latest { display: block; }
-.tpane .dense-latest:not(.open) { height: 5lh; overflow: hidden; }
-.dense-latest-gui:not(.expanded) { height: 5lh; overflow: hidden; }
+.tpane .dense-latest:not(.open) { max-height: 5lh; overflow: hidden; }
+.tpane .dense-latest.running-tail:not(.open) { height: 5lh; }
+.dense-latest-gui:not(.expanded) { max-height: 5lh; overflow: hidden; }
 
-.screen.filter-final, .gv-scroll.filter-final { display: flex; flex-direction: column; }
-.screen.filter-final > *, .gv-scroll.filter-final > * { flex-shrink: 0; }
-.screen.filter-final > .page, .gv-scroll.filter-final > .gv-list { margin-top: auto; }
+/* Keep the last row by the composer even when collapsed history fits in the viewport. */
+.screen.transcript-at-end, .gv-scroll.transcript-at-end { display: flex; flex-direction: column; }
+.screen.transcript-at-end > *, .gv-scroll.transcript-at-end > * { flex-shrink: 0; }
+.screen.transcript-at-end > .page, .gv-scroll.transcript-at-end > .gv-list { margin-top: auto; }
+.gv-scroll.transcript-at-end > .gv-col { width: 100%; }
 
 .cx-footer-choice { pointer-events: auto; appearance: none; font: inherit; color: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .tpane .footer-pointer-over, .tpane:has(> .agy-quota-popup:popover-open) .cx-footer-choice[data-quota], .cx-footer-choice:hover { text-decoration: underline; }
@@ -427,3 +430,11 @@ a[href*="#vs-flow:"]:focus:not(:focus-visible) { outline:none }
 }
 @keyframes working-word-shine { 45%, 100% { background-position: 0% 50%; } }
 @media (prefers-reduced-motion: reduce) { .working-word { animation: none; -webkit-text-fill-color: currentColor; } }
+
+.vs-queue-row { position: relative; }
+.tpane .term .ask:has(> .vs-queue-icon) { padding-inline-start: calc(10px + 2ch); }
+.vs-queue-icon { position: absolute; inset-inline-start: 6px; top: .5lh; transform: translateY(-50%); width: 1em; height: 1em; opacity: .6; pointer-events: none; user-select: none; }
+.ask.cx-pending { position: relative; background: transparent; color: var(--muted, #777); padding-block: 0; }
+.cx-pending .vs-queue-icon, .gv-pq .vs-queue-icon { pointer-events: auto; }
+.gv .gv-bubble.vs-queue-row { padding-inline-start: 2em; }
+.gv-bubble .vs-queue-icon { top: calc(7px + .5lh); }

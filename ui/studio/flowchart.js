@@ -1,14 +1,22 @@
 (() => {
   const selector = 'a[href*="#vs-flow:"]';
   let panel, anchor, pinned, timer;
-  let nativeZoom, rectTimer;
+  let nativeZoom, rectTimer, fileImage;
   function publishZoomRect() {
     if (!window.nadosNative) return;
-    const rect = pinned && panel?.getBoundingClientRect();
+    const rect = (pinned ? panel : fileImage)?.getBoundingClientRect();
     nadosNative.call("window.diagramZoomRect", rect ? rect.toJSON() : {}).catch(() => {});
   }
-  window.nadosNative?.on("diagram-magnify", e => nativeZoom?.(e));
-  window.addEventListener("resize", () => { if (nativeZoom) publishZoomRect(); });
+  window.TSU_FILE_ZOOM = (view, enabled) => {
+    if (!enabled && fileImage !== view) return;
+    fileImage = enabled ? view : null;
+    if (!pinned) publishZoomRect();
+  };
+  window.nadosNative?.on("diagram-magnify", e => {
+    if (nativeZoom) return nativeZoom(e);
+    if (fileImage?.isConnected && fileImage.contains(document.elementFromPoint(e.x, e.y))) fileImage.magnify(e);
+  });
+  window.addEventListener("resize", () => { if (nativeZoom || fileImage) publishZoomRect(); });
   function close() {
     const wasPinned = pinned;
     clearTimeout(rectTimer);
@@ -38,6 +46,8 @@
     panel.append(canvas);
     (async () => {
       try {
+        await window.loadStudioLibrary("diagram");
+        if (view !== panel) return;
         mermaid.initialize({startOnLoad:false,securityLevel:"strict",theme:"base",themeVariables:{fontFamily:"system-ui, sans-serif",primaryColor:"#f2f5f9",primaryTextColor:"#222b37",primaryBorderColor:"#8997a8",lineColor:"#6c798a",edgeLabelBackground:"#ffffff",background:"#ffffff"},flowchart:{htmlLabels:false}});
         const {svg} = await mermaid.render("flow" + crypto.randomUUID().replaceAll("-", ""), source);
         if (view !== panel) return;

@@ -1215,7 +1215,7 @@
     var updates = [];
       if (updateReady && !appUpd) updates.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">新版本</span>');
       if (nagUpd()) updates.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
-    var topHtml = S.status.hidden ? updates.join("") : "";
+    var topHtml = S.status.hidden && hasUnseenUpdate() ? '<span class="st-item st-update" data-st="' + (appUpd ? "app-update" : "reload") + '">新版本</span>' : "";
     if (topHtml !== (S.topUpdateHtml || "")) {
       var bar = tw.el.querySelector(".bar");
       if (bar) {
@@ -1370,13 +1370,14 @@
   var siteVerJ = function () { return fetch("version.json", { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(verJ, function () { return null; }); };
   var localVerJ = function () {
     var LU = window.TSU_UI_LOCAL;
-    if (!LU || !LU.dir || !LOC() || !LOC().read) return Promise.resolve(null);
-    return LOC().read(LU.dir + "/version.json").then(function (b) { try { return verJ(JSON.parse(new TextDecoder().decode(new Uint8Array(b)))); } catch (e) { return null; } }, function () { return null; });
+    if (!LU || !LU.dir || !FLOC() || !FLOC().read) return Promise.resolve(null);
+    return FLOC().read(LU.dir + "/version.json").then(function (b) { try { return verJ(JSON.parse(new TextDecoder().decode(new Uint8Array(b)))); } catch (e) { return null; } }, function () { return null; });
   };
   var readVerJ = function () { return window.TSU_UI_LOCAL ? localVerJ() : siteVerJ(); }; // 重新载入后会用的那一份
   var readVer = function () { return readVerJ().then(function (j) { return j ? String(j.version) : ""; }); };
   (LOC() && LOC().ready ? LOC().ready : Promise.resolve()).then(readVerJ, readVerJ).then(function (j) { if (j) { uiVer.cur = String(j.version); uiVer.built = j.built || ""; uiVer.curBuild = +j.build || 0; } });
   document.addEventListener("st-update-ready", function () { readVer().then(function (v) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); }); });
+  var updateRevision = "";
   var localVer = ""; // 本地界面：页面载入后第一次读到的 version.json
   function checkVersion(force) {
     if (updateReady) { if (!document.hidden || force === true) readVer().then(function (v) { if (v && v !== uiVer.next) { uiVer.next = v; allWins().forEach(function (w) { renderSoon(w); }); } }); return; }
@@ -1385,12 +1386,12 @@
     var LU = window.TSU_UI_LOCAL, NN = window.nadosNative;
     if (LU && NN && NN.call) {
       var ready = function () { if (updateReady) return; updateReady = true; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); document.dispatchEvent(new Event("st-update-ready")); };
-      NN.call("ui.stamp").then(function (r) { if (r && r.stamp && r.stamp > (LU.stamp || 0)) ready(); }, function () {});
+      NN.call("ui.stamp").then(function (r) { if (r?.stamp > LU.stamp) { updateRevision = String(r.stamp); ready(); } }, function () {});
       // 原生那边只看界面目录最上面一层的改动时间（只改了 studio/ 里的不算）：再看一眼目录里的 version.json——每次部署都会改它
-      if (LU.dir && LOC() && LOC().read) LOC().read(LU.dir + "/version.json").then(function (b) {
+      if (LU.dir && FLOC() && FLOC().read) FLOC().read(LU.dir + "/version.json").then(function (b) {
         var v = ""; try { v = String(JSON.parse(new TextDecoder().decode(new Uint8Array(b))).version || ""); } catch (e) { v = ""; }
         if (!v) return;
-        if (!localVer) localVer = v; else if (v !== localVer) ready();
+        if (!localVer) localVer = v; else if (v !== localVer) { uiVer.next = v; ready(); }
       }, function () {});
       return;
     }
@@ -1400,7 +1401,7 @@
       if (!tags.every(Boolean)) return;
       var sig = tags.join("|");
       if (verSig === null) { verSig = sig; return; }
-      if (sig !== verSig) { updateReady = true; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); document.dispatchEvent(new Event("st-update-ready")); } // Claude App 的边栏（新建上面那张「有新版本」卡片）也听这个
+      if (sig !== verSig) { updateRevision = sig; updateReady = true; allWins().forEach(function (w) { renderSoon(w); syncAct(w); }); document.dispatchEvent(new Event("st-update-ready")); } // Claude App 的边栏（新建上面那张「有新版本」卡片）也听这个
     });
   }
   setTimeout(checkVersion, 4000);
@@ -1509,7 +1510,7 @@
   //   换版本改成原地换（「应用程序」里那一份的文件夹不动，里面换成新的）；旧版打成 zip 放在 previous/rollback.noindex（回退用，不是 App）。
   //   这里收拾以前留下的：previous/ 里的一份份 .app 打成 zip、.app 挪进废纸篓；程序坞上指着它们的图标改指「应用程序」里那一份；
   //   被换下的「待更新」（staged-）、签名不能用的（rejected-）挪进废纸篓；下载的安装包留最近 3 个。同原生的 AppUpdate.swift（INSTALL_SH、TIDY_SH 两边一样）
-  var INSTALL_SH = ["LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "mkdir -p \"$R\"", "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)", "[ -d \"$APP\" ] && /usr/bin/ditto -c -k --keepParent \"$APP\" \"$R/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).zip\"", "if [ -d \"$APP\" ]; then /usr/bin/rsync -a --delete \"$NEW/\" \"$APP/\"; else /usr/bin/ditto \"$NEW\" \"$APP\"; fi", "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then Z=$(ls -1t \"$R\"/*.zip 2>/dev/null | head -1); if [ -n \"$Z\" ]; then mv \"$APP\" \"$T/Vibing Studio broken $(date +%H%M%S).app\"; /usr/bin/ditto -x -k \"$Z\" \"$(dirname \"$APP\")\"; fi; fi", "\"$LSR\" -u \"$NEW\" >/dev/null 2>&1; [ -d \"$NEW\" ] && mv \"$NEW\" \"$T/Vibing Studio update $(date +%Y%m%d-%H%M%S).app\"", "\"$LSR\" -f \"$APP\" >/dev/null 2>&1"];
+  var INSTALL_SH = ["LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "mkdir -p \"$R\"", "OLDV=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \"$APP/Contents/Info.plist\" 2>/dev/null || echo old)", "[ -d \"$APP\" ] && /usr/bin/ditto -c -k --keepParent \"$APP\" \"$R/Vibing Studio $OLDV $(date +%Y%m%d-%H%M%S).zip\"", "if [ -d \"$APP\" ]; then /usr/bin/rsync -a --delete \"$NEW/\" \"$APP/\"; else /usr/bin/ditto \"$NEW\" \"$APP\"; fi", "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then /usr/bin/xattr -dr com.apple.FinderInfo \"$APP\" 2>/dev/null; /usr/bin/xattr -dr com.apple.ResourceFork \"$APP\" 2>/dev/null; fi", "if ! /usr/bin/codesign --verify --strict \"$APP\" >/dev/null 2>&1; then Z=$(ls -1t \"$R\"/*.zip 2>/dev/null | head -1); if [ -n \"$Z\" ]; then mv \"$APP\" \"$T/Vibing Studio broken $(date +%H%M%S).app\"; /usr/bin/ditto -x -k \"$Z\" \"$(dirname \"$APP\")\"; fi; fi", "\"$LSR\" -u \"$NEW\" >/dev/null 2>&1; [ -d \"$NEW\" ] && mv \"$NEW\" \"$T/Vibing Studio update $(date +%Y%m%d-%H%M%S).app\"", "\"$LSR\" -f \"$APP\" >/dev/null 2>&1"];
   var TIDY_SH = ["LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "for d in \"$P\" \"$P/rollback.noindex\"; do [ -d \"$d\" ] || continue; ls -1 \"$d\" | grep -E '\\.app$' | while IFS= read -r f; do a=\"$d/$f\"; \"$LSR\" -u \"$a\" >/dev/null 2>&1; mkdir -p \"$P/rollback.noindex\"; [ -e \"$P/rollback.noindex/${f%.app}.zip\" ] || /usr/bin/ditto -c -k --keepParent \"$a\" \"$P/rollback.noindex/${f%.app}.zip\"; mv \"$a\" \"$T/${f%.app} $(date +%H%M%S)-$$.app\"; done; done", "DB=\"$P/../dock-backup\"; mkdir -p \"$DB\"; F=\"$DB/dock-$(date +%Y%m%d-%H%M%S).plist\"; W=\"${F%.plist}-fixed.plist\"", "if /usr/bin/defaults export com.apple.dock \"$F\" 2>/dev/null && cp \"$F\" \"$W\"; then", "  PB=/usr/libexec/PlistBuddy; i=0; ok=0; ch=0", "  while $PB -c \"Print :persistent-apps:$i\" \"$W\" >/dev/null 2>&1; do u=$($PB -c \"Print :persistent-apps:$i:tile-data:file-data:_CFURLString\" \"$W\" 2>/dev/null); case \"$u\" in *'/Applications/Vibing%20Studio.app'*) ok=1;; esac; i=$((i+1)); done", "  i=0; while $PB -c \"Print :persistent-apps:$i\" \"$W\" >/dev/null 2>&1; do u=$($PB -c \"Print :persistent-apps:$i:tile-data:file-data:_CFURLString\" \"$W\" 2>/dev/null)", "    case \"$u\" in *'Application%20Support/Vibing%20Studio/'*|*'/.Trash/Vibing%20Studio'*)", "      if [ $ok = 1 ]; then $PB -c \"Delete :persistent-apps:$i\" \"$W\"; ch=1; continue; fi", "      $PB -c \"Set :persistent-apps:$i:tile-data:file-data:_CFURLString file:///Applications/Vibing%20Studio.app/\" \"$W\"; $PB -c \"Delete :persistent-apps:$i:tile-data:book\" \"$W\" 2>/dev/null; ok=1; ch=1;;", "    esac; i=$((i+1)); done", "  if [ $ch = 1 ]; then /usr/bin/defaults import com.apple.dock \"$W\" && /usr/bin/killall Dock; fi", "fi"];
   function tidyAppCopies() {
     var dir = UPD_DIR();
@@ -1586,6 +1587,7 @@
   //   不然重开以后状态栏又是「重启以更新」，又要再点一次。下的时候状态栏写「正在下载最新的 App，下好就重启」；没联网、没登录、下不成的照旧换上已经下好的那份
   var updFetch = false;
   function appUpdateNow() {
+    acknowledgeUpdates();
     if (appUpd && appUpd.linux) { var NL = window.nadosNative; if (appUpd.deb) return NL.call("openExternal", { url: appUpd.url }).catch(function () {}); return NL.call("app.restartToUpdate").catch(function () {}); }
     if (!appUpd || !UPD_DIR() || !LOC() || !LOC().exec || updFetch) return;
     updFetch = true; allWins().forEach(function (w) { renderSoon(w); });
@@ -1617,10 +1619,10 @@
       else if (window.confirm(lines.join("\n") + "\n\n现在重启？")) go();
     }, function () { doAppUpdate(false); });
   }
-  function doAppUpdate(force) {
+  async function doAppUpdate(force) {
     var dir = UPD_DIR();
     if (!appUpd || !dir || !LOC() || !LOC().exec) return;
-    try { if (window.TSU_FLUSH) TSU_FLUSH(); } catch (e) { /* 记不了就算了 */ }
+    if (window.TSU_FLUSH) await TSU_FLUSH();
     var q = function (x) { return "'" + String(x).replace(/'/g, "'\\''") + "'"; };
     var N = window.nadosNative;
     var quit = function () { var osa = function () { return LOC().exec({ cmd: "osascript -e 'tell application id \"beer.paimon.terminal\" to quit'" }); }; return N && N.call ? N.call("app.quit", force ? { force: true } : {}).catch(osa) : osa(); };
@@ -3151,11 +3153,9 @@
       var rich = f.kind === "text" && f.mode !== "edit" && /^(md|markdown|mdx)$/.test(extOf(path)) && (f.text || "").length < 150000;
       var notebook = f.kind === "text" && f.mode !== "edit" && extOf(path) === "ipynb";
       var mk = notebook ? "notebook" : f.kind + (f.kind === "text" ? (rich ? ":rich" : ":code") : "");
-      // 名字、路径已经在标签和面包屑上了：这一行只放操作
-      var head = '<div class="st-fhead" hidden></div>'; // 操作在所在那组标签条的右上角（tabActions）
       if (host.dataset.mode !== mk || !host.querySelector(".st-fbody")) {
         releaseFileBody(host.querySelector(".st-fbody"));
-        host.innerHTML = head + '<div class="st-fbody"></div>';
+        host.innerHTML = '<div class="st-fbody"></div>';
         host.dataset.mode = mk;
         if (!host.bound) {
           host.bound = true;
@@ -3172,14 +3172,14 @@
             if (a.dataset.fa === "open" && LOC()) LOC().exec({ cmd: "open " + T().shellEscape(path) }).catch(function () {});
           });
         }
-      } else host.querySelector(".st-fhead").outerHTML = head;
+      }
       var body = host.querySelector(".st-fbody");
       if (f.kind === "") { body.innerHTML = '<div class="st-dim st-pad st-fload">读取中…</div>'; return; } // 读得快的根本看不到这一行（CSS 里过 0.35 秒才淡出来）
       if (f.kind === "missing") { body.innerHTML = '<div class="st-dim st-pad">文件不存在：' + esc(tilde(path)) + "</div>"; return; }
       if (f.kind === "error") { body.innerHTML = '<div class="st-red st-pad">无法读取：' + esc(f.error) + '　<span class="st-k" data-fa="retry">重试</span></div>'; return; }
       if (f.kind === "big" || f.kind === "binary") { body.innerHTML = '<div class="st-dim st-pad">' + (f.kind === "big" ? "文件太大（" + kfmt(f.size) + "B），无法预览" : "二进制文件，无法预览") + '　<span class="st-k" data-fa="reveal">在访达中显示</span></div>'; return; }
       if (f.native) return nativeFile(body, path, f, V);
-      if (f.kind === "image") { body.innerHTML = '<div class="st-img"><img src="' + f.url + '" alt=""></div>'; return; }
+      if (f.kind === "image") return showFileImage(body, f.url);
       if (f.kind === "pdf") { body.innerHTML = '<iframe class="st-pdf" src="' + f.url + '"></iframe>'; return; }
       if (notebook) {
         if (window.TSU_WEB?.native() && window.TSU_UI_LOCAL?.dir && !window.nadosNative?.remote) return notebookLab(body, f, P, path, V);
@@ -3205,6 +3205,8 @@
   };
   function releaseFileBody(body) {
     if (!body) return;
+    const image = body.querySelector(".st-img");
+    if (image) window.TSU_FILE_ZOOM?.(image, false);
     if (body.ro) body.ro.disconnect();
     if (body.nv?.stop) body.nv.stop();
     if (body.nv?.h) body.nv.h.close();
@@ -3245,15 +3247,30 @@
       if (st.type === "dir") { f.kind = "missing"; return fin(); }
       f.mtime = st.mtime; f.size = st.size;
       var ext = extOf(path), nat = !!(window.TSU_WEB && TSU_WEB.native && TSU_WEB.native());
-      // App 里：PDF（多大都行）、Office 文稿、很大的图片不读进页面——原生的网页视图直接读文件（见 nativeFile）
+      // App 里：PDF（多大都行）、Office 文稿不读进页面——原生的网页视图直接读文件（见 nativeFile）
       if (nat && ext === "pdf") { f.kind = "pdf"; f.native = true; return fin(); }
       if (nat && OFFICE[ext]) { f.kind = "office"; f.native = true; return fin(); }
-      if (nat && IMG[ext] && st.size > 8 * 1024 * 1024) { f.kind = "image"; f.native = true; return fin(); }
+      if (IMG[ext]) {
+        return (async () => {
+          const parts = [];
+          for (let offset = 0; offset < st.size;) {
+            const part = await LOC().read(path, {offset, max: Math.min(4 * 1024 * 1024, st.size - offset)});
+            if (over) return;
+            if (!part.byteLength) throw new Error("图片读取不完整");
+            parts.push(part);
+            offset += part.byteLength;
+          }
+          if (f.url) URL.revokeObjectURL(f.url);
+          f.url = URL.createObjectURL(new Blob(parts, {type: MIME[ext] || "image/" + ext}));
+          f.kind = "image";
+          fin();
+        })();
+      }
       if (st.size > 30 * 1024 * 1024 && !IMG[ext] && ext !== "pdf") { f.kind = "big"; return fin(); }
       return LOC().read(path).then(function (buf) {
         if (over) return;
         var u8 = new Uint8Array(buf);
-        if (IMG[ext] || ext === "pdf") { if (f.url) URL.revokeObjectURL(f.url); f.url = URL.createObjectURL(new Blob([u8], { type: MIME[ext] || (ext === "pdf" ? "application/pdf" : "image/" + ext) })); f.kind = ext === "pdf" ? "pdf" : "image"; return fin(); }
+        if (ext === "pdf") { if (f.url) URL.revokeObjectURL(f.url); f.url = URL.createObjectURL(new Blob([u8], { type: "application/pdf" })); f.kind = "pdf"; return fin(); }
         for (var i = 0; i < Math.min(8000, u8.length); i++) if (u8[i] === 0) { f.kind = "binary"; return fin(); }
         f.text = new TextDecoder("utf-8").decode(u8);
         if (!f.dirty) f.saved = f.text;
@@ -3262,7 +3279,7 @@
       });
     }).catch(function (e) { if (over) return; f.kind = "error"; f.error = e.message; f.loaded = false; fin(); });
   }
-  // PDF、Office、很大的图片：原生的网页视图直接读文件（file://；WebKit 自己的 PDF 显示，几百 MB 也只画看得见的那几页），叠在这一块上；
+  // PDF、Office：原生的网页视图直接读文件（file://；WebKit 自己的 PDF 显示，几百 MB 也只画看得见的那几页），叠在这一块上；
   //   Office 先用「快速查看」（qlmanage）生成一份预览（HTML + 附件）放在缓存里，同一个文件没改过就不再生成。标签页关了原生那块跟着关（webview.js）
   function fileUrl(p) { return "file://" + String(p).split("/").map(encodeURIComponent).join("/"); }
   function nativeFile(body, path, f, V) {
@@ -3312,9 +3329,7 @@
   // 代码编辑器（只看也用它，只读）：CodeMirror 6（vendor/codemirror/cm6.js，第一次打开文件时才载入）——
   //   只画看得见的行、语法树在后台分片算：几千行、几 MB 的文件打开、滚动、打字都不卡；中文输入法、撤销、⌘F 查找、括号、缩进都是它自己的。
   //   颜色、字体走页面的 CSS 变量（代码字 --st-mono、--hl-*），深浅主题跟着变。建好一次就留着：只看 ⇄ 编辑只换只读，换标签页、重画都不重建
-  var cmP = null, BIG_TEXT = 2 * 1024 * 1024, EDS = {};
-  // 预先准备（不等你点）：空闲时把编辑器载入；指针在「文件」里某个文件上停一下（150ms），先把它读进来——点开就是现成的
-  setTimeout(function () { if (LOC()) loadCM().catch(function () {}); }, 4000);
+  var BIG_TEXT = 2 * 1024 * 1024, EDS = {};
   var preT = 0;
   function prefetch(path) {
     if (!path || !LOC() || FILES[path]) return;
@@ -3329,15 +3344,7 @@
   }, true);
   function loadCM() {
     if (window.CM6) return Promise.resolve(window.CM6);
-    if (cmP) return cmP;
-    cmP = new Promise(function (res, rej) {
-      var sc = document.createElement("script");
-      sc.src = "vendor/codemirror/cm6.js";
-      sc.onload = function () { if (window.CM6) res(window.CM6); else { cmP = null; rej(new Error("编辑器没载入")); } };
-      sc.onerror = function () { cmP = null; sc.remove(); rej(new Error("编辑器没载入")); };
-      document.head.appendChild(sc);
-    });
-    return cmP;
+    return window.loadStudioLibrary("editor").then(() => window.CM6);
   }
   // 缩进跟着文件自己的：tab 缩进的用 tab；空格的看最小那一级是 2 还是 4 个
   function indentOf(text) {
@@ -3427,7 +3434,7 @@
   }
   // 影子 DOM 里编辑器用的那几条（外面 studio.css 的规则进不来）
   var CM_SHADOW_CSS = ":host{display:block}.st-cmin,.cm-editor{height:100%}.cm-scroller{overscroll-behavior-x:none;-webkit-user-select:text;user-select:text}" +
-    ".cm-gutters{display:var(--st-cm-gut,flex)!important}.cm-editor .cm-content .cm-line{padding-left:var(--st-cm-pl,4px)}" +
+    ".cm-editor .cm-content{padding-top:0!important}.cm-gutters{display:var(--st-cm-gut,flex)!important}.cm-editor .cm-content .cm-line{padding-left:var(--st-cm-pl,4px)}" +
     ".st-red{color:var(--st-red)}.st-pad{padding:12px 14px}";
   // 存：then() 存好了；fail() 没存成（写不进去、外面改过了你又选了不覆盖）
   function saveFile(path, then, fail) {
@@ -3538,6 +3545,37 @@
     var h = home();
     return p === "/" ? "/" : h && p === h ? "~" : h && p.startsWith(h + "/") ? "~" + p.slice(h.length) : p.replace(/^\/+/, "");
   }
+  function showFileImage(body, url) {
+    if (body.querySelector(".st-img img")?.src === url) return;
+    const view = document.createElement("div"), img = new Image();
+    view.className = "st-img";
+    img.alt = "";
+    view.append(img);
+    body.replaceChildren(view);
+    let gestureWidth = 0;
+    function resize(width, e) {
+      const before = img.getBoundingClientRect();
+      if (!before.width || !img.naturalWidth) return;
+      const x = (e.clientX - before.left) / before.width;
+      const y = (e.clientY - before.top) / before.height;
+      img.style.maxWidth = img.style.maxHeight = "none";
+      img.style.width = Math.max(Math.min(16, img.naturalWidth), Math.min(img.naturalWidth * 16, width)) + "px";
+      const after = img.getBoundingClientRect();
+      view.scrollLeft += after.left + after.width * x - e.clientX;
+      view.scrollTop += after.top + after.height * y - e.clientY;
+    }
+    view.magnify = e => resize(img.width * (1 + e.delta), {clientX:e.x, clientY:e.y});
+    view.addEventListener("pointerenter", () => window.TSU_FILE_ZOOM?.(view, true));
+    view.addEventListener("pointerleave", () => window.TSU_FILE_ZOOM?.(view, false));
+    view.addEventListener("wheel", e => {
+      e.preventDefault();
+      if (!gestureWidth) resize(img.width * Math.exp(-Math.max(-200, Math.min(200, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.clientHeight : 1))) * .006), e);
+    }, {passive:false});
+    view.addEventListener("gesturestart", e => { e.preventDefault(); gestureWidth = img.width; }, {passive:false});
+    view.addEventListener("gesturechange", e => { e.preventDefault(); if (gestureWidth) resize(gestureWidth * e.scale, e); }, {passive:false});
+    view.addEventListener("gestureend", e => { e.preventDefault(); gestureWidth = 0; }, {passive:false});
+    img.src = url;
+  }
   async function openFile(tw, path, o) {
     if (!path) return;
     if (/^\/.*\.app\/?$/i.test(path) && LOC() && window.TSU_LOCAL) {
@@ -3548,11 +3586,23 @@
     if (!termapp() || !LOC()) { if (window.TSU_IDE && TSU_IDE.open) TSU_IDE.open(path); return; } // 网页桌面：交给编辑器
     if (path.startsWith("~/")) path = home() + path.slice(1);
     var st = await LOC().stat(path).catch(() => null);
+    if (!st) {
+      const ref = path.match(/^(.*?)(?::([1-9]\d*)(?::[1-9]\d*)?|#L([1-9]\d*)(?:-L?[1-9]\d*)?)$/);
+      if (ref) {
+        const target = await LOC().stat(ref[1]).catch(() => null);
+        if (target?.type === "file") {
+          path = ref[1];
+          o = { ...o, line: o?.line || Number(ref[2] || ref[3]) };
+          st = target;
+        }
+      }
+    }
     if (st && st.type === "dir") return openPage(tw, "explorer", explorerPath(path));
     var f = FILES[path];
     if (f && o && o.line) { f.line = o.line; f.scrolled = false; }
     if (!f) FILES[path] = { kind: "", mode: "view", dirty: false, line: (o && o.line) || 0 };
-    openPage(tw, "file", path);
+    const pane = openPage(tw, "file", path);
+    if (f && o?.line) pane?.program?.redraw?.();
   }
 
   // ======== 命令面板（⇧⌘P）、快速打开（⌘P）：同 Claude Code 的斜杠菜单的样子 ========
@@ -3743,7 +3793,8 @@
       var id = p.program && p.program.agentId;
       if (id && !p.side) {
         var working = !!(p.program.working && p.program.working());
-        if (p._tabWorking !== working) { p._tabWorking = working; dirtyWindows.add(p.win); }
+        var waiting = p.program.waitingLabel?.() || "";
+        if (p._tabWorking !== working || p._tabWaiting !== waiting) { p._tabWorking = working; p._tabWaiting = waiting; dirtyWindows.add(p.win); }
       }
       if (!id || p.side || seen.has(id)) return;
       seen.add(id);
@@ -4754,8 +4805,8 @@
   //      本机没有就写「没有本地数据」——不去问 Claude / OpenAI 的服务器。
   //      上一次读到的记在本机（tsu-use）：再打开时先显示它（带「x 分钟前」），后台再读新的——不会一直「正在读取…」；读太久（桥忙）算超时，过一会儿再试 ----
   var USE = { st: null, stAt: 0, cx: undefined, cxAt: 0, cxErr: "", cc: undefined, ccAt: 0, lim: undefined, limAt: 0, lok: undefined, lokAt: 0, lokErr: "", lokBusy: false };
-  (function () { try { var c = JSON.parse(localStorage.getItem("tsu-use") || "null"); if (c) { if (c.cx) USE.cx = c.cx; if (c.lok) USE.lok = c.lok; if (c.lim) USE.lim = c.lim; } } catch (e) { /* 读不懂 */ } })();
-  var useKeep = function () { try { localStorage.setItem("tsu-use", JSON.stringify({ cx: USE.cx || null, lok: USE.lok || null, lim: USE.lim || null })); } catch (e) { /* 满了 */ } };
+  (function () { try { var c = JSON.parse(localStorage.getItem("tsu-use") || "null"); if (c) { if (c.lok) USE.lok = c.lok; if (c.lim) USE.lim = c.lim; } } catch (e) { /* 读不懂 */ } })();
+  var useKeep = function () { try { localStorage.setItem("tsu-use", JSON.stringify({ lok: USE.lok || null, lim: USE.lim || null })); } catch (e) { /* 满了 */ } };
   var inTime = function (p, ms) { return Promise.race([p, new Promise(function (_, no) { setTimeout(function () { no(new Error("timeout")); }, ms); })]); };
   var shq = function (s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; };
   var homeDir = function () { var i = LOC() && LOC().info && LOC().info(); return (i && i.home) || ""; };
@@ -4772,70 +4823,11 @@
     var t = new Date(sec * 1000); return WEEKDAY[t.getDay()] + " " + t.getHours() + ":" + String(t.getMinutes()).padStart(2, "0") + " 重置";
   }
   var winName = function (min) { return min === 10080 ? "每周" : min % 1440 === 0 ? (min / 1440) + " 天" : min % 60 === 0 ? (min / 60) + " 小时" : min + " 分钟"; };
-  // Codex：sessions/年/月/日/rollout-时间-id.jsonl——一层层挑名字最大的（名字就是日期），从最新的几个会话的末尾往前找 token_count 里的 rate_limits
-  function codexLimits() {
-    var base = homeDir() + "/.codex", ls = function (p) { return LOC().list(p).then(function (r) { return Array.isArray(r) ? r : []; }, function () { return []; }); };
-    var newest = function (p, dir) { return ls(p).then(function (es) { return es.filter(function (e) { return !!e.dir === dir && (dir ? /^\d+$/.test(e.name) : /^rollout-.*\.jsonl$/.test(e.name)); }).map(function (e) { return e.name; }).sort().reverse(); }); };
-    var files = [];
-    var walk = function (p, depth) { // 年 → 月 → 日（最多往前找 3 天），收集最新的几个文件
-      if (files.length >= 6) return Promise.resolve();
-      if (depth === 3) return newest(p, false).then(function (fs) { fs.forEach(function (f) { if (files.length < 6) files.push(p + "/" + f); }); });
-      return newest(p, true).then(function (ds) { var i = 0; var next = function () { if (i >= ds.length || i >= 3 || files.length >= 6) return; return walk(p + "/" + ds[i++], depth + 1).then(next); }; return next(); });
-    };
-    var scan = function (i) {
-      if (i >= files.length) return null;
-      var f = files[i];
-      return LOC().stat(f).then(function (st) {
-        var size = (st && st.size) || 0, off = Math.max(0, size - 2000000);
-        return readText(f, { offset: off, max: 2000000 }).then(function (txt) {
-          var lines = txt.split("\n");
-          for (var j = lines.length - 1; j >= (off ? 1 : 0); j--) { // 从读到的那段里最后一行往前（中间截断的第一行不要）
-            if (lines[j].indexOf('"rate_limits"') < 0) continue;
-            try { var o = JSON.parse(lines[j]), rl = o.payload && o.payload.rate_limits; if (rl && (rl.primary || rl.secondary)) return { rl: rl, at: Date.parse(o.timestamp) || (st && st.mtime) || 0, file: f }; } catch (e) { /* 半行 */ }
-          }
-          return scan(i + 1);
-        });
-      }, function () { return scan(i + 1); });
-    };
-    return walk(base + "/sessions", 0).then(function () { return scan(0); });
-  }
   // Claude Code 的订阅方式（~/.claude.json 的 oauthAccount）。它自己的 /stats 缓存（~/.claude/stats-cache.json）不用：只在跑 /stats 时才更新，常常是几周前的
   function claudeLocal() {
     var out = {};
     return readText(homeDir() + "/.claude.json").then(function (t) { try { var j = JSON.parse(t), a = j.oauthAccount || {}; out.billing = a.billingType || ""; out.org = a.organizationName || ""; out.role = a.organizationRole || ""; } catch (e) { /* 读不懂 */ } }, function () {})
       .then(function () { return out.billing ? out : null; });
-  }
-  // Codex 的限额，一条命令找完（按修改时间最新的 6 个会话记录，各自从末尾找最后一行带 rate_limits 的）：桥只来回一次——
-  //   上面那种一层层列目录、一个个读的，桥忙的时候（大的会话记录正在读）一步要等好几秒，页面就一直「正在读取…」
-  function codexLimitsFast() {
-    var script = [
-      "import heapq, json, os, pathlib",
-      "root = pathlib.Path.home() / '.codex' / 'sessions'",
-      "def recent():",
-      "    for path in root.glob('*/*/*/rollout-*.jsonl'):",
-      "        try: yield (path.stat().st_mtime_ns, path)",
-      "        except OSError: continue",
-      "for _, path in heapq.nlargest(6, recent()):",
-      "    try:",
-      "        with path.open('rb') as f:",
-      "            f.seek(max(0, f.seek(0, os.SEEK_END) - 2000000))",
-      "            lines = f.read().splitlines()",
-      "    except OSError: continue",
-      "    for line in reversed(lines):",
-      "        if b'\"rate_limits\"' not in line: continue",
-      "        try: event = json.loads(line)",
-      "        except (ValueError, UnicodeError): continue",
-      "        limits = (event.get('payload') or {}).get('rate_limits')",
-      "        if isinstance(limits, dict) and (limits.get('primary') or limits.get('secondary')):",
-      "            print(json.dumps({'rl': limits, 'timestamp': event.get('timestamp')}))",
-      "            raise SystemExit",
-    ].join("\n");
-    return LOC().exec({ cmd: "python3 -c " + shq(script) }).then(function (r) {
-      if (r.code) throw new Error("读取 Codex 限额失败");
-      if (!r.out.trim()) return null;
-      var result = JSON.parse(r.out);
-      return { rl: result.rl, at: Date.parse(result.timestamp) || Date.now() };
-    });
   }
   // Claude Code 的 5 小时 / 每周限额：它的状态行命令把拿到的 JSON 存在 ~/.claude/statusline-last.json（rate_limits.five_hour / seven_day 的
   //   used_percentage、resets_at——同它状态行上的 5h / 7d）；没有这个文件就用这边起的 claude -p 报过的（TSU_CLAUDE.limits()）
@@ -4894,7 +4886,7 @@
     if (!LOC()) return;
     // 读太久（桥忙、命令卡住）算超时：写原因、留着上次读到的，过一会儿（again 毫秒）再试——不会一直「正在读取…」
     var fail = function (k, again) { return function (e) { USE[k + "Err"] = e && e.message === "timeout" ? "timeout" : String(e && e.message || e || "error"); USE[k + "At"] = Date.now() - 60000 + again; if (setState.sec === "usage" || setState.q) redrawSettings(); }; };
-    if (t - USE.cxAt > 60000) { USE.cxAt = t; inTime(codexLimitsFast().then(null, function () { return codexLimits(); }), 15000).then(function (x) { USE.cx = x; USE.cxErr = ""; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, fail("cx", 15000)); }
+    if (t - USE.cxAt > 60000) { USE.cxAt = t; inTime(window.TSU_CODEX_USAGE ? TSU_CODEX_USAGE() : Promise.resolve(null), 15000).then(function (x) { USE.cx = x; USE.cxErr = ""; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, fail("cx", 15000)); }
     if (t - USE.ccAt > 60000) { USE.ccAt = t; inTime(claudeLocal(), 15000).then(function (x) { USE.cc = x; if (setState.sec === "usage" || setState.q) redrawSettings(); }, function () { if (USE.cc === undefined) USE.cc = null; USE.ccAt = Date.now() - 45000; if (setState.sec === "usage" || setState.q) redrawSettings(); }); }
     if (t - USE.limAt > 20000) { USE.limAt = t; inTime(claudeLimits(), 10000).then(function (x) { USE.lim = x; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, function () { if (USE.lim === undefined) USE.lim = null; if (setState.sec === "usage" || setState.q) redrawSettings(); }); }
     if (!USE.lokBusy && t - USE.lokAt > 60000) { USE.lokAt = t; USE.lokBusy = true; inTime(claudeUsage(), 180000).then(function (x) { USE.lokBusy = false; USE.lok = x; USE.lokErr = ""; useKeep(); if (setState.sec === "usage" || setState.q) redrawSettings(); }, function (e) { USE.lokBusy = false; fail("lok", 60000)(e); }); }
@@ -4963,20 +4955,20 @@
           out.push({ key: "cc:src", kind: "line", rowCls: "dim", label: "根据本机 Claude Code 记录统计（" + ago(USE.lok.at) + "）" + (USE.lokErr ? "；刚才没更新成：" + (USE.lokErr === "timeout" ? "超时" : USE.lokErr) : ""), page: "claude" });
         } else out.push({ key: "cc:stat2", kind: "line", rowCls: USE.lokErr ? "warn" : "dim", label: USE.lokErr ? "用量没统计出来：" + (USE.lokErr === "timeout" ? "超时" : USE.lokErr) : "正在统计这台 Mac 上的记录（第一次要把最近的记录读一遍，可能要十几秒）…", page: "claude" });
       }
-      // ---- Codex：最近一次会话里记下的限额（读过的记着：先显示上次的；读不到写原因）----
+      // Codex account limits are shared with every conversation footer.
       var rl = USE.cx && USE.cx.rl, plan = rl && rl.plan_type ? "ChatGPT " + String(rl.plan_type).replace(/^./, function (c) { return c.toUpperCase(); }) : "";
       card("codex", "Codex", plan);
       if (!LOC()) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "仅在 App 中可读取本机的 Codex 数据" });
       else if (USE.cx === undefined) out.push({ key: "cx:load", kind: "line", rowCls: USE.cxErr ? "warn" : "dim", label: USE.cxErr ? useErr(USE.cxErr) : "正在读取…" });
-      else if (!rl) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "暂无本地数据（本机尚无 Codex 会话记录）" });
+      else if (!rl) out.push({ key: "cx:none", kind: "line", rowCls: "dim", label: "暂无 Codex 额度数据" });
       else {
         if (USE.cxErr) out.push({ key: "cx:err", kind: "line", rowCls: "dim", label: "显示的是上次读取的数据；" + useErr(USE.cxErr) });
-        var wins = [["primary", rl.primary], ["secondary", rl.secondary]].filter(function (x) { return x[1]; });
-        wins.forEach(function (x) { var w = x[1], gone = w.resets_at && w.resets_at * 1000 < Date.now(); out.push(meter("cx:" + x[0], winName(w.window_minutes || 0) + "限额", gone ? 0 : w.used_percent, w.resets_at ? resetsText(w.resets_at) : "")); });
+        var wins = [["primary", rl.primary], ["secondary", rl.secondary]].filter(function (x) { return x[1] && (!x[1].resets_at || x[1].resets_at * 1000 > Date.now()); });
+        wins.forEach(function (x) { var w = x[1]; out.push(meter("cx:" + x[0], winName(w.window_minutes || 0) + "限额", w.used_percent, w.resets_at ? resetsText(w.resets_at) : "")); });
         out.push({ head: "", page: "codex" });
         if (plan) out.push({ key: "cx:plan", label: "订阅", kind: "info", value: plan, page: "codex" });
-        out.push({ key: "cx:src", kind: "line", rowCls: "dim", label: "来自最近一次 Codex 会话的记录（" + ago(USE.cx.at) + "）；不向 OpenAI 查询", page: "codex" });
-        wins.forEach(function (x) { var w = x[1], gone = w.resets_at && w.resets_at * 1000 < Date.now(); out.push(meter("cx:" + x[0] + "2", winName(w.window_minutes || 0) + "限额", gone ? 0 : w.used_percent, w.resets_at ? resetsText(w.resets_at) : "", "codex")); });
+        out.push({ key: "cx:src", kind: "line", rowCls: "dim", label: "Codex 账户额度 · " + ago(USE.cx.at), page: "codex" });
+        wins.forEach(function (x) { var w = x[1]; out.push(meter("cx:" + x[0] + "2", winName(w.window_minutes || 0) + "限额", w.used_percent, w.resets_at ? resetsText(w.resets_at) : "", "codex")); });
         if (rl.credits && rl.credits.has_credits) out.push({ key: "cx:credits", label: "Codex 额度", kind: "info", value: rl.credits.unlimited ? "不限" : String(rl.credits.balance), page: "codex" });
       }
       if (window.TSU_AGY && TSU_AGY.enabled()) {
@@ -5129,7 +5121,7 @@
     var btns = Array.prototype.slice.call(a.querySelectorAll(":scope > [data-a]")).concat(Array.prototype.slice.call(g.querySelectorAll("[data-a]")));
     btns.forEach(function (b) { b.hidden = !actOn(b.dataset.a); b.classList.toggle("on", shown && b.dataset.a === v); });
     var gear = g.querySelector('[data-a="manage"]');
-    if (gear) { gear.classList.toggle("st-badge", updateReady || nagUpd()); gear.title = updateReady || nagUpd() ? "管理 · 有新版本" : "管理"; }
+    if (gear) { var unseen = hasUnseenUpdate(); gear.classList.toggle("st-badge", unseen); gear.title = unseen ? "管理 · 有新版本" : "管理"; }
     // 账户：GitHub 头像
     var me = window.TSU_AGENTS && TSU_AGENTS.me ? TSU_AGENTS.me() : null, inAcc = me && me.loggedIn !== false && me.login, av = inAcc ? avatarHtml(0, "st-avatar") : "", acc = g.querySelector('[data-a="account"]'); // 登录了：自己的头像（设置 › 账号 › 头像选的那种）
     if (acc && acc.dataset.av !== av) { acc.dataset.av = av; acc.innerHTML = av || ACT_ICONS.account; acc.title = inAcc ? me.login + " (GitHub)" : "账户"; }
@@ -5616,7 +5608,27 @@
     mm_hide: LIc('<path d="M4 5.6h4M4 7.6h3M4 9.6h4.4"/>'),
   };
   var KIND_ICONS = { prompts: "msg", answers: "answer", thinking: "think", tools: "tool", diffs: "diff", web: "web", bashOut: "term", recaps: "recap", doneLine: "done", notices: "tray", images: "image", progress: "note" };
+  function updateNoticeKeys() {
+    var keys = [];
+    if (appUpd) keys.push(["vs-seen-app-update", appUpd.build + ":" + appUpd.ver]);
+    if (updateReady) keys.push(["vs-seen-ui-update", updateRevision || uiVer.next || localVer]);
+    return keys;
+  }
+  function hasUnseenUpdate() {
+    return updateNoticeKeys().some(([key, value]) => value && localStorage.getItem(key) !== value);
+  }
+  function refreshUpdateIndicators() {
+    allWins().forEach(function (tw) { syncAct(tw); renderSoon(tw); });
+  }
+  function acknowledgeUpdates() {
+    for (var [key, value] of updateNoticeKeys()) if (value) localStorage.setItem(key, value);
+    refreshUpdateIndicators();
+  }
+  window.addEventListener("storage", function (e) {
+    if (e.key?.startsWith("vs-seen-")) refreshUpdateIndicators();
+  });
   function manageMenu(tw, anchor, side) {
+    acknowledgeUpdates();
     var mi = function (label, keys, run, o) { return Object.assign({ label: label, keys: keys || "", run: run }, o || {}); };
     menu([
       // 设置 › 风格 › 主题……（用户：风格放在设置和主题中间）；命令面板不再放在这里（⇧⌘P 照样能开）
@@ -5645,6 +5657,7 @@
   var canOpenMac = function () { var N = window.nadosNative; if (!N || !N.call) return false; if (!appInfo) { nativeInfo(); return false; } return (appInfo.commands || []).indexOf("remote.open") >= 0; };
   function openMac(id, name) {
     var R = window.TSU_REMOTE, N = window.nadosNative;
+    if (!R && id && id === window.TSU_REMOTE_HOST?.device()) return Promise.resolve();
     if (R) return R.use(id, name);
     if (N && N.call) return N.call("remote.open", { mac: id, name: name || "" }).catch(function (e) {
       if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "没能打开这台 Mac。", message: e && e.code === "E_UNKNOWN_CMD" ? "这个版本的 App 还不能连接另一台 Mac：在 ⚙ 菜单里检查更新，重启以更新后再试。" : String((e && e.message) || e), icon: "none", buttons: [{ label: "好", role: "default" }] });
@@ -5930,7 +5943,7 @@
     closeOthers: "xmark.square", msg: "bubble.left", answer: "sparkles", think: "brain.head.profile", tool: "wrench.and.screwdriver", diff: "plusminus", web: "globe", term: "terminal", recap: "clock.arrow.circlepath",
     done: "checkmark.circle", bell: "bell", tray: "tray", note: "ellipsis.bubble", image: "photo", composer: "character.cursor.ibeam", hide: "minus.circle", open: "arrow.up.forward.square", tab: "plus.square.on.square", window: "macwindow",
     rename: "pencil", archive: "archivebox", history: "clock.arrow.circlepath", collapse: "minus.square", agent: "sparkles",
-    info: "info.circle", sliders: "slider.horizontal.3", filter: "line.3.horizontal.decrease.circle", hidden: "square.dashed", invert: "arrow.left.arrow.right", clock: "clock", stop: "stop.circle", checklist: "checklist", fork: "arrow.triangle.branch", workline: "hourglass" };
+    contextWindow: "rectangle.split.3x1", quotaGauge: "gauge", wallet: "creditcard", info: "info.circle", sliders: "slider.horizontal.3", filter: "line.3.horizontal.decrease.circle", hidden: "square.dashed", invert: "arrow.left.arrow.right", clock: "clock", stop: "stop.circle", checklist: "checklist", fork: "arrow.triangle.branch", workline: "hourglass" };
   // 系统图标里没有的：直接把页面画的 SVG 给系统菜单（Claude 自己的标志、经典 Macintosh）；旧版 App 不认 svg，用上面的 SF Symbols 顶着
   var MI_SVG = { os_claude: 1, gui: 1 }, MI_SVGCOLOR = {}; // Claude Desktop 的标志同别的图标当模板图（浅色菜单里黑、深色里白），以前保留了灰色，看着和别的不一样
   var nsvg = function (s) { return String(s).replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ').replace(/currentColor/g, "#000"); };
@@ -6264,16 +6277,27 @@
 
   // ======== 面包屑：标签条下面一行（在哪：agent、会话、文件）；编辑器组里每组一行 ========
   // 目录只在文件里是路径；Claude Code 只写它是哪个项目（开会话时的目录名，历史原因），Paimon 没有目录
+  function fileParents(file) {
+    const display = tilde(file), segments = display.split("/").filter(Boolean);
+    segments.pop();
+    const dirs = display.startsWith("/") ? [{ name: "/", path: "/" }] : [];
+    let path = "";
+    for (const name of segments) {
+      path = name === "~" && !path ? home() : path + "/" + name;
+      dirs.push({ name, path });
+    }
+    return dirs;
+  }
   function crumbHtml(P) {
     var prog = P && P.program, parts0 = [], sep = '<span class="st-sepc">›</span>';
     var path = function (p) { var t = tilde(p || ""), segs = t.split("/").filter(Boolean); if (t[0] === "/") segs.unshift("/"); return segs.map(function (x, i) { return i === segs.length - 1 ? "<b>" + esc(x) + "</b>" : esc(x); }); };
     var base = function (p) { var t = String(p || "").replace(/\/+$/, ""); return t ? esc(t.split("/").pop() || t) : ""; };
     if (!prog) parts0 = [];
     else if (prog.page === "file") {
-      var segments = path(prog.arg);
-      var parents = segments.slice(0, -1);
-      if (parents.length > 2) parents = ["…"].concat(parents.slice(-2));
-      return '<span class="st-file-trail">' + (parents.length ? '<span class="st-file-dirs">' + parents.join(sep) + '</span>' + sep : "") + segments.slice(-1).join("") + "</span>";
+      const dirs = fileParents(prog.arg);
+      const buttons = dirs.slice(-2).map(d => '<button type="button" data-dir="' + esc(d.path) + '">' + esc(d.name) + '</button>');
+      if (dirs.length > 2) buttons.unshift('<button type="button" data-ancestors aria-label="上级目录" aria-haspopup="menu">…</button>');
+      return '<span class="st-file-trail">' + (buttons.length ? '<span class="st-file-dirs">' + buttons.join(sep) + '</span>' + sep : "") + '<b>' + base(prog.arg) + '</b></span>';
     }
     else if (prog.page) parts0 = []; // 设置、主页这些页面：名字就是标签上那个，不再写一遍
     else if (prog.agentId && /^(c[cx]|pi):/.test(prog.agentId)) { var crt = TSU_AGENTS.runtime(prog.agentId); parts0 = [/^cx:/.test(prog.agentId) ? "Codex" : /^pi:/.test(prog.agentId) ? "pi" : "Claude Code", crt && crt.info && crt.info.cwd ? base(crt.info.cwd) : "", "<b>" + esc(crt ? crt.agent.name : "") + "</b>"].filter(Boolean); }
@@ -6286,6 +6310,16 @@
     if (!el) return;
     var filePage = P && P.program && P.program.page === "file";
     var h = P && (filePage || getv("breadcrumbs")) ? crumbHtml(P) : "";
+    if (filePage) el.onclick = function (event) {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const open = dir => openPage(P.win, "explorer", explorerPath(dir));
+      if (button.hasAttribute("data-dir")) open(button.dataset.dir);
+      else if (button.hasAttribute("data-ancestors")) {
+        menu(fileParents(P.program.arg).slice(0, -2).map(d => ({label: d.name, run: () => open(d.path)})), {el: button, side: "below"});
+      }
+    };
+    else el.onclick = null;
     if (filePage) el.dataset.filePathHint = P.program.arg; else delete el.dataset.filePathHint;
     el.style.display = h ? "" : "none";
     if (!h) return;

@@ -121,6 +121,8 @@ html.termapp .termwin .tab > span { order: 1; }
 .st-crumbs .st-ico { display: inline-block; min-width: 0; margin-right: 4px; }
 .st-file-trail { display: flex; align-items: center; height: 100%; font-size: 12px; font-weight: 400; }
 .st-file-trail .st-file-dirs, .st-file-trail b { overflow: hidden; text-overflow: ellipsis; }
+.st-file-dirs button { appearance: none; background: transparent; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.st-file-dirs button:hover { color: var(--st-fg); text-decoration: underline; }
 .st-file-trail b { flex: 0 0 auto; max-width: 100%; }
 .st-crumbs b { font-weight: 400; color: var(--st-fg); }
 .st-crumbs .st-sepc { padding: 0 6px; color: var(--st-faint); }
@@ -263,8 +265,8 @@ html:not(.termapp) .st-crumbs { display: none; }
 .st-pg-file { display: flex; flex-direction: column; overflow: hidden !important; }
 .st-fbody { position: relative; flex: 1; min-height: 0; overflow: auto; }
 .st-doc { margin: 0; padding: 10px 16px 40px; background: transparent !important; -webkit-user-select: text; user-select: text; }
-.st-img { padding: 14px; text-align: center; }
-.st-img img { max-width: 100%; height: auto; background: repeating-conic-gradient(rgba(127, 127, 127, 0.15) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+.st-img { position: absolute; inset: 0; display: flex; overflow: auto; overscroll-behavior: contain; }
+.st-img img { display: block; flex: none; margin: auto; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: repeating-conic-gradient(rgba(127, 127, 127, 0.15) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
 .st-pdf { display: block; width: 100%; height: 100%; min-height: 400px; border: 0; background: #fff; }
 .st-nv { position: absolute; inset: 0; } /* PDF、Office 预览、很大的图片：原生的网页视图叠在这一块上（webview.js 的 overlay） */
 /* 编辑：左边行号，右边透明 textarea 叠在高亮好的 <pre> 上（同 ide.js）*/
@@ -435,7 +437,7 @@ html.termapp .tgbody > .tpane { flex: 1 1 auto; position: absolute; inset: 0; } 
 html.termapp .tgbody { isolation: isolate; } /* 叠着的几个的 z-index 只在这一组里比 */
 /* 藏着的：挪到屏幕外（transform，只动合成层，不重排、不重算样式）、垫在当前那个下面。排好的样子、滚动位置都还在，切过去只是换个 class。
    不用 content-visibility:hidden（露出来要把整棵子树的样式重算一遍，大会话十来毫秒）、visibility / pointer-events（会往下继承，一改整棵子树重算）、inert（WebKit 里要好几秒） */
-html.termapp .tgbody > .tpane.tpoff { transform: translateX(-400vw); z-index: -1; }
+html.termapp .tgbody > .tpane.tpoff { transform: translateX(-400vw); opacity: 0; z-index: -1; }
 html.termapp .panes .divider { background: var(--st-line); }
 /* 当前组里当前的标签：上沿一条亮线；别的组里当前的标签字暗一点（同 VS Code）*/
 html.termapp .termwin .tgroup:not(.on) .tab.on { color: var(--st-dim); }

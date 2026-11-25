@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import difflib
+import gzip
 import hashlib
 import fcntl
 import os
@@ -329,6 +330,14 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
                             if tag == "equal":
                                 diff.extend({"t": " ", "l": line} for line in old[a:b])
                         tool["diff"] = diff
+                if action == "update_steps":
+                    steps = args.get("steps")
+                    if isinstance(steps, str):
+                        try:
+                            steps = json.loads(steps)
+                        except ValueError:
+                            pass
+                    tool["steps"] = steps
                 if action == "ask_question":
                     tool["questions"] = args.get("questions") or []
                 if action in ("manage_task", "manage_subagents", "invoke_subagent"):
@@ -391,9 +400,12 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
     reused = 0
     if 0 <= count < len(digests) and known_prefix == hashlib.sha256("".join(digests[:count]).encode()).hexdigest():
         reused = count + int(digests[count] == known_last)
+    latest_steps = next((e["steps"] for e in reversed(events)
+                         if e.get("action") == "update_steps" and e.get("status") == "completed"
+                         and not e.get("error") and isinstance(e.get("steps"), list)), [])
     offset = starts[reused] if reused < len(starts) else len(events)
     return {"source": source if revisions == [log_revision(p) for p in logs] else None,
-            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "events": events[offset:], "prefix": prefix,
+            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "steps": latest_steps, "events": events[offset:], "prefix": prefix,
             "reuseTurns": reused, "turnHashes": digests, "model": model, "selectedModel": settings.get("model"),
             "mode": settings.get("mode") or "auto"}
 
@@ -824,6 +836,13 @@ def main():
         else:
             label = title(path, sid)
         started = active_since(sid)
+        if started:
+            try:
+                owner, turn = map(int, activity_file(sid).with_suffix(".turn").read_text().split())
+                if owner == started:
+                    started = turn
+            except (OSError, ValueError):
+                pass  # Older owners only publish their connection timestamp.
         queued = 0
         if started and not Path(agy_acp.endpoint(activity_file(sid))).exists():
             try:
@@ -839,6 +858,21 @@ def main():
 
 if __name__ == "__main__":
     try:
-        print(json.dumps(main(), ensure_ascii=False))
+        result = json.dumps(main(), ensure_ascii=False)
+        ticket = os.environ.get("VIBING_HISTORY_TOKEN", "")
+        target = "/tmp/vibing-history-" + str(UUID(ticket)) + ".gz" if ticket else None
+        if target or (os.environ.get("VIBING_PACK_HISTORY") and len(result) > 128 * 1024):
+            with tempfile.NamedTemporaryFile(dir="/tmp" if target else None, prefix="vibing-history-", suffix=".gz", delete=False) as snapshot:
+                try:
+                    with gzip.GzipFile(fileobj=snapshot, mode="wb", compresslevel=1) as stream:
+                        stream.write(result.encode())
+                    snapshot.flush()
+                    if target:
+                        os.replace(snapshot.name, target)
+                    result = json.dumps({"historyFile": target or snapshot.name, "bytes": snapshot.tell()})
+                except BaseException:
+                    os.unlink(snapshot.name)
+                    raise
+        print(result)
     except OSError as exc:
         sys.exit(str(exc))

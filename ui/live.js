@@ -320,10 +320,16 @@
     });
   }
   // 一行终端输出：\r 覆盖（进度条）、制表符、去掉光标移动之类的控制序列，再按列宽折行（颜色延续到下一行）
+  function currentTerminalLine(raw) {
+    if (!raw.includes("\r")) return raw;
+    var end = raw.length;
+    while (end && raw[end - 1] === "\r") end--;
+    return raw.slice(raw.lastIndexOf("\r", end - 1) + 1, end);
+  }
   function termLines(text, width) {
     var out = [];
     String(text).split("\n").forEach(function (raw) {
-      if (raw.indexOf("\r") >= 0) { raw = raw.replace(/\r+$/, "").split("\r").pop(); }
+      raw = currentTerminalLine(raw);
       raw = ansiTrue(raw.replace(/\x1b\[[\d;?]*[A-HJKSTfhlnsu]/g, "").replace(/\x1b[()][A-Z0-9]/g, ""));
       // u 标志：一个 emoji（代理对）算一个字；落单的半个代理也只算一个，不会让循环回头
       var cur = "", w = 0, sgr = "", re = /\x1b\[[\d;]*m|\x1b\]8;;[^\x07]*\x07|[\s\S]/gu, mt;
@@ -601,6 +607,7 @@
     // ---- 程序 ----
     P.run = function (prog, quiet) {
       if (P.side && P.onRun && P.onRun(prog)) { if (prog !== P.shell && prog.detach) prog.detach(); return; } // 右侧栏：换别的 agent、退出，交给编辑区
+      if (P.program !== prog) P.drawn = false;
       if (P.program && P.program !== prog && P.program.detach) P.program.detach();
       if (P.vs && P.vs.onRun) P.vs.onRun(prog); // 这个标签页拆成了几格（vsplit.js）：换了外壳跟着换，换了别的就合回一格
       P.program = prog;
@@ -831,7 +838,7 @@
     P.scrollByRows = function (n) {
       screen.scrollTop = Math.max(0, Math.min(maxY(), Math.round(screen.scrollTop / P.rowH + n) * P.rowH));
       ownTop = screen.scrollTop;
-      following = atBottom();
+      following = atBottom() && !(n < 0 && P.program?.hasEarlier?.());
       P.onScroll();
     };
     // 跟着到底时浏览器自己挪了 scrollTop（内容先变短被夹回来、同一帧里又接上新的一问——连发几句时排着的那几句收走、读进来就是这样）：
@@ -1332,26 +1339,30 @@
       // 响铃：面板闪一下；不在眼前（别的标签页、窗口在后台）就在标签页上挂个铃，App 在后台时 Dock 图标跳一下（同「终端」）
       term.onBell(function () { ring(P); });
       if (!reattach) { writeBack(); spec.back = null; }
-      // 中文输入法直接出的标点（，。？！、……，也包括它开着时敲的半角 . / ?）：WebKit 里按键先报 229（输入法在处理），不组字、只来一个 insertText——
-      // xterm 见过这个按键就把这段字丢了（经典问题）。这里在它前面接住，交给 term.input；组字（拼音 → 汉字）照旧由 xterm 处理
-      // 只在按键真是 229、xterm 没自己打出这个字的时候接（输入法有时把标点当普通按键放过来：keydown 188 + keypress，xterm 已经打了，再接就成了两个「，，」）
-      // 接住以后把输入框还原成按键那一刻的样子（不是清空）：xterm 自己也会在按键后比一比输入框变了什么，清空了它会以为删了字，发一个退格
-      var xta = term.textarea, composing = false, compEnd = 0, ime229 = false, pressed = false, kdValue = "";
+      // WebKit may report one printable key through both keyboard and input events.
+      // Use the committed text for typing; let xterm encode terminal control keys.
+      var xta = term.textarea, composing = false, directText = false;
       if (xta) {
-        xta.addEventListener("keydown", function (e) { ime229 = e.keyCode === 229; pressed = false; kdValue = xta.value; }, true);
-        xta.addEventListener("keypress", function () { pressed = true; }, true);
-        xta.addEventListener("compositionstart", function () { composing = true; }, true);
-        xta.addEventListener("compositionend", function () { composing = false; compEnd = performance.now(); }, true);
+        xta.addEventListener("keydown", function (e) {
+          var printable = e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey;
+          var appKeypad = e.location === 3 && term.modes.applicationKeypadMode;
+          directText = !composing && !e.isComposing && !appKeypad && (e.keyCode === 229 || printable);
+        }, true);
+        xta.addEventListener("compositionstart", function () { composing = true; directText = false; }, true);
+        xta.addEventListener("compositionend", function () { composing = false; }, true);
+        xta.addEventListener("blur", function () { composing = false; directText = false; }, true);
         xta.addEventListener("input", function (e) {
-          if (!ime229 || e.inputType !== "insertText" || !e.data || e.isComposing || composing || performance.now() - compEnd < 60) return;
-          ime229 = false;
+          if (!directText || e.inputType !== "insertText" || !e.data || e.isComposing) return;
+          directText = false;
           e.stopImmediatePropagation();
-          if (!pressed) term.input(e.data, true); // 半角的（输入法开着时敲的 . / ? 数字）也接：输入法慢一拍时 xterm 会漏掉
-          xta.value = kdValue;
+          term.input(e.data, true);
+          xta.value = "";
         }, true);
       }
-      // Shift+Enter = 换行不发送（Claude Code 认 ESC + 回车；zsh 里它也是「在命令行里插一个换行」）
       term.attachCustomKeyEventHandler(function (e) {
+        // Leave the default text insertion to WebKit. Skipping xterm here also
+        // prevents its deferred textarea-difference handler from sending it again.
+        if (directText && (e.type === "keydown" || e.type === "keypress")) return false;
         if (e.type === "keydown" && e.key === "Enter" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing) { if (ws && ws.readyState === 1) ws.send("\x1b\r"); e.preventDefault(); return false; }
         return true;
       });
@@ -1397,10 +1408,41 @@
         else typed += d;
         return false;
       };
-      term.onData(function (d) { if (ccConfig(d)) return; if (ws && ws.readyState === 1) ws.send(d); else if (ended || !alive) connect(); });
+      term.onData(function (d) { if (ccConfig(d)) return; if (ws && ws.readyState === 1) { noteErase(d); ws.send(d); } else if (ended || !alive) connect(); });
       term.onResize(function (sz) { if (ws && ws.readyState === 1) { if (ws.resize) ws.resize(sz.cols, sz.rows); else ws.send(JSON.stringify({ resize: [sz.cols, sz.rows] })); } });
       host.addEventListener("mousedown", function () { P.win.ws.activate(P); }, true);
       term.textarea && term.textarea.addEventListener("focus", function () { P.win.ws.activate(P); });
+    }
+    // Darwin's canonical erase echoes BS SPACE BS even for a two-column glyph.
+    // Remember the displayed cells on DEL; correct only the matching echo.
+    var eraseWidths = [], eraseColumns = 0;
+    function noteErase(data) {
+      if (!LOC || RDEV || !/^\x7f+$/.test(data)) return;
+      var buffer = term.buffer.active, col = buffer.cursorX - eraseColumns;
+      var line = buffer.getLine(buffer.baseY + buffer.cursorY);
+      for (var i = 0; line && col > 0 && i < data.length; i++) {
+        var width = line.getCell(col - 1)?.getWidth() === 0 ? 2 : 1;
+        eraseWidths.push(width);
+        eraseColumns += width;
+        col -= width;
+      }
+    }
+    function eraseEcho(data) {
+      if (!eraseWidths.length) return data;
+      var offset = 0, prefix = [];
+      while (eraseWidths.length && data[offset] === 8 && data[offset+1] === 32 && data[offset+2] === 8) {
+        var width = eraseWidths.shift();
+        eraseColumns -= width;
+        if (width === 2) prefix.push(8);
+        prefix.push(8, 32, 8);
+        offset += 3;
+      }
+      if (offset < data.length) { eraseWidths.length = 0; eraseColumns = 0; }
+      if (prefix.length === offset) return data;
+      var corrected = new Uint8Array(prefix.length + data.length - offset);
+      corrected.set(prefix);
+      corrected.set(data.subarray(offset), prefix.length);
+      return corrected;
     }
     function connect() {
       if (ws && ws.readyState <= 1) return;
@@ -1432,7 +1474,7 @@
         }, 2000);
       };
       var sock = ws; // 流控按这一个伪终端算（重连以后是新的一个）
-      ws.onmessage = function (e) { var d = typeof e.data === "string" ? e.data : new Uint8Array(e.data); if (sock.feed) sock.feed(term, d); else term.write(d); }; // feed：积压多了叫原生先别读（流控），见 studio/local.js；网页版的真 WebSocket 没有
+      ws.onmessage = function (e) { var d = typeof e.data === "string" ? e.data : eraseEcho(new Uint8Array(e.data)); if (sock.feed) sock.feed(term, d); else term.write(d); }; // feed：积压多了叫原生先别读（流控），见 studio/local.js；网页版的真 WebSocket 没有
       ws.onclose = function (e) {
         var was = alive;
         alive = false;
@@ -1501,6 +1543,14 @@
   }
   var GROUP_COLOR = { f: GREEN, b: rgb("113;142;244"), o: "" };
   if (A.setOpenCheck) A.setOpenCheck(function (id) { return allPanes().some(function (p) { return p.program && p.program.agentId === id; }); });
+  function openSessionIds() {
+    var ids = new Set();
+    for (var pane of allPanes()) {
+      var id = pane.program?.agentId;
+      if (id) ids.add(id.startsWith("cx:") && window.TSU_CODEX ? "cx:" + TSU_CODEX.real(id.slice(3)) : id);
+    }
+    return ids;
+  }
   function agentStatus(a) {
     var r2 = A.runtime(a.id), st = r2.state(), open = allPanes().some(function (p) { return p.program && p.program.agentId === a.id; });
     var working = st === "working" || r2.tasks.some(function (x) { return x.status === "running"; });
@@ -1802,7 +1852,7 @@
   // Codex 的会话：斜杠菜单是 Codex 自己的命令（说明照它 TUI 的）+ 你的提示词（~/.codex/prompts/*.md → /prompts:名字）
   // pi 的会话里能用的：这边做得了的几个（别的只在 pi 自己的终端界面里有）
   var PI_CMDS = [["new", "Start a new session"], ["name", "Set the session display name, or show the current name when omitted"], ["model", "Show or set the model (provider/model)"], ["session", "Show session info and statistics"]];
-  var CX_CMDS = [["model", "choose what model and reasoning effort to use"], ["effort", "set reasoning effort: minimal / low / medium / high / xhigh"], ["review", "review my current changes and find issues"],
+  var CX_CMDS = [["model", "choose what model and reasoning effort to use"], ["effort", "choose reasoning effort for the current model"], ["review", "review my current changes and find issues"],
     ["rename", "rename the current thread"], ["new", "start a new chat during a conversation"], ["fork", "fork the current chat"], ["init", "create an AGENTS.md file with instructions for Codex"],
     ["compact", "summarize conversation to prevent hitting the context limit"], ["goal", "set a goal for this thread (/goal clear to clear)"], ["diff", "show git diff (including untracked files)"],
     ["status", "show current session configuration and token usage"], ["mcp", "list configured MCP tools"], ["quit", "exit Codex"]];
@@ -1902,25 +1952,38 @@
       if (!P.closed && P.program?.agentId === id) P.program.syncDraft?.();
     };
   }
-  // 输入框里附的图（还没发出去的）：按 agent 放在内存里（图大，不写 localStorage），终端界面、图形界面（Claude App 风格）都从这里拿——
-  //   换界面风格时图跟着走（用户 2026-10-30：以前切过去只剩一个「[Image #1」）。字里的「[Image #N]」对着这里的 no
-  var DIMG = {};
-  window.TSU_DRAFTIMG = {
-    get: function (id) { return (DIMG[id] || []).slice(); },
-    set: function (id, images) {
-      var ready = (images || []).filter(im => im && (im.data || im.path || im.decoding));
-      if (!ready.length) { delete DIMG[id]; return; }
-      var previous = DIMG[id];
-      if (previous?.length === ready.length && ready.every(function (im, i) {
-        var old = previous[i];
-        return old.no === im.no && old.data === im.data && old.media_type === im.media_type && old.path === (im.path || "") && old.decoding === im.decoding;
-      })) return;
-      DIMG[id] = ready.map(im => ({ no: im.no, media_type: im.media_type, data: im.data, path: im.path || "", decoding: im.decoding }));
-    },
-    fromFile: function (id, file, fail) {
+  var DIMG = {}, imageDB, imageWrites = new Set();
+  var imagePrefix = "vs-draft-images:" + (window.TSU_UID || 0) + ":" + (window.nadosNative?.mac || "local") + ":";
+  function draftImageDB() {
+    if (!imageDB) imageDB = new Promise((resolve, reject) => {
+      var req = indexedDB.open("vs-draft-images", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("images");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }).catch(error => { imageDB = null; throw error; });
+    return imageDB;
+  }
+  async function imageRecord(action, key, value) {
+    var db = await draftImageDB();
+    return new Promise((resolve, reject) => {
+      var tx = db.transaction("images", action === "get" ? "readonly" : "readwrite");
+      var store = tx.objectStore("images");
+      var req = action === "put" ? store.put(value, key) : store[action](key);
+      tx.oncomplete = () => resolve(req.result);
+      tx.onabort = () => reject(tx.error || new Error("保存草稿图片失败"));
+    });
+  }
+  function writeImage(action, key, value) {
+    var pending = imageRecord(action, key, value).catch(error => {
+      console.error("Draft attachment", error);
+      window.STUDIO?.toast?.("保存草稿图片失败");
+    }).finally(() => imageWrites.delete(pending));
+    imageWrites.add(pending);
+  }
+  function decodeDraftFile(file) {
       var img = new Image(), url = URL.createObjectURL(file);
       var type = file.type === "image/png" ? "image/png" : "image/jpeg";
-      var decoding = new Promise(function (resolve) {
+      return new Promise(function (resolve) {
         img.onerror = () => resolve("");
         img.onload = function () {
           try {
@@ -1932,9 +1995,10 @@
           } catch (_) { resolve(""); }
         };
         img.src = url;
-      });
+      }).finally(() => URL.revokeObjectURL(url));
+  }
+  function watchDraftImage(id, decoding, fail) {
       decoding.then(function (data) {
-        URL.revokeObjectURL(url);
         var images = DIMG[id], shared = images?.find(im => im.decoding === decoding);
         if (!shared) return;
         if (data) { shared.data = data; delete shared.decoding; }
@@ -1946,11 +2010,51 @@
         document.dispatchEvent(new CustomEvent("tsu-draft-image", {detail: {id, decoding, data}}));
         if (!data && fail) fail();
       });
-      return {media_type: type, data: "", decoding};
+  }
+  function draftImages(id) {
+    if (DIMG[id]) return DIMG[id];
+    var rows;
+    try { rows = JSON.parse(localStorage.getItem(imagePrefix + id)); } catch (_) {}
+    if (!Array.isArray(rows)) return [];
+    return DIMG[id] = rows.map(row => {
+      if (!row.key) return row;
+      var decoding = imageRecord("get", row.key).then(value =>
+        value instanceof Blob ? decodeDraftFile(value) : value || "").catch(() => "");
+      watchDraftImage(id, decoding);
+      return {...row, decoding, data: ""};
+    });
+  }
+  window.TSU_DRAFTIMG = {
+    get: function (id) { return draftImages(id).slice(); },
+    set: function (id, images) {
+      var ready = (images || []).filter(im => im && (im.data || im.path || im.decoding));
+      var previous = draftImages(id);
+      if (previous.length === ready.length && ready.every((im,i) => {
+        var old = previous[i];
+        return old.no === im.no && old.data === im.data && old.media_type === im.media_type && old.path === (im.path || "") && old.decoding === im.decoding;
+      })) return;
+      var rows = ready.map(im => {
+        var old = previous.find(x => x.no === im.no && ((im.data && x.data === im.data) || (im.decoding && im.decoding === x.decoding)));
+        var key = old?.key || im.key;
+        if (!key && (im.file || im.data)) {
+          key = crypto.randomUUID();
+          writeImage("put", key, im.file || im.data);
+        }
+        return {no:im.no, media_type:im.media_type, data:im.data, path:im.path || "", decoding:im.decoding, key};
+      });
+      if (rows.length) localStorage.setItem(imagePrefix + id, JSON.stringify(rows.map(({no,media_type,path,key}) => ({no,media_type,path,key}))));
+      else localStorage.removeItem(imagePrefix + id);
+      DIMG[id] = rows;
+      for (var old of previous) if (old.key && !rows.some(im => im.key === old.key)) writeImage("delete", old.key);
     },
+    fromFile: function (id, file, fail) {
+      var decoding = decodeDraftFile(file);
+      watchDraftImage(id, decoding, fail);
+      return {media_type: file.type === "image/png" ? "image/png" : "image/jpeg", data:"", file, decoding};
+    }
   };
   // App 退出前（原生的 applicationShouldTerminate 叫它）：写了一半的话马上记下；正在送的那一句本来就随时记着（claude.js 的 lqSave）
-  window.TSU_FLUSH = function () { try { if (draftsT) { clearTimeout(draftsT); saveDrafts(); } } catch (e) { /* 记不了就算了 */ } };
+  window.TSU_FLUSH = function () { try { if (draftsT) { clearTimeout(draftsT); saveDrafts(); } } catch (e) { /* 记不了就算了 */ } return Promise.all(imageWrites); };
   document.addEventListener("visibilitychange", function () { if (document.hidden && draftsT) saveDrafts(); });
   // ---- 对话里的内容（每个区域右上角的 ··· ；设置 › 对话）：消息、回答、思考、工具、你的 ! 命令、图片、系统 ----
   // 工具按类分，每类一个档位：一次工具调用 = 调用（⏺ Name(参数)）+ 结果（⎿ …）——完整结果 / 结果预览（前几行）/ 只看调用（一行摘要）/ 隐藏
@@ -2222,17 +2326,26 @@
     return rt.stream ? rt.stream.turn === turn :
       rt.state && rt.state() === "working" && rt.session().turns.at(-1) === turn;
   }
-  function showToolPreview(turn, tool, rt) {
-    return isCurrentToolTurn(turn, rt) ||
-      (tool.status === "running" && rt.state?.() === "working" && !turn.stats && !turn.error &&
-       !turn.parts.some(part => part.phase === "final"));
+  function queueIcon(delivery) {
+    if (delivery) {
+      var later = delivery === "queue" || delivery === "local";
+      var label = delivery === "local" ? (enLang() ? "Waiting to send" : "等待发送") :
+        delivery === "steer" ? (enLang() ? "Awaiting delivery to current turn" : "等待当前回合接收") :
+        later ? (enLang() ? "Queued for next turn" : "等待后续回合") : (enLang() ? "Sending" : "发送中");
+      var path = later ? "M2 4h11M2 8h8M2 12h5" : "M2 11h5a3 3 0 0 0 3-3V3m-3 3 3-3 3 3";
+      return '<svg class="vs-queue-icon" role="img" aria-label="' + label + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><title>' + label + '</title><path d="' + path + '"/></svg>';
+    }
+    return '<svg class="vs-queue-icon" role="img" aria-label="' + (enLang() ? "Queued" : "排队中") + '" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
   }
-  function toolHistoryTitle(count) {
-    return "Ran " + count + " command" + (count === 1 ? "" : "s");
+  function toolHistoryTitle(items) {
+    var searches = items.filter(item => item.name === "web_search").length;
+    if (searches === items.length) return searches + (searches === 1 ? " web search" : " web searches");
+    if (searches) return items.length + " tool calls";
+    return "Ran " + items.length + " command" + (items.length === 1 ? "" : "s");
   }
   function runningPreview(tool) {
     var input = tool.input || {};
-    var output = (tool.detail || []).flatMap(function (line) { return String(line).split("\n"); }).filter(function (line) { return line.trim(); });
+    var output = (tool.detail || []).flatMap(function (line) { return String(line).split("\n").map(currentTerminalLine); }).filter(function (line) { return line.trim(); });
     var context = [input.description !== input.command && input.description, input.file_path || input.path || input.workdir || input.cwd, input.query || input.pattern];
     if (input.command) context.push.apply(context, String(input.command).split("\n").slice(1));
     var rows = output.length ? output.slice(-3) : context.filter(Boolean).flatMap(value => String(value).split(/\r?\n/)).filter(line => line.trim()).slice(0, 3);
@@ -2240,6 +2353,82 @@
     if (output.length > 3) meta.push("+" + (output.length - 3) + " lines");
     if (tool.t0) meta.push(F.dur(Math.max(0, Date.now() - tool.t0)));
     return rows.concat(meta.length ? [meta.join(" · ")] : []);
+  }
+  function showAgentQuota(P, rt, button) {
+    var old = P.el.querySelector(".agy-quota-popup");
+    if (old && old.matches(":popover-open")) { old.hidePopover(); old.remove(); return; }
+    if (old) old.remove();
+    var box = document.createElement("div");
+    box.className = "agy-quota-popup";
+    box.setAttribute("popover", "manual");
+    box.style.cssText = "position:fixed;inset:auto;margin:0;padding:8px 12px;border:1px solid #8886;border-radius:6px;background:Canvas;color:CanvasText;box-shadow:0 3px 12px #0002;white-space:pre;font:" + getComputedStyle(button).font;
+    var agyPeriods = {"gemini-5h":"Gemini · 5h", "gemini-weekly":"Gemini · weekly", "3p-5h":"Third-party · 5h", "3p-weekly":"Third-party · weekly"};
+
+    box.style.columnGap = "0.65em";
+    function remainingTime(reset) {
+      var end = Date.parse(reset);
+      if (!(end > 0)) return "—";
+      var sec = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      if (sec >= 86400) return Math.floor(sec / 86400) + "d " + Math.floor(sec % 86400 / 3600) + "h";
+      if (sec >= 3600) return Math.floor(sec / 3600) + "h " + Math.floor(sec % 3600 / 60) + "m";
+      if (sec >= 60) return Math.floor(sec / 60) + "m " + sec % 60 + "s";
+      return sec + "s";
+    }
+    var periodAnchor;
+    var activePeriod = button.textContent.trim().split(/\s+/)[0];
+    box.style.gridTemplateColumns = "max-content max-content max-content max-content max-content";
+    function buildRows(names) {
+      box.replaceChildren(); periodAnchor = null;
+      return Object.entries(names).map(([key, name]) => {
+        var [provider, period] = name.split(" · ");
+        var cells = [provider + " ·", period, "", "left", ""].map(value => {
+          var cell = document.createElement("span");
+          cell.textContent = value;
+          box.appendChild(cell);
+          return cell;
+        });
+        if (!periodAnchor || period === activePeriod) periodAnchor = cells[1];
+        cells[2].style.textAlign = "right";
+        return buckets => {
+          var item = buckets.find(b => b.name === key);
+          cells[2].textContent = item ? Math.round(item.remaining * 100) + "%" : "—";
+          cells[4].textContent = "· " + remainingTime(item?.reset);
+        };
+      });
+    }
+    var updateRows = [], periodKey;
+    function refreshRows() {
+      var buckets = rt.quotaBuckets ? rt.quotaBuckets() : TSU_AGY.quota().data?.buckets || [];
+      var key = rt.quotaBuckets ? buckets.map(b => b.name).join("|") : "agy";
+      if (periodKey !== key) {
+        var names = rt.quotaBuckets ? Object.fromEntries(buckets.map(b => [b.name, (rt.label || "Codex") + " · " + b.name])) : agyPeriods;
+        updateRows = buildRows(names); periodKey = key;
+        if (!updateRows.length && box.isConnected) { dismiss(); return; }
+      }
+      updateRows.forEach(update => update(buckets));
+    }
+    refreshRows();
+    if (!periodAnchor) return;
+    P.el.appendChild(box);
+    box.showPopover({source:button});
+    box.style.display = "grid";
+    var tick = setInterval(() => {
+      if (box.isConnected && box.matches(":popover-open")) refreshRows();
+      else clearInterval(tick);
+    }, 1000);
+    var rect = button.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(rect.left - (periodAnchor.getBoundingClientRect().left - box.getBoundingClientRect().left), innerWidth - box.offsetWidth - 4)) + "px";
+    box.style.top = Math.max(4, rect.top - box.offsetHeight - 5) + "px";
+    var events = new AbortController();
+    function dismiss() { events.abort(); box.hidePopover(); box.remove(); }
+    box.addEventListener("click", dismiss, {signal:events.signal});
+    document.addEventListener("pointerdown", e => {
+      if (!box.contains(e.target) && !button.contains(e.target) && !e.target.closest?.('button[title="查看额度"]')) dismiss();
+    }, {capture:true, signal:events.signal});
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); dismiss(); }
+    }, {capture:true, signal:events.signal});
+    box.addEventListener("toggle", e => { if (e.newState === "closed") { events.abort(); box.remove(); } });
   }
   function filteredParts(turn, mode, rt) {
     var live = isCurrentToolTurn(turn, rt);
@@ -2549,7 +2738,7 @@
     var TY = agent.connector === "teyvat"; // Teyvat 的会话：它自己的一套（execute / wait / hibernate、底部的状态栏、右侧栏的意图）
     var DIM = function () { return P.DIM; };
     var blocks = new Map(), statusEl = null, bannerEl = null, bgSig = ""; // bgSig：上次画的时候后台还在跑的（见 liveBg）
-    var panel = null, menuIdx = 0, histIdx = -1, historyChoices = [], draft = "", attach = [], pastes = [], verbose = false, open = {}, historyTop = new Map(), moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
+    var panel = null, menuIdx = 0, histIdx = -1, historyChoices = [], draft = "", attach = [], pastes = [], verbose = false, open = {}, historyTop = new WeakMap(), moreOpen = {}, tlv = {}, idet = {}, lastCtrlC = 0; // tlv：跑完的一组点开到「标题」这一层；idet：标题这一层里单独点开细节的那几条
     V.agentId = agentId;
     // ---- agent 自己的底部（输入框 → 在跑的那一行 → 状态行）：自动高度；右上角 ··· 管显示哪几块 ----
     var fsash = null, dragH = null, footBase = 0, sashRO = null;
@@ -2579,7 +2768,7 @@
     function footItems() {
       var MI = window.STUDIO?.menuIcons?.() || {};
       function option(field, label, checked, icon) {
-        return { label, icon, checked, run: function () {
+        return { label, icon, svg: icon, checked, run: function () {
           var prefs = Object.assign({}, cfg.connectorFooter, { [footerKeyFor(field)]: checked ? "off" : "on" });
           A.setCfg("connectorFooter", prefs);
           allPanes().forEach(p => { if (p.program?.agentId && A.runtime(p.program.agentId)?.agent?.connector === agent.connector) p.renderNow?.(); });
@@ -2629,7 +2818,8 @@
       if (typeof state.text !== "string") return;
       P.ta.value = state.text;
       pastes = state.pastes || [];
-      if (state.images?.length) { TSU_DRAFTIMG.set(agentId,state.images); imgsFromShared(); }
+      if (state.images?.length && !TSU_DRAFTIMG.get(agentId).length) TSU_DRAFTIMG.set(agentId,state.images);
+      imgsFromShared();
       P.ta.setSelectionRange(state.start ?? state.text.length,state.end ?? state.text.length);
       draftSet(agentId,state.text,pastes);
     };
@@ -2647,11 +2837,7 @@
         return [time, task.desc || task.cmd].filter(Boolean).join(" · ");
       }).join("\n");
     };
-    function agyTerminalWait() {
-      if (agent.connector !== "agy" || rt.stream) return null;
-      if (rt.state() === "working" && !/^Waiting for background terminal\b/i.test(rt.liveStatus || "")) return null;
-      return rt.tasks.find(task => task.kind === "shell" && task.status === "running");
-    }
+    function agyTerminalWait() { return rt.backgroundWaitSince?.() || 0; }
     var terminalWaitLabel = "Waiting for background terminal";
     V.waitingLabel = function () {
       var stream = rt.stream;
@@ -2703,6 +2889,7 @@
     }
     var off1 = rt.on(function (type, data) {
       if (P.closed) return;
+      if (type === "historyProgress") return;
       if (P.off && (type === "reset" || type === "prepend")) {
         rowCache = new WeakMap();
         P.dirty = true;
@@ -2779,10 +2966,16 @@
     window.addEventListener("focus", onBack);
     setTimeout(onBack, 1500);
     // 会话记录只读了后面一段（Claude Code 的大会话）：滚到顶自动往前接着读，看的是历史上的一段时滚到底往后接着读——同终端的回滚，不出提示
-    var fillN = 0;
+    var fillN = 0, fillTimer = 0;
     function fill() { // 读进来的不够一屏（筛过的视图、很短的一段）：再往前读一点，最多几次
-      if (!rt.more || !rt.more() || (P.side && P.compact) || fillN >= 4) return;
-      setTimeout(function () { var sc = P.screen; if (P.program === V && !P.off && sc.clientHeight && sc.scrollHeight <= sc.clientHeight + P.rowH * 10) { fillN++; rt.earlier(); } }, 60);
+      if (fillTimer || fillN >= 4 || P.off || P.footOnly || (P.side && P.compact) || !rt.more?.()) return;
+      fillTimer = setTimeout(function () {
+        fillTimer = 0;
+        var sc = P.screen;
+        if (P.program !== V || P.off || !sc.clientHeight || sc.scrollHeight > sc.clientHeight + P.rowH * 10 || !rt.more()) return;
+        fillN++;
+        rt.earlier();
+      }, 60);
     }
     // 往前读一段没成（正在重读、上一段还没读回来）：以前就这么算了——已经在最顶上、再往上滚也没有 scroll 事件，更早的永远出不来（「往上拉不动」）。
     //   没成就过一会儿再试（还在顶上附近才试，最多 20 次）；在最顶上接着往上滚（滚轮、手指）也再要一次
@@ -2801,13 +2994,17 @@
         if (++earlierN <= 20) earlierT = setTimeout(wantEarlier, 600);
       });
     }
+    V.hasEarlier = () => !!pendTurns?.length || !!rt.more?.();
     var historyWaitingForScroll = false;
-    var onSc = function () {
+    function resumeNearbyHistory() {
       if (historyWaitingForScroll && P.program === V && P.screen.scrollTop < 6 * P.screen.clientHeight) {
         historyWaitingForScroll = false;
         var gen = renderGen;
         requestAnimationFrame(function () { restTurns(gen); });
       }
+    }
+    var onSc = function () {
+      resumeNearbyHistory();
       if (P.program !== V || !rt.earlier) return;
       var sc = P.screen, now = performance.now(), dt = now - eaT;
       eaV = dt > 0 && dt < 250 ? 0.5 * ((sc.scrollTop - eaTop) / dt) + 0.5 * eaV : 0; eaT = now; eaTop = sc.scrollTop;
@@ -2815,7 +3012,7 @@
       else if (rt.historical && rt.historical() && sc.scrollHeight - sc.scrollTop - sc.clientHeight < P.rowH * 30) rt.later();
     };
     P.screen.addEventListener("scroll", onSc, { passive: true });
-    var onTopPull = function (e) { if (P.program === V && P.screen.scrollTop < P.rowH * 2 && (e.type !== "wheel" || e.deltaY < 0)) { earlierN = 0; wantEarlier(); } };
+    var onTopPull = function (e) { if (P.program === V && P.screen.scrollTop < P.rowH * 2 && (e.type !== "wheel" || e.deltaY < 0)) { earlierN = 0; resumeNearbyHistory(); wantEarlier(); } };
     P.screen.addEventListener("wheel", onTopPull, { passive: true });
     P.screen.addEventListener("touchmove", onTopPull, { passive: true });
     // ---- 往上翻的时候，最上面一行是现在看的这段属于哪一问（同 Claude Code 全屏时的 sticky prompt）：「❯ 那一问」，只占一行，点了跳到那一问；
@@ -2862,7 +3059,13 @@
     }
     var stickySoon = function () { if (!stkRaf) stkRaf = requestAnimationFrame(stickyNow); };
     P.screen.addEventListener("scroll", stickySoon, { passive: true });
-    var stickyObserver = new ResizeObserver(stickySoon);
+    var stickyObserver = new ResizeObserver(function (entries) {
+      stickySoon();
+      if (P.off || !rt.more?.()) return;
+      var viewport = P.screen.clientHeight;
+      if (viewport && entries.some(entry => entry.target === P.screen || entry.contentRect.height <= viewport)) fill();
+    });
+    stickyObserver.observe(P.screen);
     stickyObserver.observe(P.term); // 内容长了 / 换了（跟着往下滚到底时不一定有 scroll 事件）：也再看一次
     // 点了跳到那一问。按下就跳，不等松开：按下时这一格被点成当前的、重画一下，松开时指着的已经不是这一条，click 就丢了。
     //   那一问离得远时它那一块是「不画」的（content-visibility: hidden，见 P.block）：里面的行量不出位置（WebKit 里是 0，只挪一点点，看着就是点不动）——
@@ -2898,6 +3101,7 @@
     P.el.addEventListener("pointermove", footerHover);
     P.el.addEventListener("pointerleave", footerHover);
     V.detach = function () {
+      P.screen.classList.remove("transcript-at-end");
       P.el.removeEventListener("pointermove", footerHover);
       document.removeEventListener("st-settings-closed", resumeHistory);
       document.removeEventListener("tsu-draft-image", onDraftImage);
@@ -2906,6 +3110,7 @@
       P.term.removeEventListener("click", onTranscriptClick);
       P.el.removeEventListener("click", onPaneAction);
       stickyObserver.disconnect();
+      clearTimeout(fillTimer);
       cancelAnimationFrame(stkRaf);
       cancelAnimationFrame(agyFrame); agyTurns.clear();
       cancelAnimationFrame(translationFrame); translationTurns = null;
@@ -3024,13 +3229,26 @@
     //   拆分、挪标签页、合并时宽度来回变，变回来过的那个宽度不用再算一遍（几千行的一问算一遍要几十上百毫秒）。在跑的那一问、还有在跑的工具的不留
     var rowCache = new WeakMap(), renderedTranslations = new WeakMap(), rcSig = "", htmlN = 0, idxOf = null;
     function rcGlobal() { var tk = rt.tasks || []; return [P.textFilter, mdNums() ? 1 : 0, P.cols, P.chPx, P.light ? 1 : 0, verbose ? 1 : 0, enLang() ? 1 : 0, JSON.stringify(P.view || null), JSON.stringify(cfg), tk.length + ":" + tk.filter(function (x) { return x.status === "running"; }).length].join("|"); }
-    var expandedThoughtSources = new WeakMap();
+    var visibleThoughtSources = new WeakMap(), summarySources = new WeakMap();
+    function thoughtBody(turn, source, streaming) {
+      var translator = window.TSU_TRANSLATE;
+      if (!source || !translator?.replyTarget() || streaming) return source;
+      var sources = visibleThoughtSources.get(turn);
+      if (!sources) visibleThoughtSources.set(turn, sources = new Set());
+      sources.add(source);
+      return translator.thought(source, agentId, false, cfg.translateShow === "only").body;
+    }
     function trN(t) { // 这一问的话里已经有译文的有几段（回复翻译开着时；译文到了，这一问要重画）
-      if (!window.TSU_TRANSLATE?.replyTarget()) return 0;
-      var n = 0; (t.parts || []).forEach(function (x) { if (x.kind === "text" && x.text && TSU_TRANSLATE.reply(x.text, agentId)) n++; });
-      for (var thought of t.parts || []) {
-        var source = expandedThoughtSources.get(thought);
-        if (source) n += TSU_TRANSLATE.thought(source, agentId, thought.streaming, false).ready;
+      var translatedTitles = 0;
+      if (window.TSU_TRANSLATE?.target()) for (var tool of t.parts || []) {
+        var title = summarySources.get(tool);
+        if (title && trTask(title) !== title) translatedTitles++;
+      }
+      if (!window.TSU_TRANSLATE?.replyTarget()) return translatedTitles;
+      var n = translatedTitles; (t.parts || []).forEach(function (x) { if (x.kind === "text" && x.text && TSU_TRANSLATE.reply(x.text, agentId)) n++; });
+      if (!t.parts && t.answer && TSU_TRANSLATE.reply(t.answer, agentId)) n++;
+      for (var source of visibleThoughtSources.get(t) || []) {
+        n += TSU_TRANSLATE.thought(source, agentId, false, false).ready;
       }
       if (t.compact && t.compact.summary && (verbose || open[rt.session().turns.indexOf(t) + ":c"]) && TSU_TRANSLATE.reply(t.compact.summary, agentId)) n++; // 展开着的压缩摘要：译文到了也要重画
       if (t.recap && TSU_TRANSLATE.reply(t.recap, agentId)) n++; // 回顾的译文到了：重画
@@ -3044,6 +3262,7 @@
       renderedTranslations.set(t, translated);
       var k = rcSig + (P.textFilter && isCurrentToolTurn(t, rt) ? "|current" : "") + "|" + (t.__rv || 0) + "|" + translated + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
+      visibleThoughtSources.delete(t);
       var rows = turnRows(t, live), h = P.join(rows);
       htmlN = rows.length;
       if (!live && !run) rowCache.set(t, { k: k, h: h, n: rows.length }); else rowCache.delete(t);
@@ -3187,7 +3406,7 @@
         if (rect.height && rect.top < edge && (!lower || rect.top > lower.top))
           lower = { turn: turn, top: rect.top, bottom: rect.bottom };
       });
-      P.screen.classList.toggle("filter-final", P.textFilter === "final");
+      P.screen.classList.toggle("transcript-at-end", !!P.textFilter || (!P.footOnly && rt.session().turns.length > 0));
       var anch = !P.footOnly && !P.following() && P.screen.clientHeight && blocks.size ? anchorNow() : null; // 清掉之前量好眼前是哪一问
       if (lower) anch = [{ turn: lower.turn, off: lower.top - P.screen.getBoundingClientRect().top }];
       var previousIndices = idxOf;
@@ -3249,6 +3468,7 @@
       if (blocks.has(t)) return drawTurn(t);
       if (pendTurns && pendTurns.indexOf(t) >= 0) return; // 还没轮到补画的更早的一问：补画时画在它自己的位置
       if (pendTail) { if (pendTail.indexOf(t) < 0) pendTail.push(t); return; } // 后面的还在分段补画：新来的排在它们后面（不插到中间去）
+      if (!blocks.size) P.screen.classList.add("transcript-at-end");
       var was0 = liveT, b = P.block(htmlOf(t, liveOf(t)), statusEl);
       b._t = t; blocks.set(t, b); flagMark(b, t);
       var ts1 = rt.session().turns, pv1 = ts1[ts1.indexOf(t) - 1]; // 前一问做完那一行原来在输入框下面（它曾是最后一问）：现在回到对话里它自己的位置
@@ -3288,7 +3508,7 @@
       if (was1 && was1 !== t && blocks.has(was1) && !(rt.stream && rt.stream.turn === was1)) { if (liveT === was1) liveT = null; drawTurn(was1); }
     }
     // 你点开的（不是按设置本来就展开的）：整块灰底包起来（同你说的话那种灰），块里任何地方再点一下就收起——很长的内容不用回去找标题
-    function markOpened(b) { if (b && b.querySelectorAll) b.querySelectorAll(".grp.open:not(.trsw)").forEach(function (g) { g.classList.toggle("uopen", open[g.dataset.key] === true); }); }
+    function markOpened(b) { if (b && b.querySelectorAll) b.querySelectorAll(".grp.open:not(.trsw)").forEach(function (g) { g.classList.toggle("uopen", g.classList.contains("tool-history") || open[g.dataset.key] === true); }); }
     function box(lines, width, color) {
       var r = [color + "╭" + "─".repeat(width - 2) + "╮" + RESET];
       lines.forEach(function (l) { r.push(color + "│" + RESET + " " + pad(l, width - 4) + " " + color + "│" + RESET); });
@@ -3315,7 +3535,8 @@
       if (lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[lines.length - 1])) lines.pop();
       return lines.join("\n");
     }
-    function askBlock(r, text, mark, images, numbers) {
+    function askBlock(r, text, mark, images, numbers, queued) {
+      var width = P.cols - (queued ? 3 : 0);
       var ask = [];
       var prefix = "", occupied = 0;
       if (images) {
@@ -3326,9 +3547,9 @@
         if (cfg.imageShow !== "inline") occupied = W(numbers.map(function (n) { return "[Image #" + n + "]"; }).join(" ")) + (text ? 1 : 0);
         mark = occupied ? "" : "  ";
       }
-      if (occupied && text) ask = wrapKeep(text, P.cols - 2, occupied).map(function (line) { return line.text; });
-      else if (text || !images) text.split("\n").forEach(function (para) { ask.push.apply(ask, wrap(para, P.cols - 2)); });
-      r.block('<span class="ask' + (agent.connector === "codex" ? " cx-prompt" : "") + '">' + prefix + P.toHtml(ask.map(function (l, i) { var row = pad((i ? "  " : mark) + l, P.cols - (!i && occupied ? occupied + 2 : 0));
+      if (occupied && text) ask = wrapKeep(text, width - 2, occupied).map(function (line) { return line.text; });
+      else if (text || !images) text.split("\n").forEach(function (para) { ask.push.apply(ask, wrap(para, width - 2)); });
+      r.block('<span class="ask' + (typeof queued === "string" ? " cx-pending" : agent.connector === "codex" ? " cx-prompt" : "") + '">' + (queued ? queueIcon(typeof queued === "string" ? queued : null) : "") + prefix + P.toHtml(ask.map(function (l, i) { var row = pad((i ? "  " : mark) + l, width - (!i && occupied ? occupied + 2 : 0));
         return agent.connector === "codex" ? row.replace(/\[Image #\d+\]/g, codexShellPalette[P.light ? "light" : "dark"].reference + "$&" + RESET) : row; })) + "</span>");
     }
     // 图片不直接摊在对话里（同 Claude Code）：一行「⎿  [Image #1] [Image #2]」，虚线下划线，点一下在右侧栏里看
@@ -3428,7 +3649,7 @@
         while (rows0.length > 1 && blankRow(rows0[rows0.length - 1])) rows0.pop();
         return rows0;
       };
-      if (P.textFilter && (turn.compact || turn.recap !== undefined || turn.cmd !== undefined ||
+      if (P.textFilter && ((turn.compact && P.textFilter !== "body") || turn.recap !== undefined || turn.cmd !== undefined ||
           turn.bash !== undefined || turn.system || (turn.note && turn.ask === undefined))) return [];
       if (tsm === "show") {
         var tt0 = turnTime(turn), prevT = 0;
@@ -3544,6 +3765,14 @@
         if (vmode("notices") && (nbg.length || !nts.length)) { mark(turn.at); if (nbg.length) noticeBlock(r, nbg, rt.session().turns.indexOf(turn) + ":n"); else r.text([D + "⎿  " + (turn.woke ? "Woke: " + turn.woke : "System") + RESET]); }
         if (nrp.length) reportRows(r, nrp, rt.session().turns.indexOf(turn) + ":r", turn.at, mark);
       } else {
+        if (turn.leadingPrompts && (P.textFilter || vmode("prompts"))) {
+          for (var earlier of turn.leadingPrompts) {
+            var nums = earlier.images?.map((im, i) => im.no || i + 1);
+            mark(earlier.submittedAt);
+            askBlock(r, earlier.ask, "❯ ", nums?.length ? earlier.images : null, nums);
+            r.text([""]);
+          }
+        }
         var askText = turn.ask, imgNo = null, promptImages = agent.connector === "codex" || agent.connector === "agy";
         // 图的编号用它自己的（[Image #419]，Claude Code 记在 imagePasteIds 里；话里已经写着的就是那几个）——不另编 #1，也不在前面重复加一个
         if (turn.images && turn.images.length) {
@@ -3556,10 +3785,10 @@
           } else if (!inTx.length) askText = imgNo.map(function (n) { return "[Image #" + n + "] "; }).join("") + askText;
         }
         // 不显示「消息」时，这一问还是一组：一行淡的「❯ 问的话」做组的标题（回答、出错跟在它下面，才看得出是回哪一问的）
-        if (turn.cont && !String(askText || "").trim()) { /* 接着上一问的（它的问题在还没读进来的那段里）：没有问题这一行 */ }
+        if (turn.promptMoved || (turn.cont && !String(askText || "").trim())) { /* 接着上一问的（它的问题在还没读进来的那段里）：没有问题这一行 */ }
         else if (P.textFilter || vmode("prompts")) {
           if (turn.fire) { r.text(wrap(turn.fire, P.cols - 2).map(function (l, k) { return D + (k ? "" : "✻ ") + l + RESET; })); r.text([""]); } // 定时任务到点（同 2.1.281 的 scheduled_task_fire）：一行淡的「✻ 内容」在它送进来的这一问上面
-          mark(turn.at); askBlock(r, askText, "❯ ", promptImages && imgNo ? turn.images : null, imgNo);
+          mark(turn.at); askBlock(r, askText, "❯ ", promptImages && imgNo ? turn.images : null, imgNo, turn.pendingDelivery);
           // 没送成过、后来才送到的：写的时间、送到的时间（它在记录里的位置是送到的时候，不写的话看着像是后来才说的）
           var wa = rt.writtenAt ? rt.writtenAt(turn.ask) : null;
           if (wa) r.text(["  " + D + "⎿  " + (enLang() ? "written " + clockOf(wa.first) + " · delivered " + clockOf(wa.at) : clockOf(wa.first) + " 写 · " + clockOf(wa.at) + " 送达") + RESET]);
@@ -3569,10 +3798,11 @@
       }
       var tm = P.textFilter ? "hidden" : vmode("thinking");
       if ((turn.thought || turn.thinking) && tm !== "hidden" && (V.style === "teyvat" && agent.connector !== "agy")) {
-        var first = (turn.thinking || "").replace(/\s+/g, " ").trim(), head = turn.thought ? "∴ Thought for " + turn.thought + "s" : "∴ Thinking";
+        var displayThought = thoughtBody(turn, turn.thinking || "", live);
+        var first = displayThought.replace(/\s+/g, " ").trim(), head = turn.thought ? "∴ Thought for " + turn.thought + "s" : "∴ Thinking";
         if (tm === "collapsed" && first) head += " · " + clip(first, P.cols - W(head) - 6);
         r.text(["", D + head + RESET]);
-        if (tm === "expanded" && turn.thinking) turn.thinking.trim().split("\n").forEach(function (p) { wrap(p, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); });
+        if (tm === "expanded" && turn.thinking) displayThought.trim().split("\n").forEach(function (p) { wrap(p, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); });
       }
       var parts = turn.parts || [{ kind: "text", text: turn.answer || "" }], group = [], gi = 0, ti = rt.session().turns.indexOf(turn);
       // 一次工具调用 = 调用 + 结果：每类按设置的档位画（完整 / 预览 / 只看调用 / 隐藏）；点调用那一行在「完整」和「只看调用」之间切（open 里记着，没点过就跟设置）
@@ -3641,31 +3871,30 @@
       if (P.textFilter) {
         filteredParts(turn, P.textFilter, rt).forEach(function (part) {
           if (part.kind === "tool") {
-            var current = showToolPreview(turn, part, rt);
-            var earlier = parts.slice(0, lastTool + (current ? 0 : 1)).filter(function (item) { return item.kind === "tool"; });
+            var earlier = parts.slice(0, turn.beforeCompaction ? lastTool + 1 : lastTool).filter(function (item) { return item.kind === "tool"; });
             if (earlier.length) {
               var key = ti + ":tool-history";
               r.text([""]);
-              var expanded = !!open[key];
-              var summary = hotHtml(["  " + HOT + D + toolHistoryTitle(earlier.length) + RESET + HOT_END]);
+              var expanded = historyTop.has(turn);
+              var summary = hotHtml(["  " + HOT + D + toolHistoryTitle(earlier) + RESET + HOT_END]);
               var details = expanded ? earlier.map(function (item) {
                 return P.toHtml(toolRows(item, "full"));
               }).join("\n\n") : "";
-              r.block('<span class="grp' + (expanded ? ' open' : '') + '" data-key="' + key + '" data-def="call">' +
+              r.block('<span class="grp tool-history' + (expanded ? ' open' : '') + '" data-key="' + key + '" data-def="call">' +
                 summary + (details ? "\n" + details : "") + '</span>');
             }
-            if (current) {
-              var latestKey = ti + ":latest-tool:" + lastTool, full = !!open[latestKey];
-              var latestRows = toolRows(part, full ? "full" : "preview");
-              if (!full && part.status === "running") {
-                latestRows = latestRows.slice(0, 1).concat(runningPreview(part).map(function (line, i) {
-                  return (i ? "     " : "  ⎿  ") + D + clip(line, Math.max(1, P.cols - 6)) + RESET;
-                }));
-              }
-              r.text([""]); mark(part.t0);
-              r.block('<span class="grp dense-latest' + (full ? ' open' : '') + '" data-key="' + latestKey + '" data-def="preview"><span class="hot">' +
-                P.toHtml(full ? latestRows : latestRows.slice(0, 5)) + '</span></span>');
+            if (turn.beforeCompaction) return;
+            var latestKey = ti + ":latest-tool:" + lastTool, full = !!open[latestKey];
+            var latestRows = toolRows(part, full ? "full" : "preview");
+            if (!full && part.status === "running") {
+              latestRows = latestRows.slice(0, 1).concat(runningPreview(part).map(function (line, i) {
+                return (i ? "     " : "  ⎿  ") + D + clip(line, Math.max(1, P.cols - 6)) + RESET;
+              }));
             }
+            r.text([""]); mark(part.t0);
+            var reserveRows = part.status === "running" && !parts.slice(lastTool + 1).some(item => item.kind === "text" && item.text?.trim());
+            r.block('<span class="grp dense-latest' + (reserveRows ? ' running-tail' : '') + (full ? ' open' : '') + '" data-key="' + latestKey + '" data-def="preview"><span class="hot">' +
+              P.toHtml(full ? latestRows : latestRows.slice(0, 5)) + '</span></span>');
           }
           else {
             var translator = window.TSU_TRANSLATE;
@@ -3707,7 +3936,7 @@
       // 思考（claude.js 记在后一块上的 thinkBefore、这一问最后的 turn.think）：「收起」并进当前这一组；「展开」原地画成「∴ Thinking…」和全文；隐藏：不画
       var addThink = function (list) {
         if (!ccs || !list || !list.length || tm === "hidden") return;
-        if (tm === "expanded" || verbose) { flushGroup(); list.forEach(function (x) { r.text(["", D + ITALIC + "∴ Thinking…" + RESET]); String(x.text || "").trim().split("\n").forEach(function (p0) { wrap(p0, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); }); }); return; }
+        if (tm === "expanded" || verbose) { flushGroup(); list.forEach(function (x) { r.text(["", D + ITALIC + "∴ Thinking…" + RESET]); thoughtBody(turn, String(x.text || "").trim(), x.streaming).split("\n").forEach(function (p0) { wrap(p0, P.cols - 2).forEach(function (l) { r.text(["  " + D + ITALIC + l + RESET]); }); }); }); return; }
         gThink = gThink || { ms: 0, text: "" };
         list.forEach(function (x) { gThink.ms += x.ms || 0; gThink.text = String(x.text || "").replace(/\s+/g, " ").trim(); var ft = String(x.text || "").trim(); if (ft) gThink.full = (gThink.full ? gThink.full + "\n\n" : "") + ft; });
       };
@@ -3742,7 +3971,7 @@
         var previous = r.rows[r.rows.length - 1];
         if (!(agent.connector === "dsh" && previous && previous.h.includes("dsh-thought"))) r.text([""]);
         mark((group[0] && group[0].t0) || lastEnd);
-        r.block(ccs ? ccGroupHtml(group, key, on, gThink, !!(tail && live)) : groupHtml(group, key, on, verbose || open[key] === true ? "full" : byMode ? readM : "full"));
+        r.block(ccs ? ccGroupHtml(group, key, on, gThink, !!(tail && live), turn) : groupHtml(group, key, on, verbose || open[key] === true ? "full" : byMode ? readM : "full"));
         group = []; gIdx = []; gThink = null;
       };
       var agyThrough = -1;
@@ -3763,7 +3992,7 @@
         var expanded = lvlOf(key, mode) === "full";
         var rows;
         if (commands) {
-          rows = [GREEN + DOT + RESET + " " + BOLD + toolHistoryTitle(items.length) + RESET];
+          rows = [GREEN + DOT + RESET + " " + BOLD + toolHistoryTitle(items) + RESET];
           items.forEach(function (item, index) {
             var prefix = index ? "     " : "  ⎿  ";
             rows.push(prefix + clip(agyCommandSummary(item), Math.max(12, P.cols - 6)));
@@ -3837,12 +4066,11 @@
             if (showThought) {
               if (i > 0) r.text(["\u00a0"]);
               var source = p.text.trim();
-              expandedThoughtSources.set(p, source);
-              var body = originalThought ? source : window.TSU_TRANSLATE?.thought(source, agentId, p.streaming, cfg.translateShow === "only").body || source;
+              var body = originalThought ? source : thoughtBody(turn, source, p.streaming);
               if (body) body.trim().replace(/\r\n?/g, "\n").replace(/\n(?:[ \t]*\n){2,}/g, "\n\n").split("\n").forEach(function (line) {
                 for (var row of wrap(line, Math.max(1, P.cols - 2))) thoughtRows.push("  " + D + row + RESET);
               });
-            } else expandedThoughtSources.delete(p);
+            }
             var thoughtClass = expandedThought ? (switchThought ? " trsw" + (originalThought ? " open" : "") : "") : (showThought ? " open" : "");
             r.block('<span class="grp thought-block' + (p.kind === "thinking" ? " dsh-thought" : "") + thoughtClass + '" data-key="' + thoughtKey + (switchThought ? ":translation" : "") + '" data-def="call">' + P.toHtml(thoughtRows) + "</span>");
           }
@@ -3850,7 +4078,8 @@
         }
         if (agent.connector === "agy" && p.kind === "tool") {
           if (toolStyle === "agy") {
-            if (i > agyThrough) agyToolGroup(p, i, toolMode(p));
+            if (p.agyAction === "update_steps" || p.name === "web_search") oneTool(p, i, toolMode(p));
+            else if (i > agyThrough) agyToolGroup(p, i, toolMode(p));
           } else if (i > agyThrough && !agyHistoryGroup(p, i, toolMode(p))) oneTool(p, i, toolMode(p));
           return;
         }
@@ -4246,7 +4475,7 @@
     //   在跑的：一闪一闪的灰点 + 在跑的命令的说明（没有就「Running 3 shell commands…」，现在进行时）+ 淡的「· 用时」（2 秒起），
     //           下面「⎿ $ 命令」（淡，最后一行后面「(用时)」）；还在想的：「⎿ 想的那句」（淡、斜体，最多 10 行）；能放到后台的（Paimon 的）才有「(ctrl+b to run in background)」；
     //   出错的、放到后台的：也只是组里的一条；点这一行（或 ctrl+o）展开：每一条的完整样子（全路径、全部输出、红的 Error）
-    function ccGroupHtml(list, key, isOpen, think, tail) {
+    function ccGroupHtml(list, key, isOpen, think, tail, turn) {
       var D = P.DIM, run = list.filter(function (p) { return p.status === "running"; }), act = run.length > 0 || tail, dur = F.dur;
       var n = { search: 0, list: 0, bash: 0, mcp: 0, readOps: 0 }, files = {}, servers = [];
       list.forEach(function (p) {
@@ -4279,7 +4508,7 @@
       } else {
         rows.push("  " + HOT_NUM + bits.join("") + HOT_END + ((isOpen || tlv[key]) && list.length > 1 && g0 && g1 - g0 >= 2000 ? D + " · " + dur(g1 - g0) + RESET : "")); // 跑完的：收着时不写用时（同 Claude Code），点开了才写
         // 「Thought for 5s」那一行点开：想的全文（淡、斜体）就在它下面，再点收起（用户 2026-10-28：thinking 那一行要能点开）
-        if ((isOpen || tlv[key]) && think && think.full) think.full.split("\n").forEach(function (p0, pi) { wrap(p0, P.cols - 6).forEach(function (l, li) { rows.push((pi === 0 && li === 0 ? "  " + D + "⎿" + RESET + "  " : "     ") + D + ITALIC + l + RESET); }); });
+        if ((isOpen || tlv[key]) && think && think.full) thoughtBody(turn, think.full, false).split("\n").forEach(function (p0, pi) { wrap(p0, P.cols - 6).forEach(function (l, li) { rows.push((pi === 0 && li === 0 ? "  " + D + "⎿" + RESET + "  " : "     ") + D + ITALIC + l + RESET); }); });
       }
       var titleOf = function (p) { var a = p.input || {}; return String(p.name === "Bash" ? a.description || String(a.command || "").split("\n")[0] : (ccHint(p) || "").split("\n")[0] || p.name).replace(/\s+/g, " ").trim(); };
       // 出错的、放到后台的：同 Claude Code 也只是组里的一条（组下面不另画红字；点开 / ctrl+o 的完整样子里才看得到）
@@ -4497,11 +4726,21 @@
     function agyOperation(p) {
       var args = p.input || {};
       if (p.name === "Read") return {type: "read", img: p.img, path: args.file_path, name: (args.file_path || "").split("/").pop()};
-      if (p.name === "web_search") return {type: "search", query: args.query};
       return null;
     }
     function toolRows(p, lvl) {
       if (lvl === true) lvl = "full"; else if (!lvl) lvl = "call";
+      if (agent.connector === "agy" && p.name === "web_search") {
+        var color = p.status === "error" ? RED : p.status === "running" ? P.DIM : GREEN;
+        var heading = color + (p.status === "running" ? DOT_RUN : DOT) + RESET + " " + BOLD + "Web Search" + RESET;
+        var searchRows = wrap('Web Search("' + (p.input.query || "") + '")', Math.max(12, P.cols - 2));
+        searchRows[0] = heading + searchRows[0].slice("Web Search".length);
+        var result = p.agyError || p.out;
+        if (result && (lvl === "full" || verbose)) {
+          trim(mdLines(result, { width: Math.max(8, P.cols - 5), theme: P.theme })).forEach((line, i) => searchRows.push((i ? "     " : "  ⎿  ") + line));
+        } else searchRows.push("  ⎿  " + P.DIM + (p.status === "running" ? "Searching…" : p.status === "error" ? "Search failed" : "Did 1 search") + RESET);
+        return searchRows;
+      }
       if (agent.connector === "agy" && toolStyle === "codex") {
         var args = p.input || {}, operation = agyOperation(p);
         if (operation || p.name === "Bash") {
@@ -4777,10 +5016,11 @@
       var previousBlank = false;
       output.slice(hidden).forEach(function (line, index) {
         var width = Math.max(1, P.cols - 6);
-        var blank = !String(line).trim();
+        line = currentTerminalLine(String(line));
+        var blank = !line.trim();
         if (all && blank && previousBlank) return;
         previousBlank = blank;
-        var segments = all ? termLines(String(line).trimEnd(), width) : [clip(String(line), width)];
+        var segments = all ? termLines(line.trimEnd(), width) : [clip(line, width)];
         segments.forEach(function (segment, part) {
           rows.push((index || part ? pad5 : sub) + D + segment + RESET);
         });
@@ -4814,6 +5054,10 @@
         var title = all ? cmd : clip(cmd.split("\n")[0], Math.max(12, P.cols - verb.length - 5)) + (cmd.includes("\n") ? " …" : "");
         if (!all && agent.connector === "agy" && cmd.includes("\n")) {
           var summary = agyCommandSummary(p);
+          if (p.commandSummary && window.TSU_TRANSLATE?.target()) {
+            summarySources.set(p, summary);
+            summary = trTask(summary);
+          }
           if (summary) title = clip(summary, Math.max(12, P.cols - verb.length - 4));
         }
         rows = (verb + " " + title).split("\n").flatMap(function (line) { return wrap(line, P.cols - 2); });
@@ -4821,7 +5065,7 @@
         rows = rows.map(function (line, index) { return index ? "  " + colorCommand(line, commandState, palette) : dot + " " + palette.foreground + BOLD + verb + RESET + colorCommand(line.slice(verb.length), commandState, palette); });
       }
       if (p.status === "running") {
-        var ms = Date.now() - (p.t0 || Date.now()), et = ms >= 1000 ? D + "(" + F.dur(ms) + ")" + RESET : "", out = (p.detail || []).map(String).filter(function (l) { return l.trim(); });
+        var ms = Date.now() - (p.t0 || Date.now()), et = ms >= 1000 ? D + "(" + F.dur(ms) + ")" + RESET : "", out = (p.detail || []).map(line => currentTerminalLine(String(line))).filter(function (l) { return l.trim(); });
         if (!out.length) rows.push(sub + D + "Running…" + RESET + (et ? " " + et : ""));
         else {
           var tl = out.slice(toolStyle === "codex" ? -3 : -5), more = out.length - tl.length;
@@ -4932,24 +5176,25 @@
       if (!g) g = e.target.closest && e.target.closest(".grp.trsw, .grp.agy-question, .grp.search-tool, .grp.thought-block.open");
       if (!g) g = e.target.closest && e.target.closest(".grp.uopen");
       if (!g) return;
-      var hit0 = e.target.closest(".hitem");
-      if (hit0) { var its0 = String(g.dataset.items || "").split(",").map(Number), k0 = Array.prototype.indexOf.call(g.querySelectorAll(".hitem"), hit0); if (k0 >= 0 && its0[k0] >= 0) { var ik = g.dataset.key + ":" + its0[k0]; idet[ik] = !idet[ik]; } } // 标题这一层：只开 / 收这一条的细节
+      var history = g.classList.contains("tool-history"), gk = g.dataset.key;
+      var t = history ? g.closest(".blk")?._t : rt.session().turns[parseInt(gk, 10)];
+      if (!t) return;
+      var y0 = g.getBoundingClientRect().top, hit0 = e.target.closest(".hitem");
+      if (history) {
+        if (historyTop.has(t)) { y0 = historyTop.get(t); historyTop.delete(t); }
+        else historyTop.set(t, y0);
+      }
+      else if (hit0) { var its0 = String(g.dataset.items || "").split(",").map(Number), k0 = Array.prototype.indexOf.call(g.querySelectorAll(".hitem"), hit0); if (k0 >= 0 && its0[k0] >= 0) { var ik = g.dataset.key + ":" + its0[k0]; idet[ik] = !idet[ik]; } } // 标题这一层：只开 / 收这一条的细节
       else if (e.target.closest(".hmore")) moreOpen[g.dataset.key] = !moreOpen[g.dataset.key]; // 「… +n more」：只列出 / 收起前面几条的标题
       else if (g.classList.contains("ccg") && g.classList.contains("done")) { // 跑完的一组：收着 ↔ 标题；全部细节开着（完整结果、ctrl+o 以外点开过的）就收起
         if (g.classList.contains("open")) { open[g.dataset.key] = false; tlv[g.dataset.key] = false; } else tlv[g.dataset.key] = !tlv[g.dataset.key];
       }
       else if (g.classList.contains("open")) { if (g.dataset.def && g.dataset.def !== "full") delete open[g.dataset.key]; else open[g.dataset.key] = false; } // 收起：回到设置的样子（预览就回到预览的那几行，不是收成只剩一行）；设置本来就是完整结果的才收成只看调用
       else open[g.dataset.key] = true; // 展开：完整
-      var ti = parseInt(g.dataset.key, 10), t = rt.session().turns[ti];
-      if (!t) return;
-      // 点的那一行留在原处，内容往下展开 / 收起（用户 2026-10-28：有的展开时整块往上跑）——以前贴着底的时候按「跟着到底」挪，标题被顶上去
-      var gk = g.dataset.key, y0 = g.getBoundingClientRect().top;
-      if (gk.endsWith(":tool-history")) {
-        if (!g.classList.contains("open")) historyTop.set(gk, y0);
-        else if (historyTop.has(gk)) { y0 = historyTop.get(gk); historyTop.delete(gk); }
-      }
+      // Anchor the clicked heading after redraw. Prepending history can change its turn index.
       drawTurn(t);
-      var g2 = P.out.querySelector('.grp[data-key="' + (window.CSS && CSS.escape ? CSS.escape(gk) : gk) + '"]');
+      var block = blocks.get(t);
+      var g2 = block && block.querySelector(history ? ".grp.tool-history" : '.grp[data-key="' + CSS.escape(gk) + '"]');
       if (g2) { var dy = g2.getBoundingClientRect().top - y0; if (Math.abs(dy) >= 1) P.screen.scrollTop += dy; P.onScroll(true); }
     }
     P.term.addEventListener("click", onTranscriptClick);
@@ -5037,19 +5282,6 @@
     //   ✻ Working... (12s · 1.2k tokens · reading for 3s · 1 background task, lasting 2m)   ❄ Waiting... (44s/5m) / Waiting for user...
     //   ❄ Hibernating... (2m 30s/40m · 12m 45s of diligent work · wake at 09:00)   ❄ Paused；没在跑的不画（输入框里写着发消息会先启动它）
     var waitingColor = function () { return P.light ? "146;108;0" : "255;235;120"; };
-    var terminalWaitSince = 0;
-    function terminalWaitLine(task) {
-      if (terminalWaitSince) return timedWait(terminalWaitLabel, terminalWaitSince);
-      var now = Date.now(), since = task.t0 || Date.parse(task.createdAt);
-      if (!since && /^\d{2}:\d{2}:\d{2}$/.test(task.clock || "")) {
-        var clock = new Date(now);
-        clock.setHours(...task.clock.split(":").map(Number), 0);
-        if (clock.getTime() > now) clock.setDate(clock.getDate() - 1);
-        since = clock.getTime();
-      }
-      terminalWaitSince = Math.min(now, since || now);
-      return timedWait(terminalWaitLabel, terminalWaitSince);
-    }
     function timedWait(label, since) {
       return rgb(waitingColor()) + TY_SNOW + " " + label + " (" + tyFe(Date.now() - since) + ")" + RESET;
     }
@@ -5111,21 +5343,21 @@
     }
     function workRows(fcols, indent) {
       var terminalWait = agyTerminalWait();
-      if (!terminalWait) terminalWaitSince = 0;
       var out = [], s = rt.stream, D = P.DIM, w = Math.max(20, fcols - indent.length - 4), spinHere = !window.STUDIO || STUDIO.inline(P, "status");
       if (!s && (agent.connector === "dsh" || agent.connector === "agy") && rt.state() === "working") {
         var started = rt.workingStartedAt ? rt.workingStartedAt() : rt.session().progress.startedAt;
         if (spinHere && vmode("workLine") !== "hidden") {
           var elapsed = started ? F.dur(Math.max(0, Date.now() - started)) : "";
-          var hint = agent.connector === "agy" ? "esc to interrupt" : "";
           var thinkingAt = agent.connector === "agy" && vmode("thinking") !== "hidden" && rt.thinkSince();
           var thought = thinkingAt ? thinkTint(thinkingAt, started) + thinkPhrase(null) + statusDim() : "";
+          var liveThought = agyShowsLiveThought();
+          var hint = agent.connector === "agy" && !thinkingAt && !liveThought ? "esc to interrupt" : "";
           var detail = [[elapsed, thought].filter(Boolean).join(", "), hint].filter(Boolean).join(" • ");
           if (terminalWait) {
-            out.push(indent + terminalWaitLine(terminalWait));
+            out.push(indent + timedWait(terminalWaitLabel, terminalWait));
             return out;
           }
-          var label = agyShowsLiveThought() ? hint : workingLabel(started) + statusDim() + (detail ? " (" + detail + ")" : "");
+          var label = workingLabel(started) + statusDim() + (detail ? " (" + detail + ")" : "");
           out.push(indent + statusDim() + label + RESET);
         }
         return out;
@@ -5147,7 +5379,7 @@
           out.push(indent + "  " + LAV + "▰".repeat(fl) + RESET + SD0 + "▱".repeat(BW - fl) + " " + cpct + "%" + RESET);
         } else
         if (s.wait) { var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000)); out.push(indent + RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)); }
-        else if (s.specialStatus === terminalWaitLabel) out.push(indent + timedWait(terminalWaitLabel, s.phaseAt || s.t0));
+        else if (s.specialStatus === terminalWaitLabel) out.push(indent + timedWait(terminalWaitLabel, s.phaseAt || Date.now()));
         else if (agent.connector === "codex" && wl !== "brief") out.push(indent + (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET);
         else if (wl === "brief") out.push(indent + ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET);
         else {
@@ -5201,7 +5433,7 @@
           return out;
         }
         if (terminalWait) {
-          out.push(indent + terminalWaitLine(terminalWait));
+          out.push(indent + timedWait(terminalWaitLabel, terminalWait));
           return out;
         }
         var ld = lastDone(), dlf = ld ? doneLine(ld, true) : "";
@@ -5237,6 +5469,10 @@
       }
       var r = new P.Rows(), s = rt.stream, D = P.DIM, spinHere = !window.STUDIO || STUDIO.inline(P, "status");
       var bg = rt.tasks.filter(function (x) { return x.status === "running"; }).length;
+      if (!s && agent.connector === "agy" && rt.state() === "working") {
+        var activeRows = workRows(P.cols, "");
+        if (activeRows.length) r.text([""].concat(activeRows));
+      }
       if (s && spinHere) {
         // Claude Code 的会话（claude.js）流里的这一问是会话记录里的样子：没有 answer / thinking 两段字，别当它有（不然整个重排在这里断掉，宽度变了也不重排）
         var st0 = s.turn || {}, secs = Math.max(0, Math.floor((Date.now() - (s.phaseAt || s.t0)) / 1000)), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
@@ -5246,7 +5482,7 @@
         else if (s.wait) { // 这一次没成、等着重试（同 Claude Code：红的）
           var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000));
           r.text(["", RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)]);
-        } else if (s.specialStatus === terminalWaitLabel) r.text(["", timedWait(terminalWaitLabel, s.phaseAt || s.t0)]);
+        } else if (s.specialStatus === terminalWaitLabel) r.text(["", timedWait(terminalWaitLabel, s.phaseAt || Date.now())]);
         else if (agent.connector === "codex" && wl !== "brief") r.text(["", (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET]);
         else if (wl === "brief") r.text(["", ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET]);
         else {
@@ -5260,8 +5496,8 @@
         if (rt.queued) {
           r.text([""]);
           var ql = [];
-          rt.queued.text.split("\n").forEach(function (p) { ql.push.apply(ql, wrap(p, P.cols - 2)); });
-          r.block('<span class="ask">' + P.toHtml(ql.map(function (l, i) { return pad((i ? "  " : D + "❯" + RESET + " ") + l, P.cols); })) + "</span>");
+          rt.queued.text.split("\n").forEach(function (p) { ql.push.apply(ql, wrap(p, P.cols - 5)); });
+          r.block('<span class="ask">' + queueIcon() + P.toHtml(ql.map(function (l, i) { return pad((i ? "  " : D + "❯" + RESET + " ") + l, P.cols); })) + "</span>");
           r.block(sendNowRow(D, " · esc to edit"));
         }
       }
@@ -5353,6 +5589,7 @@
     var footVpad = -1; // 底部上下的内边距 + 边框（拖出来的高度按它算能放几行）
     var inputStale = false, statusStale = false;
     // 藏在同一组后面的（content-visibility:hidden）：不画输入框、状态行——在那里量尺寸会把整块藏着的对话强行排版一遍（切走时失焦那一下就要二十多毫秒）；露出来时补画
+    V.hasPendingPreview = () => hiddenTurns.size > 0 || inputStale || statusStale;
     V.unpark = function () {
       if (hiddenTurns.size) {
         var turns = rt.session().turns;
@@ -5470,7 +5707,7 @@
           values = values.map(function (value) {
             if (/^Context \d/.test(value)) return link(location.origin + location.pathname + "#agent-context", value);
             if (rt.quotaLabel && value === rt.quotaLabel()) return link(location.origin + location.pathname + "#agent-quota", value);
-            var kind = rt.models && value === rt.model().name ? "model" : rt.efforts && value === agent.effort ? "effort" : "";
+            var kind = rt.models && value === rt.model().name ? "model" : rt.efforts && value === (rt.currentEffort ? rt.currentEffort() : agent.effort) ? "effort" : "";
             return kind ? link(location.origin + location.pathname + "#cx-select-" + kind, value) : value;
           });
         }
@@ -5531,6 +5768,11 @@
         }
         var dshPills = agent.connector === "dsh" && rt.showDetailedStats && !panel && rt.statusText();
         work[statusRow] = dshPills ? "DSHSTATSROW" : left + " ".repeat(Math.max(0, remaining - W(left))) + footerRight;
+      }
+      // Connector metadata can occupy an extra row. Keep it above the composer
+      // so its input and working line stay aligned across adjacent panes.
+      if (fsash && agent.claude && rows.length > inputLen) {
+        above = above.concat(rows.splice(inputLen));
       }
       rows = above.concat(rows.slice(0, inputLen), work, rows.slice(inputLen));
       if (fmore) fmore.style.top = (1 + above.length * P.rowH) + "px";
@@ -5624,10 +5866,7 @@
           if (loadingChoice !== request) return;
           loadingChoice = null;
           if (model) return pickConnModel(true);
-          if (!rt.efforts().length) return P.flash("当前模型没有可切换的思考强度", 3000);
-          picker({footerChoice: "effort", title: "Select reasoning effort", cmd: "/effort",
-            options: rt.efforts().map(id => ({value: id, label: id, current: id === button.textContent.trim().toLowerCase()})),
-            onPick: id => Promise.resolve(rt.setEffort(id)).catch(err => P.flash(err.message, 4000))});
+          pickConnectorEffort(rt.currentEffort ? rt.currentEffort() : button.textContent.trim().toLowerCase(), true);
         }
         button.onpointerdown = function (e) {
           if (e.button !== 0) return;
@@ -5860,7 +6099,14 @@
         }),
         onPick: function (id) { var m = A.modelOf(id); rt.setModel(id); rt.record("/model", "Set model to " + (m ? m.name : id)); } });
     }
-    function pickEffort() { openPanel({ kind: "effort", sel: Math.max(0, A.EFFORTS.indexOf(agent.effort || "high")) }); }
+    function pickConnectorEffort(current, footer) {
+      var levels = rt.efforts();
+      if (!levels.length) return P.flash("当前模型没有可切换的思考强度", 3000);
+      picker({footerChoice: footer ? "effort" : "", title: "Select reasoning effort", cmd: "/effort",
+        options: levels.map(id => ({value: id, label: id, current: id === current})),
+        onPick: id => Promise.resolve(rt.setEffort(id)).catch(err => P.flash(err.message, 4000))});
+    }
+    function pickEffort() { if (rt.currentEffort && rt.efforts) return rt.prepareChoices().then(() => pickConnectorEffort(rt.currentEffort(), false)); openPanel({ kind: "effort", sel: Math.max(0, A.EFFORTS.indexOf(agent.effort || "high")) }); }
     // 滑杆：两头 Faster / Smarter，一条线上 ▲ 指着选中的那一档，下面是各档的名字（选中的亮）
     function effortSlider(fcols, indent, sel) {
       var D = P.DIM, E = A.EFFORTS, n = E.length, T = Math.max(28, Math.min(66, fcols - indent.length - 16)), left = indent + "      ";
@@ -5922,14 +6168,15 @@
         rows.push("");
       }
       var MAXO = 10, o0 = Math.max(0, Math.min(panel.sel - 4, panel.options.length - MAXO));
+      var digits = String(panel.options.length).length;
       panel.options.forEach(function (o, i) {
         if (i < o0 || i >= o0 + MAXO) return;
         var on = i === panel.sel, checked = panel.multi ? ((cfg[o.key] || []).indexOf(o.value) >= 0) : o.current;
-        var mark = panel.multi ? (checked ? "[✔] " : "[ ] ") : (i + 1) + ". ";
+        var mark = panel.multi ? (checked ? "[✔] " : "[ ] ") : String(i + 1).padStart(digits) + ". ";
         map[rows.length] = { opt: i };
         var labelWidth = Math.max(1, Math.min(panel.multi ? 40 : 26, fcols - W(indent + mark) - 3));
         var line = indent + (on ? LAV + "❯ " : "  ") + mark + pad(clip(uiT(o.label) + (checked && !panel.multi ? " ✔" : ""), labelWidth), labelWidth) + RESET;
-        if (o.desc && fcols - W(line) > 5) line += (on ? "" : D) + clip(uiT(o.desc), fcols - W(line) - 2) + RESET;
+        if (o.desc && fcols - W(line) > 5) line += "  " + (on ? "" : D) + clip(uiT(o.desc), fcols - W(line) - 2) + RESET;
         rows.push(line);
       });
       var hint = panel.multi ? "Space to toggle · Enter when done · Esc to exit" : "Enter to confirm · Esc to exit";
@@ -6554,70 +6801,7 @@
       openAsk(q);
     }
     V.openAsk = function () { var q = rt.question && rt.question(); if (q) { askHidden = null; openAsk(q); } };
-    function toggleAgentQuota(button) {
-      var old = P.el.querySelector(".agy-quota-popup");
-      if (old && old.matches(":popover-open")) { old.hidePopover(); old.remove(); return; }
-      if (old) old.remove();
-      var box = document.createElement("div");
-      box.className = "agy-quota-popup";
-      box.setAttribute("popover", "manual");
-      box.style.cssText = "position:fixed;inset:auto;margin:0;padding:8px 12px;border:1px solid #8886;border-radius:6px;background:Canvas;color:CanvasText;box-shadow:0 3px 12px #0002;white-space:pre;font:" + getComputedStyle(button).font;
-      var names = rt.quotaBuckets ? Object.fromEntries(rt.quotaBuckets().map(b => [b.name, (rt.label || "Codex") + " · " + b.name])) : {"gemini-5h":"Gemini · 5h", "gemini-weekly":"Gemini · weekly", "3p-5h":"Third-party · 5h", "3p-weekly":"Third-party · weekly"};
-      box.style.columnGap = "0.65em";
-      function remainingTime(reset) {
-        var end = Date.parse(reset);
-        if (!(end > 0)) return "—";
-        var sec = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-        if (sec >= 86400) return Math.floor(sec / 86400) + "d " + Math.floor(sec % 86400 / 3600) + "h";
-        if (sec >= 3600) return Math.floor(sec / 3600) + "h " + Math.floor(sec % 3600 / 60) + "m";
-        if (sec >= 60) return Math.floor(sec / 60) + "m " + sec % 60 + "s";
-        return sec + "s";
-      }
-      var periodAnchor;
-      var activePeriod = button.textContent.trim().split(/\s+/)[0];
-      box.style.gridTemplateColumns = "max-content max-content max-content max-content max-content";
-      var updateRows = Object.entries(names).map(([key, name]) => {
-        var [provider, period] = name.split(" · ");
-        var cells = [provider + " ·", period, "", "left", ""].map(value => {
-          var cell = document.createElement("span");
-          cell.textContent = value;
-          box.appendChild(cell);
-          return cell;
-        });
-        if (!periodAnchor || period === activePeriod) periodAnchor = cells[1];
-        cells[2].style.textAlign = "right";
-        return buckets => {
-          var item = buckets.find(b => b.name === key);
-          cells[2].textContent = item ? Math.round(item.remaining * 100) + "%" : "—";
-          cells[4].textContent = "· " + remainingTime(item?.reset);
-        };
-      });
-      function refreshRows() {
-        var buckets = rt.quotaBuckets ? rt.quotaBuckets() : TSU_AGY.quota().data?.buckets || [];
-        updateRows.forEach(update => update(buckets));
-      }
-      refreshRows();
-      P.el.appendChild(box);
-      box.showPopover({source:button});
-      box.style.display = "grid";
-      var tick = setInterval(() => {
-        if (box.isConnected && box.matches(":popover-open")) refreshRows();
-        else clearInterval(tick);
-      }, 1000);
-      var rect = button.getBoundingClientRect();
-      box.style.left = Math.max(4, Math.min(rect.left - (periodAnchor.getBoundingClientRect().left - box.getBoundingClientRect().left), innerWidth - box.offsetWidth - 4)) + "px";
-      box.style.top = Math.max(4, rect.top - box.offsetHeight - 5) + "px";
-      var events = new AbortController();
-      function dismiss() { events.abort(); box.hidePopover(); box.remove(); }
-      box.addEventListener("click", dismiss, {signal:events.signal});
-      document.addEventListener("pointerdown", e => {
-        if (!box.contains(e.target) && !e.target.closest?.('button[title="查看额度"]')) dismiss();
-      }, {capture:true, signal:events.signal});
-      document.addEventListener("keydown", e => {
-        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); dismiss(); }
-      }, {capture:true, signal:events.signal});
-      box.addEventListener("toggle", e => { if (e.newState === "closed") { events.abort(); box.remove(); } });
-    }
+    function toggleAgentQuota(button) { showAgentQuota(P, rt, button); }
     function renderPanel(fcols, indent) {
       var rows = ["", ""]; // 顶上不画线（以前是一条淡紫的横线）
       panel.map = {};
@@ -6891,13 +7075,13 @@
     function splitUnsent(list) {
       var ts = rt.session ? rt.session().turns : [], here = [], rest = [];
       list.forEach(function (q) {
-        var before = q.local && q.err && q.first ? ts.filter(function (t) { return (t.at || 0) > q.first && blocks.has(t); })[0] : null;
+        var before = (q.local && q.err || agent.connector === "codex") && q.first ? ts.filter(function (t) { return (t.at || 0) > q.first && blocks.has(t); })[0] : null;
         if (before) here.push({ q: q, before: before }); else rest.push(q);
       });
       return { here: here, rest: rest };
     }
     function placeUnsent(here, D) {
-      var sig = here.map(function (h) { var q = h.q; return [q.li, q.at, q.err, q.fails, q.manual, q.last, String(q.text).length, h.before.at || 0].join(","); }).join("|") + "|" + P.cols + "|" + enLang();
+      var sig = here.map(function (h) { var q = h.q; return [q.key, q.delivery, q.li, q.at, q.err, q.fails, q.manual, q.last, String(q.text).length, h.before.at || 0].join(","); }).join("|") + "|" + P.cols + "|" + enLang();
       if (sig === unsentSig && unsentEls.every(function (e) { return e.isConnected; })) return;
       unsentSig = sig;
       // 插在看着的地方上面：滚动位置跟着挪（看着的内容不跳）；贴着底的照旧贴着底
@@ -6920,9 +7104,10 @@
     }
     function unsentRows(r, here, D) {
       var en = enLang();
-      if (here.length) {
+      var failures = here.filter(h => h.q.err);
+      if (failures.length) {
         r.text([""]);
-        r.block('<span class="blk vs-unsent-ind">' + P.toHtml(["  " + RED + (en ? here.length + (here.length === 1 ? " message" : " messages") + " not sent" : here.length + " 条消息未送达") + RESET + D + " · " + RESET]).replace(/\n?$/, "") +
+        r.block('<span class="blk vs-unsent-ind">' + P.toHtml(["  " + RED + (en ? failures.length + (failures.length === 1 ? " message" : " messages") + " not sent" : failures.length + " 条消息未送达") + RESET + D + " · " + RESET]).replace(/\n?$/, "") +
           '<span class="vs-unsent-jump">' + (en ? "show" : "查看") + "</span></span>");
       }
       // 刚取消的那一句：「已取消「…」 · 撤销」留 10 秒（点了原样放回去）
@@ -6939,16 +7124,13 @@
     //   附的图同已经发出去的：一张一行「⎿  [Image #N]」（悬停看、点开）；没送成的下面一行红的「未发送：原因 · 重试」（不再像是排进去了）；
     //   最后一行看 send now 的状态：能点（ctrl+x ctrl+s to send now）/ 点了在发（sending…，不能再点）/ 在压缩（压完自动发，不用点）
     function pendRows(r, list, D, inPlace) { // inPlace：画在对话中间的那几句没送到的（placeUnsent）——不画最后那行 send now
-      if (agent.connector === "codex" && !inPlace) {
-        pendRows(r, list.filter(function (q) { return q.sending && !q.id; }), D, true);
-        var queued = list.filter(function (q) { return q.id; });
-        if (queued.length) {
-          r.text(["", D + "Messages to be submitted after next tool call" + RESET]);
-          queued.forEach(function (q) { r.text(["  " + D + "↳ " + clip(q.text.replace(/\s+/g, " "), Math.max(8, P.cols - 5)) + RESET]); });
+      list.forEach(function (q, index) {
+        if (q.delivery && !q.err) {
+          if (index === 0) r.text([""]);
+          var numbers = (q.images || []).map((im, i) => im.no || i + 1);
+          askBlock(r, q.text, "❯ ", numbers.length ? q.images : null, numbers, q.delivery);
+          return;
         }
-        return;
-      }
-      list.forEach(function (q) {
         if (q.from) { var fl = []; String(q.text || "").split("\n").forEach(function (p0) { fl.push.apply(fl, wrap(p0, P.cols - 4)); }); r.text(["", D + "› Message from @" + q.from + RESET].concat(fl.slice(0, 6).map(function (l) { return "  " + D + l + RESET; }), fl.length > 6 ? ["  " + D + "… +" + (fl.length - 6) + " lines" + RESET] : [])); return; }
         if (q.sys) { // 它自己排的（/goal 的「Goal set: …」）：上面一行是你打的那条命令（排着的样子），下面「⎿ Goal set: …」——不再只有孤零零的一行挂在正在跑的工具下面；淡的、不能改、不出 send now
           var gs = /^\s*Goal set:\s*([\s\S]*)$/.exec(String(q.text || "")), gc = /^\s*Goal cleared\b/.test(String(q.text || "")), head = gs ? "/goal " + gs[1].replace(/\s+/g, " ").trim() : gc ? "/goal clear" : "";
@@ -6962,13 +7144,13 @@
         var full0 = String(q.shown || q.text || ""), src0 = full0.length > 20000 ? full0.slice(0, 20000) : full0;
         var paras = src0.replace(/^(?:[ \t]*\n)+/, "").replace(/\[Image #(\d+): "[^"\n]+"\]/g, "[Image #$1]").split("\n"), pl = [], more = 0; // 附的图：只写 [Image #N]，不露路径
         while (paras.length && !paras[paras.length - 1].trim() && full0.length === src0.length) paras.pop();
-        for (var pi = 0; pi < paras.length; pi++) { if (pl.length > 12) { more = linesOf(full0) - pi; break; } pl.push.apply(pl, wrap(paras[pi].length > 2000 ? paras[pi].slice(0, 2000) : paras[pi], P.cols - 2)); }
+        for (var pi = 0; pi < paras.length; pi++) { if (pl.length > 12) { more = linesOf(full0) - pi; break; } pl.push.apply(pl, wrap(paras[pi].length > 2000 ? paras[pi].slice(0, 2000) : paras[pi], P.cols - (q.err ? 2 : 5))); }
         r.text([""]);
         var promptImages = q.images?.length && (agent.connector === "codex" || agent.connector === "agy") && vmode("prompts");
         if (promptImages) {
           var numbers = q.images.map((im,i) => im.no || i+1);
-          askBlock(r, pl.slice(0,12).join("\n").replace(/\[Image #\d+\]/g,"").trim(), "❯ ", q.images, numbers);
-        } else r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
+          askBlock(r, pl.slice(0,12).join("\n").replace(/\[Image #\d+\]/g,"").trim(), "❯ ", q.images, numbers, !q.err);
+        } else r.block('<span class="ask' + (q.sending ? "" : " q") + '">' + (q.err ? "" : queueIcon()) + P.toHtml(pl.slice(0, 12).map(function (l, i) { return pad((i ? "  " : "❯ ") + l, P.cols); })) + "</span>");
         if (pl.length > 12 || more > 0) r.text(["  " + D + "… +" + (Math.max(0, pl.length - 12) + Math.max(0, more)) + " lines" + RESET]);
         if (!promptImages && q.images && q.images.length && vmode("prompts")) r.block(cfg.imageShow === "inline" ? thumbs(q.images) : imageRefs(q.images, 2, q.images.map(function (im, i) { return im.no || i + 1; })));
         if (q.err) {
@@ -7084,7 +7266,7 @@
       // （以前空输入按 ↓ 打开后台任务列表：任务、后台任务、子 Agent 都在右侧栏里看，不再在输入框里弹一块）
       if (items.length && (k === "ArrowDown" || k === "ArrowUp")) { e.preventDefault(); menuIdx = (menuIdx + (k === "ArrowDown" ? 1 : items.length - 1)) % items.length; renderInput(); return; }
       if (items.length && k === "Tab") { e.preventDefault(); ta.value = items[menuIdx].name + (items[menuIdx].args ? " " : ""); renderInput(); return; }
-      var codexQueue = agent.connector === "codex" && k === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !items.length && rt.stream && ta.value.trim();
+      var codexQueue = agent.connector === "codex" && k === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !items.length && ta.value.trim();
       if ((k === "Enter" || codexQueue) && !e.shiftKey) {
         e.preventDefault();
         var loadingImages = attach.filter(im => im.decoding && ta.value.includes(im.tag));
@@ -7124,10 +7306,10 @@
         }
         if (rt.readOnly) { P.flash("此会话只读", 1600); return; }
         if (agent.connector === "dsh") {
-          var draft = ta.value, message = draft;
+          var dshInput = ta.value, message = dshInput;
           pastes.forEach(function (p) { message = message.split(p.tag).join(p.text); });
           if (!message.trim()) return;
-          rt.send(message, attach.filter(function (a) { return draft.includes(a.tag); })).then(clearDraftOnDelivery(agentId, P),
+          rt.send(message, attach.filter(function (a) { return dshInput.includes(a.tag); })).then(clearDraftOnDelivery(agentId, P),
             function (err) { if (!P.closed && P.program?.agentId === agentId) P.flash(err.message, 6000); });
           return;
         }
@@ -7158,6 +7340,7 @@
           var mc = /^\/model(?:\s+(\S+))?\s*$/.exec(v.trim()); // /model：这边换（claude -p 不认 / 命令），下一句起用上
           if (mc && rt.models) { if (!mc[1]) return pickConnModel(); rt.setModel(mc[1]); rt.record(v.trim(), "Set model to " + mc[1]); return; }
           // Codex：它自己的 / 命令这边做（codex.js rt.command：问它的守护进程），不当话发给模型；路径（/Users/…）照常是话
+          if (agent.connector === "codex" && v.trim() === "/effort" && !imgs.length) return pickEffort();
           if (rt.command && /^\/[^\s\/]+(\s|$)/.test(v.trim()) && !imgs.length && rt.command(v.trim()) !== false) { P.toBottom(); return; }
           if (agent.connector === "codex") {
             imgs.forEach(function (im) { v = v.replace(im.tag, ""); });
@@ -7768,7 +7951,7 @@
         if (sec === "pi") return canNewIn("pi") ? [["new-pi-sess", "\uE027", "新建 pi 会话"]] : [];
         return [];
       };
-      var filterAct = function (sec) { return ["only-" + sec, only(sec) ? "\uE023" : "\uE022", only(sec) ? "显示全部" : "仅显示运行中"]; };
+      var filterAct = function (sec) { return ["only-" + sec, only(sec) ? "\uE023" : "\uE022", only(sec) ? "显示全部" : "显示运行中或已打开"]; };
       var headActs = function (sec) { return newActs(sec).concat([filterAct(sec), ["fold-" + sec, "\uE024", "全部折叠"]]); };
       // ---- 界面字是比例字（html.st-uiprop：设置 › 界面字体 = 系统字体）：树不用等宽格子画，一行一行的 DOM（同「文件」视图：缩进一层 16px、展开箭头一格、
       //   图标一格、名字从同一列开始（放不下就 …）、右边时间；样子在 fonts.css）。行的 class、data-* 和等宽那种一样，点、键盘、拖、右键、翻译都照旧 ----
@@ -7836,7 +8019,7 @@
             (edit.err ? '<span class="st-ferr ts-err' + (dir || x.dis ? "" : " ts-errl") + '" style="--d:' + x.d + '">' + escHtml(edit.err) + "</span>\n" : "");
         };
       }
-      var out = "", all = A.list(), st = {};
+      var out = "", all = A.list(), st = {}, openIds = openSessionIds();
       all.forEach(function (a) { st[a.id] = agentStatus(a); });
       order = ["f", "b", "o"].reduce(function (acc, g) { return acc.concat(all.filter(function (a) { return st[a.id].g === g; }).sort(function (x, y) { return (y.active || 0) - (x.active || 0); })); }, []);
       // ---- Paimon（连接器：关了整区不画，新建 Agent / 文件夹的按钮在它的标题上，一起没有）----
@@ -7845,7 +8028,7 @@
       if (pmShow) out += row("ts-fold ts-head", foldAt("pm", false), [[chev("pm"), ""], ["Paimon Code", BOLD]], headActs("pm"));
       if (pmShow && !folded("pm")) {
         var shownPm = only("pm") ? pmHits.filter(function (a) { return st[a.id].g !== "o"; }) : pmHits;
-        if (only("pm") && !shownPm.length) out += H("  " + DIMC + "无运行中的 Agent" + RESET) + "\n";
+        if (only("pm") && !shownPm.length) out += H("  " + DIMC + "无运行中或已打开的 Agent" + RESET) + "\n";
         // 卷 › 文件夹 › agent（同 VS Code 的资源管理器：同一层文件夹在前、agent 在后，往下一层多缩两格）。文件夹平时收着，里面有在跑的才展开；
         // 只看在跑的：没有在跑的卷、文件夹整个不显示
         var ind = function (depth) { return "  " + "  ".repeat(depth); };
@@ -7895,7 +8078,7 @@
       // ---- Claude Code（扩展）：按目录分组 ----
       var EXTc = ccExt(), ccL = window.TSU_LOCAL && ccOn() ? (qToks.length ? ccSearchList().filter(function (x) { return qHit(EXTc.name["cc:" + x.id] || x.title, x.id); }) : cc.list) : []; // 改过的名字、固定、归档（和 Claude App 的边栏共用一份）；搜着的时候：全部会话里搜到的
       if (window.TSU_LOCAL && ccOn() && (!qToks.length || ccL.length)) {
-        var here2 = ccPanes(), grp = function (x) { return here2[x.id] ? "f" : x.live ? "b" : "o"; }, home0 = (TSU_LOCAL.info() || {}).home || "";
+        var here2 = ccPanes(), grp = function (x) { return here2[x.id] || openIds.has("cc:" + x.id) ? "f" : x.live ? "b" : "o"; }, home0 = (TSU_LOCAL.info() || {}).home || "";
         var tl = function (p) { return home0 && (p === home0 || String(p).indexOf(home0 + "/") === 0) ? "~" + p.slice(home0.length) : p || "?"; };
         out += "\n" + row("ts-fold ts-head", foldAt("cc", false), [[chev("cc"), ""], ["Claude Code", BOLD]], headActs("cc"));
         if (!folded("cc")) {
@@ -7956,69 +8139,62 @@
           var ccG = {}; ccL.forEach(function (x) { var g0 = ccGrpOf(x); if (g0 && (!only("cc") || grp(x) !== "o")) (ccG[g0] = ccG[g0] || []).push(x); });
           Object.keys(ccG).sort().forEach(function (gn) { var kg = "cc:#g:" + gn; out += row("ts-fold", foldAt(kg, false) + ' data-ic="grp"', [["  " + chev(kg, false), ""], [gn, DIMC]]); if (!folded(kg, false)) ccG[gn].sort(ccOrder).forEach(function (x) { ccRowOut(x, "  "); }); });
           if (!top.list.length && !pinShown.length && !Object.keys(ccG).length && !(qToks.length && ccArch.length)) out += H("  " + DIMC + "暂无会话" + RESET) + "\n";
-          else if (only("cc") && !top.live && !pinShown.length) out += H("  " + DIMC + "无运行中的会话" + RESET) + "\n";
+          else if (only("cc") && !ccL.some(x => !EXTc.arch[ccKey(x)] && grp(x) !== "o")) out += H("  " + DIMC + "无运行中或已打开的会话" + RESET) + "\n";
           top.list.forEach(function (c) { drawDir(c, 0); });
           if (ccArch.length && !only("cc")) { var ka = "cc:#archived"; out += row("ts-fold", foldAt(ka, true) + ' data-ic="arch"', [["  " + chev(ka, true), ""], ["已归档 " + ccArch.length, DIMC]]); if (!folded(ka, true)) ccArch.sort(ccOrder).forEach(function (x) { ccRowOut(x, "  "); }); }
         }
       }
-      // ---- Codex（连接器，codex.js）：同 Claude Code，按目录分组；最近 40 个，「全部」看其余的；已归档的在最后一组（收着）----
+      // ---- Codex（连接器，codex.js）：按 Codex Tasks 的项目和更新时间排列，已归档的单列----
       //   目录行带 data-conn="codex" data-dir="<绝对路径>"（在那里开新会话：TSU_CONNECTORS.newSession("codex", 目录)）
-      var cxQ = window.TSU_LOCAL && cxOn() && window.TSU_CODEX && qToks.length ? TSU_CODEX.list().filter(function (x) { return qHit(EXTc.name["cx:" + x.id] || x.title, x.id); }) : null; // 搜着的时候（改过名的按新名字搜）：全部会话里搜到的（不止最近 40 个）
+      var cxQ = window.TSU_LOCAL && cxOn() && window.TSU_CODEX && qToks.length ? TSU_CODEX.list().filter(function (x) { return qHit(EXTc.name["cx:" + x.id] || x.title, x.id); }) : null; // 搜着的时候（改过名的按新名字搜）：全部会话里搜到的（含尚未展开的页）
       if (window.TSU_LOCAL && cxOn() && window.TSU_CODEX && (!cxQ || cxQ.length)) {
         var kx = function (x) { return "cx:" + x.id; }, UNRx = ccUnread(); // 固定、改名、归档、分组、未读：同 Claude Code（同一份 st-claude-ext，键是 cx:<id>）
         var CX = TSU_CODEX, cxAll = cxQ || CX.list(), cxArchQ = function (x) { return x.archived || EXTc.arch[kx(x)]; }, cxLive = cxAll.filter(function (x) { return !cxArchQ(x); }), cxArch = cxAll.filter(cxArchQ);
         var cxPinL = cxLive.filter(function (x) { return EXTc.pin[kx(x)]; }), cxGrpOf = function (x) { return !EXTc.pin[kx(x)] && EXTc.group && EXTc.group[kx(x)] || ""; };
         var home1 = (TSU_LOCAL.info() || {}).home || "", seeX = {};
         tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^cx:/.test(ag)) seeX[CX.real(ag.slice(3))] = p; });
-        var grpX = function (x) { return seeX[x.id] ? "f" : x.live ? "b" : "o"; };
+        var grpX = function (x) { return openIds.has(kx(x)) ? "f" : x.live ? "b" : "o"; };
         var tlX = function (p) { return home1 && (p === home1 || String(p).indexOf(home1 + "/") === 0) ? "~" + p.slice(home1.length) : p || "?"; };
         // Codex 的会话：前面是 Codex 的标志（ChatGPT / OpenAI 的结，同标签页、仪表盘上的），不是 ◎——占位字 \uE035 画完换成它（同 Claude Code 的 \uE030）；
         //   开着、在跑的是 OpenAI 的绿（在跑的一明一暗），没在跑的淡灰
         var cxLogoIn = function (html, busy) { var L0 = window.TSU_LOGOS && TSU_LOGOS.codex; return L0 ? String(html).replace(/\uE035/g, '<i class="ts-ccl ts-cxl' + (busy ? " busy" : "") + '">' + L0 + "</i>") : String(html).replace(/\uE035/g, "◎"); };
         var cxRow = function (x, ind) {
-          var g = grpX(x), busy = x.live && x.live.status === "busy", pv = seeX[x.id], isCur = !!pv && pv === tw.ws.active;
-          var when = g === "o" ? agoCN(x.mtime) : durCN(Date.now() - (x.live && x.live.since || x.mtime)), icC = busy || g !== "o" ? "" : DIMC; // 活着的用字色（OpenAI 的黑 / 白；同 Claude Code 的会话用它的橙），没在跑的淡灰
+          var busy = x.live?.status === "busy", pv = seeX[x.id], isCur = !!pv && pv === tw.ws.active;
+          var when = agoCN(x.mtime), icC = x.live ? "" : DIMC;
+          var status = busy ? "Working" : x.live?.status === "needs" ? "Needs you" : x.live ? "Ready" : "Inactive";
           if (isCur && UNRx[kx(x)]) { delete UNRx[kx(x)]; ccUnreadSave(UNRx); } // 正看着：已读
           var nm = EXTc.name[kx(x)] || x.title, unDot = UNRx[kx(x)] ? [[" ●", rgb("61;123;245")]] : [];
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy) + "</span>\n"; // 没有像样标题的（只有 /exit 这种）：目录名 + 时间，淡的
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '" title="' + status + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy) + "</span>\n";
         };
         out += "\n" + row("ts-fold ts-head", foldAt("cx", false), [[chev("cx"), ""], ["Codex", BOLD]], headActs("cx"));
         if (!folded("cx")) {
-          var cxOrd = function (a, b) { return ({ f: 0, b: 1, o: 2 }[grpX(a)] - { f: 0, b: 1, o: 2 }[grpX(b)]) || b.mtime - a.mtime; };
+          var cxOrd = function (a, b) { return b.mtime - a.mtime || a.id.localeCompare(b.id); };
           // 已固定、自己分的组：放在目录树上面（同 Claude Code）
           var pinX = cxPinL.filter(function (x) { return !only("cx") || grpX(x) !== "o"; });
           if (pinX.length) { var kpx = "cx:#pinned"; out += row("ts-fold", foldAt(kpx, false) + ' data-ic="pin"', [["  " + chev(kpx, false), ""], ["已固定", DIMC]]); if (!folded(kpx, false)) pinX.sort(cxOrd).forEach(function (x) { out += cxRow(x, "  "); }); }
           var cxG = {}; cxLive.forEach(function (x) { var g0 = cxGrpOf(x); if (g0 && (!only("cx") || grpX(x) !== "o")) (cxG[g0] = cxG[g0] || []).push(x); });
           Object.keys(cxG).sort().forEach(function (gn) { var kgx = "cx:#g:" + gn; out += row("ts-fold", foldAt(kgx, false) + ' data-ic="grp"', [["  " + chev(kgx, false), ""], [gn, DIMC]]); if (!folded(kgx, false)) cxG[gn].sort(cxOrd).forEach(function (x) { out += cxRow(x, "  "); }); });
           var treeX = cxLive.filter(function (x) { return !EXTc.pin[kx(x)] && !cxGrpOf(x); });
-          var cut0 = fold["cx:all"] || cxQ ? treeX.length : 40, shownX = treeX.filter(function (x, i) { return i < cut0 || grpX(x) !== "o"; });
-          var topX = { kids: {}, items: [] };
-          shownX.forEach(function (x) {
-            var parts = tlX(x.cwd || "?").split("/"), n = topX, at = "";
-            if (parts[0] === "") parts[0] = "/";
-            parts.filter(Boolean).forEach(function (sg) { at = !at ? sg : at === "/" ? "/" + sg : at + "/" + sg; n = n.kids[sg] || (n.kids[sg] = { name: sg, path: at, kids: {}, items: [] }); });
-            n.items.push(x);
+          var limit = fold["cx:all"] || cxQ ? Infinity : sidePref.cxTaskLimit || 10;
+          var visibleIds = new Set(cxLive.filter(x => x.listed).slice(0, limit).map(x => x.id));
+          var projects = new Map();
+          treeX.forEach(x => {
+            if (grpX(x) === "o" && (only("cx") || !visibleIds.has(x.id))) return;
+            var path = x.cwd || "?";
+            if (!projects.has(path)) projects.set(path, []);
+            projects.get(path).push(x);
           });
-          (function statX(n) {
-            n.list = Object.keys(n.kids).map(function (k) { return n.kids[k]; });
-            n.list.forEach(statX);
-            n.live = n.items.filter(function (x) { return grpX(x) !== "o"; }).length + n.list.reduce(function (t, c) { return t + c.live; }, 0);
-            n.t = n.items.concat(n.list).reduce(function (t, c) { return Math.max(t, c.t || c.mtime || 0); }, 0);
-            n.list.sort(function (a, b) { return (b.live > 0) - (a.live > 0) || b.t - a.t; });
-          })(topX);
-          var drawX = function (n, depth) {
-            while (!n.items.length && n.list.length === 1) { var c = n.list[0]; n = { name: n.name === "/" ? "/" + c.name : n.name + "/" + c.name, path: c.path, items: c.items, list: c.list, live: c.live, t: c.t }; }
-            if (only("cx") && !n.live) return;
-            var k = (only("cx") ? "o" : "") + "cx:" + n.path, def = !only("cx") && depth > 0 && !n.live, ind = "  " + "  ".repeat(depth);
-            out += row("ts-fold", foldAt(k, def) + ' data-conn="codex" data-dir="' + escHtml(n.path.replace(/^~(?=\/|$)/, home1)) + '"', [[ind + chev(k, def), ""], [n.name, DIMC]]);
-            if (folded(k, def)) return;
-            n.list.forEach(function (c) { drawX(c, depth + 1); });
-            n.items.filter(function (x) { return !only("cx") || grpX(x) !== "o"; }).sort(function (a, b) { return ({ f: 0, b: 1, o: 2 }[grpX(a)] - { f: 0, b: 1, o: 2 }[grpX(b)]) || b.mtime - a.mtime; }).forEach(function (x) { out += cxRow(x, ind); });
-          };
-          if (!cxAll.length) out += H("  " + DIMC + "暂无会话" + RESET) + "\n";
-          else if (only("cx") && !topX.live) out += H("  " + DIMC + "无运行中的会话" + RESET) + "\n";
-          topX.list.forEach(function (c) { drawX(c, 0); });
-          if (!only("cx") && !cxQ && cxLive.length > 40) out += '<span class="ts-act" data-act="cx-all">' + H("  " + DIMC + (fold["cx:all"] ? "仅显示最近" : "全部 " + cxLive.length + " 个会话") + RESET) + "</span>\n";
+          if (!cxAll.length) out += H("  " + DIMC + (cxQ ? "无匹配会话" : CX.status()) + RESET) + "\n";
+          else if (only("cx") && !cxLive.some(x => grpX(x) !== "o")) out += H("  " + DIMC + CX.runningStatus() + RESET) + "\n";
+          Array.from(projects.keys()).sort().forEach(path => {
+            var items = projects.get(path), label = tlX(path);
+            var key = (only("cx") ? "o" : "") + "cx:" + label;
+            out += row("ts-fold", foldAt(key, false) + ' data-conn="codex" data-dir="' + escHtml(path) + '"',
+              [["  " + chev(key, false), ""], [label + " (" + items.length + ")", DIMC]]);
+            if (!folded(key, false)) items.sort(cxOrd).forEach(x => { out += cxRow(x, "  "); });
+          });
+          if (!only("cx") && !cxQ && cxLive.filter(x => x.listed).length > limit)
+            out += '<span class="ts-act" data-act="cx-more">' + H("  " + DIMC + tt("显示更多", "Show more") + RESET) + "</span>\n";
           if (!only("cx") && cxArch.length) {
             out += row("ts-fold", foldAt("cx:arch", true) + ' data-ic="arch"', [["  " + chev("cx:arch", true), ""], ["已归档", DIMC]]);
             if (!folded("cx:arch", true)) cxArch.forEach(function (x) { out += cxRow(x, "  "); });
@@ -8035,7 +8211,7 @@
         var piArchQ = function (x) { return !!EXTc.arch[kpi(x)]; }, piLive = piAll.filter(function (x) { return !piArchQ(x); }), piArch = piAll.filter(piArchQ);
         var piPinL = piLive.filter(function (x) { return EXTc.pin[kpi(x)]; }), piGrpOf = function (x) { return !EXTc.pin[kpi(x)] && EXTc.group && EXTc.group[kpi(x)] || ""; };
         tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^pi:/.test(ag)) seeP[ag.slice(3)] = p; });
-        var grpP = function (x) { return seeP[x.id] ? "f" : x.live ? "b" : "o"; };
+        var grpP = function (x) { return openIds.has("pi:" + x.id) ? "f" : x.live ? "b" : "o"; };
         var tlP = function (q) { return homeP && (q === homeP || String(q).indexOf(homeP + "/") === 0) ? "~" + q.slice(homeP.length) : q || "?"; };
         var piLogoIn = function (html, busy) { var L0 = window.TSU_LOGOS && TSU_LOGOS.pi; return L0 ? String(html).replace(/\uE038/g, '<i class="ts-ccl ts-cxl ts-pil' + (busy ? " busy" : "") + '">' + L0 + "</i>") : String(html).replace(/\uE038/g, "p"); };
         var piRow = function (x, ind) {
@@ -8078,7 +8254,7 @@
             n.items.filter(function (x) { return !only("pi") || grpP(x) !== "o"; }).sort(piOrd).forEach(function (x) { out += piRow(x, ind); });
           };
           if (!piAll.length) out += H("  " + DIMC + "暂无会话" + RESET) + "\n";
-          else if (only("pi") && !topP.live && !pinPs.length) out += H("  " + DIMC + "无运行中的会话" + RESET) + "\n";
+          else if (only("pi") && !piLive.some(x => grpP(x) !== "o")) out += H("  " + DIMC + "无运行中或已打开的会话" + RESET) + "\n";
           topP.list.forEach(function (c) { drawP(c, 0); });
           if (!only("pi") && !piQ && treeP.length > 40) out += '<span class="ts-act" data-act="pi-all">' + H("  " + DIMC + (fold["pi:all"] ? "仅显示最近" : "全部 " + treeP.length + " 个会话") + RESET) + "</span>\n";
           if (!only("pi") && piArch.length) {
@@ -8139,8 +8315,8 @@
         if (!folded("agy")) {
           var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && p.program.working?.()).map(p => p.program.agentId.slice(4)));
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
-          var agySessions = only("agy") ? agy.list().filter(agyActive) : agy.list();
-          if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中的会话" : agy.status()) + RESET) + "\n";
+          var agySessions = only("agy") ? agy.list().filter(s => agyActive(s) || openIds.has("agy:" + s.sessionId)) : agy.list();
+          if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中或已打开的会话" : agy.status()) + RESET) + "\n";
           var folders = new Map(), homeAgy = (TSU_LOCAL.info() || {}).home;
           agySessions.forEach(function (s) {
             if (!qHit(s.title || s.sessionId, s.sessionId, s.cwd || "")) return;
@@ -8167,11 +8343,11 @@
         var TYc = TSU_TEYVAT, tyAll = TYc.list().filter(function (x) { return qHit(x.name, x.id); }), seeT = {};
         tw.ws.all().forEach(function (p) { var ag = p.program && p.program.agentId; if (ag && /^ty:/.test(ag)) seeT[ag.slice(3)] = p; });
         var tyLogoIn = function (html, busy) { var L0 = window.TSU_LOGOS && TSU_LOGOS.teyvat; return L0 ? String(html).replace(/\uE039/g, '<i class="ts-ccl ts-cxl ts-tyl' + (busy ? " busy" : "") + '">' + L0 + "</i>") : String(html).replace(/\uE039/g, "T"); };
-        out += "\n" + row("ts-fold ts-head", foldAt("ty", false), [[chev("ty"), ""], ["Teyvat", BOLD]], [["only-ty", only("ty") ? "\uE023" : "\uE022", only("ty") ? "显示全部" : "仅显示运行中"]]); // 一组是平的（没有文件夹）：不放「全部折叠」
+        out += "\n" + row("ts-fold ts-head", foldAt("ty", false), [[chev("ty"), ""], ["Teyvat", BOLD]], [["only-ty", only("ty") ? "\uE023" : "\uE022", only("ty") ? "显示全部" : "显示运行中或已打开"]]); // 一组是平的（没有文件夹）：不放「全部折叠」
         if (!folded("ty")) {
-          var tyShow = tyAll.filter(function (x) { return !only("ty") || x.running; });
+          var tyShow = tyAll.filter(function (x) { return !only("ty") || x.running || openIds.has("ty:" + x.id); });
           if (!tyAll.length) out += H("  " + DIMC + "暂无 Agent" + RESET) + "\n";
-          else if (!tyShow.length) out += H("  " + DIMC + "无运行中的 Agent" + RESET) + "\n";
+          else if (!tyShow.length) out += H("  " + DIMC + "无运行中或已打开的 Agent" + RESET) + "\n";
           tyShow.forEach(function (x) {
             var pv = seeT[x.id], isCur = !!pv && pv === tw.ws.active, busy = x.state === "working";
             var st = !x.running ? agoCN(x.mtime) : ({ working: "工作中", waiting: "等待中", hibernating: "休眠中", paused: "已暂停" }[x.state] || "") + (x.mode === "fg" ? " · 前台" : " · 后台");
@@ -8294,7 +8470,7 @@
     }
     function ccRows(cols, head, line, DIMC) {
       if (!cc.list.length) return "\n" + head(BOLD + "Claude Code" + RESET + DIMC + " · 暂无会话" + RESET) + "\n" + '<span class="ts-act" data-act="cc-new">' + head(DIMC + " + 新建 Claude Code 会话" + RESET) + "</span>\n";
-      var here2 = ccPanes(), grp = function (x) { return here2[x.id] ? "f" : x.live ? "b" : "o"; };
+      var here2 = ccPanes(), grp = function (x) { return here2[x.id] || openIds.has("cc:" + x.id) ? "f" : x.live ? "b" : "o"; };
       var order = ["f", "b", "o"].reduce(function (acc, g) { return acc.concat(cc.list.filter(function (x) { return grp(x) === g; })); }, []);
       var live = order.filter(function (x) { return grp(x) !== "o"; }).length, cut = cc.all ? order.length : Math.min(order.length, live + Math.max(3, 8 - live));
       var shown = order.slice(0, cut), n = { f: 0, b: 0, o: 0 }, numW = String(shown.length).length + 2, cur = tw.ws.active, home = (TSU_LOCAL.info() || {}).home || "";
@@ -8643,13 +8819,7 @@
         return S.render(true);
       }
       if (act0 && act0.dataset.act === "new-dsh-sess") {
-        var spaces = TSU_DSH.workspaces();
-        var createDsh = async function (ws) {
-          try { S.open("dsh:" + await TSU_DSH.create(ws && ws.id), "tab"); }
-          catch (error) { STUDIO.toast(error.message); }
-        };
-        if (spaces.length < 2) createDsh(spaces[0]);
-        else STUDIO.menu(spaces.map(ws => ({label: ws.title || ws.path, run: () => createDsh(ws)})), {el: act0, side: "below-end"});
+        newDshSession(act0);
         return;
       }
       if (act0 && act0.dataset.act === "new-cx-sess") { if (canNewIn0("codex")) TSU_CONNECTORS.newSession("codex", ""); return; }
@@ -8669,7 +8839,7 @@
       if (!act) return;
       if (act.dataset.act === "cc-new") return S.newCC();
       if (act.dataset.act === "cc-all") { cc.all = !cc.all; return S.render(true); }
-      if (act.dataset.act === "cx-all") { fold["cx:all"] = !fold["cx:all"]; saveSidePref(); return S.render(true); }
+      if (act.dataset.act === "cx-more") { sidePref.cxTaskLimit = (sidePref.cxTaskLimit || 10) + 10; saveSidePref(); return S.render(true); }
       if (act.dataset.act === "pi-all") { fold["pi:all"] = !fold["pi:all"]; saveSidePref(); return S.render(true); }
       if (act.dataset.act === "archived") { archived = true; S.render(true); }
       else if (act.dataset.act === "back") { archived = false; S.render(true); }
@@ -8689,6 +8859,12 @@
       p.run(makeView(p, id));
       S.render();
     };
+    function newDshSession(anchor, workspace) {
+      var create = ws => TSU_DSH.create(ws?.id).then(id => S.open("dsh:" + id, "tab")).catch(error => STUDIO.toast(error.message));
+      var spaces = TSU_DSH.workspaces();
+      if (workspace || spaces.length < 2) return create(workspace || spaces[0]);
+      STUDIO.menu(spaces.map(ws => ({label: ws.title || ws.path, run: () => create(ws)})), {el: anchor, side: "below-end"});
+    }
     var ws0 = function (t) { return tw.ws.leaves(t.root).map(function (l) { return l.pane; }); };
     // 右键：在新标签页 / 新窗口打开、重命名、归档（同 ctrl+x 两次：不删，随时能恢复）
     list.addEventListener("contextmenu", function (e) {
@@ -8719,6 +8895,32 @@
       }
       // Claude Code 的目录：新建会话只在连接器给了入口时有（连接器自己的事）；拷贝路径
       var cf = e.target.closest(".ts-row[data-fold]");
+      var dshGroup = cf?.dataset.fold.replace(/^q:/, "");
+      if (dshGroup === "agy" || dshGroup?.startsWith("agy:dir:")) {
+        e.preventDefault();
+        e.stopPropagation();
+        var folder = cf.dataset.dir, isRoot = dshGroup === "agy", key = cf.dataset.fold;
+        return pop([
+          isRoot && TI(tt("新建会话", "New Session"), () => TSU_AGY.create().then(S.viewAgy).catch(error => STUDIO.toast(error.message)), MIc.newAgent),
+          folder && TI(tt("打开工作目录", "Open Working Directory"), () => STUDIO.openPaths(tw, [folder]), TREE_IC.folder),
+          folder && TI(tt("复制路径", "Copy Path"), () => copyText(folder), TREE_IC.copy),
+          TI(folded(key) ? tt("展开", "Expand") : tt("折叠", "Collapse"), () => { setFold(key, !folded(key)); S.render(true); }, MIc.folder),
+          isRoot && TI(tt("刷新", "Refresh"), () => TSU_AGY.refresh(), MIc.refresh),
+        ]);
+      }
+      if (dshGroup === "dsh" || dshGroup?.startsWith("dsh:")) {
+        e.preventDefault();
+        e.stopPropagation();
+        var dir = cf.dataset.dir, ws = dir && TSU_DSH.workspaces().find(w => w.path === dir);
+        var closed = folded(cf.dataset.fold, cf.dataset.def === "1");
+        return pop([
+          (ws || dshGroup === "dsh") && TI(tt("新建会话", "New Session"), () => newDshSession(cf, ws), MIc.newAgent),
+          dir && TI(tt("在访达中打开", "Open in Finder"), () => STUDIO.openPaths(tw, [dir]), MIc.window),
+          dir && TI(tt("复制路径", "Copy Path"), () => copyText(dir), TREE_IC.copy),
+          TI(closed ? tt("展开", "Expand") : tt("折叠", "Collapse"), () => { setFold(cf.dataset.fold, !closed); S.render(true); }, MIc.folder),
+          dshGroup === "dsh" && TI(tt("刷新", "Refresh"), () => TSU_DSH.refresh(), MIc.refresh),
+        ]);
+      }
       if (cf && /^(q:)?o?cc:/.test(cf.dataset.fold)) {
         e.preventDefault();
         var tp = cf.dataset.fold.replace(/^(q:)?o?cc:/, ""), hm = (window.TSU_LOCAL && TSU_LOCAL.info() || {}).home || "", abs = tp === "~" ? hm : tp.indexOf("~/") === 0 ? hm + tp.slice(1) : tp, CN = window.TSU_CONNECTORS;
@@ -8730,6 +8932,22 @@
       }
       var it = e.target.closest(".ts-it");
       if (!it || !window.TSU_DESK || !TSU_DESK.popup) return;
+      if (it.dataset.agy || it.dataset.id?.startsWith("dsh:")) {
+        e.preventDefault();
+        e.stopPropagation();
+        var agyId = it.dataset.agy, aid = agyId ? "agy:" + agyId : it.dataset.id, sid = aid.slice(4);
+        var connector = agyId ? TSU_AGY : TSU_DSH;
+        var session = connector.list().find(item => (agyId ? item.sessionId : item.id) === sid);
+        return pop([
+          TI(tt("打开", "Open"), () => S.open(aid), MIc.open),
+          TI(tt("在拆分视图中打开", "Open to the Side"), () => { connector.ensure(sid); S.openSide(aid); }, MIc.splitR),
+          TI(tt("在新窗口中打开", "Open in New Window"), () => S.open(aid, "window"), MIc.window),
+          {sep: true},
+          session?.cwd && TI(tt("打开工作目录", "Open Working Directory"), () => STUDIO.openPaths(tw, [session.cwd]), TREE_IC.folder),
+          session?.path && TI(tt("复制记录路径", "Copy Transcript Path"), () => copyText(session.path), TREE_IC.copy),
+          TI(tt("复制会话 ID", "Copy Session ID"), () => copyText(sid), TREE_IC.copy),
+        ]);
+      }
       if (it.dataset.cc) {
         e.preventDefault();
         var cid = it.dataset.cc, x0 = ccById(cid) || {}, LC = window.TSU_LOCAL, kk = "cc:" + cid, exN = ccExt(), MIc0 = window.STUDIO && STUDIO.menuIcons ? STUDIO.menuIcons() : {};
@@ -9018,9 +9236,10 @@
         var b = document.createElement("div");
         b.className = "tab" + (i === ws.cur ? " on" : "");
         b.innerHTML = '<i class="tx" title="关闭标签页">×</i><span></span><kbd>' + (window.nadosNative ? "⌘" : "⌥⌘") + (i + 1) + "</kbd>";
-        var p = tb.active || ws.leaves(tb.root)[0].pane, rang = ws.leaves(tb.root).some(function (l) { return l.pane.bell; });
+        var panes = ws.leaves(tb.root).map(l => l.pane);
+        var p = tb.active || panes[0], rang = panes.some(pane => pane.bell);
         titleInto(b.querySelector("span"), p, rang ? "🔔 " : "");
-        if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
+        if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p, panes);
         b.addEventListener("mousedown", function (e) {
           e.preventDefault();
           if (!e.target.closest(".tx")) return ws.select(i); // 只有 × 是关；标签上的图标也是 <i>，点它是切过去
@@ -9706,7 +9925,6 @@
       if (sg === g) { var i = g.editors.indexOf(p); if (idx === i || idx === i + 1) return ws.show(p); g.editors.splice(i, 1); if (idx > i) idx--; }
       else take(p);
       g.editors.splice(Math.max(0, Math.min(idx, g.editors.length)), 0, p);
-      g.active = p;
       ws.show(p);
     };
     ws.closePane = function (pane) {
@@ -10146,12 +10364,33 @@
 
   // ---- 从访达拖文件进来：落在终端上 = 把路径贴进去（转义好、后面带个空格，同「终端」）；落在 agent 的对话上 = 插进它的输入框（图片当附图）；
   //   落在别处（文件、设置、访达页、边栏、标签页栏……）= 打开它：文件在编辑区、文件夹在访达页（用户 2026-10-28：不是把路径贴进去） ----
-  if (window.nadosNative && nadosNative.local) nadosNative.on("drop.paths", function (d) {
+  function composerAt(x, y) {
+    return allPanes().find(p => {
+      if (p.off || !p.program?.agentId) return false;
+      const input = p.program.gui ? p.el.querySelector(".gv-comp") : p.foot;
+      const r = input?.getBoundingClientRect();
+      return r && x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+    });
+  }
+  // A modal backdrop or inert workspace can replace the composer in DOM hit testing.
+  for (const type of ["dragover", "drop"]) document.addEventListener(type, e => {
+    const dt = e.dataTransfer;
+    if (!dt || !Array.from(dt.types).some(t => t === "Files" || t === "application/x-tsu-paths")) return;
+    const p = composerAt(e.clientX, e.clientY);
+    if (!p) return;
+    const paths = type === "drop" && droppedPaths(e);
+    if (!paths && p.el.contains(e.target)) return;
+    if (type === "drop" && !paths && !Array.from(dt.files).every(f => /^image\//.test(f.type) && p.program.attachFile)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (paths) receivePaths({paths, x:e.clientX, y:e.clientY});
+    else if (type === "drop") Array.from(dt.files).forEach(f => p.program.attachFile(f));
+  }, true);
+  function receivePaths(d) {
     if (!d || !d.paths || !d.paths.length) return;
     // 远程桌面的连接文件（.rdp）：拖到哪里都是直接连它
     var rdps = d.paths.filter(function (x) { return /\.rdp$/i.test(x); });
     if (rdps.length && window.TSU_RDP && TSU_RDP.native()) { rdps.forEach(function (x) { TSU_RDP.openFile(x, frontTerm()); }); d = Object.assign({}, d, { paths: d.paths.filter(function (x) { return rdps.indexOf(x) < 0; }) }); if (!d.paths.length) return; }
-    var el = document.elementFromPoint(d.x, d.y), p = el && allPanes().filter(function (x) { return x.el.contains(el); })[0], tw = frontTerm();
+    var el = document.elementFromPoint(d.x, d.y), p = composerAt(d.x, d.y) || allPanes().find(x => x.el.contains(el)), tw = frontTerm();
     var chat = !!(p && p.program && p.program.agentId && (p.ta || p.program.attachFile || p.program.insertText)), term = !!(p && p.program && p.program === p.shell && p.shell.paste);
     if (!chat && !term) { if (window.STUDIO && STUDIO.openPaths) STUDIO.openPaths((p && p.win) || tw, d.paths); return; }
     p.win.ws.activate(p);
@@ -10174,7 +10413,8 @@
       });
       if (rest.length) ins(rest.join(" "));
     }
-  });
+  }
+  if (window.nadosNative?.local) nadosNative.on("drop.paths", receivePaths);
 
   // ---- 菜单栏：经典终端的菜单（外壳 / 编辑 / 显示 / 窗口 / 帮助）；agent 的东西都在 agent 自己的 / 命令里 ----
   function item(a) { return { label: a.label, keys: a.keys, run: a.run }; }
@@ -10350,7 +10590,7 @@
       return openWindow(ok ? { cur: 0, tabs: [{ root: { p: { sh: { cwd: path } } }, active: 0 }] } : undefined);
     },
     // browser.js（Paimon Terminal 的地址栏、标签页概览、主页、历史记录）要用的
-    front: frontTerm, panes: allPanes, wins: function () { return wins; }, baseXterm: baseXterm, termLight: termLight,
+    front: frontTerm, panes: allPanes, openSessionIds, queueIcon, wins: function () { return wins; }, baseXterm: baseXterm, termLight: termLight,
     agentView: function (P, id) { return new AgentView(P, id); }, // 右侧栏里那份：终端界面
     makeView: function (P, id) { return makeView(P, id); }, applyUI: applyUI,
     // 没发出去的字（终端界面、图形界面共用一份）：draft(id) 读、draft(id, 字) 存
@@ -10363,7 +10603,7 @@
     globalPane: function (tw) { if (!tw.globalPane) tw.globalPane = new Pane(tw, { side: true }); return tw.globalPane; },
     kinds: KINDS,
     // 对话显示的分法（右侧栏的 ··· 用同一套；图形界面、快速查看按同样的档位画）
-    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, filteredParts: filteredParts, showToolPreview: showToolPreview, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
+    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, showAgentQuota: showAgentQuota, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
     tsFmt: tsFmt, dayKey: dayKey, dayLabel: dayLabel, turnTime: turnTime, // 时间戳（图形界面也用）
     viewMode: function (k, view) { var c = isFull(view) ? vcv(view, k) : cv(k); return c === undefined ? VMODES[k] : c; }, // 带预览的当前值（图形界面用：指着菜单时一起变；拆出来的一格按它自己的）
     toolMode: function (p, view) { return toolModeIn(view || null, p); },

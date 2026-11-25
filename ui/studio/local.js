@@ -6,8 +6,8 @@
   "use strict";
   var N = window.nadosNative;
   if (!N || !N.local) { window.TSU_LOCAL = null; return; }
-  var seq = 0;
-  var nid = function (p) { return p + Date.now().toString(36) + (++seq).toString(36); };
+  var seq = 0, clientPrefix = crypto.randomUUID().slice(0, 8);
+  var nid = function (p) { return p + clientPrefix + "-" + (++seq).toString(36); };
   // base64 → 字节：终端输出每一批都走这里。系统自带的 Uint8Array.fromBase64（WebKit 18.2+）比 atob 再一个个字节抄快 8 倍左右（实测 909 vs 114 MB/s）——
   //   终端刷屏时省下主线程四分之一的时间给 xterm 解析；没有它的老系统照旧
   var FROM64 = typeof Uint8Array.fromBase64 === "function";
@@ -100,12 +100,17 @@
       });
       var offX = N.on("exec.exit", function (d) {
         if (!d || d.id !== id) return;
-        offD(); offX();
+        cleanup();
         resolve({ out: out, err: err, code: d.code, cwd: d.cwd || null });
       });
-      var kill = function () { N.call("exec.kill", { id: id }).catch(function () {}); };
-      if (signal) { if (signal.aborted) return reject(Object.assign(new Error("aborted"), { name: "AbortError" })); signal.addEventListener("abort", kill); }
-      N.call("exec.start", { id: id, cmd: PATH_PFX + o.cmd, cwd: o.cwd || "", access: o.access || "user", workdir: o.workdir || "", extra: o.extra || [] }).catch(function (e) { offD(); offX(); reject(e); });
+      function cleanup() { offD(); offX(); signal?.removeEventListener("abort", kill); }
+      function kill() {
+        cleanup();
+        N.call("exec.kill", {id}).catch(() => {});
+        reject(new DOMException("命令已超时或中止", "AbortError"));
+      }
+      if (signal) { if (signal.aborted) { cleanup(); return reject(new DOMException("命令已中止", "AbortError")); } signal.addEventListener("abort", kill); }
+      N.call("exec.start", { id: id, cmd: PATH_PFX + o.cmd, cwd: o.cwd || "", access: o.access || "user", workdir: o.workdir || "", extra: o.extra || [] }).catch(function (e) { cleanup(); reject(e); });
     });
   }
 
@@ -143,7 +148,55 @@
   function stat(path) { return N.call("fs.stat", { path: path }); }
   function glob(pattern, cwd, o) { o = o || {}; return N.call("fs.glob", { pattern: pattern, cwd: cwd || "", access: o.access || "user", workdir: o.workdir || "", extra: o.extra || [] }); }
 
+  // Each session owns one metadata record and individually replaceable history pages.
+  var historyDatabase;
+  function historyDB() {
+    if (!historyDatabase) historyDatabase = new Promise((resolve, reject) => {
+      var req = indexedDB.open("vibing-session-history", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("pages");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return historyDatabase;
+  }
+  async function cachedHistory(scope) {
+    var db = await historyDB();
+    return new Promise((resolve, reject) => {
+      var req = db.transaction("pages").objectStore("pages").getAll(IDBKeyRange.bound([scope,-1], [scope,Infinity]));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function cacheHistory(scope, metadata, pages, start, previousPrefix) {
+    var db = await historyDB();
+    return new Promise((resolve, reject) => {
+      var tx = db.transaction("pages", "readwrite"), store = tx.objectStore("pages");
+      tx.oncomplete = resolve;
+      tx.onabort = () => reject(tx.error);
+      var head = store.get([scope,-1]);
+      head.onsuccess = () => {
+        if (start && (head.result?.prefix !== previousPrefix || !metadata.turnHashes.slice(0,start).every((hash,i) => head.result.turnHashes[i] === hash))) return;
+        store.delete(IDBKeyRange.bound([scope,start], [scope,Infinity]));
+        store.put(metadata, [scope,-1]);
+        pages.forEach((page, i) => store.put(page, [scope,start+i]));
+      };
+    });
+  }
   window.TSU_LOCAL = {
+    cachedHistory, cacheHistory,
+    hostKey: function (key) { return N.remote ? key + ":" + N.mac : key; },
+    studioHelper: async function (name) {
+      if (!["agy_sessions.py", "dsh_sessions.py", "dsh_send.py"].includes(name)) throw new Error("未知连接器组件");
+      if (!N.remote && window.TSU_UI_LOCAL?.dir) return TSU_UI_LOCAL.dir + "/studio/" + name;
+      var host = await ready;
+      var dirs = [host.home + "/Library/Application Support/Vibing Studio/ui",
+        "/Applications/Vibing Studio.app/Contents/Resources/web", host.home + "/Applications/Vibing Studio.app/Contents/Resources/web"];
+      for (var dir of dirs) {
+        var path = dir + "/studio/" + name;
+        if ((await stat(path))?.type === "file") return path;
+      }
+      throw new Error("连接的设备缺少组件 " + name);
+    },
     ready: ready, info: function () { return info; },
     pty: pty, want: want, drop: drop, exec: exec, proc: proc, read: read, write: write, stat: stat, glob: glob,
     list: function (path) { return N.call("fs.list", { path: path }); },

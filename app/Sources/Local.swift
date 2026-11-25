@@ -553,6 +553,12 @@ final class PTY: @unchecked Sendable {
     let p = forkpty(&master, nil, nil, &ws)
     if p < 0 { throw BridgeError.failed("forkpty: " + String(cString: strerror(errno))) }
     if p == 0 {
+      // Canonical input edits UTF-8 characters on the slave before delivering the line.
+      var attrs = termios()
+      if tcgetattr(STDIN_FILENO, &attrs) == 0 {
+        attrs.c_iflag |= tcflag_t(IUTF8)
+        _ = tcsetattr(STDIN_FILENO, TCSANOW, &attrs)
+      }
       if chdir(cCwd) != 0 { _ = chdir("/") }
       cArgs.withUnsafeBufferPointer { a in cEnv.withUnsafeBufferPointer { e in _ = execve(cShell, a.baseAddress, e.baseAddress) } }
       _exit(127)

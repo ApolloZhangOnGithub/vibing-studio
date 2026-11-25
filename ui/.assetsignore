@@ -8,3 +8,6 @@ tahoe-night.jpg
 tahoe-night.mp4
 lake-day.jpg
 lake-night.jpg
+
+**/__pycache__/**
+**/*.pyc

@@ -75,6 +75,8 @@
 <link rel="icon" type="image/png" href="terminal-icon.png">
 <!-- Paimon Terminal（apps/macos 用 MODE=terminal 编出来的 App）的页面：只有终端（标签页、分屏、agent），没有网页桌面的别的 App。
      shell 和 agent 的工具跑在这台 Mac 上（local.js ↔ 原生的桥），不经过服务器的沙盒；在浏览器里打开就是个只有终端的页面（shell 走服务器的沙盒） -->
+<script src="studio/svclog.js"></script><!-- 服务记录：包上 fetch、WebSocket（要在所有叫服务的脚本之前，连 remote.js 的中转连接也记上） -->
+<script src="remote.js"></script><!-- iPad 端：浏览器里选了「用我的 Mac」就把 nadosNative 换成经中转连到 Mac 的一份（要在别的脚本之前） -->
 <link rel="stylesheet" href="vendor/xterm/xterm.css">
 <link rel="stylesheet" href="terminal.css">
 <link rel="stylesheet" href="app.css">
@@ -137,8 +139,25 @@
 </div>
 </div>
 <noscript><p class="noscript">需要 JavaScript。</p></noscript>
-<script src="studio/svclog.js"></script><!-- 服务记录：包上 fetch、WebSocket（要在所有叫服务的脚本之前，连 remote.js 的中转连接也记上） -->
-<script src="remote.js"></script><!-- iPad 端：浏览器里选了「用我的 Mac」就把 nadosNative 换成经中转连到 Mac 的一份（要在别的脚本之前） -->
+<script>
+  const studioLibraries = new Map();
+  window.loadStudioLibrary = function (name) {
+    if (studioLibraries.has(name)) return studioLibraries.get(name);
+    const source = document.getElementById("library-" + name).content.querySelector("script");
+    const script = document.createElement("script");
+    const loading = new Promise((resolve, reject) => {
+      if (source.hasAttribute("src")) {
+        for (const attr of source.attributes) script.setAttribute(attr.name, attr.value);
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("无法加载 " + name));
+      } else script.text = source.text;
+      document.head.append(script);
+      if (!source.hasAttribute("src")) resolve();
+    }).catch(error => { studioLibraries.delete(name); throw error; }).finally(() => script.remove());
+    studioLibraries.set(name, loading);
+    return loading;
+  };
+</script>
 <script src="studio/perf.js"></script><!-- 最先：量谁占着主线程（perf.json） -->
 <script src="ttu-core.js"></script>
 <script src="sync.js"></script>
@@ -167,11 +186,11 @@
 <script src="studio/overview.js"></script>
 <script src="studio/seti.js"></script><!-- 文件图标的数据（VS Code 的 Seti，MIT） -->
 <script src="studio/ficons.js"></script>
-<script src="vendor/codemirror/cm6.js"></script>
+<template id="library-editor"><script src="vendor/codemirror/cm6.js"></script></template>
 <script src="studio/studio.js"></script>
 <script src="studio/trace.js"></script>
 <script src="studio/browser.js"></script>
-<script src="vendor/mermaid/mermaid.min.js"></script>
+<template id="library-diagram"><script src="vendor/mermaid/mermaid.min.js"></script></template>
 <script src="studio/flowchart.js"></script>
 <script src="live.js"></script>
 <script src="studio/gui.js"></script>

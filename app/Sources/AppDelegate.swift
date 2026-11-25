@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   }
   // 退出：「待更新」里有放好的新版就换上（只改了小工具、界面的新版不打扰——哪次退出哪次换；「重启以更新」的换好再打开）
   func applicationWillTerminate(_ notification: Notification) {
-    if Config.terminal { AppUpdate.swapAtQuit() }
+    if Config.terminal && (!testJS || AppUpdate.testing) { AppUpdate.swapAtQuit() }
   }
   // 退出前让每个窗口的页面把手上的东西记下来（写了一半的话、正在送的那一句；live.js 的 TSU_FLUSH）——等它们回话，最多 0.6 秒
   private func flushThenQuit() -> NSApplication.TerminateReply {
@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var left = views.count, done = false
     let finish = { if !done { done = true; NSApp.reply(toApplicationShouldTerminate: true) } }
     for v in views {
-      v.webView.evaluateJavaScript("window.TSU_FLUSH ? (TSU_FLUSH(), 1) : 0") { _, _ in left -= 1; if left == 0 { finish() } }
+      v.webView.callAsyncJavaScript("await window.TSU_FLUSH?.(); return 1", arguments: [:], in: nil, in: .page) { _ in left -= 1; if left == 0 { finish() } }
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { finish() }
     return .terminateLater
@@ -198,6 +198,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   func closed(_ c: WebController) { extra.removeAll { $0 === c } }
   // 用另一台 Mac：它已经开着窗口就叫到前面（一台 Mac 一个窗口，同 VS Code 的远程窗口）；没有就开一个
   func openRemote(mac: String, name: String) -> Int {
+    if mac == RemoteHost.shared.device, let web {
+      if web.window.isMiniaturized { web.window.deminiaturize(nil) }
+      web.window.makeKeyAndOrderFront(nil)
+      NSApp.activate()
+      return web.winId
+    }
     if let c = extra.first(where: { $0.remoteMac == mac }) {
       if c.window.isMiniaturized { c.window.deminiaturize(nil) }
       c.window.makeKeyAndOrderFront(nil)
