@@ -250,6 +250,7 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
     model = ""
     tools = deque()
     background = {}
+    notification_tasks = {}
     owner_start = active_since(path.parents[2].name)
     settings_path = path.parents[4] / "settings.json"
     settings = {}
@@ -315,6 +316,10 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
                         pass
                 tool = dict(role="tool", id=str(len(events)), title=str(label), action=action, created_at=row.get("created_at"),
                             kind="execute" if action == "run_command" else "tool")
+                if action == "run_command":
+                    timeout = str(args.get("NotificationTimeoutSeconds", "")).strip('"')
+                    if timeout.isascii() and timeout.isdigit() and 0 < int(timeout) <= 2**53 - 1:
+                        tool["notificationTimeoutSeconds"] = int(timeout)
                 if action in ("write_file", "edit_file") and isinstance(args.get("Path"), str):
                     tool["file_path"] = args["Path"]
                     if action == "write_file" and isinstance(args.get("Content"), str):
@@ -360,12 +365,17 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
                 tools.append(tool)
         elif kind == "GENERIC" and tools:
             tool = tools.popleft()
+            match = re.search(r'^Tool is running as a background task with task id: (\S+)', text, re.M)
+            if match and tool.get("notificationTimeoutSeconds"):
+                desc = re.search(r"^Task Description: (.+)$", text, re.M)
+                notification_tasks[match[1]] = dict(cmd=desc[1] if desc else tool["title"],
+                    createdAt=row.get("created_at"), notificationTimeoutSeconds=tool["notificationTimeoutSeconds"])
             if owner_start and (row.get("created_at") or "") >= owner_iso:
-                match = re.search(r'^Tool is running as a background task with task id: (\S+)', text, re.M)
                 if match and tool["action"] in ("run_command", "schedule"):
                     schedule = tool.get("schedule") or {}
                     background[match[1]] = dict(id=match[1], kind="cron" if schedule else "shell",
                         desc=schedule.get("Prompt") or tool["title"], cmd=tool["title"], status="running",
+                        notificationTimeoutSeconds=tool.get("notificationTimeoutSeconds"),
                         once=bool(schedule and not schedule.get("CronExpression")),
                         createdAt=row.get("created_at"), duration=schedule.get("DurationSeconds"),
                         cron=schedule.get("CronExpression"), condition=schedule.get("TimerCondition"))
@@ -405,7 +415,7 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
                          and not e.get("error") and isinstance(e.get("steps"), list)), [])
     offset = starts[reused] if reused < len(starts) else len(events)
     return {"source": source if revisions == [log_revision(p) for p in logs] else None,
-            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "steps": latest_steps, "events": events[offset:], "prefix": prefix,
+            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "notificationTasks": notification_tasks, "steps": latest_steps, "events": events[offset:], "prefix": prefix,
             "reuseTurns": reused, "turnHashes": digests, "model": model, "selectedModel": settings.get("model"),
             "mode": settings.get("mode") or "auto"}
 

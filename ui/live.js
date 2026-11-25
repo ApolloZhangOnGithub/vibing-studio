@@ -2767,8 +2767,8 @@
     }
     function footItems() {
       var MI = window.STUDIO?.menuIcons?.() || {};
-      function option(field, label, checked, icon) {
-        return { label, icon, svg: icon, checked, run: function () {
+      function option(field, label, checked, icon, sym) {
+        return { label, icon, sym, checked, run: function () {
           var prefs = Object.assign({}, cfg.connectorFooter, { [footerKeyFor(field)]: checked ? "off" : "on" });
           A.setCfg("connectorFooter", prefs);
           allPanes().forEach(p => { if (p.program?.agentId && A.runtime(p.program.agentId)?.agent?.connector === agent.connector) p.renderNow?.(); });
@@ -2783,7 +2783,8 @@
       if (connector === "dsh" || !agent.claude) fields.push(["balance","余额"]);
       if (connector === "agy") fields.push(["mode","运行模式"],["cron","定时任务"]);
       var icons = {context: MI.contextWindow, quota: MI.quotaGauge, balance: MI.wallet, mode: MI.sliders, cron: MI.clock};
-      return items.concat(fields.map(([key,label]) => option(key,label,footerEnabled(key),icons[key])));
+      var symbols = {context: "rectangle.split.3x1", quota: "gauge.medium", balance: "creditcard", mode: "slider.horizontal.3", cron: "clock"};
+      return items.concat(fields.map(([key,label]) => option(key,label,footerEnabled(key),icons[key],symbols[key])));
     }
     V.claude = !!agent.claude;
     // 这一块显示哪些内容：编辑区里按设置（cfg——编辑区标签栏的 ··· 改的就是它）；右侧栏里的按它自己的筛选（P.view，studio.js 给）
@@ -5283,7 +5284,8 @@
     //   ❄ Hibernating... (2m 30s/40m · 12m 45s of diligent work · wake at 09:00)   ❄ Paused；没在跑的不画（输入框里写着发消息会先启动它）
     var waitingColor = function () { return P.light ? "146;108;0" : "255;235;120"; };
     function timedWait(label, since) {
-      return rgb(waitingColor()) + TY_SNOW + " " + label + " (" + tyFe(Date.now() - since) + ")" + RESET;
+      var timeout = label === terminalWaitLabel && rt.backgroundWaitTimeout?.();
+      return rgb(waitingColor()) + TY_SNOW + " " + label + " (" + tyFe(Date.now() - since) + (timeout ? "/" + tyFe(timeout * 1000) : "") + ")" + RESET;
     }
     function tyStatus() {
       var st = rt.tyState ? rt.tyState() : null;

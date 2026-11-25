@@ -733,7 +733,8 @@
       if (!s && wl !== "hidden" && (V.claude || appLogo())) {
         var task = waiting && (rt.tasks || []).concat(rt.schedules || []).find(t => t.status === "running" && (waiting === "Waiting" ? t.cron || t.once : t.kind === "shell"));
         var since = waiting === "Waiting for background terminal" ? rt.backgroundWaitSince?.() : task && (Number(task.t0) || Date.parse(task.createdAt));
-        var dh = waiting ? '<div class="gv-spin gv-wait">✳ ' + esc(waiting) + (since ? ' · ' + A.fmt.ccDur(Math.max(0, Date.now() - since)) : '') + '</div>' : doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
+        var timeout = waiting === "Waiting for background terminal" && rt.backgroundWaitTimeout?.();
+        var dh = waiting ? '<div class="gv-spin gv-wait">✳ ' + esc(waiting) + (since ? ' · ' + A.fmt.ccDur(Math.max(0, Date.now() - since)) + (timeout ? '/' + A.fmt.ccDur(timeout * 1000) : '') : '') + '</div>' : doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
       var elapsedFrom = s?.specialStatus === "Waiting for background terminal" ? s.phaseAt : s?.t0;
       var lg = s ? appLogo() : "", ic0 = lg ? '<i class="gv-logo">' + lg + "</i>" : "<i>·</i>";
       if (s && wl === "brief") { var hb = '<div class="gv-spin brief">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }

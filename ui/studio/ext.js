@@ -711,6 +711,7 @@
           rt.contextLimit = messages.contextLimit;
           rt.finalAt = messages.finalAt || 0;
           rt.recordedTasks = messages.background || [];
+          rt.notificationTasks = messages.notificationTasks || {};
           session.todo.items = (messages.steps || []).filter(step => step?.title).map((step, index) => ({
             id: String(step.id ?? index + 1), subject: step.title,
             status: step.status === "done" ? "completed" : step.status || "pending"
@@ -769,7 +770,7 @@
           } else session.turns = turns;
           turnHashes = hashes;
           knownPrefix = messages.prefix || "";
-          knownSource = messages.source || "";
+          knownSource = messages.notificationTasks ? messages.source || "" : "";
         }
         try {
           if (!cacheChecked) {
@@ -898,6 +899,23 @@
         headless: function () { return !/^ttys[0-9]+$/.test(findSession(id)?.tty || ""); },
         thinkSince: function () { return rt.thinkingAt || 0; },
         backgroundWaitSince: backgroundWaitSince,
+        backgroundWaitTimeout: function () {
+          var next = null;
+          for (var task of rt.tasks) {
+            if (task.kind !== "shell" || task.status !== "running") continue;
+            var record = task;
+            if (task.clock) {
+              var matches = Object.entries(rt.notificationTasks || {}).filter(([id, t]) =>
+                id === task.id || task.cmd.includes(id) || (t.cmd === task.cmd &&
+                  new Date(t.createdAt).toTimeString().slice(0, 8) === task.clock));
+              if (matches.length !== 1) continue;
+              record = matches[0][1];
+            }
+            var seconds = record.notificationTimeoutSeconds, due = Date.parse(record.createdAt) + seconds * 1000;
+            if (seconds > 0 && Number.isFinite(due) && (!next || due < next.due)) next = {due, seconds};
+          }
+          return next?.seconds || 0;
+        },
         workingStartedAt: function () {
           var ownerStart = findSession(id)?.workingSince;
           if (workingSince) return workingSince;
