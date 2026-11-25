@@ -344,12 +344,17 @@ html.st-reduced .ts-pml.s-work { animation: none; }
 .tpane .term .cx-turn a[href^="http"] { color: #80aefa; }
 .tpane.tl .term .cx-turn a[href^="http"] { color: #2050a5; }
 /* Local file references also have an HTTPS address when Studio is served over HTTPS. */
-.tpane .term .cx-turn a[href^="http"]:not([href*="#vs-file:"]) {
-  background-image: none;
-  text-decoration: underline solid currentColor;
-  text-underline-offset: 2px;
-  -webkit-text-decoration-skip: none;
-  text-decoration-skip-ink: none;
+/* TTU places wide characters in separate inline blocks. Paint one rule on the
+   link fragment so its cells and ANSI style spans cannot draw extra lines. */
+.tpane .term a:is([href^="https://"], [href^="http://"]):not([href*="#vs-file:"], [href*="#vs-flow:"]) {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) left bottom / 100% 1px no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.tpane .term a:is([href^="https://"], [href^="http://"]):not([href*="#vs-file:"], [href*="#vs-flow:"]) span {
+  background-image: none !important;
+  text-decoration: none;
 }
 
 .tpane .ask.cx-prompt { padding-block: 1lh; }

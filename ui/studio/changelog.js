@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-25", ver: "0.2.2.1", items: { fixed: [
+      ["修复终端会话中中文网页链接的下划线逐字断开的问题。", "Draw a continuous underline across wide characters in web links in terminal conversations."]
+    ] } },
     { date: "2026-11-25", ver: "0.2.2", items: { improved: [
       ["公开版本使用三段版本号，日常更新增加第四段。", "Public releases use three version components. Routine updates add a fourth."],
       ["访达使用系统字体和图标，支持应用替身、窄窗口路径导航和居中的图片缩放。", "Finder uses system fonts and icons, resolves app aliases, adapts breadcrumbs to narrow windows and opens zoomable images centered."],
