@@ -664,7 +664,7 @@
         } else sessionStorage.removeItem(workingKey);
         if (active && !terminalWorking) rt.historyToolWorking = false;
         if (rt.terminalWorking === terminalWorking && rt.liveStatus === status && rt.liveFooter === screen.footer) return;
-        var activityChanged = rt.terminalWorking !== terminalWorking;
+        var activityChanged = rt.terminalWorking !== terminalWorking || (!!rt.liveStatus !== !!status) || (/\bthinking\b/i.test(rt.liveStatus || "") !== /\bthinking\b/i.test(status));
         rt.terminalWorking = terminalWorking;
         if (active) {
           var thinking = /\bthinking\b/i.test(status);
@@ -761,7 +761,7 @@
             var prior = previous[index];
             var thought = liveThoughts.get(turn) || (prior?.at === turn.at && prior?.ask === turn.ask && liveThoughts.get(prior));
             if (!activeThoughts.has(thought) || turn.parts.includes(thought)) return;
-            var saved = turn.parts.findLast(p => p.kind === "agyThinking" && p.text &&
+            var saved = thought.text && turn.parts.findLast(p => p.kind === "agyThinking" && p.text &&
               (thought.text.startsWith(p.text) || p.text.startsWith(thought.text)));
             if (saved && saved.text.length >= thought.text.length) return;
             liveThoughts.set(turn, thought);
@@ -984,9 +984,9 @@
                   liveThought = null;
                 }
                 listeners.forEach(fn => fn("status"));
-                if (!event.delta) return;
+                if (!event.delta && !event.thinking) return;
               }
-              rt.streamingText = true;
+              if (event.delta) rt.streamingText = true;
               var turn = session.turns.findLast(t => t.ask === message && (t === localTurn || !optimisticTurns.some(e => e.turn === t)));
               if (!turn || turn.ask !== message) return;
               if (event.thinking) {
@@ -997,9 +997,9 @@
                   chunks.delete(event.step);
                 }
                 liveThoughts.set(turn, liveThought);
-                var delta = event.delta;
+                var delta = event.delta || "";
                 liveThought.text = delta.startsWith(liveThought.text) ? delta : liveThought.text + delta;
-                var stored = turn.parts.find(p => p.kind === "agyThinking" && !p.streaming && p.text &&
+                var stored = turn.parts.find(p => p.kind === "agyThinking" && !p.streaming && liveThought.text && p.text &&
                   (p.text.startsWith(liveThought.text) || liveThought.text.startsWith(p.text)));
                 if (stored && stored.text.length < liveThought.text.length) turn.parts[turn.parts.indexOf(stored)] = liveThought;
                 else if (!stored && !turn.parts.includes(liveThought)) turn.parts.push(liveThought);

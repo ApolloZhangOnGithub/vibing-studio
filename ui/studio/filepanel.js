@@ -141,7 +141,7 @@
         });
       };
       walk(root, 0);
-      return out.join("") || '<div class="fp-empty">空文件夹</div>';
+      return out.join("");
     }
     function paintTree() {
       if (mode !== "tree") return;

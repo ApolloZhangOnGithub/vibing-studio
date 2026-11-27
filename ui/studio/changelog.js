@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.2", items: { improved: [
+      ["访达搜索在目录刷新时保留输入内容和光标。空目录直接留白。", "Finder preserves your search and caret during refreshes. Empty folders open with a blank content area."],
+      ["长对话按阅读位置补绘历史，输入期间推迟后台补绘。运行中工具的计时可以单独更新。", "Long conversations render earlier history near your reading position and defer background work while typing. Running tool timers can update independently."],
+      ["AGY 收到思考开始事件时即显示提示。展开思考时为待译正文预留行高，减少译文出现时的跳动。", "AGY shows a thinking indicator on the first thinking event. Expanded thoughts reserve space while translations arrive to reduce scroll jumps."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.1", items: { improved: [
       ["在分屏中切换长对话时优先显示已打开的正文。悬停预览后点击标签也能更快切换，输入焦点和阅读位置随标签恢复。", "Long conversations switch faster in split view, including after a tab preview. Each tab retains its reading position and receives keyboard focus when selected."],
       ["对话滚动时立即响应第一下滚轮。拖动分屏时复用已按当前宽度排好的历史内容。", "Conversations respond to the first wheel event immediately. Resizing a split reuses history already laid out at the current width."],

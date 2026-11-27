@@ -163,7 +163,7 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .term-toggle { margin-left: auto; border: 0; background: none; color: inherit; font-size: 14px; cursor: pointer; padding: 2px 4px; }
 /* 折叠的一组工具调用：悬停高亮，点开是灰底的详情（同 Claude Code） */
 /* 折叠的一组（Ran 1 shell command）：没有底色、不整行变——只有指到那几个字上，那几个字变亮（浅色主题是变深）；点那几个字展开。前面的点不变色 */
-.tpane .term .grp { display: block; }
+.tpane .term .grp, .tpane .term .tool-clock { display: block; }
 .tpane .term .grp .hot { cursor: pointer; }
 .tpane .term .grp .hot:hover { filter: brightness(1.6); }
 .tpane.tl .term .grp .hot:hover { filter: brightness(0.55); }

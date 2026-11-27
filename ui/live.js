@@ -381,7 +381,8 @@
   //   各处输入框（终端界面、图形界面、Claude App 风格）按回车发送前都问这一句
   var IME_END = 0, lastInputAt = -Infinity;
   var lastPaneSwitchAt = -Infinity;
-  document.addEventListener("input", function () { lastInputAt = performance.now(); }, true);
+  for (const event of ["keydown", "compositionstart", "compositionupdate", "beforeinput", "input"])
+    document.addEventListener(event, () => { lastInputAt = performance.now(); }, true);
   document.addEventListener("compositionend", function () { IME_END = performance.now(); }, true);
   window.TSU_IME = function (e) { return !!(e && (e.isComposing || e.keyCode === 229 || performance.now() - IME_END < 80)); };
   ["wheel", "pointerdown", "touchstart", "touchmove"].forEach(function (t) { document.addEventListener(t, userNow, { capture: true, passive: true }); });
@@ -3020,7 +3021,7 @@
     //   没成就过一会儿再试（还在顶上附近才试，最多 20 次）；在最顶上接着往上滚（滚轮、手指）也再要一次
     var earlierPending = false, earlierT = 0, earlierN = 0, eaV = 0, eaT = 0, eaTop = 0;
     // 离顶多近就开始往前读：至少 12 屏；往上滚得快时按速度再多留 1.5 秒的路（读一段、解析、画上要几百毫秒——滚到顶之前就该接上了）
-    var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(P.rowH * 30, 12 * H, eaV < 0 ? -eaV * 1500 : 0); };
+    var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(P.rowH * 30, 12 * H, Math.min(24 * H, -eaV * 1500)); };
     function wantEarlier() {
       if (earlierPending) return;
       clearTimeout(earlierT);
@@ -3036,7 +3037,7 @@
     V.hasEarlier = () => !!pendTurns?.length || !!rt.more?.();
     var historyWaitingForScroll = false;
     function resumeNearbyHistory() {
-      if (historyWaitingForScroll && P.program === V && P.screen.scrollTop < 6 * P.screen.clientHeight) {
+      if (historyWaitingForScroll && P.program === V && P.screen.scrollTop < Math.max(6 * P.screen.clientHeight, earlyPx() - 2 * P.screen.clientHeight)) {
         historyWaitingForScroll = false;
         var gen = renderGen;
         requestAnimationFrame(function () { restTurns(gen); });
@@ -3066,9 +3067,19 @@
       var sc0 = P.screen, atBottom = sc0.scrollHeight - sc0.scrollTop - sc0.clientHeight < (P.rowH || 16) * 1.5; // 回到最底下（跟着最新的）：不挂（同 Claude Code）——自己量，不只看 following（有的路回到底时它没跟上）
       if (P.program !== V || P.footOnly || P.off || !stickyOn() || P.following() || atBottom) return stickyHide();
       if (sc0.scrollTop < (P.rowH || 16) * 1.5) return stickyHide(); // 最上面（第一问上面没有别的了）：不挂（同 Claude Code：第一条之上没有东西）
-      var sc = P.screen, top = sc.getBoundingClientRect().top, ts = rt.session().turns, lo = 0, hi = ts.length - 1, at = -1, rh = P.rowH || 16; // 最上面那一行被这一条盖着：算到它下沿（盖住的也算翻上去了）
-      var topOf = function (i) { var b = blocks.get(ts[i]); return b && b.isConnected ? b.getBoundingClientRect().top : null; };
-      while (lo <= hi) { var mid = (lo + hi) >> 1, tm = topOf(mid); if (tm === null) { var j = mid; while (j <= hi && topOf(j) === null) j++; if (j > hi) { hi = mid - 1; continue; } mid = j; tm = topOf(mid); } if (tm <= top + rh + 1) { at = mid; lo = mid + 1; } else hi = mid - 1; } // 最后一个开头已经在顶上（或上面）的那一问
+      var sc = P.screen, top = sc.getBoundingClientRect().top, ts = rt.session().turns, rh = P.rowH || 16;
+      const children = P.out.children;
+      let left = 0, right = children.length;
+      while (left < right) {
+        const mid = (left + right) >>> 1;
+        if (children[mid].getBoundingClientRect().top <= top + rh + 1) left = mid + 1;
+        else right = mid;
+      }
+      let hit = children[left - 1];
+      while (hit && !hit._t) hit = hit.previousElementSibling;
+      if (!hit) return stickyHide();
+      var at = idxOf?.get(hit._t);
+      if (ts[at] !== hit._t) at = ts.indexOf(hit._t);
       // 下一问紧接在最上面（顶上这一段只剩一两行、下一句「❯ 原话」就在眼前）：不挂——不然最上面两行一样（同一句话出现两次）
       for (var k2 = at + 1, nAsk = null; k2 < ts.length && k2 <= at + 40 && !nAsk; k2++) { var t2 = ts[k2], b2 = t2 && t2.ask !== undefined && !t2.system ? blocks.get(t2) : null; nAsk = b2 && b2.isConnected ? b2.querySelector(".ask") : null; }
       if (nAsk && nAsk.getBoundingClientRect().top < top + (P.rowH || 16) * 2.5) return stickyHide();
@@ -3246,7 +3257,20 @@
       }
       // 在跑的工具（Running 1 shell command · 5s…）每秒刷新一次时间
       //   整问重画很贵时（一问几百次工具调用）按它的代价放慢：最多占一核的 5%（150 ms 一次 → 3 秒一次）；来了新内容照常马上画（turn 事件）
-      if (tickN % 8 === 0 && rt.stream && performance.now() >= liveNext && rt.stream.turn.parts.some(function (p) { return p.status === "running"; })) { var lt0 = performance.now(); drawTurn(rt.stream.turn); var lc = performance.now() - lt0; liveNext = performance.now() + Math.max(0, lc * 20 - 1000); }
+      if (tickN % 8 === 0 && rt.stream && performance.now() >= liveNext && performance.now() - lastInputAt > 350) {
+        const turn = rt.stream.turn, block = blocks.get(turn);
+        const running = turn.parts.filter(p => p.status === "running");
+        if (running.length && block && !block.classList.contains("cvfar")) {
+          const clocks = block.querySelectorAll(".tool-clock"), start = performance.now();
+          if (clocks.length === running.length && Array.from(clocks).every(el => running.includes(turn.parts[+el.dataset.part]))) {
+            for (const el of clocks) {
+              const h = P.toHtml(toolRows(turn.parts[+el.dataset.part], "call"));
+              setBlockHtml(el, h);
+            }
+          } else drawTurn(turn);
+          liveNext = performance.now() + Math.max(0, (performance.now() - start) * 20 - 1000);
+        }
+      }
       // Teyvat：等着的（Waiting… 44s/5m）、休眠的（Hibernating… 2m 30s）、转到后台还在跑的命令（Running · 12s）——那几问每秒重画（它在等 / 睡时是一秒一下的 tick）
       if (TY && (!rt.stream || tickN % 8 === 0)) rt.session().turns.slice(-40).forEach(function (t) { if ((t.parts || []).some(function (q) { return q.kind === "tool" && (((q.ty === "wait" || q.ty === "hibernate") && q.status === "running") || (q.ty === "execute" && q.status === "background" && !q.done && !q.lost)); })) drawTurn(t); });
       if (tickN % 8 === 0 && panel && (panel.kind === "tasks" || panel.kind === "agents")) renderInput();
@@ -3328,7 +3352,17 @@
           var next = translationTurns.next();
           if (next.done) { translationTurns = null; break; }
           var t = next.value;
-          if (blocks.has(t) && renderedTranslations.get(t) !== trN(t)) drawTurn(t);
+          const block = blocks.get(t);
+          if (block && renderedTranslations.get(t) !== trN(t)) {
+            const sc = P.screen, top = sc.getBoundingClientRect().top;
+            const thought = P.following() ? null : Array.from(block.querySelectorAll(".thought-block")).findLast(el => el.getBoundingClientRect().bottom <= top);
+            const key = thought?.dataset.key, before = thought?.getBoundingClientRect().bottom;
+            drawTurn(t);
+            if (thought) {
+              const after = block.querySelector('.thought-block[data-key="' + CSS.escape(key) + '"]');
+              if (after) sc.scrollTop += after.getBoundingClientRect().bottom - before;
+            }
+          }
         } while (performance.now() < until);
       }
       if (translationPending || translationTurns) translationFrame = requestAnimationFrame(refreshTranslatedTurns);
@@ -3338,7 +3372,7 @@
       if (!pendTurns.length) { pendTurns = null; return; }
       if (P.off || window.STUDIO?.settingsModalOpen?.()) { earlierPaused = true; return; }
       var sc = P.screen;
-      if (agent.connector === "agy" && sc.clientHeight && sc.scrollTop > 8 * sc.clientHeight) {
+      if (sc.clientHeight && sc.scrollTop > Math.max(8 * sc.clientHeight, earlyPx())) {
         historyWaitingForScroll = true;
         return;
       }
@@ -3402,14 +3436,15 @@
     function restTail(gen) {
       if (gen !== renderGen || P.closed || P.program !== V || !pendTail) return;
       if (P.off || window.STUDIO?.settingsModalOpen?.()) { laterPaused = true; return; }
-      var sc = P.screen, delay = Math.max(lastInputAt + 250, lastPaneSwitchAt + 250) - performance.now();
+      var sc = P.screen;
+      var delay = Math.max(lastInputAt + 250, lastPaneSwitchAt + 250) - performance.now();
       if (delay > 0 && (!P.following() || sc.scrollHeight - sc.scrollTop > sc.clientHeight * 3)) {
         setTimeout(function () { restTail(gen); }, delay);
         return;
       }
       var t0 = performance.now();
       while (pendTail.length && performance.now() - t0 < 4) { var t = pendTail.shift(); if (!blocks.has(t)) placeTurn(t, statusEl); }
-      if (pendTail.length) setTimeout(function () { restTail(gen); }, 0); else pendTail = null;
+      if (pendTail.length) requestAnimationFrame(function () { restTail(gen); }); else pendTail = null;
     }
     V.resizeVisible = function () {
       var viewport = P.screen.getBoundingClientRect(), children = P.out.children;
@@ -3902,7 +3937,9 @@
         var attach = ccs && p.name === "SendMessage" && lvl !== "full" && !verbose; // 同 Claude Code：发消息的调用不画，结果「⎿ Message queued …」接在上一块下面（不空一行）；点它看全文
         if (!attach) r.text([""]);
         mark(p.t0);
-        if (runningWithoutSource || !tr.length) r.text(tr);
+        if (runningWithoutSource && tr.length) {
+          r.block('<span class="tool-clock" data-part="' + i + '">' + P.toHtml(tr) + '</span>');
+        } else if (!tr.length) r.text(tr);
         else if (attach) { tr[0] = tr[0].replace(/^(\s*\S+\s+)/, "$1" + HOT) + HOT_END; r.block('<span class="grp" data-key="' + pk + '">' + hotHtml(tr) + "</span>"); }
         else if (/^\s/.test(tr[0])) r.text(tr);
         else {
@@ -4103,15 +4140,17 @@
             var switchThought = expandedThought && window.TSU_TRANSLATE?.replyTarget() && p.text?.trim();
             var originalThought = switchThought && open[thoughtKey + ":translation"];
             showThought = !!showThought && !!p.text?.trim();
-            var heading = "Thought" +
+            var heading = (p.streaming ? "Thinking…" : "Thought") +
               (Number.isFinite(p.seconds) ? " for " + Number(p.seconds.toFixed(1)) + "s" : "");
             var thoughtRows = showThought ? [] : [HOT + D + heading + RESET + HOT_END];
             if (showThought) {
               if (i > 0) r.text(["\u00a0"]);
               var source = p.text.trim();
               var body = originalThought ? source : thoughtBody(turn, source, p.streaming);
+              const pending = body === "…" && source !== body && cfg.translateShow === "only";
+              if (pending) body = source;
               if (body) body.trim().replace(/\r\n?/g, "\n").replace(/\n(?:[ \t]*\n){2,}/g, "\n\n").split("\n").forEach(function (line) {
-                for (var row of wrap(line, Math.max(1, P.cols - 2))) thoughtRows.push("  " + D + row + RESET);
+                for (var row of wrap(line, Math.max(1, P.cols - 2))) thoughtRows.push("  " + D + (pending ? (thoughtRows.length ? " " : "…") : row) + RESET);
               });
             }
             var thoughtClass = expandedThought ? (switchThought ? " trsw" + (originalThought ? " open" : "") : "") : (showThought ? " open" : "");

@@ -1195,7 +1195,7 @@
           ' data-cin="' + esc(arg) + '" data-cname="' + esc(it.name) + '"' + (dir ? ' data-cgo="' + esc(it.dflt || g) + '"' : "") + ">" + iconOf(it) + '<span class="xp-cn">' + nmH(it) + "</span>" + (dir ? '<span class="xp-carr">›</span>' : "") + "</div>";
       }).join("");
       var err = last && w.fs && cache[w.path] && cache[w.path].err;
-      var empty = !items0 ? "…" : err ? tr("无法读取这个文件夹", "Can't read this folder") : !items0.length ? (last && V.q ? tr("未找到结果", "No Results") : tr("空文件夹", "Empty Folder")) : "";
+      var empty = !items0 ? "…" : err ? tr("无法读取这个文件夹", "Can't read this folder") : !items0.length ? (last && V.q ? tr("未找到结果", "No Results") : "") : "";
       return '<div class="xp-col" data-col="' + esc(arg) + '"><div class="xp-colb">' + (rowsH || '<div class="xp-cempty">' + esc(empty) + "</div>") + "</div></div>";
     });
     return '<div class="xp-cols">' + cols.join("") + '<div class="xp-col xp-colfill"></div></div>'; // 右边空出来的：空白（同访达），不画顶上那行，不像多了一栏
@@ -1291,7 +1291,7 @@
       if (view === "columns") body = columnsHtml(w, V, list); // 分栏：空的、正在读的、出错的都在最后一栏里说，不换看法（Agent Finder 也有）
       else if (!list) body = '<div class="xp-pempty">…</div>';
       else if (err) body = '<div class="xp-pempty">' + esc(tr("无法读取这个文件夹", "Can't read this folder")) + "</div>";
-      else if (!list.length) body = '<div class="xp-pempty">' + (q ? "未找到结果" : w.conn ? "暂无会话" : w.root ? tr("最近没有会话", "No recent sessions") : w.agents && !w.path ? "暂无 Agent" : "空文件夹") + "</div>";
+      else if (!list.length) body = '<div class="xp-pempty">' + (q ? "未找到结果" : w.conn ? "暂无会话" : w.root ? tr("最近没有会话", "No recent sessions") : w.agents && !w.path ? "暂无 Agent" : "") + "</div>";
       else if (view === "gallery") body = galleryHtml(list, V);
       else if (view === "grid") body = '<div class="xp-grid">' + list.map(function (it, i) { return '<div class="xp-it' + (i === V.sel ? " on" : "") + (it.dot ? " dot" : "") + '" data-i="' + i + '"' + dragAttr(it) + ">" + thumbIcon(it, "grid") + '<span class="xp-name">' + nmH(it) + "</span></div>"; }).join("") + "</div>";
       else body = '<div class="xp-table" style="' + colStyle() + '"><div class="xp-th">' + (w.agents ? [["name", tr("名称", "Name")], ["time", tr("上次活跃", "Last Active")], ["status", tr("状态", "Status")], ["kind", w.root ? tr("种类", "Kind") : w.conn && !w.cdir ? tr("位置", "Where") : tr("模型", "Model")]] : [["name", tr("名称", "Name")], ["time", tr("修改日期", "Date Modified")], ["size", tr("大小", "Size")], ["kind", tr("种类", "Kind")]]).map(function (h, ci) {
@@ -1305,12 +1305,30 @@
       var status = '<div class="xp-status"><div class="xp-pathbar">' + pathBar(w) + '</div><span class="xp-count' + (msg ? " err" : "") + '">' + (msg ? esc(msg) : list ? esc(items(list.length)) + (V.sel >= 0 && sel ? " · " + esc(tr("已选择 1 项", "1 selected")) : "") : "") + "</span></div>";
       var xpw = (XV.sidew ? "--xp-sidew:" + XV.sidew + "px;" : "") + (XV.panew ? "--xp-panew:" + XV.panew + "px;" : ""), sashT = esc(tr("拖动调整宽度，双击恢复默认", "Drag to resize, double-click to reset"));
       var h = '<div class="xp' + (XV.pane ? " pane" : "") + '"' + (xpw ? ' style="' + xpw + '"' : "") + ">" + sideHtml(w) + '<div class="xp-sash side" data-sash="side" title="' + sashT + '"></div><div class="xp-right">' + tool + '<div class="xp-mid"><div class="xp-main" tabindex="0">' + body + "</div>" + (XV.pane ? '<div class="xp-sash pane" data-sash="pane" title="' + sashT + '"></div><div class="xp-pane">' + (sel ? (view === "columns" && !leafInCols(sel) ? "" : paneHtml(sel, w)) : V.self ? paneHtml(null, w) : "") + "</div>" : "") + "</div>" + status + "</div></div>";
-      if (host.dataset.h !== h) {
-        var had = host.querySelector(".xp-q"), qFocus = had && document.activeElement === had, main0 = host.querySelector(".xp-main"), top = main0 ? main0.scrollTop : 0, mFocus = main0 && document.activeElement === main0;
+      if (host.finderMarkup !== h) {
+        var had = host.querySelector(".xp-q"), main0 = host.querySelector(".xp-main"), top = main0 ? main0.scrollTop : 0, mFocus = main0 && document.activeElement === main0;
         var side0 = host.querySelector(".xs-scroll"), stop = side0 ? side0.scrollTop : 0, pane0 = host.querySelector(".xp-pane"), ptop = pane0 && host.dataset.psel === String(V.arg) + "|" + V.sel ? pane0.scrollTop : 0;
         var colTop = {}; host.querySelectorAll(".xp-col[data-col] > .xp-colb").forEach(function (b) { colTop[b.parentNode.dataset.col] = b.scrollTop; }); // 分栏：每一栏自己滚到哪
         if (host.pathObserver) host.pathObserver.disconnect();
-        host.dataset.h = h; host.innerHTML = h;
+        host.finderMarkup = h;
+        if (!had) host.innerHTML = h;
+        else {
+          // Keep the search field and all its ancestors connected during IME input.
+          const next = document.createElement("template");
+          next.innerHTML = h;
+          let field = had, fresh = next.content.querySelector(".xp-q");
+          while (field.parentElement && field.parentElement !== host) {
+            const parent = field.parentElement, newParent = fresh.parentElement;
+            while (field.previousSibling) field.previousSibling.remove();
+            while (field.nextSibling) field.nextSibling.remove();
+            while (fresh.previousSibling) parent.insertBefore(newParent.firstChild, field);
+            while (fresh.nextSibling) parent.appendChild(fresh.nextSibling);
+            parent.className = newParent.className;
+            parent.style.cssText = newParent.style.cssText;
+            field = parent; fresh = newParent;
+          }
+          if (had.value !== (V.q || "") && !V.searchComposing) had.value = V.q || "";
+        }
         const bar = host.querySelector(".xp-pathbar");
         fitPathBar(bar);
         host.pathObserver = new ResizeObserver(() => fitPathBar(bar));
@@ -1325,8 +1343,7 @@
         });
         var main = host.querySelector(".xp-main"), side1 = host.querySelector(".xs-scroll"), pane1 = host.querySelector(".xp-pane");
         main.scrollTop = top; if (side1) side1.scrollTop = stop; if (pane1) pane1.scrollTop = ptop;
-        if (qFocus) { var qi = host.querySelector(".xp-q"); qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
-        else if (mFocus) main.focus({ preventScroll: true });
+        if (mFocus) main.focus({ preventScroll: true });
         host.querySelectorAll(".xp-pvcard[data-path]").forEach(function (pv) {
           fileView(pv.dataset.path, 800, function (x) { // 预览能滚：多读一些（读的上限 256 KB）
             if (!pv.isConnected) return;
@@ -1657,7 +1674,7 @@
         var dragEl = slot.closest("[draggable]"); if (dragEl) dragEl.draggable = false;
         V.renaming = true;
         var done = false;
-        var back = function () { V.renaming = false; host.dataset.h = ""; V.redraw(); if (main.isConnected) main.focus({ preventScroll: true }); else { var m2 = host.querySelector(".xp-main"); if (m2) m2.focus({ preventScroll: true }); } };
+        var back = function () { V.renaming = false; host.finderMarkup = ""; V.redraw(); if (main.isConnected) main.focus({ preventScroll: true }); else { var m2 = host.querySelector(".xp-main"); if (m2) m2.focus({ preventScroll: true }); } };
         var finish = function (commit) {
           if (done) return;
           done = true;
@@ -1675,7 +1692,7 @@
           if (/\//.test(nm) || nm === "." || nm === "..") { back(); return fail(tr("名称不能包含“/”。", "The name can’t contain “/”.")); }
           if (namesIn(dir).indexOf(nm) >= 0) { back(); return fail(tr("名称“" + nm + "”已被使用。请选取另一个名称。", "The name “" + nm + "” is already taken. Please choose a different name.")); }
           V.renaming = false;
-          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { XV.undo = { from: dst, to: it.path }; host.dataset.h = "";
+          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { XV.undo = { from: dst, to: it.path }; host.finderMarkup = "";
             var current = where(V.arg);
             if (current.fs && (current.path === it.path || current.path.startsWith(it.path + "/"))) {
               delete cache[dir];
@@ -1862,7 +1879,12 @@
         if (e.target.closest(".xp-main")) { V.sel = -1; V.self = false; V.redraw(); host.querySelector(".xp-main").focus({ preventScroll: true }); } // 点空白处：什么都不选（预览栏显示这个文件夹）
       });
       host.addEventListener("dblclick", function (e) { var it = e.target.closest("[data-i]"); if (it) open(V.items[+it.dataset.i], e.metaKey); });
-      host.addEventListener("input", function (e) { if (e.target.classList.contains("xp-q")) { V.q = e.target.value; V.sel = -1; V.redraw(); } });
+      host.addEventListener("compositionstart", e => { if (e.target.matches(".xp-q")) V.searchComposing = true; });
+      host.addEventListener("compositionend", e => {
+        if (!e.target.matches(".xp-q")) return;
+        V.searchComposing = false; V.q = e.target.value; V.sel = -1; V.redraw();
+      });
+      host.addEventListener("input", function (e) { if (e.target.classList.contains("xp-q")) { V.q = e.target.value; V.sel = -1; if (!V.searchComposing) V.redraw(); } });
       host.addEventListener("contextmenu", function (e) {
         if (!S.menu || e.target.closest("input")) return;
         var el = e.target.closest("[data-i]"), sd = e.target.closest("[data-side]");
@@ -1879,7 +1901,7 @@
       });
       var typed = "", typedT = 0;
       host.addEventListener("keydown", function (e) {
-        if (e.target.classList.contains("xp-q")) { if (e.key === "ArrowDown" || e.key === "Enter") { e.preventDefault(); if (V.sel < 0 && V.items.length) { V.sel = 0; V.redraw(); } host.querySelector(".xp-main").focus(); } return; }
+        if (e.target.classList.contains("xp-q")) { if (e.isComposing || V.searchComposing) return; if (e.key === "ArrowDown" || e.key === "Enter") { e.preventDefault(); if (V.sel < 0 && V.items.length) { V.sel = 0; V.redraw(); } host.querySelector(".xp-main").focus(); } return; }
         if (e.target.classList.contains("xp-ren")) return;
         var k = e.key, n = V.items.length, cols = 1, selIt = V.items[V.sel];
         // 同访达：⌘⌫ 移到废纸篓、⌘D 复制、⌃⌘A 制作替身、⌘Z 放回去（刚才移到废纸篓的、改的名）
