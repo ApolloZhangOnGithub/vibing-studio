@@ -11,6 +11,13 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.4", items: { improved: [
+      ["Context 和额度使用同款弹框。", "Context and credits share the same popover styling."],
+      ["本机重载时可先显示上次画面。长对话先显示最近消息，再向前补读历史。", "Local reloads can show the previous view immediately. Long conversations open at recent messages and load earlier history incrementally."],
+      ["网页更新后可复用内容未变的脚本和样式。", "Web updates reuse cached scripts and styles when their contents are unchanged."],
+      ["大 JSONL 文件支持分页查看，可跳到开头或末尾。", "Browse large JSONL files by page and jump to either end."],
+      ["Mac 上的演示文稿预览随分屏宽度缩放。", "Presentation previews on Mac fit the width of their pane."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.3", items: { improved: [
       ["Context 用单色横条显示总占用和分类占比，保留按用量排序的百分比。", "Context uses monochrome bars for total usage and category shares, with percentages sorted by usage."],
       ["重按对话中的文件或网页链接可在当前标签内预览。标签悬停预览按窗口空间放大。", "Force-click a file or web link for an in-place preview. Tab previews now use more of the available window."],

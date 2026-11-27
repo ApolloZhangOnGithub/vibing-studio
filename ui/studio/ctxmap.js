@@ -243,7 +243,7 @@
       h = html(rt, opts);
     }
     cur = document.createElement("div");
-    cur.className = "cx-pop" + (opts && opts.tui ? " cx-pop-tui" : "");
+    cur.className = "cx-pop st-footer-popover" + (opts && opts.tui ? " cx-pop-tui" : "");
     cur.innerHTML = h;
     document.body.appendChild(cur);
     bind(cur);

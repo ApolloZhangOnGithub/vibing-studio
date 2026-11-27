@@ -10,6 +10,9 @@ preview_urls = false
 # 自定义域名（Cloudflare 自动在 paimon.beer 区域建 DNS 记录与证书；网页不经过源站）。要放在任何 [表] 之前，不然会被当成那张表里的字段
 routes = [{ pattern = "code.paimon.beer", custom_domain = true }]
 
+[build]
+command = "python3 ../tools/ui-asset-versions.py"
+
 [dev]
 host = "localhost"   # 本地 wrangler dev 里请求的网址仍是 localhost（不然会按上面的 routes 当成 code.paimon.beer，本地的 DEV_LOGIN 就认不出来）
 

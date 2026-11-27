@@ -30,18 +30,23 @@ html.light .cx { --cx-fg: #1f1f1f; --cx-dim: rgba(31, 31, 31, 0.55); --cx-line: 
 .cx-gi { min-height: 22px; font-size: 12.5px; color: var(--cx-dim); }
 .cx-note { margin: 8px 6px 2px; color: var(--cx-dim); font-size: 11.5px; }
 /* 单独的卡片（TUI 的状态行、/context、窗口底部状态栏打开的） */
-.cx-pop { position: fixed; z-index: 100001; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; background: #262626; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25); }
-html.light .cx-pop { border-color: rgba(0, 0, 0, 0.1); background: #fbfbfa; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.08); }
+.st-footer-popover {
+  padding: 8px 12px;
+  border: 1px solid #8886;
+  border-radius: 6px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 3px 12px #0002;
+}
+.cx-pop { position: fixed; z-index: 100001; }
 /* GUI 的上下文弹出层里：卡片占满它；放不下就在里面滚（标题行不动） */
 .gv-pop-ctx .cx { width: 100%; }
 .gv-pop-ctx { max-height: min(600px, calc(100% - 16px)); overflow-y: auto; overscroll-behavior: contain; }
 .cx-pop { max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; }
-/* TUI：终端的样子——等宽字、方角、配色方案的颜色 */
-.cx-pop-tui { border-radius: 0; background: var(--st-canvas, #111); border-color: var(--st-line, #333); box-shadow: var(--st-shadow, 0 8px 24px rgba(0, 0, 0, 0.5)); }
+/* TUI：沿用终端字体和明细配色 */
 .cx.cx-tui { --cx-fg: var(--st-fg, #ccc); --cx-dim: var(--st-dim, #888); --cx-line: var(--st-line, #333); font: var(--st-fs, 12px)/1.45 var(--st-mono, Monaco, Menlo, "PingFang SC", monospace); width: 300px; }
 .cx.cx-tui .cx-h, .cx.cx-tui .cx-r, .cx.cx-tui .cx-gh, .cx.cx-tui .cx-gi, .cx.cx-tui .cx-sq, .cx.cx-tui .cx-bar, .cx.cx-tui .cx-est { border-radius: 0; }
 
-.cx-pop-tui { padding: 6px 8px; }
 .cx-tui .cx-h { height: auto; min-height: 19px; padding: 0; margin: 0; }
 .cx-tui .cx-bar { margin: 3px 0; height: 3px; }
 .cx-tui .cx-r { min-height: 18px; gap: 6px; padding: 0; }

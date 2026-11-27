@@ -3194,6 +3194,7 @@
       if (f.kind === "") { body.innerHTML = '<div class="st-dim st-pad st-fload">读取中…</div>'; return; } // 读得快的根本看不到这一行（CSS 里过 0.35 秒才淡出来）
       if (f.kind === "missing") { body.innerHTML = '<div class="st-dim st-pad">文件不存在：' + esc(tilde(path)) + "</div>"; return; }
       if (f.kind === "error") { body.innerHTML = '<div class="st-red st-pad">无法读取：' + esc(f.error) + '　<span class="st-k" data-fa="retry">重试</span></div>'; return; }
+      if (f.kind === "jsonl-pages") return jsonlPages(body, path, f.size);
       if (f.kind === "big" || f.kind === "binary") { body.innerHTML = '<div class="st-dim st-pad">' + (f.kind === "big" ? "文件太大（" + kfmt(f.size) + "B），无法预览" : "二进制文件，无法预览") + '　<span class="st-k" data-fa="reveal">在访达中显示</span></div>'; return; }
       if (f.native) return nativeFile(body, path, f, V);
       if (f.kind === "image") return showFileImage(body, f.url);
@@ -3272,6 +3273,40 @@
     if (!stat || stat.type === "dir" || cancelled()) return null;
     return readImageUrl(path, stat.size, cancelled);
   }
+  function jsonlPages(body, path, size) {
+    if (body.jsonlPath === path && body.firstChild) return;
+    body.jsonlPath = path;
+    const pageBytes = 65536, margin = 4096, pages = Math.ceil(size / pageBytes);
+    body.innerHTML = '<div class="st-jsonl"><nav><button type="button">‹</button><input type="number" min="1"><span></span><button type="button">›</button></nav><pre tabindex="0"></pre></div>';
+    const [prev, next] = body.querySelectorAll("button"), input = body.querySelector("input"), text = body.querySelector("pre");
+    input.max = pages;
+    input.setAttribute("aria-label", "页码");
+    prev.title = "上一页"; next.title = "下一页";
+    body.querySelector("nav span").textContent = "/ " + pages;
+    let page = 0, generation = 0;
+    function boundary(bytes, start) {
+      const until = Math.min(bytes.length, start + margin);
+      for (let i = start; i < until; i++) if (bytes[i] === 10) return i + 1;
+      while (start < bytes.length && (bytes[start] & 192) === 128) start++;
+      return start;
+    }
+    async function show(n) {
+      page = Math.max(0, Math.min(pages - 1, Math.trunc(n) || 0));
+      const id = ++generation, offset = page * pageBytes;
+      input.value = page + 1; prev.disabled = !page; next.disabled = page === pages - 1;
+      try {
+        const bytes = new Uint8Array(await LOC().read(path, {offset, max: Math.min(size - offset, pageBytes + margin + 4)}));
+        if (id !== generation || !text.isConnected) return;
+        const start = offset ? boundary(bytes, 0) : 0;
+        const end = page === pages - 1 ? bytes.length : boundary(bytes, pageBytes);
+        text.textContent = new TextDecoder("utf-8", {ignoreBOM:offset !== 0}).decode(bytes.subarray(start, end));
+        text.scrollTop = 0;
+      } catch (e) { if (id === generation) text.textContent = String(e.message || e); }
+    }
+    input.onchange = () => show(input.valueAsNumber - 1);
+    prev.onclick = () => show(page - 1); next.onclick = () => show(page + 1);
+    show(0);
+  }
   function loadFile(path, done) {
     var f = FILES[path], over = false, t0 = Date.now();
     var fin = function () { if (over) return; over = true; clearTimeout(tm); f.loadMs = Date.now() - t0; done(); scheduleFileTrim(); };
@@ -3295,8 +3330,9 @@
           fin();
         })();
       }
+      if (/^(jsonl|ndjson)$/i.test(ext) && st.size > BIG_TEXT) { f.kind = "jsonl-pages"; return fin(); }
       if (st.size > 30 * 1024 * 1024 && !IMG[ext] && ext !== "pdf") { f.kind = "big"; return fin(); }
-      return LOC().read(path).then(function (buf) {
+      return LOC().read(path, ext === "pdf" ? undefined : {max: Math.max(1, st.size)}).then(function (buf) {
         if (over) return;
         var u8 = new Uint8Array(buf);
         if (ext === "pdf") { if (f.url) URL.revokeObjectURL(f.url); f.url = URL.createObjectURL(new Blob([u8], { type: "application/pdf" })); f.kind = "pdf"; return fin(); }
@@ -3336,6 +3372,17 @@
     var info = LOC().info ? LOC().info() : null, home = (info && info.home) || "", h = 0, id = path + "|" + f.mtime + "|" + f.size, q = T().shellEscape;
     for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
     var dir = home + "/Library/Caches/Vibing Studio/quicklook/" + (h >>> 0).toString(36), pv = dir + "/" + String(path).split("/").pop() + ".qlpreview";
+    async function fittedSlide(url) {
+      if (!/\.(pptx?|ppsx?|odp|key)$/i.test(path) || !url.endsWith("/Preview.html")) return url;
+      const dst = pv + "/Preview-fit.html";
+      if (!(await LOC().stat(dst))) {
+        // Quick Look exports fixed-size slides. Give each page the same scale as its text and images.
+        const fit = `<script>(()=>{const page=document.querySelector(".slide");if(!page)return;const width=page.offsetWidth;if(!width)return;function fit(){const scale=Math.min(1,Math.max(0.01,(document.documentElement.clientWidth-16)/width));document.body.style.zoom=scale;document.body.style.margin="0";for(const s of document.querySelectorAll(".slide")){s.style.marginLeft="auto";s.style.marginRight="auto";}}fit();window.addEventListener("resize",fit);})();</script>`;
+        const result = await LOC().exec({cmd:"tmp=$(mktemp " + q(dst + ".XXXXXX") + ") && { cat " + q(pv + "/Preview.html") + " && printf '%s' " + q(fit) + "; } > \"$tmp\" && mv -f \"$tmp\" " + q(dst)});
+        if (result.code) throw new Error(result.err || "无法调整幻灯片预览尺寸");
+      }
+      return fileUrl(dst);
+    }
     // 生成好的预览：Preview.html（文稿、表格、讲演）或 Preview.pdf 等（直接看文件在不在，不起 shell）
     var pick = function () {
       var names = ["Preview.html", "Preview.pdf", "Preview.png", "Preview.jpeg", "Preview.tiff", "Preview.rtf", "Preview.txt"], i = 0;
@@ -3343,7 +3390,7 @@
       return Promise.resolve(next());
     };
     return pick().then(function (u) {
-      if (u) return u;
+      if (u) return fittedSlide(u);
       var ac = new AbortController(), timer = setTimeout(function () { ac.abort(); }, 180000); // 三分钟还没好：不等了
       NV.stop = function () { clearTimeout(timer); ac.abort(); };
       // 标签页关了：还在生成的停掉
@@ -3352,7 +3399,7 @@
         clearInterval(watch); clearTimeout(timer);
         if (ac.signal.aborted) throw new Error("生成预览超时");
         return pick();
-      }).then(function (u2) { if (!u2) throw new Error("快速查看没有生成预览"); return u2; });
+      }).then(function (u2) { if (!u2) throw new Error("快速查看没有生成预览"); return fittedSlide(u2); });
     });
   }
   // 代码编辑器（只看也用它，只读）：CodeMirror 6（vendor/codemirror/cm6.js，第一次打开文件时才载入）——

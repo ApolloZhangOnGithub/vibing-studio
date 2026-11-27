@@ -13,12 +13,12 @@
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta name="robots" content="noindex">
 <!-- 启动不闪白、不闪黑：第一帧就是 App 自己的底色——上次记下的（深、浅各一个；跟随系统时按现在系统是深是浅），界面搭好之前整个藏着，
-     搭好了（live.js 恢复完窗口时叫 TSU_BOOT.done()）淡入。底色记在 localStorage 的 tsu-boot，也交给 App 当原生窗口的底色（下次一开窗就是它）。
+     搭好了（live.js 恢复完窗口时叫 TSU_BOOT.done()）显示。底色记在 localStorage 的 tsu-boot，也交给 App 当原生窗口的底色（下次一开窗就是它）。
      放在所有样式表前面：不用等它们下载完就先定下来 -->
 <style>
   html.termapp.boot, html.termapp.boot body { background: var(--boot-bg) !important; }
+  html.termapp.boot-preview::after { content:""; position:fixed; inset:0; z-index:2147483646; pointer-events:none; background:var(--boot-preview, none) center / 100% 100% no-repeat; }
   html.termapp.boot #desktop { opacity: 0; }
-  html.termapp.boot-in #desktop { transition: opacity .22s cubic-bezier(.2, 0, 0, 1); }
 </style>
 <script>
 (function () {
@@ -34,6 +34,63 @@
   root.style.setProperty("--st-fs", Math.max(10, Math.min(18, fs0 - 1)) + "px");
   root.style.setProperty("--st-fk", String(fs0 / 12));
   root.classList.add("boot");
+  // Keep the last local window as a non-interactive cover until its actual panes are restored.
+  var query = new URLSearchParams(location.search), native = window.nadosNative;
+  var previewKey = native?.local && !query.has("mac") && Number.isInteger(window.TSU_UID)
+    ? "studio-window-preview:" + TSU_UID + ":" + (query.get("win") || "1") : "";
+  if (previewKey && !query.has("fresh") && !query.has("open")) {
+    try {
+      var previous = JSON.parse(localStorage.getItem(previewKey));
+      if (previous && previous.light === light && Math.abs(previous.width-innerWidth) < 24 && Math.abs(previous.height-innerHeight) < 24 &&
+          /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(previous.image)) {
+        root.classList.add("boot-preview");
+        root.style.setProperty("--boot-preview", 'url("' + previous.image + '")');
+        performance.mark("studio-window-preview");
+      }
+    } catch (_) {}
+  }
+  function uncover() {
+    root.classList.remove("boot-preview");
+    root.style.removeProperty("--boot-preview");
+  }
+  function revealWorkspace() {
+    if (!root.classList.contains("boot-preview")) return;
+    var pane = window.TSU_TERM?.front()?.ws?.active;
+    if (!pane?.program?.agentId || !pane.out || pane.out.querySelector(".ask, .blk .say")) return uncover();
+    var observer = new MutationObserver(function () {
+      if (pane.out.querySelector(".ask, .blk .say")) finish();
+    });
+    function finish() {
+      observer.disconnect(); clearTimeout(timer);
+      window.removeEventListener("pointerdown", finish, true);
+      window.removeEventListener("keydown", finish, true);
+      uncover();
+    }
+    var timer = setTimeout(finish, 1200);
+    observer.observe(pane.out, {subtree:true, childList:true});
+    window.addEventListener("pointerdown", finish, true);
+    window.addEventListener("keydown", finish, true);
+  }
+  var savingPreview, previewTimer;
+  function capture() {
+    if (!previewKey || !done || root.classList.contains("boot-preview") || !document.querySelector(".tpane") || document.querySelector('input[type=password]')) return;
+    if (savingPreview) return savingPreview;
+    var width = innerWidth, height = innerHeight, lightNow = root.classList.contains("light");
+    savingPreview = native.call("page.snapshot", {width:Math.min(width, 1200)}).then(function (image) {
+      if (image && image.length < 550000 && width === innerWidth && height === innerHeight) {
+        localStorage.setItem(previewKey, JSON.stringify({width, height, light:lightNow, image}));
+      }
+    }).catch(function () {}).finally(function () { savingPreview = null; });
+    return savingPreview;
+  }
+  function queuePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(capture, 1200);
+  }
+  if (previewKey) {
+    document.addEventListener("click", queuePreview, {passive:true});
+    window.addEventListener("blur", queuePreview);
+  }
   var hex = function (c) { var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(c || ""); if (!m || (m[4] !== undefined && +m[4] < 0.5)) return null; return "#" + [m[1], m[2], m[3]].map(function (x) { return ("0" + (+x).toString(16)).slice(-2); }).join(""); };
   var lastSent = "", tm = 0, done = false;
   // 记下现在真的在用的底色（设置里正预览着别的风格、配色时不记）：mode = auto（跟随系统）/ dark / light，dark、light 各一个颜色
@@ -56,16 +113,16 @@
   }
   new MutationObserver(function () { clearTimeout(tm); tm = setTimeout(save, 400); }).observe(root, { attributes: true, attributeFilter: ["class", "style"] });
   window.TSU_BOOT = {
-    // 界面搭好了：再等两帧（排版、画完）淡入
+    capture: capture,
+    // 布局恢复后，下一次绘制直接显示可交互的窗口。
     done: function () {
       if (done) return;
       done = true;
-      requestAnimationFrame(function () { requestAnimationFrame(function () {
-        root.classList.add("boot-in");
-        root.classList.remove("boot");
-        root.style.removeProperty("--boot-bg");
-        setTimeout(function () { root.classList.remove("boot-in"); save(); }, 300);
-      }); });
+      root.classList.remove("boot");
+      root.style.removeProperty("--boot-bg");
+      revealWorkspace();
+      if (previewKey) queuePreview();
+      performance.mark("studio-workspace-ready");
     },
   };
   setTimeout(function () { window.TSU_BOOT.done(); }, 8000); // 万一没叫到（脚本出错）：也要露出来
@@ -158,70 +215,70 @@
     return loading;
   };
 </script>
-<script src="studio/perf.js"></script><!-- 最先：量谁占着主线程（perf.json） -->
-<script src="ttu-core.js"></script>
-<script src="sync.js"></script>
-<script src="studio/local.js"></script>
-<script src="studio/terms.js"></script>
-<script src="studio/ext.js"></script>
-<script src="studio/dsh.js"></script>
-<script src="sandbox.js"></script>
-<script src="native.js"></script>
-<script src="studio/i18n.js"></script>
-<script src="vendor/xterm/xterm.js"></script>
-<script src="vendor/xterm/addon-fit.js"></script>
-<script src="vendor/xterm/addon-unicode11.js"></script>
-<script src="vendor/xterm/addon-webgl.js"></script>
-<script src="xterm-gl.js"></script>
-<script src="vendor/xterm/addon-web-links.js"></script>
-<script src="agents.js"></script>
-<script src="studio/translate.js"></script>
-<script src="studio/claude.js"></script>
-<script src="studio/tabtime.js"></script><!-- 标签页的时间（beta）：前台、可见、后台工作、休眠各多久 -->
-<script src="studio/ccinfo.js"></script><!-- Claude Code 会话的详情（右键「详情」、辅助侧栏「详情」） -->
-<script src="studio/codex.js"></script>
-<script src="studio/pi.js"></script>
-<script src="studio/teyvat.js"></script>
-<script src="hl.js"></script>
-<script src="studio/overview.js"></script>
-<script src="studio/seti.js"></script><!-- 文件图标的数据（VS Code 的 Seti，MIT） -->
-<script src="studio/ficons.js"></script>
+<script defer src="studio/perf.js"></script><!-- 最先：量谁占着主线程（perf.json） -->
+<script defer src="ttu-core.js"></script>
+<script defer src="sync.js"></script>
+<script defer src="studio/local.js"></script>
+<script defer src="studio/terms.js"></script>
+<script defer src="studio/ext.js"></script>
+<script defer src="studio/dsh.js"></script>
+<script defer src="sandbox.js"></script>
+<script defer src="native.js"></script>
+<script defer src="studio/i18n.js"></script>
+<script defer src="vendor/xterm/xterm.js"></script>
+<script defer src="vendor/xterm/addon-fit.js"></script>
+<script defer src="vendor/xterm/addon-unicode11.js"></script>
+<script defer src="vendor/xterm/addon-webgl.js"></script>
+<script defer src="xterm-gl.js"></script>
+<script defer src="vendor/xterm/addon-web-links.js"></script>
+<script defer src="agents.js"></script>
+<script defer src="studio/translate.js"></script>
+<script defer src="studio/claude.js"></script>
+<script defer src="studio/tabtime.js"></script><!-- 标签页的时间（beta）：前台、可见、后台工作、休眠各多久 -->
+<script defer src="studio/ccinfo.js"></script><!-- Claude Code 会话的详情（右键「详情」、辅助侧栏「详情」） -->
+<script defer src="studio/codex.js"></script>
+<script defer src="studio/pi.js"></script>
+<script defer src="studio/teyvat.js"></script>
+<script defer src="hl.js"></script>
+<script defer src="studio/overview.js"></script>
+<script defer src="studio/seti.js"></script><!-- 文件图标的数据（VS Code 的 Seti，MIT） -->
+<script defer src="studio/ficons.js"></script>
 <template id="library-editor"><script src="vendor/codemirror/cm6.js"></script></template>
-<script src="studio/studio.js"></script>
-<script src="studio/trace.js"></script>
-<script src="studio/browser.js"></script>
+<script defer src="studio/studio.js"></script>
+<script defer src="studio/trace.js"></script>
+<script defer src="studio/browser.js"></script>
 <template id="library-diagram"><script src="vendor/mermaid/mermaid.min.js"></script></template>
-<script src="studio/flowchart.js"></script>
-<script src="live.js"></script>
-<script src="studio/gui.js"></script>
-<script src="studio/guimap.js"></script>
-<script src="studio/vsplit.js"></script>
-<script src="studio/dash.js"></script>
-<script src="studio/files.js"></script>
-<script src="studio/webview.js"></script>
-<script src="studio/rlink.js"></script><!-- 经中转连自己账号里的另一台设备，开一条旁路（远程桌面问那台要账号、经它转发） -->
-<script src="studio/rdp.js"></script>
-<script src="studio/macdesk.js"></script><!-- 另一台 Mac 的屏幕（Mac 对 Mac 的远程桌面，原生在 ScreenShare.swift） -->
-<script src="studio/extview.js"></script>
-<script src="studio/apps.js"></script>
-<script src="studio/devices.js"></script>
-<script src="studio/eco.js"></script><!-- Agent 扩展：Claude Code、pi、Codex 装了什么（钩子、MCP、插件、技能……） -->
-<script src="studio/clips.js"></script><!-- 收藏：对话里收藏的消息、标记（跟着账号同步） -->
-<script src="studio/status.js"></script>
-<script src="desk.js"></script>
-<script src="studio/globalagent.js"></script>
-<script src="studio/macos.js"></script>
-<script src="studio/claudeapp.js"></script>
-<script src="studio/stats.js"></script>
-<script src="studio/ctxmap.js"></script>
-<script src="studio/changelog.js"></script>
-<script src="studio/welcome.js"></script>
-<script src="studio/guide.js"></script>
-<script src="studio/askpop.js"></script>
-<script src="studio/tdrawer.js"></script>
-<script src="studio/filepanel.js"></script>
-<script src="studio/seg.js"></script>
-<script src="studio/remote-host.js"></script><!-- App 里：让 iPad 借这台 Mac 用（设置 › 通用，默认关） -->
-<script src="studio/vsnative.js"></script><script src="studio/vsisland.js"></script><!-- iPhone App：灵动岛 / 锁屏的实时活动 --><!-- iPad App 的「iPad Native」界面：页面只画当前这段对话，列表、输入框、顶栏是 App 原生画的 -->
+<script defer src="studio/flowchart.js"></script>
+<script defer src="live.js"></script>
+<script defer src="studio/gui.js"></script>
+<script defer src="studio/guimap.js"></script>
+<script defer src="studio/vsplit.js"></script>
+<script defer src="studio/dash.js"></script>
+<script defer src="studio/files.js"></script>
+<script defer src="studio/webview.js"></script>
+<script defer src="studio/rlink.js"></script><!-- 经中转连自己账号里的另一台设备，开一条旁路（远程桌面问那台要账号、经它转发） -->
+<script defer src="studio/rdp.js"></script>
+<script defer src="studio/macdesk.js"></script><!-- 另一台 Mac 的屏幕（Mac 对 Mac 的远程桌面，原生在 ScreenShare.swift） -->
+<script defer src="studio/extview.js"></script>
+<script defer src="studio/apps.js"></script>
+<script defer src="studio/devices.js"></script>
+<script defer src="studio/eco.js"></script><!-- Agent 扩展：Claude Code、pi、Codex 装了什么（钩子、MCP、插件、技能……） -->
+<script defer src="studio/clips.js"></script><!-- 收藏：对话里收藏的消息、标记（跟着账号同步） -->
+<script defer src="studio/status.js"></script>
+<script defer src="desk.js"></script>
+<script defer src="studio/globalagent.js"></script>
+<script defer src="studio/macos.js"></script>
+<script defer src="studio/claudeapp.js"></script>
+<script defer src="studio/stats.js"></script>
+<script defer src="studio/ctxmap.js"></script>
+<script defer src="studio/changelog.js"></script>
+<script defer src="studio/welcome.js"></script>
+<script defer src="studio/guide.js"></script>
+<script defer src="studio/askpop.js"></script>
+<script defer src="studio/tdrawer.js"></script>
+<script defer src="studio/filepanel.js"></script>
+<script defer src="studio/seg.js"></script>
+<script defer src="studio/remote-host.js"></script><!-- App 里：让 iPad 借这台 Mac 用（设置 › 通用，默认关） -->
+<script defer src="studio/vsnative.js"></script><script defer src="studio/vsisland.js"></script><!-- iPhone App：灵动岛 / 锁屏的实时活动 --><!-- iPad App 的「iPad Native」界面：页面只画当前这段对话，列表、输入框、顶栏是 App 原生画的 -->
 </body>
 </html>

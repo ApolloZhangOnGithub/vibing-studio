@@ -1,4 +1,5 @@
 // index.js —— code.paimon.beer 的 Worker：GitHub 登录（邀请制）、会话 Cookie、额度账本（人民币）、模型流式代理（Anthropic 格式，默认接 DeepSeek）。
+import assetVersions from "./ui-asset-versions.js";
 import { fetchPage } from "./fetch.js";
 import { account } from "./account.js";
 import { translate, translateUsage, svcLog } from "./translate.js";
@@ -100,7 +101,8 @@ async function site(req, env, url) {
   // 以前 60 来个文件每次启动都要各问一遍「改了没有」（线上每个一个来回），第一帧要等它们。部署了新版本，页面里的地址跟着变，旧的自然不再用。
   // 本地开发（DEV_STATIC）不带：文件随时在改
   const ver = !env.DEV_STATIC && env.CF_VERSION_METADATA && env.CF_VERSION_METADATA.id ? String(env.CF_VERSION_METADATA.id).slice(0, 8) : "";
-  const pinned = !!ver && !isPage && url.searchParams.get("v") === ver;
+  const assetVersion = assetVersions[url.pathname.slice(1)] || ver;
+  const pinned = !!ver && !isPage && url.searchParams.get("v") === assetVersion;
   // 网页按它在静态文件里的规范地址去取：静态文件那一层会把 /terminal.html 307 到 /terminal（多一个来回，而且跳过去以后不算网页、账号 id 没写进去——同步就断了），
   // 这里直接取 /terminal 的内容、在原地址给出去
   // 打开网址就是 App 本身（Vibing Studio 的工作台，terminal.html），同 iPhone、iPad 的 App；桌面模拟器（一个假的 macOS）只在 /simulator
@@ -130,7 +132,7 @@ async function site(req, env, url) {
       });
     }
     // 站内的 .js / .css（<script src>、<link href>，相对路径）带上版本号：见上面 pinned
-    if (ver) html = html.replace(/(<(?:script|link)\b[^>]*?\s(?:src|href)=")(?![a-z][\w+.-]*:|\/\/)([\w./-]+\.(?:js|css))(")/gi, (m, a, p, z) => a + p + "?v=" + ver + z);
+    if (ver) html = html.replace(/(<(?:script|link)\b[^>]*?\s(?:src|href)=")(?![a-z][\w+.-]*:|\/\/)([\w./-]+\.(?:js|css))(")/gi, (m, a, p, z) => a + p + "?v=" + (assetVersions[p] || ver) + z);
     h.delete("content-length");
     h.delete("etag");
     return new Response(html, { status: 200, headers: h });

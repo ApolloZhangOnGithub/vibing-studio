@@ -579,7 +579,10 @@
     var farIO = window.IntersectionObserver ? new IntersectionObserver(function (es) {
       if (P.off) return;
       var keep = selActive(), shown = false;
-      es.forEach(function (e) { if (e.isIntersecting) { if (e.target.classList.contains("cvfar")) { e.target.classList.remove("cvfar"); shown = true; } } else if (!keep) e.target.classList.add("cvfar"); });
+      es.forEach(function (e) { if (e.isIntersecting) { if (e.target.classList.contains("cvfar")) { e.target.classList.remove("cvfar"); shown = true; } } else if (!keep && !e.target.classList.contains("cvfar")) {
+        if (e.boundingClientRect.height > 0) e.target.style.setProperty("--cv-height", e.boundingClientRect.height + "px");
+        e.target.classList.add("cvfar");
+      } });
       if (shown && keep) paintSoon(); // 露出来的那几段在选区里：底色补上
     }, { root: screen, rootMargin: "300% 0px 300% 0px" }) : null;
     // 按着拖选时：顶上盖着的那几层（吸顶那一行、上下两条遮挡、「Jump to bottom」）让鼠标穿过去——拖到边上自动滚时，选区接着往新露出来的字里长
@@ -2127,7 +2130,7 @@
     }
   };
   // App 退出前（原生的 applicationShouldTerminate 叫它）：写了一半的话马上记下；正在送的那一句本来就随时记着（claude.js 的 lqSave）
-  window.TSU_FLUSH = function () { try { if (draftsT) { clearTimeout(draftsT); saveDrafts(); } } catch (e) { /* 记不了就算了 */ } return Promise.all(imageWrites); };
+  window.TSU_FLUSH = function () { try { if (draftsT) { clearTimeout(draftsT); saveDrafts(); } } catch (e) { /* 记不了就算了 */ } return Promise.all([...imageWrites, window.TSU_BOOT?.capture?.()]); };
   document.addEventListener("visibilitychange", function () { if (document.hidden && draftsT) saveDrafts(); });
   // ---- 对话里的内容（每个区域右上角的 ··· ；设置 › 对话）：消息、回答、思考、工具、你的 ! 命令、图片、系统 ----
   // 工具按类分，每类一个档位：一次工具调用 = 调用（⏺ Name(参数)）+ 结果（⎿ …）——完整结果 / 结果预览（前几行）/ 只看调用（一行摘要）/ 隐藏
@@ -2432,9 +2435,9 @@
     if (old && old.matches(":popover-open")) { old.hidePopover(); old.remove(); return; }
     if (old) old.remove();
     var box = document.createElement("div");
-    box.className = "agy-quota-popup";
+    box.className = "agy-quota-popup st-footer-popover";
     box.setAttribute("popover", "manual");
-    box.style.cssText = "position:fixed;inset:auto;margin:0;padding:8px 12px;border:1px solid #8886;border-radius:6px;background:Canvas;color:CanvasText;box-shadow:0 3px 12px #0002;white-space:pre;font:" + getComputedStyle(button).font;
+    box.style.cssText = "position:fixed;inset:auto;margin:0;white-space:pre;font:" + getComputedStyle(button).font;
     var agyPeriods = {"gemini-5h":"Gemini · 5h", "gemini-weekly":"Gemini · weekly", "3p-5h":"Third-party · 5h", "3p-weekly":"Third-party · weekly"};
 
     box.style.columnGap = "0.65em";
@@ -3553,7 +3556,7 @@
           if (j < ts.length) { pendTail = ts.slice(j); setTimeout(function () { restTail(gen); }, 0); }
           anchored = true;
         }
-        else if (ts.length < 24) ts.forEach(function (t) { appendTurn(t, true); });
+        else if (ts.length < 2) ts.forEach(function (t) { appendTurn(t, true); });
         else {
           var need = Math.ceil(P.screen.clientHeight / (P.rowH || 16)) * 3, got = 0, i = ts.length - 1;
           firstBlk = statusEl;
@@ -10838,9 +10841,10 @@
   // agent 的通知被点了：开一个接上它的标签页
   A.on(function (type, id) { if (type === "open" && id) window.TSU_TERM.agent(id); });
 
-  // ---- 启动：等字体、agent 数据；恢复上次的窗口（旧版布局里存的是会话 id：换成那个会话的 agent）----
-  // agent 数据、登录状态（/api/me）同时要，不排队（线上每个请求一个来回）；resumeAll 等两样都好了才跑，谁后到谁叫
-  var ready = (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { return Promise.all([A.ready(), A.refreshMe()]); });
+  // 开始读取本地会话。恢复窗口前，各种页面和连接器须已注册。
+  var modulesReady = document.readyState !== "complete" ? new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, {once:true})) : Promise.resolve();
+  var accountReady = A.refreshMe();
+  var ready = Promise.all([modulesReady, A.ready(), window.TSU_LOCAL ? null : accountReady]);
   var restored = ready.then(function () {
     var first = new TermWindow(document.getElementById("win"), window.TSU_DESK && TSU_DESK.apps && TSU_DESK.apps.win);
     wins.push(first);
@@ -10884,16 +10888,10 @@
     persistAll();
     if (!saved) setTimeout(function () { try { autoReopen(); } catch (e) { setTimeout(function () { throw e; }, 0); } }, 1500);
     syncToggles();
-    A.refreshMe().then(function () { var tw = frontTerm(); if (tw && tw.ws.active) tw.ws.active.focus(); });
+    var tw = frontTerm(); if (tw && tw.ws.active) tw.ws.active.focus();
   });
-  // 窗口都建回来了：整个界面淡入（terminal.html 的 TSU_BOOT；之前一直是 App 的底色）。出错了也要露出来
-  //   还要等设置文件读过一次（字号、配色照文件里的）——不然露出来以后才换，看得见字号跳一下；最多等 0.9 秒
-  //   开着的 Claude Code 会话也等它读完第一段（claude.js 的 TSU_CC_BOOT）再露出来——最多 2.5 秒，读得慢的就先露出来接着读
-  var bootShow = function () {
-    var sr = window.STUDIO && STUDIO.settingsReady ? STUDIO.settingsReady() : null, cap = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
-    var cc = function () { return Promise.all((window.TSU_CC_BOOT || []).map(function (p) { return Promise.resolve(p).catch(function () {}); })); };
-    Promise.all([Promise.race([sr || Promise.resolve(), cap(900)]), Promise.race([cap(0).then(cc), cap(2500)])]).then(function () { if (window.TSU_BOOT) TSU_BOOT.done(); });
-  };
+  // 字体、设置和连接器记录可以继续加载，用户已经能操作恢复好的窗口。
+  var bootShow = function () { if (window.TSU_BOOT) TSU_BOOT.done(); };
   restored.then(bootShow, bootShow);
   // 桌面等终端窗口都建回来再排叠放（desk.js 在这个文件后面才载入：等页面脚本都跑完再交）
   document.addEventListener("DOMContentLoaded", function () { if (window.TSU_DESK && TSU_DESK.holdRestore) TSU_DESK.holdRestore(restored); });

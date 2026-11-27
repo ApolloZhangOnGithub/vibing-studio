@@ -541,7 +541,7 @@
     }
     return rows;
   }
-  function Runtime(aid, info, historyLines) {
+  function Runtime(aid, info, historyOnly) {
     var rt = this, sid = aid.slice(3), subs = [], turns = [], sess = { id: sid, title: info.title || sid.slice(0, 8), turns: turns, todo: { items: [] }, ctx: 0, window: 0, updated: info.mtime || 0 };
     var agent = rt.agent = { id: aid, name: sess.title, effort: "", access: "rw", model: info.model || "", current: sid, goal: null, archived: false, claude: true, connector: "codex" };
     rt.info = info; rt.sid = sid; rt.label = "Codex";
@@ -689,7 +689,10 @@
         if (historyStart) {
           var page = await readPage(historyStart);
           if (gen !== generation) return false;
-          rows = new Runtime(aid, Object.assign({}, info), page.lines).session().turns;
+          const segment = new Runtime(aid, Object.assign({}, info), true);
+          await segment.readHistory(page.lines, () => gen === generation);
+          if (gen !== generation) return false;
+          rows = segment.session().turns;
           historyStart = page.start;
           startOfSegment(page);
         } else {
@@ -1032,10 +1035,10 @@
       var j = u8.lastIndexOf(10), end = j + 1 > a ? j + 1 : a;
       return { end: end, lines: end > a ? dec(u8.subarray(a, end)).split("\n") : [] };
     }
-    async function readPage(end) {
+    async function readPage(end, firstBytes = TAIL) {
       var cursor = end, suffix = new Uint8Array(0), groups = [], consumed = end;
       do {
-        var start = Math.max(0, cursor - TAIL);
+        var start = Math.max(0, cursor - (cursor === end ? firstBytes : TAIL));
         var block = new Uint8Array(await LOC.read(info.path, { offset: start, max: cursor - start }));
         if (block.length !== cursor - start) throw new Error("Codex 历史记录传输不完整");
         var bytes = new Uint8Array(block.length + suffix.length);
@@ -1073,7 +1076,7 @@
           page = {start:cached.start, end:cached.end + suffix.end, lines:cached.lines.concat(suffix.lines)};
         }
       }
-      if (!page) page = await readPage(st.size);
+      if (!page) page = await readPage(st.size, 256 << 10);
       if (page.end - page.start <= 2 * TAIL) {
         var last = page.lines.findLast(line => line.length);
         var tail = last ? Array.from(last.slice(-256)).slice(1).join("") + "\n" : "";
@@ -1185,7 +1188,7 @@
       if (v) rt.stream = { t0: running && runAt ? runAt : Date.now(), turn: cur && running && !cur.stats ? cur : { parts: [] }, outTokens: 0, thinking: false, firstAt: Date.now(), verb: "Working", specialStatus: phase(), phaseAt: compactSince || pendingPolls.values().next().value || 0, answer: "", ctl: { abort: function () {} } };
       else { rt.stream = null; clearInterval(ticker); ticker = 0; if (cur) { settle(cur); emit("turn", cur); } }
       emit("status"); emit("state");
-      if (!historyLines) document.dispatchEvent(new Event("tsu-cx"));
+      if (!historyOnly) document.dispatchEvent(new Event("tsu-cx"));
     }
     // 在跑：这边起的 codex exec 还没退；或者记录里一问开了头还没结束，而且它正开在 Codex 里（守护进程载入着）或者文件一分钟内写过（没开着又停在半截的：Codex 退出了，不一直转）；
     //   刚排进 Codex 的（codex queue）：它开始写之前的十秒也算
@@ -1566,7 +1569,18 @@
       });
       return Promise.resolve({ groups: [{ title: "Needs input", items: needs }, { title: "Working", items: working }, { title: "Completed", items: done }].filter(function (g) { return g.items.length; }), running: working.length - (busy ? 1 : 0) });
     };
-    if (historyLines) { historyLines.forEach(feedLine); turns.forEach(settle); }
+    if (historyOnly) rt.readHistory = async function (lines, current) {
+      let deadline = performance.now() + 4;
+      for (const line of lines) {
+        feedLine(line);
+        if (performance.now() >= deadline) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+          if (!current()) return;
+          deadline = performance.now() + 4;
+        }
+      }
+      turns.forEach(settle);
+    };
   }
 
   // /init（同 Codex 的 prompt_for_init_command.md）
