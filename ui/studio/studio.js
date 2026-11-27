@@ -1080,7 +1080,7 @@
     lab.title = aid ? (AP === tw.ws.active ? nm : "当前：" + nm + "（最近使用的 Agent；点按以切换）") : "";
     lab.classList.toggle("away", !!aid && AP !== tw.ws.active);
     var art = null; try { art = aid && window.TSU_AGENTS ? TSU_AGENTS.runtime(aid) : null; } catch (e) { art = null; }
-    lab.classList.toggle("busy", !!(art && (art.stream || (art.state && art.state() === "working")))); // 在跑：标志是橙的；闲着是灰的
+    lab.classList.toggle("busy", !!(AP?.program?.waitingLabel?.() || art?.stream || art?.state?.() === "working")); // 在跑：标志是橙的；闲着是灰的
     var fam = familyHost() === "side" && AP ? familyHtml(AP, subsInFoot(tw) ? ["todo", "bg"] : null) : ""; // 子 Agent 在面板的 Agent 那一层时，这里只放任务清单、后台任务
     var empty = aid ? "" :
       '<div class="st-empty st-noag"><div>没有打开的 agent</div><div class="st-dim">打开或新建一个 agent，这里是它的任务清单、后台任务和子 Agent</div>' + (!window.TSU_CONNECTORS || TSU_CONNECTORS.on("paimon") ? '<button type="button" class="st-btn" data-st="new-agent">新建 Agent</button>' : "") + "</div>"; // Paimon Code 连接器关了：没有「新建 Agent」

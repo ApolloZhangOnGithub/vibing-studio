@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.8", items: { improved: [
+      ["向上翻长对话时，包含大量工具调用的旧消息按段排版，从正在阅读的位置向前补齐。", "Scrolling back through tool-heavy conversations now lays out older turns in batches, starting at the reading position."],
+      ["等待回复、后台任务或定时唤醒时，后台标签保留连接器颜色，等待提示使用状态色。", "Background tabs retain their connector colors while awaiting a reply, background task, or scheduled wakeup. Waiting indicators use status colors."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.7", items: { fixed: [
       ["重载工作区或切换快速预览时，关闭上一页的原生网页视图，修复 TensorBoard 等网页盖住对话的问题。", "Reloading the workspace or switching Quick Look items closes the previous native web view so it cannot cover a conversation."],
       ["图片查看器支持双指平移、捏合缩放和鼠标滚轮缩放。放大后可使用横向和纵向滚动条。", "Pan images with two fingers and zoom with a pinch or a mouse wheel. Scrollbars stay available on both axes when the image overflows."],

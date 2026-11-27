@@ -203,7 +203,19 @@
   //   黄（warning：想着的转圈那一行）：它浅色主题是褐色 rgb(150,108,30)——不像黄。取深色主题同一种黄（255,193,7，色相 45°）只压暗一点，白底上还是黄
   var LIGHT_RGB = { "177;185;249": "87;105;247", "78;186;101": "44;122;57", "255;107;128": "171;43;63", "255;193;7": "232;170;0", "61;187;255": "0;119;204", "113;142;244": "74;99;200", "110;170;255": "87;101;247", "0;200;210": "30;122;110" };
   var forLight = function (s) { return s.replace(/\x1b\[38;2;(\d+;\d+;\d+)m/g, function (m, c) { return LIGHT_RGB[c] ? ESC + "[38;2;" + LIGHT_RGB[c] + "m" : m; }); };
-  var W = function (s) { return TTU.visibleWidth(s); };
+  const glyphWidths = new Map();
+  function W(s) {
+    if (s.length !== 1) return TTU.visibleWidth(s);
+    const code = s.charCodeAt(0);
+    if (code >= 32 && code < 127) return 1;
+    let width = glyphWidths.get(s);
+    if (width === undefined) {
+      width = TTU.visibleWidth(s);
+      if (glyphWidths.size >= 4096) glyphWidths.delete(glyphWidths.keys().next().value);
+      glyphWidths.set(s, width);
+    }
+    return width;
+  }
   // 把一行（带颜色码、带私用区记号的）截到 cols 格宽：颜色码、记号都留着（不拆开成对的 span），只丢看得见的字，最后补一个「…」
   function clipLine(s, cols) {
     if (!s || W(s) <= cols) return s;
@@ -545,7 +557,7 @@
       // 对话区按 P.cols；输入框那块比对话区宽（右边没有缩略图），用它自己的宽度（width），不能按对话区的截
       var cw = width === undefined ? P.cols : width;
       if (cw) lines = [].concat.apply([], lines.map(function (l) { return String(l).split("\n"); })).map(function (l) { return clipLine(l, cw); });
-      var j = lines.join("\n"), h = TTU.ansiToHtml(P.light ? forLight(j) : j, P.theme, { widthOf: TTU.visibleWidth, links: true });
+      var j = lines.join("\n"), h = TTU.ansiToHtml(P.light ? forLight(j) : j, P.theme, { widthOf: W, links: true });
       if (window.STUDIO && STUDIO.hlHtml) h = STUDIO.hlHtml(h); // 代码块的颜色跟着「高亮配色」
       if (!/[\uE000-\uE018]/.test(h)) return h;
       // TTU 把认不得宽度的字（私用区）各自包进一格宽的 inline-block：先拆掉那层，再把记号换成元素
@@ -2938,7 +2950,10 @@
       if (stream?.wait) return "Waiting for API response";
       if (/^Waiting for\b/i.test(stream?.specialStatus || "")) return stream.specialStatus;
       if (V.needsYou?.()) return "Waiting for your answer";
-      if (rt.tyState?.()?.state === "waiting") return "Waiting";
+      const tyState = rt.tyState?.()?.state;
+      if (tyState === "waiting") return "Waiting";
+      if (tyState === "hibernating") return "Hibernating";
+      if (tyState === "paused") return "Paused";
       if (agyTerminalWait()) return terminalWaitLabel;
       if (!V.working()) {
         var stats = lastDone()?.stats;
@@ -3356,7 +3371,18 @@
     // 整段重画（换了宽度：拆分、挪标签页、合并……；换了筛选）：贴着底看的时候，先画最后几问（够三屏，马上就看得到），
     //   更早的在后面分几次补上（一次十来毫秒，插在最前面；贴着底的还贴着底，往上翻着看的那段不动）——几千块的大会话一次整段画完要一两秒，拆分、挪标签页时卡住
     var renderGen = 0, pendTurns = null, firstBlk = null;
-    function placeTurn(t, ref) { var h = htmlOf(t, liveOf(t)), b = P.block(h, ref); b._n = htmlN; b._rowsVersion = rowCache.get(t)?.version; b._t = t; blocks.set(t, b); markOpened(b); flagMark(b, t); return b; }
+    function finishTurnBlock(t, b, count) {
+      b._n = count;
+      b._rowsVersion = rowCache.get(t)?.version;
+      b._t = t;
+      blocks.set(t, b);
+      markOpened(b);
+      flagMark(b, t);
+      return b;
+    }
+    function placeTurn(t, ref, h = htmlOf(t, liveOf(t))) {
+      return finishTurnBlock(t, P.block(h, ref), htmlN);
+    }
     // 一问画成的那一段：宽度、字宽、深浅、筛选、设置、后台任务、这一问自己（有变就 drawTurn 升一版）、它的译文到了几段都没变——直接用上次画的；
     //   拆分、挪标签页、合并时宽度来回变，变回来过的那个宽度不用再算一遍（几千行的一问算一遍要几十上百毫秒）。在跑的那一问、还有在跑的工具的不留
     var rowCache = new WeakMap(), renderedTranslations = new WeakMap(), rcSig = "", htmlN = 0, rowsVersion = 0, idxOf = null;
@@ -3392,6 +3418,11 @@
       const han = /(?:<span style="display:inline-block;width:calc\(var\(--ttu-cell,1ch\)\*2\)">[\u3400-\u4dbf\u4e00-\u9fff]<\/span>){2,}/g;
       const spaces = /(?:<span style="display:inline-block;width:var\(--ttu-cell,1ch\)"> <\/span>){2,}/g;
       const rules = /(<span class="ttu-box" style="[^"]+">─<\/span>)(?:\1)+/g;
+      // VS16 requests emoji presentation. Resolve that fixed-width cell directly
+      // instead of asking CoreText to search the installed fonts during layout.
+      if (html.includes("\uFE0F")) {
+        html = html.replace(/(<span )(style="display:inline-block;width:[^"]+">)([^<>]*\uFE0F[^<>]*<\/span>)/gu, '$1class="emoji-cell" $2$3');
+      }
       return html.replace(han, run => {
         const chars = run.replace(/<[^>]+>/g, "");
         return '<span class="han-run" style="width:calc(var(--ttu-cell,1ch)*' + 2 * chars.length + ')">' + chars + '</span>';
@@ -3404,6 +3435,10 @@
       });
     }
     function htmlOf(t, live, fresh) {
+      const build = buildTurnHtml(t, live, fresh, false);
+      return build.next().value;
+    }
+    function* buildTurnHtml(t, live, fresh, incremental) {
       var run = !live && (t.parts || []).some(function (x) { return x.status === "running"; });
       var ts0 = rt.session().turns, ix = idxOf && idxOf.has(t) ? idxOf.get(t) : ts0.indexOf(t), nx = ts0[ix + 1];
       // 这一问在第几个（点开 / 收起按它找到是哪一问；前面接上更早的记录时都往后挪）、后面紧跟的是不是回顾（做完那一行挪不挪）也算
@@ -3412,7 +3447,8 @@
       var k = rcSig + (P.textFilter && isCurrentToolTurn(t, rt) ? "|current" : "") + "|" + (t.__rv || 0) + "|" + translated + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
       visibleThoughtSources.delete(t);
-      var rows = turnRows(t, live), h = compactTranscriptCells(P.join(rows));
+      var rows = yield* turnRows(t, live, incremental);
+      var h = compactTranscriptCells(P.join(rows));
       htmlN = rows.length;
       if (!live && !run) rowCache.set(t, { k: k, h: h, n: rows.length, version: ++rowsVersion }); else rowCache.delete(t);
       return h;
@@ -3453,6 +3489,11 @@
       }
       if (translationPending || translationTurns) translationFrame = requestAnimationFrame(refreshTranslatedTurns);
     }
+    var earlierBuild = null;
+    function discardEarlierBuild() {
+      earlierBuild?.block?.remove();
+      earlierBuild = null;
+    }
     function restTurns(gen) {
       if (gen !== renderGen || P.closed || P.program !== V || !pendTurns) return;
       if (!pendTurns.length) { pendTurns = null; return; }
@@ -3469,7 +3510,41 @@
         return;
       }
       var h0 = sc.scrollHeight, top0 = sc.scrollTop, fol = P.following(), t0 = performance.now();
-      while (pendTurns.length && performance.now() - t0 < 4) { var t = pendTurns.pop(); if (!blocks.has(t) && firstBlk && firstBlk.parentNode === P.out) firstBlk = placeTurn(t, firstBlk); }
+      while (pendTurns.length && performance.now() - t0 < 4) {
+        const turn = pendTurns[pendTurns.length - 1];
+        if (blocks.has(turn) || firstBlk?.parentNode !== P.out) { discardEarlierBuild(); pendTurns.pop(); continue; }
+        if (!earlierBuild || earlierBuild.turn !== turn || earlierBuild.rev !== turn.__rv) {
+          discardEarlierBuild();
+          earlierBuild = { turn, rev: turn.__rv, iterator: buildTurnHtml(turn, liveOf(turn), false, true) };
+        }
+        const job = earlierBuild;
+        if (!job.block) {
+          const next = job.iterator.next();
+          if (!next.done) continue;
+          if (next.value.length < 32768) {
+            firstBlk = placeTurn(turn, firstBlk, next.value);
+            pendTurns.pop();
+            earlierBuild = null;
+            continue;
+          }
+          const template = document.createElement("template");
+          template.innerHTML = next.value;
+          job.remaining = template.content;
+          job.count = htmlN;
+          job.block = P.block("", firstBlk);
+        }
+        // Grow upwards from the reading anchor. The remaining prefix is detached,
+        // so it cannot cover the viewport or force layout in this frame.
+        const batch = document.createDocumentFragment();
+        for (let i = 0; i < 24 && job.remaining.lastChild; i++) batch.prepend(job.remaining.lastChild);
+        job.block.prepend(batch);
+        if (!job.remaining.lastChild) {
+          firstBlk = finishTurnBlock(turn, job.block, job.count);
+          earlierBuild = null;
+          pendTurns.pop();
+        }
+        break;
+      }
       var dh = sc.scrollHeight - h0;
       if (fol) P.stick(); else if (dh) { sc.scrollTop = top0 + dh; if (P.onScroll) P.onScroll(); }
       if (pendTurns.length) requestAnimationFrame(function () { restTurns(gen); }); else pendTurns = null;
@@ -3482,6 +3557,7 @@
       for (var i = 0; i < ts.length; i++) if (blocks.has(ts[i])) { k = i; break; }
       if (k < 0) return false;
       var sc = P.screen, h0 = sc.scrollHeight, top0 = sc.scrollTop, fol = P.following(), H = sc.clientHeight || 600;
+      discardEarlierBuild();
       idxOf = new Map(); ts.forEach(function (t, j) { idxOf.set(t, j); });
       // 会话记录在一问中间切开的：原来的第一问并进了更早那一问（内容一起画在那一块里）——它自己那块拿掉
       blocks.forEach(function (b, t) { if (!idxOf.has(t)) { if (b.parentNode) b.parentNode.removeChild(b); blocks.delete(t); } });
@@ -3500,6 +3576,7 @@
     }
     V.flushTurns = function () { flushTurns(); }; // 要整段都在的时候（导出、测试）：没补画的马上全补上
     function flushTurns() {
+      discardEarlierBuild();
       var g = renderGen;
       while (pendTurns && pendTurns.length && g === renderGen) { var t = pendTurns.pop(); if (!blocks.has(t) && firstBlk && firstBlk.parentNode === P.out) firstBlk = placeTurn(t, firstBlk); }
       pendTurns = null;
@@ -3580,7 +3657,7 @@
       blocks = new Map();
       rcSig = rcGlobal();
       idxOf = new Map(); rt.session().turns.forEach(function (t, i) { idxOf.set(t, i); });
-      var gen = ++renderGen; pendTurns = null; pendTail = null; firstBlk = null; anchored = false;
+      var gen = ++renderGen; earlierBuild = null; pendTurns = null; pendTail = null; firstBlk = null; anchored = false;
       if (!P.footOnly) { // 面板里那份（agent 的底部）：对话一条都不画——跑着的工具、上一轮的输出、压缩的分隔线都不画；只有在跑的那一行、输入框、状态信息
         bannerEl = P.block(P.rowsHtml(banner()), statusEl);
         var ts = rt.session().turns, ai = -1, aoff = 0;
@@ -3663,6 +3740,16 @@
     function drawTurn(t) {
       if (P.off) { rowCache.delete(t); hiddenTurns.add(t); return; }
       if (P.footOnly) return;
+      if (earlierBuild?.turn === t) {
+        // A tool can change or be clicked while its historical prefix is still
+        // being laid out. Let the redraw use the latest data and expansion state.
+        if (earlierBuild.block) {
+          firstBlk = finishTurnBlock(t, earlierBuild.block, earlierBuild.count);
+          if (pendTurns?.at(-1) === t) pendTurns.pop();
+        }
+        earlierBuild = null;
+        rowCache.delete(t);
+      }
       var b = blocks.get(t);
       if (!b) return appendTurn(t);
       var was1 = liveT;
@@ -3798,7 +3885,7 @@
     }
     function footDone(t) { return !!(fsash && !rt.stream && vmode("workLine") !== "hidden" && t && t === lastDone());
     }
-    function turnRows(turn, live) {
+    function* turnRows(turn, live, incremental) {
       groupClocks.delete(turn);
       var r = new P.Rows().text([""]), D = P.DIM, hdr = null;
       // 时间戳（设置 › 对话 › 时间戳）：每一块第一行的右边一个时间（绝对定位、字由 ::after 画：不占排版的宽度，也不会被选中、拷走）；
@@ -4224,7 +4311,7 @@
       }
       var firstAgyEvent = agent.connector === "agy" && parts.find(p => p.kind !== "agyThinking" || tm !== "hidden");
       if (turn.ask && vmode("prompts") && firstAgyEvent && ["tool", "agyThinking"].includes(firstAgyEvent.kind)) r.text(["\u00a0"]);
-      parts.forEach(function (p, i) {
+      function renderPart(p, i) {
         if ((agent.connector === "agy" && p.kind === "agyThinking") || p.kind === "thinking") {
           if (p.kind === "thinking" && (tm !== "hidden" || agent.connector !== "dsh")) flushGroup();
           if (tm !== "hidden") {
@@ -4368,7 +4455,11 @@
         r.text([""]);
         mark(tAt);
         r.block('<span class="grp" data-key="' + xk + '">' + hotHtml([D + DOT + " " + HOT + clip(first, P.cols - 6) + (more ? " …" : "") + HOT_END + RESET]) + "</span>");
-      });
+      }
+      for (let i = 0; i < parts.length; i++) {
+        renderPart(parts[i], i);
+        if (incremental) yield;
+      }
       if (rt.liveStatus && agyShowsLiveThought() && turn === rt.session().turns.at(-1)) {
         r.text([D + clip(rt.liveStatus, P.cols) + RESET]);
       }
@@ -5540,13 +5631,13 @@
         return out;
       }
       if (TY) { if (spinHere && vmode("workLine") !== "hidden") { var tyl = tyStatus(); if (tyl) out.push(indent + tyl); } return out; } // Teyvat：它自己的状态栏（没有 Worked for、没有转圈的动词）
-      if (agent.claude && rt.question && rt.question() && panel && panel.kind === "ask") { out.push(indent + D + "✻ Waiting for your answer…" + RESET); return out; } // 在等你回答（问答面板开着）：状态行就写在等你
+      if (agent.claude && rt.question && rt.question() && panel && panel.kind === "ask") { out.push(indent + rgb(waitingColor()) + "✻ Waiting for your answer…" + RESET); return out; } // 在等你回答（问答面板开着）：状态行就写在等你
       var bg = rt.tasks.filter(function (x) { return x.status === "running"; }).length, wl = vmode("workLine");
       // 排着的一句：「❯ 原话」（原样的颜色：这是你已经发出去的话，它下一步读到），太长的收成「… +n lines」；提示只在最后一句下面写一次（同 Claude Code）
       var quote = function (text) { var pl = []; String(text || "").split("\n").forEach(function (p0) { pl.push.apply(pl, wrap(p0, w)); }); pl.slice(0, 6).forEach(function (l, i) { out.push(indent + (i ? "  " : "❯ ") + l); }); if (pl.length > 6) out.push(indent + "  " + D + "… +" + (pl.length - 6) + " lines" + RESET); };
       if (s && spinHere && wl !== "hidden") {
         var st0 = s.turn || {}, secs = Math.max(0, Math.floor((Date.now() - (s.phaseAt || s.t0)) / 1000)), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
-        var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · waiting for the model" : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "", took = secs < 60 ? secs + "s" : F.dur(secs * 1000); // 在想的那几个字（同 Claude Code：灰、想久了变黄），前面的「·」同括号里的字
+        var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · " + rgb(waitingColor()) + "waiting for the model" + RESET + SD : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "", took = secs < 60 ? secs + "s" : F.dur(secs * 1000); // 在想的那几个字（同 Claude Code：灰、想久了变黄），前面的「·」同括号里的字
         var cp = rt.compacting;
         if (cp) { // 在压缩上下文（同 Claude Code：「Compacting conversation…」，下面一条进度条 + 百分比）
           // 百分比同 Claude Code 自己的算法：开始压缩以来 t 秒 → (1 − e^(−t/90))，最多 95%，只涨不落；括号里同它那一行（这一问的用时、写了多少 token）
@@ -5557,7 +5648,7 @@
         } else
         if (s.wait) { var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000)); out.push(indent + RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)); }
         else if (s.specialStatus === terminalWaitLabel) out.push(indent + timedWait(terminalWaitLabel, s.phaseAt || Date.now()));
-        else if (agent.connector === "codex" && wl !== "brief") out.push(indent + (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET);
+        else if (agent.connector === "codex" && wl !== "brief") out.push(indent + (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : /^waiting\b/i.test(s.specialStatus) ? rgb(waitingColor()) : ORANGE) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET);
         else if (wl === "brief") out.push(indent + ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET);
         else {
           var pend = V.style !== "teyvat" && rt.pending ? rt.pending() : null;
@@ -5606,7 +5697,7 @@
           }).filter(Boolean).sort((a, b) => Number(!a.remaining) - Number(!b.remaining) || a.remaining - b.remaining);
           var timer = timers[0];
           var detail = timer ? " (" + (timer.total ? tyWaitLab(timer.total - timer.remaining, timer.total) : tyFe(timer.elapsed)) + ")" : "";
-          out.push(indent + link(location.origin + location.pathname + "#agy-countdown", TY_SNOW + " Waiting..." + detail));
+          out.push(indent + link(location.origin + location.pathname + "#agy-countdown", rgb(waitingColor()) + TY_SNOW + " Waiting..." + detail + RESET));
           return out;
         }
         if (terminalWait) {
@@ -5614,7 +5705,7 @@
           return out;
         }
         if (agent.connector === "agy" && rt.tasks.some(task => task.kind === "agent" && task.status === "running")) {
-          out.push(indent + TY_SNOW + " Waiting for background agents" + RESET);
+          out.push(indent + rgb(waitingColor()) + TY_SNOW + " Waiting for background agents" + RESET);
           return out;
         }
         var ld = lastDone(), dlf = ld ? doneLine(ld, true) : "";
@@ -5657,14 +5748,14 @@
       if (s && spinHere) {
         // Claude Code 的会话（claude.js）流里的这一问是会话记录里的样子：没有 answer / thinking 两段字，别当它有（不然整个重排在这里断掉，宽度变了也不重排）
         var st0 = s.turn || {}, secs = Math.max(0, Math.floor((Date.now() - (s.phaseAt || s.t0)) / 1000)), n = Math.max(s.outTokens || 0, Math.ceil((String(st0.answer || "").length + String(st0.thinking || "").length) / 1.3));
-        var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · waiting for the model" : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "";
+        var SD = statusDim(), tph = thinkPhrase(s), phase = !s.firstAt ? " · " + rgb(waitingColor()) + "waiting for the model" + RESET + SD : tph ? " · " + thinkTint(thinkT0(s), s.t0) + tph + RESET + SD : "";
         var wl = vmode("workLine"), took = secs < 60 ? secs + "s" : F.dur(secs * 1000); // 运行状态行：完整 / 简洁（转圈和用时）/ 隐藏
         if (wl === "hidden") { /* 不画这一行：Esc 照样能打断，标签页的图标照样在转 */ }
         else if (s.wait) { // 这一次没成、等着重试（同 Claude Code：红的）
           var left = Math.max(0, Math.ceil((s.wait.until - Date.now()) / 1000));
           r.text(["", RED + SPIN[Math.floor(Date.now() / 120) % SPIN.length] + (wl === "brief" ? " retry in " + left + "s" + RESET : " Waiting for API response" + RESET + D + " · will retry in " + left + "s (attempt " + s.wait.attempt + "/" + s.wait.max + ")" + RESET)]);
         } else if (s.specialStatus === terminalWaitLabel) r.text(["", timedWait(terminalWaitLabel, s.phaseAt || Date.now())]);
-        else if (agent.connector === "codex" && wl !== "brief") r.text(["", (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : SD) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET]);
+        else if (agent.connector === "codex" && wl !== "brief") r.text(["", (s.specialStatus ? (s.specialStatus === "Compacting context" ? LAV : /^waiting\b/i.test(s.specialStatus) ? rgb(waitingColor()) : ORANGE) + DOT + " " + s.specialStatus : workingLabel(s.t0)) + SD + " (" + took + " • esc to interrupt)" + RESET]);
         else if (wl === "brief") r.text(["", ORANGE + SPIN[tickN % SPIN.length] + " " + RESET + D + took + RESET]);
         else {
           // Claude Code 风格：排着还没被读到的几句（它自己记的队 + 这边送进去的）画在转圈上面——灰底的「❯ 原话」，下面一行淡的说明（同 Claude Code）
@@ -8346,7 +8437,7 @@
           var status = busy ? "Working" : x.live?.status === "needs" ? "Needs you" : x.live ? "Ready" : "Inactive";
           if (isCur && UNRx[kx(x)]) { delete UNRx[kx(x)]; ccUnreadSave(UNRx); } // 正看着：已读
           var nm = EXTc.name[kx(x)] || x.title, unDot = UNRx[kx(x)] ? [[" ●", rgb("61;123;245")]] : [];
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '" title="' + status + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy) + "</span>\n";
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '" title="' + status + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || pv?.program?.waitingLabel?.() || x.live?.status === "needs" || x.live?.status === "waiting") + "</span>\n";
         };
         out += "\n" + row("ts-fold ts-head", foldAt("cx", false), [[chev("cx"), ""], ["Codex", BOLD]], headActs("cx"));
         if (!folded("cx")) {
@@ -8408,7 +8499,7 @@
           var when = g === "o" ? agoCN(x.mtime) : durCN(Date.now() - (x.live && x.live.since || x.mtime)), icC = busy || g !== "o" ? "" : DIMC;
           if (isCur && UNRp[kpi(x)]) { delete UNRp[kpi(x)]; ccUnreadSave(UNRp); }
           var nm = x.title, unDot = UNRp[kpi(x)] ? [[" ●", rgb("61;123;245")]] : [];
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-pi="' + escHtml(x.id) + '">' + piLogoIn(HR([[ind + "  ", ""], ["\uE038 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle ? DIMC : ""), unDot), DIMC + when + RESET, true), busy) + "</span>\n";
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-pi="' + escHtml(x.id) + '">' + piLogoIn(HR([[ind + "  ", ""], ["\uE038 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || pv?.program?.waitingLabel?.() || x.live?.status === "needs") + "</span>\n";
         };
         out += "\n" + row("ts-fold ts-head", foldAt("pi", false), [[chev("pi"), ""], ["pi", BOLD]], headActs("pi"));
         if (!folded("pi")) {
@@ -8502,7 +8593,7 @@
       if (agy && agy.enabled()) {
         out += "\n" + row("ts-fold ts-head", foldAt("agy", false), [[chev("agy"), ""], ["Google Antigravity", BOLD]], headActs("agy"));
         if (!folded("agy")) {
-          var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && p.program.working?.()).map(p => p.program.agentId.slice(4)));
+          var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && (p.program.working?.() || p.program.waitingLabel?.())).map(p => p.program.agentId.slice(4)));
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
           var agySessions = only("agy") ? agy.list().filter(s => agyActive(s) || openIds.has("agy:" + s.sessionId)) : agy.list();
           if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中或已打开的会话" : agy.status()) + RESET) + "\n";
@@ -8551,7 +8642,7 @@
           if (!tyAll.length) out += H("  " + DIMC + "暂无 Agent" + RESET) + "\n";
           else if (!tyShow.length) out += H("  " + DIMC + "无运行中或已打开的 Agent" + RESET) + "\n";
           tyShow.forEach(function (x) {
-            var pv = seeT[x.id], isCur = !!pv && pv === tw.ws.active, busy = x.state === "working";
+            var pv = seeT[x.id], isCur = !!pv && pv === tw.ws.active, busy = x.running;
             var st = !x.running ? agoCN(x.mtime) : ({ working: "工作中", waiting: "等待中", hibernating: "休眠中", paused: "已暂停" }[x.state] || "") + (x.mode === "fg" ? " · 前台" : " · 后台");
             out += '<span class="ts-it' + (isCur ? " cur" : "") + '" data-ty="' + escHtml(x.id) + '" title="' + escHtml(x.name + " · " + x.id) + '">' + tyLogoIn(HR([["  ", ""], ["\uE039 ", x.running ? "" : DIMC]].concat(marks(x.name, pv ? BOLD : x.running ? "" : DIMC)), (busy ? "" : DIMC) + st + RESET), busy) + "</span>\n";
           });

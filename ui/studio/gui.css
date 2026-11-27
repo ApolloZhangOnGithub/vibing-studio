@@ -317,7 +317,7 @@ html.st-reduced .gv-spin > .gv-logo { animation: none; }
 .gv-apinote.err { color: var(--st-red, #e5534b); }
 .gv-apin { opacity: .7; margin-left: 4px; }
 
-.gv .gv-wait { color: var(--st-yellow, #9a7200); }
+.gv .gv-wait, .gv .gv-wait > .gv-dim { color: var(--st-yellow, #9a7200); }
 .gv .gv-mode { color: rgb(175, 165, 0); cursor: default; }
 .gv .gv-mode:hover { background: none; }
 .gv .gv-mode[hidden] { display: none; }

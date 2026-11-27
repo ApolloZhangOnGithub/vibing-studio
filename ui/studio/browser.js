@@ -596,7 +596,7 @@
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
       var nyou = false; try { nyou = !!(P && P.program && P.program.needsYou && P.program.needsYou()); } catch (e) { nyou = false; }
       tabEl.classList.toggle("needs", nyou); // 在等你回答 / 确认：图标变蓝（studio.css .tab.needs）
-      if (P.program?.working?.()) tabEl.classList.add("busy");
+      if (workingPane || waits.length) tabEl.classList.add("busy");
       return;
     }
     var k = addressOf(P).kind;

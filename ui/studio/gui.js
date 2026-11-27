@@ -241,7 +241,10 @@
       if (rt.stream?.wait) return "Waiting for API response";
       if (/^Waiting for\b/i.test(rt.stream?.specialStatus || "")) return rt.stream.specialStatus;
       if (rt.question?.() || rt.info?.live?.status === "waiting") return "Waiting for your answer";
-      if (rt.tyState?.()?.state === "waiting") return "Waiting";
+      const tyState = rt.tyState?.()?.state;
+      if (tyState === "waiting") return "Waiting";
+      if (tyState === "hibernating") return "Hibernating";
+      if (tyState === "paused") return "Paused";
       if (agent.connector !== "agy") return "";
       if (rt.backgroundWaitSince()) return "Waiting for background terminal";
       if (V.working()) return "";
@@ -724,7 +727,7 @@
       var s = rt.stream, wl = vm("workLine") || "full"; // 运行状态行：完整 / 简洁（转圈和用时）/ 隐藏（Esc、对话 ··· 照样能停）
       var prefs = cfg.connectorFooter || {}, customWork = prefs[(agent.connector || "paimon") + ".workLine"];
       if (customWork) wl = customWork === "on" ? "full" : "hidden";
-      var waiting = !s && V.waitingLabel();
+      var waiting = V.waitingLabel();
       if (!s && V.working() && !waiting) {
         var start = rt.workingStartedAt?.() || rt.session()?.progress?.startedAt || rt.session()?.turns.at(-1)?.at;
         s = {t0:start, firstAt:true, verb:rt.liveStatus || "Working"};
@@ -738,12 +741,12 @@
         var dh = waiting ? '<div class="gv-spin gv-wait">✳ ' + esc(waiting) + (since ? ' · ' + A.fmt.ccDur(Math.max(0, Date.now() - since)) + (timeout ? '/' + A.fmt.ccDur(timeout * 1000) : '') : '') + '</div>' : doneHtml(); liveEl.hidden = !dh; if (liveEl.dataset.h !== dh) { liveEl.dataset.h = dh; liveEl.innerHTML = dh; } }
       var elapsedFrom = s?.specialStatus === "Waiting for background terminal" ? s.phaseAt : s?.t0;
       var lg = s ? appLogo() : "", ic0 = lg ? '<i class="gv-logo">' + lg + "</i>" : "<i>·</i>";
-      if (s && wl === "brief") { var hb = '<div class="gv-spin brief">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
+      if (s && wl === "brief") { var hb = '<div class="gv-spin brief' + (waiting ? ' gv-wait' : '') + '">' + ic0 + '<span class="gv-dim">' + (s.wait ? "等待重试 · " : "") + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + "</span>" + STOPB + "</div>"; if (liveEl.dataset.h !== hb) { liveEl.dataset.h = hb; liveEl.innerHTML = hb; } spinGo(); }
       else if (s && wl !== "hidden") {
         var act = (rt.todo ? rt.todo() : []).filter(function (x) { return x.status === "in_progress" && x.activeForm; })[0];
         // 同终端界面（Claude Code）：在做的任务的 activeForm，没有就是这一问随机的那个词（Concocting… Swirling…）；等模型、思考中写在后面淡的那段
         var label = s.wait ? "等待重试" : s.specialStatus ? s.specialStatus : act ? trG(act.activeForm) : s.verb || "Working", phase = s.wait || s.specialStatus ? "" : !s.firstAt ? "等待模型" : s.thinking ? "思考中" : "";
-        var h = '<div class="gv-spin">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
+        var h = '<div class="gv-spin' + (waiting ? ' gv-wait' : '') + '">' + ic0 + '<span class="gv-cut">' + esc(label) + '…</span><span class="gv-dim">' + (elapsedFrom ? A.fmt.ccDur(Math.max(0, Date.now() - elapsedFrom)) : "") + (s.outTokens ? " · ↓ " + (s.outTokens >= 1000 ? (s.outTokens / 1000).toFixed(1) + "k" : s.outTokens) + " tokens" : "") + "</span>" + (phase ? '<span class="gv-dim gv-phase' + (!s.firstAt ? ' gv-wait' : '') + '">' + esc(phase) + "</span>" : "") + STOPB + "</div>";
         if (liveEl.dataset.h !== h) { liveEl.dataset.h = h; liveEl.innerHTML = h; }
         spinGo();
       }
