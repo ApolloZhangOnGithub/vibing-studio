@@ -164,13 +164,15 @@
     return { el: c, scrolls: scrolls };
   }
 
-  let hoverTab, hoverPane, hoverCard, stopPreviewUpdates;
+  let hoverTab, hoverPane, hoverCard, hoverName, stopPreviewUpdates;
   function dismissTabPreview() {
     stopPreviewUpdates?.();
     stopPreviewUpdates = null;
     hoverPane?.classList.remove("tov-live-hover");
     hoverPane?.style.removeProperty("--tov-transform");
     hoverPane = null;
+    hoverName?.remove();
+    hoverName = null;
     hoverCard?.remove();
     hoverTab = hoverCard = null;
   }
@@ -181,12 +183,23 @@
     if (event.buttons || event.pointerType === "touch" || !tab?._p || cur) return;
     hoverTab = tab;
     const P = tab._p, pane = P.el, group = pane.parentElement;
+    const rect = tab.getBoundingClientRect();
+    let captionHeight = 0;
+    if (P.tabPinned) {
+      hoverName = document.createElement("div");
+      hoverName.className = "tov-hover-name";
+      hoverName.textContent = titleOf(P);
+      hoverName.style.top = rect.bottom + 4 + "px";
+      document.body.append(hoverName);
+      hoverName.style.left = Math.max(4, Math.min(rect.left, innerWidth - hoverName.offsetWidth - 4)) + "px";
+      captionHeight = hoverName.offsetHeight + 2;
+    }
     const width = pane.clientWidth, height = pane.clientHeight;
     if (!group || !width || !height) return;
-    const area = group.getBoundingClientRect(), rect = tab.getBoundingClientRect();
+    const area = group.getBoundingClientRect();
     const scale = Math.min(1, 320 / width, 210 / height, area.width / width);
     const left = Math.max(area.left, Math.min(rect.left, area.right - width * scale));
-    const top = rect.bottom <= area.top + 2 ? area.top + 4 :
+    const top = captionHeight ? rect.bottom + 4 + captionHeight : rect.bottom <= area.top + 2 ? area.top + 4 :
       Math.max(area.top, Math.min(rect.bottom + 4, area.bottom - height * scale - 4));
     if (pane.classList.contains("tpoff") && P.program?.page !== "web") {
       hoverPane = pane;
