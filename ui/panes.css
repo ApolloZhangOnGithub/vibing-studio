@@ -39,6 +39,9 @@ html.light .divider { background: #cfcfcf; }
 
 /* 面板内：对话区滚动（不显示滚动条；滚到头就停住，不往外拖、不回弹），输入栏固定在底部 */
 .tpane .screen { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior: none; position: relative; }
+/* TUI wheel, touch and keyboard all move by rows in bindRowScroll. Keep that movement
+   on the same paint path as the transcript instead of also compositing a native scroller. */
+.tpane.chat-layer > .screen { overflow-y: hidden; }
 .tpane .screen::-webkit-scrollbar { display: none; }
 /* 用 display 而不是 visibility：窗口整个隐藏（visibility: hidden）时，子元素的 visible 会盖过来，在别的窗口上画出一条 */
 .tpane .topgap { position: sticky; top: 0; z-index: 3; display: none; background: #000; }
@@ -291,7 +294,7 @@ html.st-reduced .ts-ccl.busy { animation: none; }
 /* 看不到的那几问不排版、不画（content-visibility）：几千块的大会话，拆分、挪标签页、合并、换宽度时只排看得见的那一段；
    滚到哪儿哪儿再排（记住排过的高度，滚动条不乱跳）。在跑的那一行、输入框上面那块（.status）照常 */
 .tpane .term .out > .blk:not(.status) { contain-intrinsic-block-size: auto var(--cv-height, 600px); }
-.tpane .term .out > .blk.cvfar:not(.status) { content-visibility: auto; } /* 离得很远（前后三屏以外）才不画；近处的照常，滚动时不会露出排了一半的行 */
+.tpane .term .out > .blk.cvfar:nth-last-child(n+6):not(.status) { content-visibility: hidden; } /* 离得很远（前后三屏以外）才不画；近处的照常，滚动时不会露出排了一半的行 */
 /* 派蒙的头像（Paimon 的 agent、Paimon 连接器，TSU_LOGOS.paimon）：圆的，跟着旁边的字 / 图标一样大；深浅色底上都清楚（一圈极淡的边） */
 .pm-av { display: inline-block; width: 1em; height: 1em; object-fit: contain; vertical-align: -0.15em; } /* 派蒙：整只（光环、头发都在），透明底，不裁成圆 */
 .ss-sic > img.pm-av { width: 16px; height: 16px; vertical-align: 0; }

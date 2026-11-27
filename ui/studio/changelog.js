@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.6", items: { fixed: [
+      ["长对话滚动时提前绘制即将露出的正文，回到底部时保留最近几轮。输入期间减少历史补绘、后台标签预热和截图对前台的干扰。", "Long conversations prepare text before it scrolls into view and keep recent turns ready at the bottom. Typing takes priority over background rendering and snapshots."],
+      ["工具计时只刷新相应工具或工具组。额度与 Context 弹框的下边缘对齐输入框底线。", "Tool timers update in place. Credit and Context popovers align with the lower edge of the composer."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.5", items: { fixed: [
       ["悬停对话中的图片引用时直接显示预览，读取期间不再闪现路径。", "Hovering over an image reference shows the preview without flashing its path while it loads."]
     ] } },

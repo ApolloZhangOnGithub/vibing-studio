@@ -254,7 +254,7 @@
       range.selectNodeContents(anchor);
       left = range.getBoundingClientRect().left - (summary.getBoundingClientRect().left - cur.getBoundingClientRect().left);
     }
-    var w = cur.offsetWidth, ht = cur.offsetHeight, x = Math.max(8, Math.min(innerWidth - w - 8, left)), y = r.top - ht - 6;
+    var w = cur.offsetWidth, ht = cur.offsetHeight, x = Math.max(8, Math.min(innerWidth - w - 8, left)), y = (window.TSU_TERM?.composerRuleY(anchor) ?? r.top - 6) - cur.getBoundingClientRect().height;
     cur.dataset.up = y < 8 ? "0" : "1";
     if (y < 8) y = Math.min(innerHeight - ht - 8, r.bottom + 6);
     cur.style.left = x + "px"; cur.style.top = Math.max(8, y) + "px";

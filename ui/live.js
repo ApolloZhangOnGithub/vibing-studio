@@ -591,15 +591,15 @@
     // 快速滚动：离得远、没画的块（cvfar）在这一帧画之前就放出来——按现在的速度往要去的方向多放一段（滚得越快放得越远）。
     //   只靠 IntersectionObserver（这一帧画完才回调）时，一下子滚过几屏，看得见的地方先是黑的、下一帧才有字（用户 2026-10-28）
     var revV = 0, revT = 0, revTop = 0;
-    P.revealNear = function () {
+    P.revealNear = function (destination) {
       var kids = P.out.children, n = kids.length;
       if (!n || !farIO || P.program?.agentId?.startsWith("agy:")) return;
-      var top = screen.scrollTop, H = screen.clientHeight || 600, now = performance.now(), dt = now - revT;
+      var current = screen.scrollTop, top = destination ?? current, H = screen.clientHeight || 600, now = performance.now(), dt = now - revT;
       if (top === revTop && dt < 32) return; // The native scroll event follows the synchronous row step.
       revV = dt > 0 && dt < 250 ? 0.5 * ((top - revTop) / dt) + 0.5 * revV : 0;
       revT = now; revTop = top;
-      if (!revV) return; // 没在滚：交给 IntersectionObserver
-      var ahead = Math.min(6 * H, Math.abs(revV) * 250), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + top); // offsetTop ↔ 滚动内容里的位置
+      if (!revV && top === current && top === 0) return;
+      var ahead = Math.min(6 * H, Math.abs(revV) * 250), k0 = kids[0], base = k0.offsetTop - (k0.getBoundingClientRect().top - screen.getBoundingClientRect().top + current); // offsetTop ↔ 滚动内容里的位置
       var lo = top - H - (revV < 0 ? ahead : 0) + base, hi = top + 2 * H + (revV > 0 ? ahead : 0) + base, a = 0, b = n - 1;
       while (a < b) { var m = (a + b) >> 1, km = kids[m]; if (km.offsetTop + km.offsetHeight < lo) a = m + 1; else b = m; }
       var reveal = [];
@@ -857,7 +857,9 @@
     P.stick = function () { if (P.off) return; if (following && cfg.autoscroll !== false) P.toBottom(); if (P.program && P.program.afterScroll) P.program.afterScroll(); };
     P.following = function () { return following; };
     P.scrollByRows = function (n) {
-      screen.scrollTop = Math.max(0, Math.min(maxY(), Math.round(screen.scrollTop / P.rowH + n) * P.rowH));
+      var target = Math.max(0, Math.min(maxY(), Math.round(screen.scrollTop / P.rowH + n) * P.rowH));
+      if (target !== screen.scrollTop) P.revealNear(target);
+      screen.scrollTop = target;
       ownTop = screen.scrollTop;
       following = atBottom() && !(n < 0 && P.program?.hasEarlier?.());
       P.onScroll();
@@ -2433,6 +2435,18 @@
     if (tool.t0) meta.push(F.dur(Math.max(0, Date.now() - tool.t0)));
     return rows.concat(meta.length ? [meta.join(" · ")] : []);
   }
+  function composerRuleY(button) {
+    const foot = button?.closest(".foot");
+    if (!foot) return null;
+    const lines = foot.querySelectorAll(".ttu-box:first-child");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const cell = lines[i];
+      if (cell.textContent !== "─" || cell.nextElementSibling?.textContent !== "─") continue;
+      const rect = cell.getBoundingClientRect();
+      if (rect.height) return rect.top + rect.height / 2;
+    }
+    return null;
+  }
   function showAgentQuota(P, rt, button) {
     var old = P.el.querySelector(".agy-quota-popup");
     if (old && old.matches(":popover-open")) { old.hidePopover(); old.remove(); return; }
@@ -2497,7 +2511,7 @@
     }, 1000);
     var rect = button.getBoundingClientRect();
     box.style.left = Math.max(4, Math.min(rect.left - (periodAnchor.getBoundingClientRect().left - box.getBoundingClientRect().left), innerWidth - box.offsetWidth - 4)) + "px";
-    box.style.top = Math.max(4, rect.top - box.offsetHeight - 5) + "px";
+    box.style.top = Math.max(4, (composerRuleY(button) ?? rect.top - 5) - box.getBoundingClientRect().height) + "px";
     var events = new AbortController();
     function dismiss() { events.abort(); box.hidePopover(); box.remove(); }
     box.addEventListener("click", dismiss, {signal:events.signal});
@@ -2963,8 +2977,13 @@
       agyFrame = 0;
       if (P.closed || P.program !== V) return;
       var turns = rt.session().turns;
-      for (var turn of agyTurns) if (turns.includes(turn)) drawTurn(turn);
-      agyTurns.clear();
+      const deadline = performance.now() + 4;
+      for (const turn of agyTurns) {
+        agyTurns.delete(turn);
+        if (turns.includes(turn)) drawTurn(turn);
+        if (performance.now() >= deadline) break;
+      }
+      if (agyTurns.size) agyFrame = requestAnimationFrame(paintAgyTurns);
       P.stick();
     }
     var off1 = rt.on(function (type, data) {
@@ -3061,7 +3080,7 @@
     //   没成就过一会儿再试（还在顶上附近才试，最多 20 次）；在最顶上接着往上滚（滚轮、手指）也再要一次
     var earlierPending = false, earlierT = 0, earlierN = 0, eaV = 0, eaT = 0, eaTop = 0;
     // 离顶多近就开始往前读：至少 12 屏；往上滚得快时按速度再多留 1.5 秒的路（读一段、解析、画上要几百毫秒——滚到顶之前就该接上了）
-    var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(P.rowH * 30, 12 * H, Math.min(24 * H, -eaV * 1500)); };
+    var earlyPx = function () { var H = P.screen.clientHeight || 600; return Math.max(H, Math.min((P.screen.scrollHeight - H) / 2, Math.max(6 * H, Math.min(16 * H, -eaV * 1000)))); };
     function wantEarlier() {
       if (earlierPending) return;
       clearTimeout(earlierT);
@@ -3077,7 +3096,7 @@
     V.hasEarlier = () => !!pendTurns?.length || !!rt.more?.();
     var historyWaitingForScroll = false;
     function resumeNearbyHistory() {
-      if (historyWaitingForScroll && P.program === V && P.screen.scrollTop < Math.max(6 * P.screen.clientHeight, earlyPx() - 2 * P.screen.clientHeight)) {
+      if (historyWaitingForScroll && P.program === V && P.screen.scrollTop < earlyPx()) {
         historyWaitingForScroll = false;
         var gen = renderGen;
         requestAnimationFrame(function () { restTurns(gen); });
@@ -3284,12 +3303,13 @@
       });
     }
     var tickN = 0, lastCtx = -1, footerSecond = -1;
+    var groupClocks = new WeakMap();
     var liveNext = 0; // 在跑的那一问下一次按秒刷新用时的时间（见 tick）
     function tick() {
       tickN++;
       var second = Math.floor(Date.now() / 1000);
       var context = rt.session().ctx, contextChanged = context !== lastCtx && !panel;
-      if (!fsash || agent.connector !== "codex" || second !== footerSecond || contextChanged) {
+      if (!fsash || second !== footerSecond || contextChanged) {
         renderStatus();
         if (!fsash && contextChanged) renderInput();
         lastCtx = context;
@@ -3299,15 +3319,24 @@
       //   整问重画很贵时（一问几百次工具调用）按它的代价放慢：最多占一核的 5%（150 ms 一次 → 3 秒一次）；来了新内容照常马上画（turn 事件）
       if (tickN % 8 === 0 && rt.stream && performance.now() >= liveNext && performance.now() - lastInputAt > 350) {
         const turn = rt.stream.turn, block = blocks.get(turn);
-        const running = turn.parts.filter(p => p.status === "running");
-        if (running.length && block && !block.classList.contains("cvfar")) {
+        if (block && (!block.classList.contains("cvfar") || !block.matches(":nth-last-child(n+6)"))) {
           const clocks = block.querySelectorAll(".tool-clock"), start = performance.now();
-          if (clocks.length === running.length && Array.from(clocks).every(el => running.includes(turn.parts[+el.dataset.part]))) {
-            for (const el of clocks) {
-              const h = P.toHtml(toolRows(turn.parts[+el.dataset.part], "call"));
-              setBlockHtml(el, h);
+          for (const el of clocks) {
+            const part = turn.parts[+el.dataset.part];
+            if (part?.status === "running") setBlockHtml(el, P.toHtml(toolRows(part, "call")));
+          }
+          for (const [key, render] of groupClocks.get(turn) || []) {
+            const groupEl = block.querySelector('[data-key="' + CSS.escape(key) + '"]');
+            if (groupEl) {
+              const wrapper = document.createElement("div");
+              wrapper.innerHTML = render();
+              const next = wrapper.firstElementChild;
+              if (next) {
+                if (groupEl.className !== next.className) groupEl.className = next.className;
+                patchNodes(groupEl, next);
+              }
             }
-          } else drawTurn(turn);
+          }
           liveNext = performance.now() + Math.max(0, (performance.now() - start) * 20 - 1000);
         }
       }
@@ -3412,7 +3441,7 @@
       if (!pendTurns.length) { pendTurns = null; return; }
       if (P.off || window.STUDIO?.settingsModalOpen?.()) { earlierPaused = true; return; }
       var sc = P.screen;
-      if (sc.clientHeight && sc.scrollTop > Math.max(8 * sc.clientHeight, earlyPx())) {
+      if (sc.clientHeight && sc.scrollTop > earlyPx()) {
         historyWaitingForScroll = true;
         return;
       }
@@ -3440,7 +3469,8 @@
       // 会话记录在一问中间切开的：原来的第一问并进了更早那一问（内容一起画在那一块里）——它自己那块拿掉
       blocks.forEach(function (b, t) { if (!idxOf.has(t)) { if (b.parentNode) b.parentNode.removeChild(b); blocks.delete(t); } });
       firstBlk = blocks.get(ts[k]);
-      var running = !!pendTurns;
+      var running = !!pendTurns && !historyWaitingForScroll;
+      historyWaitingForScroll = false;
       pendTurns = ts.slice(0, k);
       var t0 = performance.now();
       // 同步只补眼前要用的（已经快到画出来的最顶上了）：平时提前十几屏就读进来了，交给后面一段段补，不在这一帧里卡一下
@@ -3547,7 +3577,7 @@
           if (k === undefined) return false;
           ai = k; aoff = a.off; return true;
         });
-        if (ts.length >= 24 && !P.following() && ai >= 0) {
+        if (!P.following() && ai >= 0) {
           var sc = P.screen, rows = Math.ceil(sc.clientHeight / (P.rowH || 16)), got = 0, j = ai, paintStart = performance.now();
           for (; j < ts.length; j++) { var bj = placeTurn(ts[j], statusEl); got += bj._n || 1; if (got >= rows * 3 || (j > ai && performance.now() - paintStart >= 8)) { j++; break; } }
           var ab = firstBlk = blocks.get(ts[ai]), top0 = P.out.getBoundingClientRect().top;
@@ -3752,6 +3782,7 @@
     function footDone(t) { return !!(fsash && !rt.stream && vmode("workLine") !== "hidden" && t && t === lastDone());
     }
     function turnRows(turn, live) {
+      groupClocks.delete(turn);
       var r = new P.Rows().text([""]), D = P.DIM, hdr = null;
       // 时间戳（设置 › 对话 › 时间戳）：每一块第一行的右边一个时间（绝对定位、字由 ::after 画：不占排版的宽度，也不会被选中、拷走）；
       // 「始终显示」时换天的地方先一条「今天」「昨天」「9月26日」
@@ -4091,7 +4122,13 @@
         var previous = r.rows[r.rows.length - 1];
         if (!(agent.connector === "dsh" && previous && previous.h.includes("dsh-thought"))) r.text([""]);
         mark((group[0] && group[0].t0) || lastEnd);
-        r.block(ccs ? ccGroupHtml(group, key, on, gThink, !!(tail && live), turn) : groupHtml(group, key, on, verbose || open[key] === true ? "full" : byMode ? readM : "full"));
+        const items = group, thought = gThink;
+        const renderGroup = () => ccs ? ccGroupHtml(items, key, on, thought, !!(tail && live), turn) : groupHtml(items, key, on, verbose || open[key] === true ? "full" : byMode ? readM : "full");
+        r.block(renderGroup());
+        if (live && items.some(item => item.status === "running")) {
+          if (!groupClocks.has(turn)) groupClocks.set(turn, new Map());
+          groupClocks.get(turn).set(key, renderGroup);
+        }
         group = []; gIdx = []; gThink = null;
       };
       var agyThrough = -1;
@@ -9704,6 +9741,8 @@
     function warmNext() {
       const p = warmQueue.values().next().value;
       if (!p) { warming = false; return; }
+      const quietIn = Math.max(lastInputAt, USER_AT) + 700 - performance.now();
+      if (quietIn > 0) { setTimeout(scheduleWarm, quietIn); return; }
       warmQueue.delete(p);
       if (p.off && !p.closed && !p.drawn && p.program?.agentId && !p.program.gui &&
           p.el.isConnected && p.el.clientWidth && !document.hidden) {
@@ -10816,7 +10855,7 @@
     globalPane: function (tw) { if (!tw.globalPane) tw.globalPane = new Pane(tw, { side: true }); return tw.globalPane; },
     kinds: KINDS,
     // 对话显示的分法（右侧栏的 ··· 用同一套；图形界面、快速查看按同样的档位画）
-    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, showAgentQuota: showAgentQuota, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
+    sideKinds: sideKindItems, convMenu: convMenu, agentMenu: agentMenu, footH: footHOf, setFootH: setFootH, transcriptMenu: transcriptMenu, transcriptCtx: transcriptCtx, agentTabActions: agentTabActions, composerRuleY, showAgentQuota: showAgentQuota, filteredParts: filteredParts, isCurrentToolTurn: isCurrentToolTurn, toolHistoryTitle: toolHistoryTitle, runningPreview: runningPreview, byToolItems: byToolItems, toolsSeen: toolsSeen,
     tsFmt: tsFmt, dayKey: dayKey, dayLabel: dayLabel, turnTime: turnTime, // 时间戳（图形界面也用）
     viewMode: function (k, view) { var c = isFull(view) ? vcv(view, k) : cv(k); return c === undefined ? VMODES[k] : c; }, // 带预览的当前值（图形界面用：指着菜单时一起变；拆出来的一格按它自己的）
     toolMode: function (p, view) { return toolModeIn(view || null, p); },

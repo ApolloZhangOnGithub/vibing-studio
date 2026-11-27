@@ -88,7 +88,13 @@
     previewTimer = setTimeout(capture, 1200);
   }
   if (previewKey) {
-    document.addEventListener("click", queuePreview, {passive:true});
+    // Capture tab changes once idle. Focusing or editing a composer needs no snapshot.
+    document.addEventListener("click", function (e) {
+      if (e.target.closest?.(".tab, .ts-tab")) queuePreview();
+    }, {passive:true});
+    function cancelPreview() { clearTimeout(previewTimer); }
+    for (const event of ["beforeinput", "compositionstart", "wheel", "touchmove"])
+      document.addEventListener(event, cancelPreview, {capture:true, passive:true});
     window.addEventListener("blur", queuePreview);
   }
   var hex = function (c) { var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(c || ""); if (!m || (m[4] !== undefined && +m[4] < 0.5)) return null; return "#" + [m[1], m[2], m[3]].map(function (x) { return ("0" + (+x).toString(16)).slice(-2); }).join(""); };
