@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.9", items: { improved: [
+      ["收藏卡片边框更清晰，悬停时进一步提亮。搜索时复用仍然匹配的卡片，加快连续输入。", "Favorites cards have clearer borders and a stronger hover outline. Search reuses matching cards as you type."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.8", items: { improved: [
       ["鼠标悬停在固定标签页上时，预览上方显示标签名称。", "Hover over a pinned tab to see its name above the preview."]
     ] } },

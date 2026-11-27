@@ -184,9 +184,10 @@
     var cards = view.list.querySelectorAll("[data-preview]");
     if (!cards.length || !cards[0].clientWidth) return;
     var width = columnsOf(cards[0].firstElementChild);
-    if (view.cardWidth === width) return;
     view.cardWidth = width;
     cards.forEach(function (wrap) {
+      if (wrap._columns === width) return;
+      wrap._columns = width;
       var record = all[wrap.closest(".fv-card").dataset.id];
       var lines = termLines((record.text || "").slice(0, 600), width).slice(0, 12);
       var light = termLight();
@@ -242,16 +243,30 @@
     }
     if (view.revision !== revision || view.filter !== Q.f || view.query !== Q.q) {
       var items = filtered();
-      host.querySelector(".fv-nvs").innerHTML = navHtml();
-      var selected = host.querySelector(".fv-nvs .on span");
-      var crumbs = [t("收藏", "Favorites")];
-      if (Q.f.startsWith("kind:")) crumbs.push(t("来源", "Sources"));
-      crumbs.push(selected ? selected.textContent : t("全部", "All"));
-      host.querySelector(".fv-path").innerHTML = '<button type="button" data-f="">' + esc(crumbs.shift()) +
-        '</button>' + crumbs.map(function (name) { return '<i aria-hidden="true">›</i><span>' + esc(name) + '</span>'; }).join("");
-      view.list.innerHTML = items.length ? items.map(cardHtml).join("") : '<div class="fv-empty">' +
-        (list().length ? esc(t("没有符合的", "Nothing matches")) : '<i>' + LOGO + '</i><b>' + esc(t("暂无收藏", "No favorites yet")) + '</b>') + '</div>';
-      view.cardWidth = 0; fitCards(view);
+      if (view.revision !== revision || view.filter !== Q.f) {
+        host.querySelector(".fv-nvs").innerHTML = navHtml();
+        var selected = host.querySelector(".fv-nvs .on span");
+        var crumbs = [t("收藏", "Favorites")];
+        if (Q.f.startsWith("kind:")) crumbs.push(t("来源", "Sources"));
+        crumbs.push(selected ? selected.textContent : t("全部", "All"));
+        host.querySelector(".fv-path").innerHTML = '<button type="button" data-f="">' + esc(crumbs.shift()) +
+          '</button>' + crumbs.map(function (name) { return '<i aria-hidden="true">›</i><span>' + esc(name) + '</span>'; }).join("");
+      }
+      if (items.length && view.revision === revision) {
+        // Filtering preserves the order of saved messages and their rendered TUI cells.
+        var matches = new Set(items.map(function (r) { return r.id; }));
+        Array.from(view.list.children).forEach(function (node) { if (!matches.has(node.dataset.id)) node.remove(); });
+        var nextCard = view.list.firstElementChild;
+        items.forEach(function (r) {
+          if (nextCard && nextCard.dataset.id === r.id) nextCard = nextCard.nextElementSibling;
+          else if (nextCard) nextCard.insertAdjacentHTML("beforebegin", cardHtml(r));
+          else view.list.insertAdjacentHTML("beforeend", cardHtml(r));
+        });
+      } else {
+        view.list.innerHTML = items.length ? items.map(cardHtml).join("") : '<div class="fv-empty">' +
+          (list().length ? esc(t("没有符合的", "Nothing matches")) : '<i>' + LOGO + '</i><b>' + esc(t("暂无收藏", "No favorites yet")) + '</b>') + '</div>';
+      }
+      fitCards(view);
       view.revision = revision; view.filter = Q.f; view.query = Q.q;
     }
     var r = all[Q.sel];
