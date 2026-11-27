@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.4", items: { improved: [
+      ["访达暂时隐藏底部的「文件 / Agent」切换器。打开访达会回到已有的文件标签，新标签从主目录开始。", "Finder now opens in Files with the Files / Agent switcher hidden. Reopening Finder returns to an existing file tab, and new tabs start in your home folder."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.3", items: { new: [
       ["固定的会话收到完成回复后，图标右上角会出现蓝点。点击该标签即可清除。", "A blue dot appears on a pinned conversation tab when a reply finishes. Click the tab to clear it."]
     ] } },

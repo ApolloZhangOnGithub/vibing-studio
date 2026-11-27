@@ -558,12 +558,13 @@
   var titleOf = function (w) { return w.conn ? (w.cdir ? dirName(w.cdir) : CONN[w.conn].name) : w.agents ? (w.root ? "Agent" : w.path ? w.path.split("/").pop() : volLabelOf(w.vol)) : w.fs ? nameOf(w.path, w.path.split("/").filter(Boolean).pop() || "/") : w.sub.length ? w.sub[w.sub.length - 1] : w.kind ? KIND_LABEL(w.kind) : w.a.name; };
 
   // ---- 左边一栏（同访达）：个人收藏、Agent、位置；点标题收起那一组；关不掉。最下面（左下角）是「文件 | Agent」两边的切换 ----
+  var showFinderSideSwitcher = false;
   function sideHtml(w) {
     var cur = w.fs ? w.path : w.agents ? "@agents" : w.a ? "@" + w.a.id : "";
     var row = function (key, go, icon, label, extra) { return '<div class="xs-it' + (key === cur ? " on" : "") + '" data-side="' + esc(go) + '"' + (extra || "") + ' title="' + esc(label) + '"><span class="xs-ic">' + icon + '</span><span class="xs-l">' + esc(label) + "</span></div>"; };
     var sec = function (id, title, rows) { var f = !!XV.fold[id]; return '<div class="xs-sec' + (f ? " fold" : "") + '"><div class="xs-h" data-fold="' + id + '"><span>' + esc(title) + '</span><span class="xs-chev">' + (f ? "›" : "⌄") + "</span></div>" + (f ? "" : rows.join("")) + "</div>"; };
     var side = w.fs ? "files" : "agents";
-    var foot = LOC() ? '<div class="xs-foot"><div class="xs-seg st-seg" data-seg-key="finder-side" role="tablist">' + [["files", FINDER_ICON, tr("文件", "Files"), "File Finder"], ["agents", AGENTS_ICON, "Agent", "Agent Finder"]].map(function (x) {
+    var foot = showFinderSideSwitcher && LOC() ? '<div class="xs-foot"><div class="xs-seg st-seg" data-seg-key="finder-side" role="tablist">' + [["files", FINDER_ICON, tr("文件", "Files"), "File Finder"], ["agents", AGENTS_ICON, "Agent", "Agent Finder"]].map(function (x) {
       return '<button data-fside="' + x[0] + '" role="tab" title="' + x[3] + '"' + (side === x[0] ? ' class="on" aria-selected="true"' : "") + ">" + x[1] + "<span>" + esc(x[2]) + "</span></button>";
     }).join("") + "</div></div>" : ""; // 没有这台 Mac 的文件（网页里）：只有 Agent 这一边，不用切换
     var nav = function (inner) { return '<nav class="xs" tabindex="-1"><div class="xs-scroll">' + inner + "</div>" + foot + "</nav>"; };

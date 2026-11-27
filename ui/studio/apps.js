@@ -63,12 +63,9 @@
 
   add({
     id: "finder", builtin: true, name: function () { return t("访达", "Finder"); }, logo: LOGO.finder,
-    // 一个访达：左下角能在「文件」「Agent」两边切换，从上次停的那一边打开（这台设备没有 Mac 的文件时只有 Agent 那一边）
-    find: function (tw) { return findTab(tw, function (pr) { return pr.page === "explorer"; }); },
+    find: function (tw) { return findTab(tw, function (pr) { return pr.page === "explorer" && finderKind(pr.arg) === "files"; }); },
     open: function (tw, fresh) {
-      var side = ""; try { side = localStorage.getItem("st-finder-side") || ""; } catch (e) { side = ""; }
-      var arg = side === "agents" || !window.TSU_LOCAL ? "agents" : "";
-      return fresh ? newTab(tw, "explorer", arg) : S.openPage(tw, "explorer", arg);
+      return fresh ? newTab(tw, "explorer", "~") : S.openPage(tw, "explorer", "~");
     },
   });
   add({
