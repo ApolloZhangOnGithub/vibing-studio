@@ -424,16 +424,23 @@
       return screen.scrollTop !== y0;
     }
     var wheelFrame = 0, wheelPixels = 0;
+    function drainWheel() {
+      wheelFrame = 0;
+      if (!wheelPixels) return;
+      var pixels = wheelPixels;
+      wheelPixels = 0;
+      if (screen.isConnected && screen.clientHeight) rowStep(pixels);
+    }
     screen.addEventListener("wheel", function (e) {
       if (e.ctrlKey || e.metaKey) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { e.preventDefault(); return; }
       if (nativeTarget(e)) { wheelAcc = 0; return; }
       e.preventDefault();
-      wheelPixels += e.deltaMode === 1 ? e.deltaY * rowHeight() : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY;
-      if (!wheelFrame) wheelFrame = requestAnimationFrame(function () {
-        var pixels = wheelPixels; wheelPixels = wheelFrame = 0;
-        if (screen.isConnected && screen.clientHeight) rowStep(pixels);
-      });
+      var delta = e.deltaMode === 1 ? e.deltaY * rowHeight() : e.deltaMode === 2 ? e.deltaY * screen.clientHeight : e.deltaY;
+      if (wheelFrame) { wheelPixels += delta; return; }
+      // Apply the leading event now; coalesce the rest of the burst for the next paint.
+      wheelFrame = requestAnimationFrame(drainWheel);
+      rowStep(delta);
     }, { passive: false });
     // 手指（iPad）：同样一整行一整行地走——跟着手指攒够一行走一行；松手后带惯性接着一行一行走、慢慢停（减速同 iOS 的 0.998/ms）；到头就停，不回弹
     var tY = null, tT = 0, tV = 0, fling = 0;
@@ -584,6 +591,7 @@
       var kids = P.out.children, n = kids.length;
       if (!n || !farIO || P.program?.agentId?.startsWith("agy:")) return;
       var top = screen.scrollTop, H = screen.clientHeight || 600, now = performance.now(), dt = now - revT;
+      if (top === revTop && dt < 32) return; // The native scroll event follows the synchronous row step.
       revV = dt > 0 && dt < 250 ? 0.5 * ((top - revTop) / dt) + 0.5 * revV : 0;
       revT = now; revTop = top;
       if (!revV) return; // 没在滚：交给 IntersectionObserver
@@ -605,12 +613,18 @@
     };
 
     // ---- 程序 ----
+    function syncChatLayer(prog) {
+      const chat = !!prog.agentId && !prog.gui && !prog.page;
+      el.classList.toggle("chat-layer", chat);
+      if (!P.off && el.parentElement?.classList.contains("tgbody")) el.parentElement.classList.toggle("chat-front", chat);
+    }
     P.run = function (prog, quiet) {
       if (P.side && P.onRun && P.onRun(prog)) { if (prog !== P.shell && prog.detach) prog.detach(); return; } // 右侧栏：换别的 agent、退出，交给编辑区
       if (P.program !== prog) P.drawn = false;
       if (P.program && P.program !== prog && P.program.detach) P.program.detach();
       if (P.vs && P.vs.onRun) P.vs.onRun(prog); // 这个标签页拆成了几格（vsplit.js）：换了外壳跟着换，换了别的就合回一格
       P.program = prog;
+      syncChatLayer(prog);
       el.classList.toggle("shellmode", !!prog.shell);
       el.classList.toggle("ptymode", !!prog.pty);
       el.classList.toggle("pagemode", !!prog.page);
@@ -786,7 +800,9 @@
     };
     // 底部（输入框）那一套格子：字宽、行高、内边距——点哪儿放光标要按它算（不能用对话区的字宽：底部字号不一样时会往左偏好几个字）
     P.footCell = function () { var cs = getComputedStyle(foot); return { cw: footCh(cs) || P.chPx, rh: parseFloat(cs.lineHeight) || P.rowH, padL: parseFloat(cs.paddingLeft) || 0, padT: parseFloat(cs.paddingTop) || 0 }; };
+    var caretRequested = false;
     P.drawCaret = function (o) {
+      caretRequested = !o.hidden;
       // o: { where: "foot" | "page", row, col, ch, color }
       var page = o.where === "page", host = page ? P.page : foot, cs = getComputedStyle(page ? term : foot);
       if (caret.parentNode !== host) host.appendChild(caret);
@@ -825,7 +841,8 @@
         taMoved = true;
       } else if (taMoved || ta.style.top || ta.style.height) { TA_KEYS.forEach(function (k) { ta.style[k] = ""; }); taMoved = false; }
     };
-    P.hideCaret = function () { caret.hidden = true; };
+    P.hideCaret = function () { caretRequested = false; caret.hidden = true; };
+    P.focusCaret = function () { caret.hidden = !caretRequested || document.activeElement !== ta; };
 
     // ---- 跟随（同 Claude Code）：发出东西、滚到底时开始跟随；用户往上翻立刻停止；回到最底才恢复 ----
     var following = true, ownTop = -1;
@@ -1129,6 +1146,7 @@
       retryAgent(P, spec.agent);
     } }
     if (spec.composer && P.program.restoreComposer) P.program.restoreComposer(spec.composer);
+    syncChatLayer(P.program);
     el.classList.toggle("shellmode", P.program === P.shell);
     el.classList.toggle("ptymode", !!P.program.pty);
     el.classList.toggle("pagemode", !!P.program.page);
@@ -3245,10 +3263,10 @@
     // 整段重画（换了宽度：拆分、挪标签页、合并……；换了筛选）：贴着底看的时候，先画最后几问（够三屏，马上就看得到），
     //   更早的在后面分几次补上（一次十来毫秒，插在最前面；贴着底的还贴着底，往上翻着看的那段不动）——几千块的大会话一次整段画完要一两秒，拆分、挪标签页时卡住
     var renderGen = 0, pendTurns = null, firstBlk = null;
-    function placeTurn(t, ref) { var h = htmlOf(t, liveOf(t)), b = P.block(h, ref); b._n = htmlN; b._t = t; blocks.set(t, b); markOpened(b); flagMark(b, t); return b; }
+    function placeTurn(t, ref) { var h = htmlOf(t, liveOf(t)), b = P.block(h, ref); b._n = htmlN; b._rowsVersion = rowCache.get(t)?.version; b._t = t; blocks.set(t, b); markOpened(b); flagMark(b, t); return b; }
     // 一问画成的那一段：宽度、字宽、深浅、筛选、设置、后台任务、这一问自己（有变就 drawTurn 升一版）、它的译文到了几段都没变——直接用上次画的；
     //   拆分、挪标签页、合并时宽度来回变，变回来过的那个宽度不用再算一遍（几千行的一问算一遍要几十上百毫秒）。在跑的那一问、还有在跑的工具的不留
-    var rowCache = new WeakMap(), renderedTranslations = new WeakMap(), rcSig = "", htmlN = 0, idxOf = null;
+    var rowCache = new WeakMap(), renderedTranslations = new WeakMap(), rcSig = "", htmlN = 0, rowsVersion = 0, idxOf = null;
     function rcGlobal() { var tk = rt.tasks || []; return [P.textFilter, mdNums() ? 1 : 0, P.cols, P.chPx, P.light ? 1 : 0, verbose ? 1 : 0, enLang() ? 1 : 0, JSON.stringify(P.view || null), JSON.stringify(cfg), tk.length + ":" + tk.filter(function (x) { return x.status === "running"; }).length].join("|"); }
     var visibleThoughtSources = new WeakMap(), summarySources = new WeakMap();
     function thoughtBody(turn, source, streaming) {
@@ -3286,7 +3304,7 @@
       visibleThoughtSources.delete(t);
       var rows = turnRows(t, live), h = P.join(rows);
       htmlN = rows.length;
-      if (!live && !run) rowCache.set(t, { k: k, h: h, n: rows.length }); else rowCache.delete(t);
+      if (!live && !run) rowCache.set(t, { k: k, h: h, n: rows.length, version: ++rowsVersion }); else rowCache.delete(t);
       return h;
     }
     // 译文到了：只重画译文有变化的那几问（不再整段重画——几千行的会话每来一批译文就卡一下）
@@ -3299,7 +3317,7 @@
     function refreshTranslatedTurns() {
       translationFrame = 0;
       if (P.closed || P.program !== V) return;
-      if (P.off) { P.dirty = true; translationTurns = null; return; }
+      if (P.off) { translationPending = true; translationTurns = null; return; }
       if (!translationTurns) {
         translationPending = false;
         translationTurns = blocks.keys();
@@ -3408,7 +3426,10 @@
       }
       rcSig = rcGlobal();
       visible.forEach(function (block) {
-        setBlockHtml(block, htmlOf(block._t, liveOf(block._t)));
+        const h = htmlOf(block._t, liveOf(block._t)), version = rowCache.get(block._t)?.version;
+        if (version !== undefined && block._rowsVersion === version) return;
+        setBlockHtml(block, h);
+        block._rowsVersion = version;
         block._n = htmlN;
         markOpened(block);
       });
@@ -3467,7 +3488,7 @@
         else {
           var need = Math.ceil(P.screen.clientHeight / (P.rowH || 16)) * 3, got = 0, i = ts.length - 1;
           firstBlk = statusEl;
-          for (; i >= 0; i--) { firstBlk = placeTurn(ts[i], firstBlk); got += firstBlk._n || 1; if (got >= need && ts.length - i >= 3) { i--; break; } }
+          for (; i >= 0; i--) { firstBlk = placeTurn(ts[i], firstBlk); got += firstBlk._n || 1; if (got >= need) { i--; break; } }
           if (i >= 0) { pendTurns = ts.slice(0, i + 1); setTimeout(function () { restTurns(gen); }, 0); }
         }
       }
@@ -3491,7 +3512,7 @@
       if (pendTail) { if (pendTail.indexOf(t) < 0) pendTail.push(t); return; } // 后面的还在分段补画：新来的排在它们后面（不插到中间去）
       if (!blocks.size) P.screen.classList.add("transcript-at-end");
       var was0 = liveT, b = P.block(htmlOf(t, liveOf(t)), statusEl);
-      b._t = t; blocks.set(t, b); flagMark(b, t);
+      b._rowsVersion = rowCache.get(t)?.version; b._t = t; blocks.set(t, b); flagMark(b, t);
       var ts1 = rt.session().turns, pv1 = ts1[ts1.indexOf(t) - 1]; // 前一问做完那一行原来在输入框下面（它曾是最后一问）：现在回到对话里它自己的位置
       if (!quiet && pv1 && pv1 !== was0 && (pv1.stats || P.textFilter === "body") && blocks.has(pv1)) drawTurn(pv1);
       if (was0 && was0 !== t && blocks.has(was0) && !(rt.stream && rt.stream.turn === was0)) { if (liveT === was0) liveT = null; drawTurn(was0); }
@@ -3525,6 +3546,7 @@
       var was1 = liveT;
       t.__rv = (t.__rv || 0) + 1; // 这一问变了：各处的缓存都作废
       setBlockHtml(b, htmlOf(t, liveOf(t), true));
+      b._rowsVersion = rowCache.get(t)?.version;
       markOpened(b);
       if (was1 && was1 !== t && blocks.has(was1) && !(rt.stream && rt.stream.turn === was1)) { if (liveT === was1) liveT = null; drawTurn(was1); }
     }
@@ -5613,6 +5635,7 @@
     // 藏在同一组后面的（content-visibility:hidden）：不画输入框、状态行——在那里量尺寸会把整块藏着的对话强行排版一遍（切走时失焦那一下就要二十多毫秒）；露出来时补画
     V.hasPendingPreview = () => hiddenTurns.size > 0 || inputStale || statusStale;
     V.unpark = function () {
+      if (translationPending && !translationFrame) translationFrame = requestAnimationFrame(refreshTranslatedTurns);
       if (hiddenTurns.size) {
         var turns = rt.session().turns;
         for (var t of turns) if (hiddenTurns.has(t)) drawTurn(t);
@@ -5933,7 +5956,7 @@
       panel.sel = (x0.options || []).length; panel.typing = true;
       return true;
     }
-    V.inputChanged = function (t) { if (t === "input") imgsToShared(); if (t === "input" && P.ta.value.length > 10000) truncLong(); if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(t === "input" || t === "select"); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
+    V.inputChanged = function (t) { if (t === "focus" || t === "blur") { P.focusCaret(); return; } if (t === "input") imgsToShared(); if (t === "input" && P.ta.value.length > 10000) truncLong(); if (t === "input" && P.ta.value) askStartTyping(); if (t === "input") { menuIdx = 0; histIdx = -1; if (!(panel && panel.typing)) draftSet(agentId, P.ta.value, pastes); } if (!panel || t !== "select" || askTyping()) renderInput(t === "input" || t === "select"); }; // 在写回答（问答面板开着）时光标挪了也重画：画出来的光标跟着键盘走；写的回答不当草稿记
 
     // ======== 面板（同 Claude Code）：占输入栏的位置，顶上一条淡紫线；Esc 关掉 ========
     function openPanel(p) {
@@ -9579,15 +9602,38 @@
     }
     // 这一组开着的几个都留在页面上、叠在一起：当前那个露着，别的 content-visibility:hidden 藏着（不排版、不画，排好的样子和滚动位置都还在）——
     //   切过去只是换个 class（原来是从页面上拿下来再放回去：几千行的会话整段重新排版要一两百毫秒）
+    // Lay out restored conversations at their real width, one per idle period.
+    const warmQueue = new Set();
+    let warming = false;
+    function warmNext() {
+      const p = warmQueue.values().next().value;
+      if (!p) { warming = false; return; }
+      warmQueue.delete(p);
+      if (p.off && !p.closed && !p.drawn && p.program?.agentId && !p.program.gui &&
+          p.el.isConnected && p.el.clientWidth && !document.hidden) {
+        p.off = false;
+        try { p.reshow(); }
+        finally { p.park(); p.off = true; }
+      }
+      if (warmQueue.size) scheduleWarm(); else warming = false;
+    }
+    function scheduleWarm() {
+      warming = true;
+      if (window.requestIdleCallback) requestIdleCallback(warmNext);
+      else setTimeout(warmNext, 100);
+    }
     function bodyPanes(g) {
+      g.body.classList.toggle("chat-front", !!g.active?.el.classList.contains("chat-layer"));
       var kids = g.body.children;
       for (var ki = kids.length - 1; ki >= 0; ki--) { var kc = kids[ki]; if (!g.editors.some(function (p) { return p.el === kc; })) g.body.removeChild(kc); }
       g.editors.forEach(function (p) {
         if (p.el.parentNode !== g.body) g.body.appendChild(p.el);
         var off = p !== g.active;
         p.off = off;
+        if (off && !p.drawn && p.program?.agentId && !p.program.gui) warmQueue.add(p);
         if (p.el.classList.contains("tpoff") !== off) { p.el.classList.toggle("tpoff", off); if (off) p.el.setAttribute("aria-hidden", "true"); else p.el.removeAttribute("aria-hidden"); } // 不用 inert：WebKit 里一改就把整棵子树重算样式（大会话要好几秒）
       });
+      if (warmQueue.size && !warming) scheduleWarm();
     }
     function buildGrid(node) {
       if (node.g) { var e = groupEl(node.g); e.style.flex = ""; return e; }
@@ -9831,6 +9877,7 @@
         });
         if (window.TSU_BROWSER) TSU_BROWSER.sync(tw);
         if (tw.side && !(tw.side.markCur && tw.side.markCur())) tw.side.render();
+        persistAll();
       };
       clearTimeout(afterT); cancelAnimationFrame(afterR);
       afterR = requestAnimationFrame(function () { afterR = 0; clearTimeout(afterT); afterT = setTimeout(run, 0); }); // 画完这一帧再做
@@ -9868,19 +9915,28 @@
       ws.group = g;
       ws.active = p;
       p.bell = false;
+      const focusBeforeSwap = quick && p.drawn && p.program?.agentId && !p.program.gui && !p.compAway() && !p.program.focus;
       if (quick) {
         if (prev && prev !== p && prev.park) prev.park();
+        if (focusBeforeSwap) { p.off = false; p.el.removeAttribute("aria-hidden"); p.ta.focus({ preventScroll: true }); }
         if (prev && prev !== p) {
           prev.off = true; prev.el.classList.add("tpoff"); prev.el.setAttribute("aria-hidden", "true");
         }
+        g.body.classList.toggle("chat-front", p.el.classList.contains("chat-layer"));
         p.off = false; p.el.classList.remove("tpoff"); p.el.removeAttribute("aria-hidden");
         if (previousActive && previousActive !== p) previousActive.el.classList.remove("active");
         p.el.classList.add("active");
-        if (p.reshow) p.reshow(); else p.renderNow();
-        persistAll();
+        if (p.drawn && p.program?.agentId && !p.program.gui) {
+          // The attached pane still contains its last frame and scroll position.
+          // Present it before applying pending transcript updates.
+          const ticket = p.showTicket = (p.showTicket || 0) + 1;
+          requestAnimationFrame(() => setTimeout(() => {
+            if (p.showTicket === ticket && !p.closed && !p.off && g.active === p) p.reshow();
+          }, 0));
+        } else if (p.reshow) p.reshow(); else p.renderNow();
         syncQuick(g);
       } else if (swap) ws.layout(); else { ws.all().forEach(function (x) { x.el.classList.toggle("active", x === p); }); ws.syncTitles(); persistAll(); }
-      p.focus();
+      if (!focusBeforeSwap) p.focus();
     };
     ws.activate = function (pane) {
       if (ws.active === pane) return;

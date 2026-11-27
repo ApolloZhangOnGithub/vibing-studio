@@ -438,6 +438,11 @@ html.termapp .tgbody { isolation: isolate; } /* 叠着的几个的 z-index 只�
 /* 藏着的：挪到屏幕外（transform，只动合成层，不重排、不重算样式）、垫在当前那个下面。排好的样子、滚动位置都还在，切过去只是换个 class。
    不用 content-visibility:hidden（露出来要把整棵子树的样式重算一遍，大会话十来毫秒）、visibility / pointer-events（会往下继承，一改整棵子树重算）、inert（WebKit 里要好几秒） */
 html.termapp .tgbody > .tpane.tpoff { transform: translateX(-400vw); opacity: 0; z-index: -1; }
+/* Stacking opaque conversation panes avoids relaying out long transcripts in WebKit.
+   Keep the normal offscreen behavior when a different editor is in front. */
+html.termapp .tgbody.chat-front > .tpane.chat-layer:where(:not(.tov-live-hover)) {
+  transform: none; opacity: 1; isolation: isolate; background-color: var(--st-bg);
+}
 html.termapp .panes .divider { background: var(--st-line); }
 /* 当前组里当前的标签：上沿一条亮线；别的组里当前的标签字暗一点（同 VS Code）*/
 html.termapp .termwin .tgroup:not(.on) .tab.on { color: var(--st-dim); }

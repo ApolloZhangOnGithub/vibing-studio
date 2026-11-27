@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.1", items: { improved: [
+      ["在分屏中切换长对话时优先显示已打开的正文。悬停预览后点击标签也能更快切换，输入焦点和阅读位置随标签恢复。", "Long conversations switch faster in split view, including after a tab preview. Each tab retains its reading position and receives keyboard focus when selected."],
+      ["对话滚动时立即响应第一下滚轮。拖动分屏时复用已按当前宽度排好的历史内容。", "Conversations respond to the first wheel event immediately. Resizing a split reuses history already laid out at the current width."],
+      ["收藏来源名称在窄边栏内可以换行。", "Long source names wrap in the Favorites sidebar."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.9", items: { improved: [
       ["收藏卡片边框更清晰，悬停时进一步提亮。搜索时复用仍然匹配的卡片，加快连续输入。", "Favorites cards have clearer borders and a stronger hover outline. Search reuses matching cards as you type."]
     ] } },

@@ -131,9 +131,15 @@ html.light .tov-card.busy .tov-pill > .st-ico.st-i-cc { color: #c96442; }
 .tov-hover-name { position: fixed; z-index: 76; pointer-events: none; width: max-content; max-width: min(360px, calc(100vw - 8px)); box-sizing: border-box; padding: 4px 8px; border: 1px solid var(--st-line); border-radius: 6px; background: var(--st-bg); color: var(--st-hi); font: 12px/1.4 -apple-system, system-ui, sans-serif; overflow-wrap: anywhere; }
 .tov-hover { position: fixed; z-index: 75; overflow: hidden; pointer-events: none; border-radius: 7px; background: var(--st-bg); border: 1px solid var(--st-line); box-shadow: 0 5px 18px #0003; }
 
+@property --tov-transform { syntax: "<transform-list>"; inherits: false; initial-value: translate(0px); }
 html.termapp .tgbody > .tpane.tpoff.tov-live-hover {
   transform: var(--tov-transform); transform-origin: top left;
   z-index: 2; opacity: 1; pointer-events: none;
   border-radius: 12px; box-shadow: 0 3px 16px #0004;
+}
+/* Leaving the tab dismisses its preview on pointerout. Keep hit testing
+   unchanged within the transcript to avoid restyling every text span. */
+html.termapp .tgbody.chat-front > .tpane.chat-layer.tov-live-hover {
+  pointer-events: auto; isolation: isolate; background-color: var(--st-bg);
 }
 .tov-hover > img { display: block; width: 100%; height: 100%; }
