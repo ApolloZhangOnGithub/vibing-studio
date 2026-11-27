@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.11", items: { fixed: [
+      ["TUI 表格中的代码和链接换行后，边框保持统一颜色。", "TUI table borders keep a consistent color when inline code or links wrap."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.10", items: { fixed: [
       ["拖动后台标签后立即显示新顺序。拖动分隔线时，即使工作区重新排版，也能继续拖到松手的位置。", "Dragging a background tab updates its position immediately. Split dividers keep tracking the pointer through workspace layout updates."]
     ] } },
