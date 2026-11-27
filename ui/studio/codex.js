@@ -306,7 +306,10 @@
   async function refreshTasks() {
     await LOC.ready;
     var sampledAt = Date.now();
-    var [active, archived, loaded] = await taskCatalog();
+    var [[active, archived, loaded], origins] = await Promise.all([
+      taskCatalog(), LOC.list(LOC.info().home + "/Library/Application Support/Vibing Studio/verification-sessions").catch(() => [])
+    ]);
+    var verification = new Set(origins.map(entry => entry.name));
     var entries = new Map(), archivedIds = new Set(archived.map(t => t.id));
     active.concat(archived).forEach(t => entries.set(t.id, t));
     var listed = new Set(entries.keys());
@@ -318,7 +321,7 @@
     var out = threads.map(t => {
       var file = files.get(t.id), previous = byId[t.id];
       var name = (t.name?.trim() || t.preview?.trim() || "").split(/\r?\n/, 1)[0];
-      var x = {id: t.id, conn: "codex", live: null, listed: listed.has(t.id), archived: archivedIds.has(t.id),
+      var x = {id: t.id, verification: verification.has("cx-" + t.id), conn: "codex", live: null, listed: listed.has(t.id), archived: archivedIds.has(t.id),
         path: file?.path || (listed.has(t.id) ? t.path : null), size: file?.size || 0,
         mtime: t.updatedAt * 1000, cwd: t.cwd || "", model: t.model || "", reasoningEffort: t.reasoningEffort || "",
         title: name || "Untitled task", named: !!t.name, dimTitle: !name, last: previous?.last || ""};
@@ -1219,6 +1222,10 @@
       if (!real || real === sid) return;
       var old = "cx:" + sid, nu = "cx:" + real;
       if (!historicalAlias) newKeep(sid, { real: real });
+      if (window.TSU_VERIFICATION_RUN && !historicalAlias && sid.startsWith("new-") && /^[a-f0-9-]{36}$/.test(real)) {
+        var directory = shq(LOC.info().home + "/Library/Application Support/Vibing Studio/verification-sessions");
+        LOC.exec({cmd: 'mkdir -p ' + directory + ' && touch ' + directory + '/cx-' + real}).catch(console.error);
+      }
       if (modelSel) cxModelKeep(real, modelSel);
       if (effortSel) info.reasoningEffort = effortSel;
       var previousKey = pendingKey; pendingKey = "tsu-cx-awaiting-log:" + real; savePending();

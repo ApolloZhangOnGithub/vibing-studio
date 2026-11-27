@@ -975,7 +975,7 @@
     var el = o.el, b = el.querySelector(".xp-qlb"), vw = innerWidth, vh = innerHeight, maxW = Math.floor(vw * 0.85), maxH = Math.floor(vh * 0.85), w, h;
     el.style.transition = "none";
     var natH = function (width) { el.style.width = width + "px"; el.style.height = "auto"; b.style.flex = "none"; var chrome = el.offsetHeight - b.offsetHeight, hh = chrome + b.scrollHeight; b.style.flex = ""; return { chrome: chrome, h: hh }; };
-    if (o.mode === "img") {
+    if (o.mode === "web") { w = Math.min(960, maxW); h = Math.min(680, maxH); } else if (o.mode === "img") {
       var img = b.querySelector("img"), nw = (img && img.naturalWidth) || 480, nh = (img && img.naturalHeight) || 360, chrome = natH(320).chrome; // 标题行、信息行、边框
       var sc = Math.min(1, (maxW - 2) / nw, (maxH - chrome) / nh);
       if (Math.max(nw, nh) * sc < 240) sc = Math.min(240 / Math.max(nw, nh), (maxW - 2) / nw, (maxH - chrome) / nh); // 很小的图：放大到看得清
@@ -992,6 +992,7 @@
   function qlZoomIn(o, r, src) {
     var el = o.el;
     qlPlace(el, r);
+    if (o.it.reference) { el.style.visibility = ""; o.bg.style.opacity = "1"; return; }
     el.style.visibility = "";
     o.bg.style.opacity = "1";
     if (reduceMotion() || !src) {
@@ -1029,6 +1030,19 @@
     };
     // Claude Code / Codex 的会话：同 Paimon 的 agent，画出这段对话（最近 40 问，按现在的显示方式）——读它的记录要一会儿：先等最多 4 秒，读到了就画；
     //   读不到（记录太大、没权限）才退回图标 + 最后一句
+    if (it.kind === "web") {
+      set("", "web");
+      o.web = window.TSU_WEB?.overlay(b, it.reference, () => ql === o);
+      if (!o.web) {
+        const frame = document.createElement("iframe");
+        frame.title = it.name;
+        frame.sandbox = "allow-scripts allow-forms";
+        frame.style.cssText = "width:100%;height:100%;border:0";
+        frame.src = it.reference;
+        b.append(frame);
+      }
+      return;
+    }
     if (it.kind === "csess") {
       var aid = it.conn + ":" + it.id, rt0 = null;
       try { rt0 = A.runtime(aid); } catch (e) { rt0 = null; }
@@ -1061,6 +1075,7 @@
     var o = ql;
     if (!o) return;
     ql = null;
+    o.web?.close();
     var el = o.el, bg = o.bg, done = function () {
       el.remove(); bg.remove();
       if (!o.M || !window.STUDIO || !STUDIO.modal) return;
@@ -1114,7 +1129,7 @@
     var src = qlSrc(o);
     var show = function () { if (o.shown || ql !== o) return; o.shown = true; qlZoomIn(o, qlMeasure(o), src); };
     qlFill(o, function () { if (ql !== o) return; if (!o.shown) show(); else qlResize(o); });
-    setTimeout(show, 260); // 内容半天没好（大文件、缩略图）：先按现在的样子放大出来，好了再变大小
+    if (it.reference) show(); else setTimeout(show, 260); // 内容半天没好（大文件、缩略图）：先按现在的样子放大出来，好了再变大小
     return o.el;
   }
 
@@ -1354,7 +1369,7 @@
         fitCols(host); fitMinis(host); toolH(host);
         requestAnimationFrame(function () { fitCols(host); }); // 排好版以后再对一次（刚换成分栏、预览栏刚开关时宽度还没定）
       }
-      if (ql && sel && (!ql.V || ql.V === V)) quickLook(sel, V); // 快速查看开着：跟着这一页选中的换（别的访达窗口不动它）
+      if (ql && !ql.it.reference && sel && (!ql.V || ql.V === V)) quickLook(sel, V); // 快速查看开着：跟着这一页选中的换（别的访达窗口不动它）
       if (host.dataset.bound) return;
       host.dataset.bound = "1";
       new ResizeObserver(function () { fitCols(host); fitMinis(host); toolH(host); }).observe(host); // 分栏、对话缩略图跟着框的宽度；左边一栏跟着工具栏的高
@@ -1941,7 +1956,13 @@
       });
     },
     focus: function (host) { var m = host.querySelector(".xp-main"); if (m) m.focus({ preventScroll: true }); },
-    detach: function (host, P, arg, V) { host.pathObserver?.disconnect(); if (ql && (!ql.V || ql.V === V)) quickLook(null, null, true); },
+    detach: function (host, P, arg, V) { host.pathObserver?.disconnect(); if (ql && !ql.it.reference && (!ql.V || ql.V === V)) quickLook(null, null, true); },
+  };
+  window.TSU_REFERENCE_PREVIEW = function (ref) {
+    if (ql) qlClose(true);
+    if (/^https?:\/\//i.test(ref)) return quickLook({kind:"web", reference:ref, name:new URL(ref).host}, null);
+    const path = ref.replace(/(?::[1-9]\d*(?::[1-9]\d*)?|#L[1-9]\d*(?:-L?[1-9]\d*)?)$/, "").replace(/^~\//, () => LOC().info().home + "/");
+    quickLook({kind:"file", path, name:path.split("/").pop(), reference:ref}, null);
   };
   // 快速查看那块上的按钮
   document.addEventListener("click", function (e) {
@@ -1949,6 +1970,12 @@
     var b = e.target.closest("[data-act]");
     if (!b) return;
     if (b.dataset.act === "ql-close") quickLook(null);
+    if (b.dataset.act === "ql-open" && ql.it.reference) {
+      const ref = ql.it.reference;
+      quickLook(null, null, true);
+      if (/^https?:\/\//i.test(ref)) return TSU_WEB.open(TSU_TERM.front(), ref);
+      return STUDIO.openFile(TSU_TERM.front(), ref);
+    }
     if (b.dataset.act === "ql-open") { var main = (ql.V && ql.V.host && ql.V.host.querySelector(".xp-main")) || document.querySelector(".st-pg-explorer .xp-main"); quickLook(null); if (main) main.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); } // 「打开」：打开的是开着快速查看的那一页里选中的
   });
   document.addEventListener("keydown", function (e) { if (ql && (e.key === "Escape" || e.key === " ") && !e.target.closest(".st-pg-explorer")) { e.preventDefault(); quickLook(null); } }, true);

@@ -9,7 +9,8 @@ html.light .cx { --cx-fg: #1f1f1f; --cx-dim: rgba(31, 31, 31, 0.55); --cx-line: 
 .cx-chev { width: 8px; height: 8px; margin: -3px 2px 0 4px; border: solid var(--cx-dim); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform 0.15s; }
 .cx.folded .cx-chev { transform: rotate(-45deg); margin-top: 1px; }
 .cx-bar { display: flex; height: 4px; margin: 2px 2px 8px; border-radius: 2px; background: var(--cx-track); overflow: hidden; }
-.cx-bar > i { display: block; height: 100%; border-radius: 1px; }
+.cx-bar > i, .cx-meter > i { display: block; height: 100%; background: var(--cx-dim); }
+.cx-meter { flex: 0 1 3em; height: 3px; overflow: hidden; border-radius: 2px; background: var(--cx-track); }
 .cx.folded .cx-body { display: none; }
 .cx-r, .cx-gh, .cx-gi { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 0 6px; border-radius: 6px; }
 .cx-sq { flex: none; width: 11px; height: 11px; border-radius: 3px; }

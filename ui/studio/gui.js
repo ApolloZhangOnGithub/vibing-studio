@@ -245,6 +245,7 @@
       if (agent.connector !== "agy") return "";
       if (rt.backgroundWaitSince()) return "Waiting for background terminal";
       if (V.working()) return "";
+      if (rt.tasks.some(task => task.kind === "agent" && task.status === "running")) return "Waiting for background agents";
       return rt.schedules?.some(t => t.status === "running") ? "Waiting" : "";
     };
     V.busy = function () { return false; };

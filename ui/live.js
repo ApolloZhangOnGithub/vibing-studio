@@ -1247,6 +1247,40 @@
   });
   document.addEventListener("wheel", hidePathHint, {capture:true,passive:true});
   document.addEventListener("pointerdown",hidePathHint,true);
+  // WebKit otherwise looks up the page URL, including Studio's internal file fragments.
+  function forceLink(event) {
+    const a = event.target.closest?.("a[href], .st-imgref");
+    if (!a?.closest(".tpane, .tside, .st-fam, .st-panel")) return;
+    if (a.matches('.st-imgref, a[href*="#vs-img:"]')) return () => a.click();
+    if (a.hash?.startsWith("#vs-file:") && window.TSU_REFERENCE_PREVIEW) {
+      try {
+        const path = decodeURIComponent(a.hash.slice(9));
+        return () => TSU_REFERENCE_PREVIEW(path);
+      } catch (_) { return; }
+    }
+    if (webLink(a) && window.TSU_REFERENCE_PREVIEW) return () => TSU_REFERENCE_PREVIEW(a.href);
+  }
+  let forceTarget;
+  window.addEventListener("pointerdown", () => { forceTarget = null; }, true);
+  for (const type of ["webkitmouseforcewillbegin", "webkitmouseforcedown"]) {
+    window.addEventListener(type, event => {
+      const preview = forceLink(event);
+      if (!preview) return;
+      event.preventDefault();
+      if (type === "webkitmouseforcedown" && !forceTarget) {
+        hidePathHint();
+        const target = event.target.closest("a[href], .st-imgref");
+        preview();
+        forceTarget = target;
+      }
+    }, true);
+  }
+  window.addEventListener("click", event => {
+    if (forceTarget?.contains(event.target)) {
+      forceTarget = null;
+      event.preventDefault(); event.stopImmediatePropagation();
+    }
+  }, true);
   var ctrlOpened = null;
   window.addEventListener("pointerdown", function (e) {
     ctrlOpened = null;
@@ -2888,7 +2922,7 @@
       if (agyTerminalWait()) return terminalWaitLabel;
       if (!V.working()) {
         var stats = lastDone()?.stats;
-        if (stats?.pendAgents && liveBg().agents) return "Waiting for background agents";
+        if ((stats?.pendAgents && liveBg().agents) || (agent.connector === "agy" && rt.tasks.some(task => task.kind === "agent" && task.status === "running"))) return "Waiting for background agents";
         return V.scheduleInfo();
       }
       return "";
@@ -5517,6 +5551,10 @@
         }
         if (terminalWait) {
           out.push(indent + timedWait(terminalWaitLabel, terminalWait));
+          return out;
+        }
+        if (agent.connector === "agy" && rt.tasks.some(task => task.kind === "agent" && task.status === "running")) {
+          out.push(indent + TY_SNOW + " Waiting for background agents" + RESET);
           return out;
         }
         var ld = lastDone(), dlf = ld ? doneLine(ld, true) : "";
@@ -8259,8 +8297,10 @@
           var cxG = {}; cxLive.forEach(function (x) { var g0 = cxGrpOf(x); if (g0 && (!only("cx") || grpX(x) !== "o")) (cxG[g0] = cxG[g0] || []).push(x); });
           Object.keys(cxG).sort().forEach(function (gn) { var kgx = "cx:#g:" + gn; out += row("ts-fold", foldAt(kgx, false) + ' data-ic="grp"', [["  " + chev(kgx, false), ""], [gn, DIMC]]); if (!folded(kgx, false)) cxG[gn].sort(cxOrd).forEach(function (x) { out += cxRow(x, "  "); }); });
           var treeX = cxLive.filter(function (x) { return !EXTc.pin[kx(x)] && !cxGrpOf(x); });
+          var cxVerification = treeX.filter(x => x.verification && (!only("cx") || grpX(x) !== "o"));
+          treeX = treeX.filter(x => !x.verification);
           var limit = fold["cx:all"] || cxQ ? Infinity : sidePref.cxTaskLimit || 10;
-          var visibleIds = new Set(cxLive.filter(x => x.listed).slice(0, limit).map(x => x.id));
+          var visibleIds = new Set(cxLive.filter(x => x.listed && !x.verification).slice(0, limit).map(x => x.id));
           var projects = new Map();
           treeX.forEach(x => {
             if (grpX(x) === "o" && (only("cx") || !visibleIds.has(x.id))) return;
@@ -8277,8 +8317,13 @@
               [["  " + chev(key, false), ""], [label + " (" + items.length + ")", DIMC]]);
             if (!folded(key, false)) items.sort(cxOrd).forEach(x => { out += cxRow(x, "  "); });
           });
-          if (!only("cx") && !cxQ && cxLive.filter(x => x.listed).length > limit)
+          if (!only("cx") && !cxQ && cxLive.filter(x => x.listed && !x.verification).length > limit)
             out += '<span class="ts-act" data-act="cx-more">' + H("  " + DIMC + tt("显示更多", "Show more") + RESET) + "</span>\n";
+          if (cxVerification.length) {
+            var vk = "cx:verification";
+            out += row("ts-fold", foldAt(vk, true), [["  " + chev(vk, true), ""], [tt("验证会话", "Verification sessions") + " (" + cxVerification.length + ")", DIMC]]);
+            if (!folded(vk, true) || cxQ) cxVerification.sort(cxOrd).forEach(x => { out += cxRow(x, "  "); });
+          }
           if (!only("cx") && cxArch.length) {
             out += row("ts-fold", foldAt("cx:arch", true) + ' data-ic="arch"', [["  " + chev("cx:arch", true), ""], ["已归档", DIMC]]);
             if (!folded("cx:arch", true)) cxArch.forEach(function (x) { out += cxRow(x, "  "); });
@@ -8401,11 +8446,12 @@
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
           var agySessions = only("agy") ? agy.list().filter(s => agyActive(s) || openIds.has("agy:" + s.sessionId)) : agy.list();
           if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中或已打开的会话" : agy.status()) + RESET) + "\n";
-          var agyArchive = ccExt().arch, archivedAgy = [];
+          var agyArchive = ccExt().arch, archivedAgy = [], verificationAgy = [];
           var folders = new Map(), homeAgy = (TSU_LOCAL.info() || {}).home;
           agySessions.forEach(function (s) {
             if (!qHit(s.title || s.sessionId, s.sessionId, s.cwd || "")) return;
             if (agyArchive["agy:" + s.sessionId]) { archivedAgy.push(s); return; }
+            if (s.verification) { verificationAgy.push(s); return; }
             var key = s.cwd || "";
             if (!folders.has(key)) folders.set(key, []);
             folders.get(key).push(s);
@@ -8416,6 +8462,11 @@
             out += row("ts-fold", foldAt(key, false) + (dir ? ' data-dir="' + escHtml(dir) + '"' : ""), [["  " + chev(key, false), ""], [label, DIMC]]);
             if (!folded(key, false) || qToks.length) items.forEach(agyRow);
           });
+          if (verificationAgy.length) {
+            var vk = "agy:verification";
+            out += row("ts-fold", foldAt(vk, true), [["  " + chev(vk, true), ""], [tt("验证会话", "Verification sessions") + " (" + verificationAgy.length + ")", DIMC]]);
+            if (!folded(vk, true) || qToks.length) verificationAgy.forEach(agyRow);
+          }
           if (archivedAgy.length) {
             var agyArchKey = "agy:arch";
             out += row("ts-fold", foldAt(agyArchKey, true) + ' data-ic="arch"', [["  " + chev(agyArchKey, true), ""], [tt("已归档", "Archived") + " (" + archivedAgy.length + ")", DIMC]]);

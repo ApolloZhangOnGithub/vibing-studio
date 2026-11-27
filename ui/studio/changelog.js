@@ -11,6 +11,13 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.3", items: { improved: [
+      ["Context 用单色横条显示总占用和分类占比，保留按用量排序的百分比。", "Context uses monochrome bars for total usage and category shares, with percentages sorted by usage."],
+      ["重按对话中的文件或网页链接可在当前标签内预览。标签悬停预览按窗口空间放大。", "Force-click a file or web link for an in-place preview. Tab previews now use more of the available window."],
+      ["侧栏将有来源标记的验证会话单独折叠，可展开查看原始记录。", "The sidebar groups identified verification sessions in a collapsible section."],
+      ["同步合并重复的设备报到请求。网络中断或服务暂时不可用时自动重试。", "Sync coalesces duplicate device registrations and retries transient connection and server errors."],
+      ["AGY 使用原生运行状态和后台任务记录判断会话进度，在等待子代理时显示等待状态。", "AGY uses native run state and background task records to track progress and shows when it is waiting for subagents."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.2", items: { improved: [
       ["访达搜索在目录刷新时保留输入内容和光标。空目录直接留白。", "Finder preserves your search and caret during refreshes. Empty folders open with a blank content area."],
       ["长对话按阅读位置补绘历史，输入期间推迟后台补绘。运行中工具的计时可以单独更新。", "Long conversations render earlier history near your reading position and defer background work while typing. Running tool timers can update independently."],

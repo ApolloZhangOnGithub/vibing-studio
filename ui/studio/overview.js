@@ -197,8 +197,10 @@
     const width = pane.clientWidth, height = pane.clientHeight;
     if (!group || !width || !height) return;
     const area = group.getBoundingClientRect();
-    const scale = Math.min(1, 320 / width, 210 / height, area.width / width);
-    const left = Math.max(area.left, Math.min(rect.left, area.right - width * scale));
+    const available = Math.min(innerWidth - 8, Math.max(320, Math.min(560, innerWidth * 0.4)));
+    const scale = Math.min(1, available / width, Math.min(340, innerHeight * 0.42) / height);
+
+    const left = Math.max(4, Math.min(rect.left, innerWidth - width * scale - 4));
     const top = captionHeight ? rect.bottom + 4 + captionHeight : rect.bottom <= area.top + 2 ? area.top + 4 :
       Math.max(area.top, Math.min(rect.bottom + 4, area.bottom - height * scale - 4));
     if (pane.classList.contains("tpoff") && P.program?.page !== "web") {

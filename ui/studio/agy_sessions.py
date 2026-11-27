@@ -32,7 +32,10 @@ sys.dont_write_bytecode = True
 import agy_acp
 
 
-def create_session():
+VERIFICATION_DIR = Path.home() / "Library/Application Support/Vibing Studio/verification-sessions"
+
+
+def create_session(verification=False):
     with subprocess.Popen(["agy", "acp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as proc:
         try:
             for seq, (method, params) in enumerate([
@@ -53,6 +56,9 @@ def create_session():
             log = Path.home() / ".gemini/antigravity-cli/brain" / sid / ".system_generated/logs/transcript.jsonl"
             log.parent.mkdir(parents=True, exist_ok=True)
             log.touch(exist_ok=True)
+            if verification or os.environ.get("NADOS_TESTJS") or os.environ.get("NADOS_SELFTEST") == "1":
+                VERIFICATION_DIR.mkdir(parents=True, exist_ok=True)
+                (VERIFICATION_DIR / ("agy-" + sid)).touch()
             return {"sessionId": sid}
         finally:
             proc.terminate()
@@ -332,14 +338,15 @@ def log_revision(path):
         return None
 
 
-def history(path, known_prefix=None, known_turns=None, known_last=None, known_source=None):
+def history(path, known_prefix=None, known_turns=None, known_last=None, known_source=None, *, owner_start=None):
     times, durations, context_limit, current = step_times(path)
     events = []
     model = ""
     tools = deque()
     background = {}
     notification_tasks = {}
-    owner_start = active_since(path.parents[2].name)
+    if owner_start is None:
+        owner_start = active_since(path.parents[2].name)
     settings_path = path.parents[4] / "settings.json"
     settings = {}
     if settings_path.is_file():
@@ -868,6 +875,20 @@ def screen_status(sid):
     return {"summaryWorking": working} if working is not None else {}
 
 
+_background_cache = {}
+
+
+def owner_has_background(transcript, owner_start):
+    if summary_working(transcript) is True:
+        return True
+    revision = (owner_start, log_revision(transcript), log_revision(transcript.with_name("transcript_full.jsonl")))
+    if revision not in _background_cache:
+        tasks = history(transcript, owner_start=owner_start)["background"]
+        _background_cache.clear()
+        _background_cache[revision] = any(task["status"] == "running" for task in tasks)
+    return _background_cache[revision]
+
+
 def summary_working(path):
     db = path.parents[4] / "conversation_summaries.db"
     try:
@@ -949,12 +970,13 @@ def main():
     parser.add_argument("--model")
     parser.add_argument("--message")
     parser.add_argument("--slash-command", action="store_true", help="Submit a recognized command in the interactive terminal")
+    parser.add_argument("--verification", action="store_true")
     parser.add_argument("--create", action="store_true")
     args = parser.parse_args()
     if args.create:
-        return create_session()
+        return create_session(args.verification)
     if args.acp_owner:
-        asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner))))
+        asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner)), owner_has_background))
         return {}
     if args.weekly:
         return weekly_quota()
@@ -984,6 +1006,7 @@ def main():
         terminals = None
     sources = {root: workspace_dirs(root) for root in {path.parents[4] for path in files.values()}}
     children = {root: {**workflow_children(root), **subagent_metadata(root)} for root in sources}
+    verification = {p.name for p in VERIFICATION_DIR.glob("agy-*")}
     sessions = []
     for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True):
         dirs = sources[path.parents[4]].get(sid, [])
@@ -997,7 +1020,7 @@ def main():
             label = child.get("label") or (assignment[1][:120] if assignment else child["role"] or "Subagent")
         else:
             label = title(path, sid)
-        started = active_since(sid)
+        owner_started = started = active_since(sid)
         if started:
             try:
                 owner, turn = map(int, activity_file(sid).with_suffix(".turn").read_text().split())
@@ -1011,7 +1034,7 @@ def main():
                 queued = max(0, int(activity_file(sid).with_suffix(".input-count").read_text()) - 1)
             except (OSError, ValueError):
                 pass
-        sessions.append(dict(workingSince=started, queuedInputs=queued, path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
+        sessions.append(dict(verification=("agy-" + sid in verification), workingSince=started, cascadeWorking=summary_working(path) if owner_started or sid in (terminals or {}) else None, queuedInputs=queued, path=str(path), cwd=dirs[0] if dirs else "", workspaces=dirs,
                              tty=terminals.get(sid, "") if terminals is not None else None,
                              sessionId=sid, title=label, subagent=child,
                              updatedAt=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()))

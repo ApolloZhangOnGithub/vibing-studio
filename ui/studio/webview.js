@@ -34,7 +34,7 @@
   // 别的页面也用这一套（远程桌面 rdp.js：TSU_WEB.track）：V.frameCmd / V.closeCmd 换成它自己的命令，V.want() 为假时也藏（比如还没连上）
   function place(V) {
     if (!native() || !V.host || !V.id) return;
-    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.shown() && (!V.want || V.want()) && !covered(r) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
+    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.shown() && (!V.want || V.want()) && !covered(r, V.box) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
     var k = r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), vis].join(",") : "";
     if (k === V.lastFrame) return;
     V.lastFrame = k;
@@ -42,10 +42,10 @@
   }
   // 页面上盖着的东西（菜单、命令面板、浮层、快速查看、设置的浮动窗口）和这一块重叠：原生的先藏起来
   var OVER = ".st-menu, .st-pop, .st-palette, .st-float, .st-modal, .xp-ql, .gv-pop, .ts-sug:not([hidden]), .drag-ghost:not([hidden]), .ov-wrap, .st-pv-drop, .ca-dlgdim"; // .st-modal：模态层盖住整个窗口——原生的网页都藏
-  function covered(r) {
+  function covered(r, box) {
     var hit = false;
     document.querySelectorAll(OVER).forEach(function (o) {
-      if (hit || !o.offsetParent && getComputedStyle(o).position !== "fixed") return;
+      if (hit || (box && o.contains(box)) || !o.offsetParent && getComputedStyle(o).position !== "fixed") return;
       var q = o.getBoundingClientRect();
       if (q.width && q.height && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top) hit = true;
     });

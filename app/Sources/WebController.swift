@@ -55,6 +55,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
     super.init()
 
     let ucc = cfg.userContentController
+    if isolated { ucc.addUserScript(WKUserScript(source: "window.TSU_VERIFICATION_RUN = true", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
     ucc.addUserScript(WKUserScript(source: WebController.bridgeSource(), injectionTime: .atDocumentStart, forMainFrameOnly: true))
     // 自动测试（量启动）：NADOS_PROBE_JS=<文件> 在页面最开头跑一段（记时间点）；NADOS_APPEARANCE=light|dark 让整个 App 当成系统是浅色 / 深色（不动系统设置）
     if let p = env["NADOS_PROBE_JS"], let src = try? String(contentsOfFile: p, encoding: .utf8) {

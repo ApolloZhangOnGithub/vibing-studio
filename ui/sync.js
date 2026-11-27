@@ -95,7 +95,7 @@
   function emit(type, data) { fns.slice().forEach(function (f) { try { f(type, data); } catch (e) { console.error(e); } }); }
   function post(path, body) {
     return fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-tsu-device": dev }, body: typeof body === "string" ? body : JSON.stringify(body) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || "HTTP " + r.status); return j; }); });
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw Object.assign(new Error(j.error || "HTTP " + r.status), {status: r.status}); return j; }); });
   }
 
   // ---- 设备报到：打开时一次，之后每 10 分钟（「上次在线」）----
@@ -118,7 +118,28 @@
       return s;
     } catch (e) { return undefined; }
   }
-  function hello() { return post("/api/devices", { id: dev, name: name, kind: kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined, access: access() }).catch(function () {}); }
+  var helloBusy = false, helloAgain = false, helloBody = "", helloAt = 0, helloRetry = 0, helloDelay = 5000;
+  async function hello() {
+    if (!navigator.onLine) return;
+    if (helloBusy) { helloAgain = true; return; }
+    var body = JSON.stringify({ id: dev, name, kind, model: model || undefined, os: osName || undefined, app: appVer || undefined, hw: hw || undefined, relay: relayIds() || undefined, access: access() });
+    if (body === helloBody && Date.now() - helloAt < 30000) return;
+    clearTimeout(helloRetry);
+    helloBusy = true;
+    try {
+      await post("/api/devices", body);
+      helloBody = body; helloAt = Date.now(); helloDelay = 5000;
+    } catch (e) {
+      if (e instanceof TypeError || e.status >= 500) {
+        helloRetry = setTimeout(hello, helloDelay);
+        helloDelay = Math.min(helloDelay * 2, 120000);
+      }
+    } finally {
+      helloBusy = false;
+      if (helloAgain) { helloAgain = false; hello(); }
+    }
+  }
+  window.addEventListener("online", hello);
   // App 里（自己认得出名字、型号）：认出来时报到；3 秒还没认出来就先用记着的报一次
   var N0 = window.nadosNative;
   if (N0 && !N0.remote && N0.call) setTimeout(function () { if (!identified) hello(); }, 3000); else hello();

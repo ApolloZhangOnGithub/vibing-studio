@@ -78,7 +78,7 @@ def turn_finished(transcript):
     return False
 
 
-async def serve(marker, cwd, transcript):
+async def serve(marker, cwd, transcript, has_background):
     sid = marker.name
     marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with marker.open("a+") as lock:
@@ -235,8 +235,16 @@ async def serve(marker, cwd, transcript):
                 while not pump.done():
                     await asyncio.sleep(1)
                     if not clients and not background and time.monotonic() - last_activity > 20:
-                        if not loaded or turn_finished(transcript):
+                        if not loaded:
                             break
+                        if turn_finished(transcript):
+                            checked_at = last_activity
+                            try:
+                                pending = await asyncio.to_thread(has_background, transcript, owner_start)
+                            except (OSError, ValueError):
+                                pending = True  # Retry when the transcript is readable again.
+                            if not pending and not clients and not background and last_activity == checked_at:
+                                break
                         last_activity = time.monotonic()
         finally:
             address.unlink(missing_ok=True)

@@ -436,7 +436,7 @@
     }
     window.TSU_AGY = {
       commands: agyCommands, localAction: agyLocalAction,
-      create: async function () { var result = await readAgy(["--create"]); await refreshAgy(); return result.sessionId; },
+      create: async function () { var result = await readAgy(window.TSU_VERIFICATION_RUN ? ["--create", "--verification"] : ["--create"]); await refreshAgy(); return result.sessionId; },
       quota: function () {
         refreshQuota();
         return {data: Date.parse(quotaState.reset) > Date.now() ? quotaState : null, loading: !quotaAttempted && !!quotaPending};
@@ -631,7 +631,8 @@
       async function updateScreen() {
         if (screenBusy || Date.now() < nextScreen) return;
         var current = findSession(id);
-        var active = current && current.tty && current.tty !== "??";
+        if (!current || current.tty == null) return;
+        var active = /^ttys[0-9]+$/.test(current.tty);
         nextScreen = Date.now() + 1000;
         screenBusy = true;
         var screen = {};
@@ -662,7 +663,7 @@
         if (terminalWorking) {
           if (Number(sessionStorage.getItem(workingKey)) < Date.now() - 15000) sessionStorage.setItem(workingKey, String(Date.now()));
         } else sessionStorage.removeItem(workingKey);
-        if (active && !terminalWorking) rt.historyToolWorking = false;
+        if (active && !terminalWorking && current.cascadeWorking === false) rt.historyToolWorking = false;
         if (rt.terminalWorking === terminalWorking && rt.liveStatus === status && rt.liveFooter === screen.footer) return;
         var activityChanged = rt.terminalWorking !== terminalWorking || (!!rt.liveStatus !== !!status) || (/\bthinking\b/i.test(rt.liveStatus || "") !== /\bthinking\b/i.test(status));
         rt.terminalWorking = terminalWorking;
@@ -901,7 +902,7 @@
         state: function () {
           var child = findSession(id)?.subagent;
           if (child) return child.status === "running" ? "working" : "idle";
-          if (rt.historyToolWorking) return "working";
+          if (findSession(id)?.cascadeWorking === true || rt.historyToolWorking) return "working";
           if (!rt.headless()) return rt.sending || rt.terminalWorking ? "working" : "idle";
           var start = workingSince || findSession(id)?.workingSince;
           if (start && rt.finalAt >= start && !pendingTurn) return "idle";

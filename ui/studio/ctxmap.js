@@ -169,8 +169,15 @@
     var rows = d.parts.filter(p => !p.deferred);
     if (buf) rows.push({ id: "buffer", tokens: buf, color: "var(--st-dim)" });
     rows.sort((a, b) => b.tokens - a.tokens);
-    var bar = rows.map(function (p) { return win && p.tokens ? '<i style="width:' + (p.tokens / win * 100).toFixed(2) + "%;background:" + p.color + '"></i>' : ""; }).join("");
-    var row = function (p, extra) { return '<div class="cx-r' + (extra || "") + '"><i class="cx-sq" style="background:' + (p.color || "transparent") + '"></i><span class="cx-n">' + esc(lab(p)) + '</span><span class="cx-t">' + k(p.tokens) + '</span><span class="cx-p">' + (p.deferred ? "—" : pc(p.tokens, win)) + "</span></div>"; };
+    function meter(tokens, cls) {
+      var percent = win ? Math.max(0, Math.min(100, tokens / win * 100)) : 0;
+      return '<span class="' + cls + '" aria-hidden="true"><i style="width:' + percent.toFixed(2) + '%"></i></span>';
+    }
+    function row(p, extra) {
+      return '<div class="cx-r' + (extra || "") + '"><span class="cx-n">' + esc(lab(p)) +
+        '</span>' + (p.deferred ? "" : meter(p.tokens, "cx-meter")) + '<span class="cx-t">' + k(p.tokens) +
+        '</span><span class="cx-p">' + (p.deferred ? "—" : pc(p.tokens, win)) + "</span></div>";
+    }
     var list = rows.map(function (p) { return row(p); }).join("") + (win ? row({ id: "free", tokens: free, color: "" }, " free") : "") +
       d.parts.filter(function (p) { return p.deferred; }).map(function (p) { return row(p, " def"); }).join("");
     var groups = d.parts.filter(function (p) { return p.items && p.items.length > (p.id === "messages" ? 1 : 0); }).map(function (p) {
@@ -181,7 +188,7 @@
     var compact = d.compactLayout || rows.length === 1 && rows[0].id === "used";
     return '<div class="cx' + (compact ? " cx-simple" : "") + (opts && opts.tui ? " cx-tui" : "") + '" data-aid="' + esc(rt.agent && rt.agent.id || "") + '">' +
       '<div class="cx-h"><span class="cx-sum">' + esc(tr("已用", "Used")) + " " + k(used) + " / " + (win ? k(win) : "?") + (win ? " (" + (used && used / win < 0.01 ? "&lt;1" : Math.round(used / win * 100)) + "%)" : "") + '</span></div>' +
-      '<div class="cx-bar">' + bar + "</div>" +
+      meter(used, "cx-bar") +
       '<div class="cx-body"><div class="cx-rows">' + list + "</div>" + (groups ? '<div class="cx-sep"></div>' + groups : "") + "</div></div>";
   }
   // 展开 / 收起：标题（整张明细）、每一组（它的每一项）
