@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.10", items: { fixed: [
+      ["拖动后台标签后立即显示新顺序。拖动分隔线时，即使工作区重新排版，也能继续拖到松手的位置。", "Dragging a background tab updates its position immediately. Split dividers keep tracking the pointer through workspace layout updates."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.9", items: { fixed: [
       ["重新打开工作区时，对话标签沿用上次的状态灯。连接器确认当前状态后，标签、概览和侧栏一起更新。", "Conversation tabs restore their last status light when the workspace reopens. Tabs, the overview and the sidebar update when the connector confirms the current state."]
     ] } },

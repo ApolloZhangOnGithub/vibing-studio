@@ -160,16 +160,24 @@
       var i = +el.dataset.i, rows = S.dir === "rows", start = rows ? e.clientY : e.clientX, a0 = S.sizes[i - 1], b0 = S.sizes[i];
       var span = rows ? Math.max(1, S.P.el.clientHeight - 80) : Math.max(1, S.P.el.clientWidth - (S.edit ? ED_W : 0));
       var mv = function (ev) {
+        if (ev.pointerId !== e.pointerId) return;
         var d = ((rows ? ev.clientY : ev.clientX) - start) / span, lo = (rows ? MIN_H : MIN_W) / span;
         var a = Math.max(lo, Math.min(a0 + b0 - lo, a0 + d));
         S.sizes[i - 1] = a; S.sizes[i] = a0 + b0 - a;
         soon(S);
       };
-      var up = function () { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); el.classList.remove("on"); persist(S); };
+      var up = function (ev) {
+        if (ev.pointerId !== e.pointerId) return;
+        if (ev.type === "pointerup") mv(ev);
+        el.removeEventListener("pointermove", mv);
+        for (var type of ["pointerup", "pointercancel", "lostpointercapture"]) el.removeEventListener(type, up);
+        el.classList.remove("on"); persist(S);
+      };
       el.classList.add("on");
       el.addEventListener("pointermove", mv);
       el.addEventListener("pointerup", up);
       el.addEventListener("pointercancel", up);
+      el.addEventListener("lostpointercapture", up);
     });
   }
 

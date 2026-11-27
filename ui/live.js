@@ -9892,9 +9892,9 @@
       box.appendChild(b);
       return box;
     }
-    // 网格的样子（怎么拆、比例、哪几组）没变：不把整个编辑区拆了重搭——只换每组里当前的那个；别的组里开着的那几个不从页面上拿下来（拿下来再放回去要整段重新排版）
+    // 分隔线直接更新 flex；仅当网格结构（拆分方向和分组）变化时重建。结构没变：不把整个编辑区拆了重搭——只换每组里当前的那个；别的组里开着的那几个不从页面上拿下来（拿下来再放回去要整段重新排版）
     var gridSig = "", nodeSeq = 0;
-    var sigOf = function (n) { if (!n) return ""; if (!n._sid) n._sid = ++nodeSeq; if (n.g) { if (!n.g._sid) n.g._sid = ++nodeSeq; return "g" + n.g._sid + "@" + n._sid; } return "(" + n._sid + n.dir + n.ratio + " " + sigOf(n.a) + " " + sigOf(n.b) + ")"; };
+    var sigOf = function (n) { if (!n) return ""; if (!n._sid) n._sid = ++nodeSeq; if (n.g) { if (!n.g._sid) n.g._sid = ++nodeSeq; return "g" + n.g._sid + "@" + n._sid; } return "(" + n._sid + n.dir + " " + sigOf(n.a) + " " + sigOf(n.b) + ")"; };
     ws.layout = function () {
       if (window.TSU_MACOS && TSU_MACOS.on && TSU_MACOS.on() && tw.el.id === "win") { TSU_MACOS.layout(tw, ws); ws.syncTitles(); persistAll(); return; } // macOS 风格：每个标签页是桌面上的一个窗口（只管 App 的主窗口）
       ws.all().forEach(function (p) { if (p.park) p.park(); }); // 拿下来之前记住各自看到哪儿了
@@ -10144,7 +10144,7 @@
     };
 
     // ---- 切换、打开、关 ----
-    ws.show = function (p) {
+    ws.show = function (p, orderChanged) {
       if (ws.itabs && !ws.groupOf(p)) { var ti0 = tabOfPane(p); if (ti0 >= 0) useTab(ti0); } // 在别的标签页里：先切过去
       var g = ws.groupOf(p);
       if (!g) return;
@@ -10178,6 +10178,7 @@
             if (p.showTicket === ticket && !p.closed && !p.off && g.active === p) p.reshow();
           }, 0));
         } else if (p.reshow) p.reshow(); else p.renderNow();
+        if (orderChanged) drawTabs(g);
         syncQuick(g);
       } else if (swap) ws.layout(); else { ws.all().forEach(function (x) { x.el.classList.toggle("active", x === p); }); ws.syncTitles(); persistAll(); }
       if (!focusBeforeSwap) p.focus();
@@ -10286,7 +10287,7 @@
       if (sg === g) { var i = g.editors.indexOf(p); if (idx === i || idx === i + 1) return ws.show(p); g.editors.splice(i, 1); if (idx > i) idx--; }
       else take(p);
       insertEditor(g, p, idx);
-      ws.show(p);
+      ws.show(p, sg === g);
     };
     ws.closePane = function (pane) {
       if (ws.itabs && !ws.groupOf(pane)) { var ti1 = tabOfPane(pane); if (ti1 < 0) return; useTab(ti1); }
@@ -10431,9 +10432,9 @@
   function draggable(el, what, label) {
     el.addEventListener("pointerdown", function (e) {
       if (e.button !== 0) return;
-      if (DRAG.cancel) DRAG.cancel(); // 上一次的没收尾：先收掉，不叠着
       var item = what(e);
       if (!item) return;
+      if (DRAG.cancel) DRAG.cancel();
       var x0 = e.clientX, y0 = e.clientY, pid = e.pointerId, dragging = false, done = false;
       var target = null, tabTarget = null, treeT = null, lastEv = e, lastAt = Date.now(), lit = null, cap = null, raf = 0, tmo = 0, dog = 0;
       // 亮着的那一个（排序时指着的标签页 / 标签条末尾 / 树上的文件夹）：换了才改 class，不每次全页找
@@ -10499,9 +10500,15 @@
         place(ev);
         soon();
       };
-      var up = function (ev) { if (ev.pointerId !== pid) return; lastEv = ev; finish(true, "up"); };
+      function release(ev) {
+        lastEv = ev;
+        // A fast drag can reach pointerup before the browser delivers a move.
+        if (!dragging && Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) >= 5) dragging = true;
+        finish(true, ev.type);
+      }
+      var up = function (ev) { if (ev.pointerId === pid) release(ev); };
       // WebKit can deliver the compatibility mouse event after losing the pointer stream.
-      var mouseUp = function (ev) { if (ev.button === 0) { lastEv = ev; finish(true, "mouseup"); } };
+      var mouseUp = function (ev) { if (ev.button === 0) release(ev); };
       var mouseMove = function (ev) { if (!(ev.buttons & 1)) finish(false, "released"); };
       var cancel = function (ev) { finish(false, ev && ev.type || "cancel"); };
       var lost = function (ev) { if (ev.pointerId === pid && ev.target === cap) finish(false, "lost"); }; // 指针被收回了（系统拿走、元素没了）
