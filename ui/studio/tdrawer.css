@@ -91,7 +91,7 @@ html.light .st-todoi.doing .st-tg { color: #b9542f; }
 .st-fh:hover { color: var(--st-hi, var(--st-fg)); background: var(--st-hover, rgba(128, 128, 128, 0.08)); }
 /* 箭头：只转，不改外边距（以前收起 / 展开时外边距跟着变，后面的标题左右挪 2px）；看着居中的那点偏移用 translate，不动排版 */
 .st-fchev { flex: none; width: 5px; height: 5px; margin: 0 4px 0 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-1px) rotate(45deg); transition: transform 0.18s ease; }
-.st-fsec.folded .st-fchev { transform: translateX(-1px) rotate(-45deg); }
+.st-fsec.folded > .st-fh > .st-fchev { transform: translateX(-1px) rotate(-45deg); }
 .st-ft { flex: none; font-weight: 600; color: var(--st-fg); }
 /* 清单里「n 项已完成」那一行的箭头：同标题行的（收着朝右，展开朝下） */
 .st-dchev { flex: none; width: 5px; height: 5px; margin: 0 5px 0 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.18s ease; }
@@ -247,6 +247,10 @@ html.termapp .st-pagent .tpane .term .blk.status.live, html.termapp .st-pagent .
 .st-sa2.wrap .st-saline .st-cut { white-space: normal; overflow: visible; }
 .st-sa2 .st-satime { flex: none; font-variant-numeric: tabular-nums; }
 .st-sa2 .st-sasub { font-size: 11px; line-height: 15px; margin: -1px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.st-fsec[data-sec="workflows"] .st-sabody { flex-direction: row; align-items: baseline; gap: 8px; }
+.st-fsec[data-sec="workflows"] .st-saline { flex: 1 1 0; }
+.st-fsec[data-sec="workflows"] .st-sasub { flex: 0 1 auto; max-width: 45%; margin: 0; text-align: right; }
+
 
 /* Teyvat 的会话（右侧栏）：状态、意图、后台命令 */
 .st-tyfam .st-todoi.st-tyhead { font-weight: 600; color: var(--st-hi, var(--st-fg)); }

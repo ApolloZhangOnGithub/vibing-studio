@@ -40,15 +40,18 @@ with Path("tools/ui-build.txt").open("r+") as counter:
     major, minor, patch = map(int, base.split("."))
     current = json.loads(version_file.read_text())
     history = json.loads(history_file.read_text())
+    now = datetime.now(timezone.utc)
+    last_day = datetime.fromisoformat(current["built"].replace("Z", "+00:00")).astimezone().date()
+    if sys.argv[1] == "release" or last_day < now.astimezone().date():
+        base = f"{major}.{minor}.{patch + 1}"
+        base_file.write_text(base + "\n")
     if sys.argv[1] == "release":
-        version = f"{major}.{minor}.{patch + 1}"
-        base_file.write_text(version + "\n")
+        version = base
     else:
         prefix = base + "."
         alpha = int(current["version"][len(prefix):]) if current["version"].startswith(prefix) else 0
         version = f"{base}.{alpha + 1}"
     build = max(int(counter.read()), current["build"]) + 1
-    now = datetime.now(timezone.utc)
     manifest = dict(version=version, build=build, built=now.strftime("%Y-%m-%dT%H:%M:%SZ"))
     history[version] = now.astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
     history_file.write_text(json.dumps(history, ensure_ascii=False, indent=0))

@@ -8339,9 +8339,11 @@
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
           var agySessions = only("agy") ? agy.list().filter(s => agyActive(s) || openIds.has("agy:" + s.sessionId)) : agy.list();
           if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中或已打开的会话" : agy.status()) + RESET) + "\n";
+          var agyArchive = ccExt().arch, archivedAgy = [];
           var folders = new Map(), homeAgy = (TSU_LOCAL.info() || {}).home;
           agySessions.forEach(function (s) {
             if (!qHit(s.title || s.sessionId, s.sessionId, s.cwd || "")) return;
+            if (agyArchive["agy:" + s.sessionId]) { archivedAgy.push(s); return; }
             var key = s.cwd || "";
             if (!folders.has(key)) folders.set(key, []);
             folders.get(key).push(s);
@@ -8350,13 +8352,18 @@
             var key = "agy:dir:" + dir;
             var label = !dir ? "未记录工作目录" : dir === homeAgy ? "~" : homeAgy && dir.startsWith(homeAgy + "/") ? "~" + dir.slice(homeAgy.length) : dir;
             out += row("ts-fold", foldAt(key, false) + (dir ? ' data-dir="' + escHtml(dir) + '"' : ""), [["  " + chev(key, false), ""], [label, DIMC]]);
-            if (folded(key, false)) return;
-            items.forEach(function (s) {
+            if (!folded(key, false) || qToks.length) items.forEach(agyRow);
+          });
+          if (archivedAgy.length) {
+            var agyArchKey = "agy:arch";
+            out += row("ts-fold", foldAt(agyArchKey, true) + ' data-ic="arch"', [["  " + chev(agyArchKey, true), ""], [tt("已归档", "Archived") + " (" + archivedAgy.length + ")", DIMC]]);
+            if (!folded(agyArchKey, true) || qToks.length) archivedAgy.forEach(agyRow);
+          }
+          function agyRow(s) {
             var name = s.title || s.sessionId;
             out += '<span class="ts-it" data-agy="' + escHtml(s.sessionId) + '" title="' + escHtml(name) + '">' +
               HR([["    ", ""], ["\uE03A ", ""]].concat(marks(name, "")), DIMC + (s.updatedAt ? agoCN(Date.parse(s.updatedAt)) : "") + RESET, true).replace("\uE03A", '<i class="ts-ccl ts-cxl' + (agyActive(s) ? " busy" : "") + '">' + TSU_LOGOS.agy + "</i>") + "</span>\n";
-            });
-          });
+          }
         }
       }
       // ---- Teyvat（teyvat.js）：这台电脑上的 Teyvat agent——在跑的在上面，右边写它在做什么（工作中 / 等待中 / 休眠中 / 已暂停）和在哪儿跑（前台 / 后台）；
@@ -8968,6 +8975,15 @@
           session?.cwd && TI(tt("打开工作目录", "Open Working Directory"), () => STUDIO.openPaths(tw, [session.cwd]), TREE_IC.folder),
           session?.path && TI(tt("复制记录路径", "Copy Transcript Path"), () => copyText(session.path), TREE_IC.copy),
           TI(tt("复制会话 ID", "Copy Session ID"), () => copyText(sid), TREE_IC.copy),
+          agyId && {sep: true},
+          agyId && {label: ccExt().arch[aid] ? tt("取消归档", "Unarchive") : tt("归档", "Archive"), acc: "A", icon: MIc.archive, run: function () {
+            var state = ccExt();
+            if (state.arch[aid]) delete state.arch[aid];
+            else state.arch[aid] = Date.now();
+            ccExtSave(state);
+            S.render(true);
+            document.dispatchEvent(new Event("tsu-cc"));
+          }},
         ]);
       }
       if (it.dataset.cc) {
@@ -9447,6 +9463,12 @@
     ws.group = null;  // 当前组
     ws.active = null; // 当前组里当前的那个（有焦点的）
     var Group = function (editors, active) { return { id: ++seq, editors: editors || [], active: active || (editors && editors[0]) || null }; };
+    function insertEditor(g, p, index) {
+      var boundary = g.editors.findIndex(editor => !editor.tabPinned);
+      if (boundary < 0) boundary = g.editors.length;
+      var target = p.tabPinned ? Math.min(index, boundary) : Math.max(index, boundary);
+      g.editors.splice(Math.max(0, target), 0, p);
+    }
     var walk = function (n, f) { if (!n) return; if (n.g) f(n.g, n); else { walk(n.a, f); walk(n.b, f); } };
     ws.groups = function () { var o = []; walk(ws.grid, function (g) { o.push(g); }); return o; };
     var leafOf = function (g) { var hit = null; walk(ws.grid, function (x, n) { if (x === g) hit = n; }); return hit; };
@@ -9484,7 +9506,7 @@
       if (!extra.length) return;
       if (!ws.grid) { ws.grid = { g: Group(extra, extra[0]) }; ws.group = ws.grid.g; ws.active = extra[0]; return; }
       var g = ws.group || ws.groups()[0];
-      extra.forEach(function (p) { g.editors.push(p); });
+      extra.forEach(function (p) { insertEditor(g, p, g.editors.length); });
     }
     // 应用风格变了（设置里、菜单里）：要的和现在的不一样就转一下、重画
     ws.ptSync = function () { var want = PT(); if (want === !!ws.itabs) return false; if (want) enterPT(); else leavePT(); ws.layout(); if (ws.active) ws.active.focus(); return true; };
@@ -9620,11 +9642,12 @@
       g.editors.forEach(function (p, index) {
         var b = document.createElement("div");
         var fresh = b;
-        b.className = "tab" + (p === g.active ? " on" : "") + (p === ws.active ? " focus" : "");
+        b.className = "tab" + (p.tabPinned ? " st-pinned-tab" : "") + (p === g.active ? " on" : "") + (p === ws.active ? " focus" : "");
         b.innerHTML = '<i class="tx" title="关闭">×</i><span></span>';
         titleInto(b.querySelector("span"), p, p.bell ? "🔔 " : ""); // 同名的会话：名字后面淡淡地带短 id
         if (window.TSU_BROWSER) TSU_BROWSER.fav(b, p);
         var current = existing.get(p);
+        (current || b).setAttribute("aria-label", p.title());
         if (current) {
           existing.delete(p);
           current.className = fresh.className;
@@ -9745,6 +9768,15 @@
       var ccSid = p && p.program && /^cc:/.test(p.program.agentId || "") ? String(p.program.agentId).slice(3) : "";
       var info = ccSid && !/^sub-/.test(ccSid) && window.TSU_CCINFO ? [mi("详情", "", function () { TSU_CCINFO.open(ccSid, p); }, "info"), { sep: true }] : [];
       var head = p ? info.concat([
+        mi(p.tabPinned ? "取消固定标签页" : "固定标签页", "", function () {
+          var group = ws.groupOf(p);
+          if (!group) return;
+          group.editors.splice(group.editors.indexOf(p), 1);
+          p.tabPinned = !p.tabPinned;
+          insertEditor(group, p, p.tabPinned ? group.editors.length : 0);
+          ws.syncTitles();
+          persistAll();
+        }, p.tabPinned ? "unpin" : "pin"),
         mi("关闭", "⌘W", function () { closeSome([p]); }, "close"),
         mi("关闭其他", "", function () { closeSome(g.editors.filter(function (x) { return x !== p; })); }, "closeOthers", { disabled: g.editors.length < 2 }),
         mi("关闭右侧", "", function () { closeSome(g.editors.slice(at + 1)); }, "close", { disabled: at === g.editors.length - 1 }),
@@ -9872,7 +9904,7 @@
       var p = ws.newPane(spec);
       if (!ws.grid) { ws.grid = { g: Group([p], p) }; ws.group = ws.grid.g; ws.show(p); return p; } // 编辑区空着：新的一组里就它一个（以前这里又插了一次——同一个标签页出现两个）
       var g = ws.group || ws.groups()[0];
-      g.editors.splice(g.editors.indexOf(g.active) + 1, 0, p);
+      insertEditor(g, p, g.editors.indexOf(g.active) + 1);
       ws.show(p);
       return p;
     };
@@ -9917,7 +9949,7 @@
       return g;
     }
     ws.detach = function (p) { take(p); };
-    ws.adopt = function (p) { var g = ws.group || ws.groups()[0]; if (!g) { ws.grid = { g: Group([p], p) }; ws.group = ws.grid.g; } else g.editors.splice(g.editors.indexOf(g.active) + 1, 0, p); ws.show(p); };
+    ws.adopt = function (p) { var g = ws.group || ws.groups()[0]; if (!g) { ws.grid = { g: Group([p], p) }; ws.group = ws.grid.g; } else insertEditor(g, p, g.editors.indexOf(g.active) + 1); ws.show(p); };
     // 拆分（同 VS Code「拆分编辑器」，最早的那种）：新的一组，里面是一模一样的一份（agent 一直在跑，多开一个看它的窗口）——
     //   两边各是一个标签页：各滚各的、各自能关（× / ⌘W）。不再在一个标签页里拆成几格（那种拆了关不掉）
     var dupSpec = function (src) {
@@ -9946,7 +9978,7 @@
       if (!sg || !g) return;
       if (sg === g) { var i = g.editors.indexOf(p); if (idx === i || idx === i + 1) return ws.show(p); g.editors.splice(i, 1); if (idx > i) idx--; }
       else take(p);
-      g.editors.splice(Math.max(0, Math.min(idx, g.editors.length)), 0, p);
+      insertEditor(g, p, idx);
       ws.show(p);
     };
     ws.closePane = function (pane) {
@@ -10002,7 +10034,7 @@
         var sg = ws.groupOf(p);
         if (sg === tg && (side === "center" || tg.editors.length === 1)) return ws.show(p);
         take(p);
-        if (side === "center") { tg.editors.splice(tg.editors.indexOf(tg.active) + 1, 0, p); tg.active = p; }
+        if (side === "center") { insertEditor(tg, p, tg.editors.indexOf(tg.active) + 1); tg.active = p; }
         else splitGroup(tg, Group([p], p), side);
       } else {
         var aid = item.kind === "cc" && window.TSU_CLAUDE ? (TSU_CLAUDE.ensure(item.id, item.info), TSU_CLAUDE.id(item.id)) : item.id;
@@ -10013,20 +10045,20 @@
           p = ws.newPane({ agent: aid });
           if (!p.program || p.program.agentId !== aid) p.run(makeView(p, aid));
         } else p = ws.newPane();
-        if (side === "center") { tg.editors.splice(tg.editors.indexOf(tg.active) + 1, 0, p); tg.active = p; }
+        if (side === "center") { insertEditor(tg, p, tg.editors.indexOf(tg.active) + 1); tg.active = p; }
         else splitGroup(tg, Group([p], p), side);
       }
       ws.show(p);
     };
     ws.serialize = function () {
-      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return p.spec(); }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
+      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return p.tabPinned ? {...p.spec(), tabPinned: true} : p.spec(); }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
       if (ws.itabs) { if (ws.grid) ws.itabs[ws.ti] = ws.grid; return { v: 3, itabs: ws.itabs.map(ser), ti: ws.ti, g: Math.max(0, ws.groups().indexOf(ws.group)) }; } // Pure Terminal：每个标签页一个格子
       return { v: 2, grid: ws.grid ? ser(ws.grid) : null, g: Math.max(0, ws.groups().indexOf(ws.group)) };
     };
     ws.restore = function (saved) {
       var keep = function (sp) { return sp && sp.page !== "dash"; };
       var de = function (n) {
-        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { return Pane(tw, sp); }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
+        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { var pane = Pane(tw, sp); pane.tabPinned = sp.tabPinned === true; return pane; }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
         var a = de(n.a), b = de(n.b);
         return a && b ? { dir: n.dir, ratio: n.ratio, a: a, b: b } : a || b;
       };

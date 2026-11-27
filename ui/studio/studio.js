@@ -76,7 +76,7 @@
   // 标题行：这一块收起 / 展开（存；按 agent + 哪一块）。收起、展开是换 class（高度动画），不重画
   var FFOLD = store("st-ffold", {});
   var famFolded = function (aid, sec) { return !!FFOLD[aid + ":" + sec]; };
-  function toggleFamFold(aid, sec) { var k = aid + ":" + sec; if (FFOLD[k]) delete FFOLD[k]; else FFOLD[k] = 1; keep("st-ffold", FFOLD); applyFold(document); }
+  function toggleFamFold(aid, sec) { var k = aid + ":" + sec; FFOLD[k] = !famFolded(aid, sec); keep("st-ffold", FFOLD); applyFold(document); }
   function applyFold(box) { if (box && box.querySelectorAll) { box.querySelectorAll(".st-fsec[data-aid]").forEach(function (x) { x.classList.toggle("folded", famFolded(x.dataset.aid, x.dataset.sec)); }); tickDurs(box); } }
   // 在跑的后台任务、子 Agent 用了多久：每秒就地改那几个字（「任务」一家子、Agent 活动；HTML 不变就不重画）
   function tickDurs(box) { (box || document).querySelectorAll(".st-tick[data-t0]").forEach(function (e) { var t0 = +e.dataset.t0, t = t0 ? dur(Date.now() - t0) : ""; if (e.textContent !== t) e.textContent = t; }); }
@@ -114,7 +114,10 @@
   var isFg = function (p) { return !!p && p.kind === "tool" && !p.asyncLaunched && !(p.input && p.input.run_in_background) && !FG_SKIP.test(p.name); };
   var fgKey = function (p) { return p.id || String(p.t0 || ""); };
   // 真的还在跑：状态是 running，而且在正在答的这一问里（会话重读、这一问已经完了还挂着 running 的，算跑完）
-  var fgRun = function (p, rt) { var tt = rt && rt.stream && rt.stream.turn; return p.status === "running" && !!(tt && tt.parts && tt.parts.indexOf(p) >= 0); };
+  var fgRun = function (p, rt) { if (p.status !== "running" || !rt) return false;
+    var turn = rt.stream?.turn;
+    if (!turn && rt.agent?.connector === "agy" && rt.state() === "working") turn = rt.session().turns.at(-1);
+    return !!turn?.parts?.includes(p); };
   // 同左边（live.js 的 Claude Code 风格）怎么分块：连着的读、搜、列、命令、MCP 并成一组（「Ran 3 shell commands」那一组），改文件、Fetch 这些单独一块；
   //   任务清单那几个不打断一组，子 agent、SendMessage、ToolSearch 这些打断；中间有话（不是工具）也打断。列的就是最后那一块的每一条
   var FG_GRP = function (p) { return (p.name === "Read" || p.name === "Grep" || p.name === "Glob" || p.name === "LS" || /^mcp__/.test(p.name) || (p.name === "Bash" && !p.sys)) && !(p.edits && p.edits.length); };
@@ -159,7 +162,7 @@
     if (!rt) return null;
     var c = acfg(), ts = rt.tasks || [];
     // 正在前台跑的（这一问里还没结果的工具调用）：不是后台任务、不是任务清单；子 agent 在「子 Agent」里，管任务清单的那几个不算
-    var fg = fgBatch(aid, rt), fgOn = /^c[cx]:/.test(aid) || fg.length > 0; // 连接器的会话：「正在运行」一直在（没在跑时留着上一批）
+    var fg = fgBatch(aid, rt), fgOn = /^c[cx]:/.test(aid) || fg.length > 0 || (rt.agent?.connector === "agy" && rt.terminalWorking && /Running command\b/i.test(rt.liveStatus || "")); // 连接器的会话：「正在运行」一直在（没在跑时留着上一批）
     // 进到子 agent 里看（只读的标签页）：右边是它的主 agent（点一下回去）和主 agent 的其它子 agent（它自己那一行标出来）——关系是相互的
     var par = rt.info && rt.info.sub && rt.info.parent ? String(rt.info.parent) : "";
     if (par) {
@@ -325,6 +328,9 @@
     var FGN = { Read: "Read", Edit: "Update", MultiEdit: "Update", Write: "Write", Grep: "Search", Glob: "Search", WebFetch: "Fetch", WebSearch: "Web Search", NotebookEdit: "Update", LS: "List" };
     var fgRtm = null; try { fgRtm = TSU_AGENTS.runtime(aid); } catch (e) { fgRtm = null; }
     var fgItems = d.fg.map(function (p) { return { p: p, status: fgRun(p, fgRtm) ? "running" : p.status === "error" ? "error" : "done", t0: p.t0 || 0 }; }).sort(taskOrder);
+    // The terminal can announce a command before its transcript row arrives.
+    var waitingForCommandRow = fgRtm?.agent?.connector === "agy" && fgRtm.terminalWorking &&
+      /Running command\b/i.test(fgRtm.liveStatus || "") && !fgItems.some(x => x.status === "running");
     var fgRow = function (x) {
       var p = x.p, a = p.input || {}, run = x.status === "running", grp = FG_GRP(p), nm = grp ? "" : FGN[p.name] || String(p.name).replace(/^mcp__([^_]+(?:_[^_]+)*)__/, "$1 · "), wk = aid + ":fg:" + fgKey(p);
       var raw = fgTitle(p, fgRtm), what = trT(raw, aid), op = !!TWRAP[wk], took = run ? "" : p.t0 && p.t1 && p.t1 >= p.t0 ? dur(p.t1 - p.t0) : "";
@@ -350,10 +356,19 @@
       if (nestedPar) mname = String(mname).replace(/^↳\s*/, "");
       mainHtml = sec("main", nestedPar ? "上一级 Agent" : "主 Agent", "", '<div class="st-prw st-frow st-mainrow" data-st="open-main-' + esc(d.main.sid) + '" title="' + esc(mname) + '"><i class="st-tg st-maindot">●</i> <b class="st-fgn">' + (nestedPar ? "parent" : "main") + '</b> <span class="st-cut">' + esc(mname) + '</span><span class="st-fill"></span><span class="st-dim">' + esc(mbusy ? (mact ? trT(mact, aid) : "运行中") : "空闲") + "</span></div>");
     }
+    var workflows = new Map(), ordinaryAgents = [];
+    for (var task of d.sa) {
+      if (!/^task-\d+$/.test(task.workflow)) { ordinaryAgents.push(task); continue; }
+      if (!workflows.has(task.workflow)) workflows.set(task.workflow, []);
+      workflows.get(task.workflow).push(task);
+    }
+    var workflowRows = Array.from(workflows, ([key, tasks]) => ({
+      key, tasks, status: tasks.some(t => t.status === "running") ? "running" : "done"
+    }));
     if (famTui() && P && P.toHtml) return familyTuiHtml(P, d, fgItems);
     // 右上角「TUI / 图形」的切换先关掉（TUI 的样子不能折叠，没做好）：<div class="st-fmode"><button … data-st="fam-tui">TUI</button></div>
     return '<div class="st-fam" data-aid="' + esc(aid) + '">' + goalHtml + mainHtml +
-      (d.fgOn ? sec("fg", fgItems.length ? head("正在运行", fgItems) : "正在运行", fgTotal(), fgItems.length ? rows(fgItems, "fg", fgRow) : '<div class="st-dim st-fgnone">还没有运行过命令</div>') : "") +
+      (d.fgOn ? sec("fg", fgItems.length && !waitingForCommandRow ? head("正在运行", fgItems) : "正在运行", fgTotal(), waitingForCommandRow ? '<div class="st-prw st-frow"><i class="st-tg st-fgdot">●</i> Running command…</div>' + rows(fgItems, "fg", fgRow) : fgItems.length ? rows(fgItems, "fg", fgRow) : '<div class="st-dim st-fgnone">还没有运行过命令</div>') : "") +
       (d.todo.length ? sec("todo", todoHead(d.todo), cur ? (function (s0) { var t = trT(s0, aid); return '<span class="st-fcur"' + trTitle(t, s0) + ">" + esc(t) + "</span>"; })(cur.activeForm || cur.subject) : "", todoRowsHtml(d.todo, aid)) : "") +
       (d.schedules.length ? sec("cron", head("定时任务", d.schedules), "", rows(d.schedules, "cron", function (x) {
         var start = Date.parse(x.createdAt), end = Date.parse(x.endedAt);
@@ -365,7 +380,9 @@
         return '<div class="st-prw st-frow">' + taskIco(x) + ' <span class="st-cut" title="' + esc(x.desc) + '">' + esc(x.desc) + '</span><span class="st-fill"></span><span class="st-dim" title="' + esc(x.cron && timing === x.cron ? x.cron : label + " " + time) + '">' + esc(timing) + '</span></div>';
       })) : "") +
       (d.sh.length ? sec("bg", head("后台任务", d.sh), "", rows(d.sh, "bg")) : "") +
-      (d.sa.length ? sec("sub", head("子 Agent", d.sa), "", rows(d.sa, "sub")) : "") +
+      (workflowRows.length ? sec("workflows", head("工作流", workflowRows), "", workflowRows.map(({key, tasks}) =>
+        sec("workflow-" + key, head(key, tasks), "", rows(tasks, key))).join("")) : "") +
+      (ordinaryAgents.length ? sec("sub", head("子 Agent", ordinaryAgents), "", rows(ordinaryAgents, "sub")) : "") +
       (infoOn ? sec("info", "详情", "", TSU_CCINFO.summaryHtml(aid.slice(3), familyChanged)) : "") + "</div>";
   }
   // 右侧栏这一块的 TUI 样子（右上角「TUI / 图形」换，只记在这台设备上，不进设置）：同 Claude Code 终端里的写法——
@@ -732,7 +749,7 @@
     if (/^agent-done-/.test(what)) { var ad = what.slice(11); ACTD[ad] = !ACTD[ad]; return renderPanel(tw); }
     if (/^todo-wrap-/.test(what)) { if (String(window.getSelection() || "").trim()) return; var wk0 = what.slice(10); if (TWRAP[wk0]) delete TWRAP[wk0]; else TWRAP[wk0] = 1; return familyChanged(); } // 任务清单的一项：换行展开全文 / 收回
     if (what === "tasks-done") return toggleTodoDone(); // 任务清单里「n 项已完成」：展开 / 收起（侧栏、卡片、抽屉一起）
-    if (/^fam-done-(bg|sub|fg|cron)$/.test(what)) { var fs0 = el && el.closest ? el.closest(".st-fsec") : null, fk = (fs0 ? fs0.dataset.aid : "") + ":" + what.slice(9); FDONE[fk] = !FDONE[fk]; return familyChanged(); } // 「n 个已结束」：展开 / 收起
+    if (/^fam-done-(bg|sub|fg|cron|task-\d+)$/.test(what)) { var fs0 = el && el.closest ? el.closest(".st-fsec") : null, fk = (fs0 ? fs0.dataset.aid : "") + ":" + what.slice(9); FDONE[fk] = !FDONE[fk]; return familyChanged(); } // 「n 个已结束」：展开 / 收起
     if (what === "side-agent") { var ap = agentPaneFor(tw); if (ap && ap !== tw.ws.active) { if (tw.ws.show) tw.ws.show(ap); if (ap.focus) ap.focus(); } return; } // 辅助侧栏标题行上 agent 的名字：切到它的标签页
     if (what === "new-agent") return newAgent(tw);
     if (what === "fam-tui") { localStorage.setItem("tsu-fam-tui", famTui() ? "0" : "1"); return familyChanged(); } // 右侧栏这一块：TUI ↔ 图形
@@ -2763,7 +2780,7 @@
       var fr = setState.q && !e.target.closest(".ss-ctl, input, button, label, .ss-code") && e.target.closest(".ss-row");
       if (fr) { var rr = rowOf(fr); if (rr) navTo(host, P, arg, rr.sec, rr.page, fr.dataset.k); return; }
       var link = e.target.closest("[data-sact]");
-      if (link) { var sc = link.closest(".ss-sec"), r6 = rowOf(link), S2 = SECTIONS[(r6 && r6.sec) || (sc && sc.dataset.sec)]; if (S2 && S2.action) S2.action(link.dataset.sact, P.win); return; } // 按钮交给这一行所属的分区（挂进来的分区是它自己）
+      if (link) { var sc = link.closest(".ss-sec"), r6 = rowOf(link), S2 = SECTIONS[(r6 && r6.sec) || (sc && sc.dataset.sec)]; if (S2 && S2.action) S2.action(link.dataset.sact, P.win, P); return; } // 按钮交给这一行所属的分区（挂进来的分区是它自己）
       var opt = e.target.closest(".ss-opt, .ss-sw");
       if (opt) { var r9 = rowOf(opt), o9 = r9 && (r9.f.options || [])[+opt.dataset.j]; if (o9 && o9[0] !== r9.f.value && !(r9.f.na || {})[o9[0]]) change(r9, o9[0]); return; }
       var stop = e.target.closest(".ss-stops [data-j]");
@@ -4101,8 +4118,8 @@
 
   // ======== 配色方案：一套颜色管整个窗口（工具栏、标签、侧栏、终端、页面）========
   var SCHEMES = {
-    // 名字说人话：深色 / 浅色（默认那一对，纯黑 / 纯白底）、深灰 / 浅灰（同 VS Code）、柔和深色 / 柔和浅色（低对比的青蓝 / 米黄，就是 Solarized）；id 不变，选过的照旧
-    "paimon-dark": { name: "深色", desc: "默认深色（纯黑）", type: "dark", colors: { bg: "#000000", bg2: "#131313", bg3: "#1c1c1c", line: "#242424", fg: "#d6d6d6", hi: "#ffffff", dim: "#808080", faint: "#4a4a4a", accent: "#b1b9f9", onAccent: "#000000", orange: "#d77757", green: "#4eba65", red: "#ff6b80", blue: "#6eaaff", yellow: "#e5c07b" } },
+    // 名字说人话：深色 / 浅色（默认那一对，深灰 / 纯白底）、深灰 / 浅灰（同 VS Code）、柔和深色 / 柔和浅色（低对比的青蓝 / 米黄，就是 Solarized）；id 不变，选过的照旧
+    "paimon-dark": { name: "深色", desc: "默认深色", type: "dark", colors: { bg: "#1e1e1e", bg2: "#131313", bg3: "#1c1c1c", line: "#242424", fg: "#d6d6d6", hi: "#ffffff", dim: "#808080", faint: "#4a4a4a", accent: "#b1b9f9", onAccent: "#000000", orange: "#d77757", green: "#4eba65", red: "#ff6b80", blue: "#6eaaff", yellow: "#e5c07b" } },
     "paimon-light": { name: "浅色", desc: "默认浅色（纯白）", type: "light", colors: { bg: "#ffffff", bg2: "#f2f2f2", bg3: "#e9e9e9", line: "#dddddd", fg: "#1a1a1a", hi: "#000000", dim: "#8a8a8a", faint: "#c8c8c8", accent: "#5a67d8", onAccent: "#ffffff", orange: "#c4613d", green: "#2e8b57", red: "#d20f39", blue: "#286ec8", yellow: "#a07800" } },
     "dark-gray": { name: "深灰", desc: "Visual Studio Code 深色（Dark Modern）", type: "dark", colors: { bg: "#1f1f1f", bg2: "#181818", bg3: "#313131", line: "#2b2b2b", fg: "#cccccc", hi: "#ffffff", dim: "#9d9d9d", faint: "#555555", accent: "#0078d4", onAccent: "#ffffff", focus: "#0078d4", orange: "#d77757", green: "#4eba65", red: "#f48771", blue: "#4daafc", yellow: "#e5c07b" },
       terminal: { background: "#1f1f1f" } },
@@ -4257,6 +4274,7 @@
     allWins().forEach(function (w) { if (w.st) { w.st.terms.forEach(function (t) { t.term.options.theme = xtermTheme(); }); } renderSoon(w); });
     if (T() && T().applyUI) T().applyUI(); // 界面换了：开着的 agent 换外壳
     if (theming) { void getComputedStyle(root).color; setTimeout(function () { root.classList.remove("st-theming"); }, 40); } // 样式按新颜色算好（这时没有过渡），再把过渡打开
+    syncGuiMapMode();
     if (theming) document.dispatchEvent(new Event("st-theme")); // 画在 canvas 上的（缩略图）照新颜色重画
   }
   var lastMono = null, lastScSig = null, lastRSig = "";
@@ -5519,6 +5537,8 @@
   // ⚙ 管理菜单（同 VS Code 左下那个）
   var MIc = function (b) { return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">' + b + "</svg>"; };
   var MI = {
+    pin: MIc('<path d="m10.4 2.3 3.3 3.3-1.6.4-2.4 2.4.2 2.6-1.1 1.1-5.3-5.3 1.1-1.1 2.6.2 2.4-2.4zM6.2 9.8l-3.8 3.8"/>'),
+    unpin: MIc('<path d="m8.5 4.4 1.1-1.1.8-1 3.3 3.3-1.6.4-1.8 1.8M9.9 10.8l-1.1 1.3-5.3-5.3 1.1-1.1M6.2 9.8l-3.8 3.8M2 2l12 12"/>'),
     contextWindow: MIc('<rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M4.5 6h7M4.5 9h4"/>'),
     quotaGauge: MIc('<path d="M2.5 12a6 6 0 1 1 11 0zM8 9l3-3"/>'),
     wallet: MIc('<rect x="2" y="3.5" width="12" height="9" rx="1.5"/><path d="M14 7h-4v3h4"/>'),
@@ -5775,12 +5795,18 @@
         { key: "abStatus", label: "服务状态", must: true, kind: "button", text: "查看", act: "status" },
       ].filter(Boolean);
     },
-    action: function (what, tw) {
+    action: function (what, tw, pane) {
       if (what === "check") return checkNow();
       if (what === "reload") return location.reload();
       if (what === "appUpdate") return appUpdateNow();
       if (what === "useSite") return useSite();
-      if (what === "changelog" && window.TSU_CHANGELOG) return TSU_CHANGELOG.open(tw);
+      if (what === "changelog" && window.TSU_CHANGELOG) {
+        var floating = pane?.el.closest('.st-float[data-page="settings"]');
+        if (floating) closeFloat(floating);
+        TSU_CHANGELOG.open(tw);
+        if (!floating && pane?.program?.page === "settings" && tw.ws.groupOf(pane)) tw.ws.closePane(pane);
+        return;
+      }
       if (what === "status") return openPage(tw, "status", "");
     },
   });
@@ -5949,7 +5975,7 @@
     return { key: key.toLowerCase(), mods: mods.join(",") || "cmd" };
   }
   // 菜单图标 → SF Symbols 的名字（系统的菜单用系统的图标）
-  var MI_SYM = { eye: "info.circle", palette: "command", gear: "gearshape", json: "curlybraces", keys: "keyboard", ui: "macwindow", tui: "terminal", gui: "desktopcomputer", macos: "menubar.dock.rectangle", os_vscode: "sidebar.left", os_claude: "asterisk", os_macos: "menubar.dock.rectangle", os_terminal: "terminal", scheme: "paintpalette", highlight: "chevron.left.forwardslash.chevron.right",
+  var MI_SYM = { pin: "pin", unpin: "pin.slash", eye: "info.circle", palette: "command", gear: "gearshape", json: "curlybraces", keys: "keyboard", ui: "macwindow", tui: "terminal", gui: "desktopcomputer", macos: "menubar.dock.rectangle", os_vscode: "sidebar.left", os_claude: "asterisk", os_macos: "menubar.dock.rectangle", os_terminal: "terminal", scheme: "paintpalette", highlight: "chevron.left.forwardslash.chevron.right",
     layout: "rectangle.split.3x1", act: "sidebar.left", sideL: "sidebar.left", sideR: "sidebar.right", panel: "rectangle.bottomthird.inset.filled", status: "rectangle.split.1x2", crumbs: "chevron.right.2",
     minimap: "sidebar.squares.right", lineNo: "list.number", full: "arrow.up.left.and.arrow.down.right", zen: "scope", title: "menubar.rectangle", splitR: "rectangle.split.2x1", splitD: "rectangle.split.1x2", close: "xmark",
     closeOthers: "xmark.square", msg: "bubble.left", answer: "sparkles", think: "brain.head.profile", tool: "wrench.and.screwdriver", diff: "plusminus", web: "globe", term: "terminal", recap: "clock.arrow.circlepath",
@@ -6355,7 +6381,14 @@
   //   无级：对话滚到哪（到顶 / 到底 / 中间任何位置），缩略图同比例滚到哪，每一帧都跟着（不是隔一会儿跳一下）。
   //   灰块是看得见的那段：按住灰块拖 = 连续地滚整段；点灰块外面 = 那一行放到中间（接着还能拖）========
   var MAP_LH = 2;
-  function previewSet(k, v) { if (v === null) delete SETP[k]; else SETP[k] = v; minis(); }
+  var lastGuiMapMode;
+  function syncGuiMapMode() {
+    var mode = getv("minimap");
+    if (!window.TSU_GUIMAP || mode === lastGuiMapMode) return;
+    lastGuiMapMode = mode;
+    TSU_GUIMAP.sync();
+  }
+  function previewSet(k, v) { if (v === null) delete SETP[k]; else SETP[k] = v; minis(); if (k === "minimap") syncGuiMapMode(); }
   var minimapHidden = false;
   function minis() { if (getv("minimap") === "hide") { if (!minimapHidden) sweepMini(); minimapHidden = true; return; } minimapHidden = false; allWins().forEach(function (tw) { withSplit((tw.ws.visible ? tw.ws.visible() : [tw.ws.active])).concat(tw.sidePane && tw.sidePane.el.isConnected ? [tw.sidePane] : []).forEach(function (P) { if (P) mini(P); }); }); }
   // 设置里「缩略图：隐藏」：哪里都不画——后台的标签页、右侧栏 / 底部面板里的对话、拆出来的格里留着的也拿掉，让出来的地方收回
@@ -6580,8 +6613,7 @@
   //   从别处点进来的（账号菜单 → 账号、连接器的齿轮 → 那个连接器、/config → Paimon）照旧去它们自己那一页
   function sectionFor() { return "general"; }
   // 页面起来以后：面板里的终端接回来
-  var restored = false;
-  setInterval(function () { if (restored || !termapp()) return; var tw = T() && T().front(); if (!tw || !LOC()) return; restored = true; LOC().ready.then(function () { parts(tw); restorePanel(tw); render(tw); }); }, 500);
+  var restoreTimer = setInterval(function () { if (!termapp()) return; var tw = T() && T().front(); if (!tw || !LOC()) return; clearInterval(restoreTimer); LOC().ready.then(function () { parts(tw); restorePanel(tw); render(tw); }); }, 500);
 
   applySettings();
   window.STUDIO = {

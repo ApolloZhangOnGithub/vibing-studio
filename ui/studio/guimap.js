@@ -117,7 +117,7 @@
   function setup(host) {
     var sc = host.querySelector(":scope > .gv-scroll");
     if (!sc) return;
-    var st = { host: host, sc: sc, cache: new WeakMap(), dirty: new Set(), on: false, mode: "" };
+    var st = { host: host, sc: sc, cache: new WeakMap(), dirty: new WeakSet(), on: false, mode: "" };
     host._gm = st;
     var m = st.m = document.createElement("div");
     m.className = "gv-map";
@@ -175,9 +175,12 @@
       tip.style.top = Math.max(0, Math.min(r.height - 24, y - 10)) + "px";
     });
     m.addEventListener("pointerleave", function () { tip.hidden = true; });
-    st.dispose = function () { st.mo.disconnect(); st.ro.disconnect(); sc.removeEventListener("scroll", st.onScroll); host.removeEventListener("wheel", st.onWheel); clearTimeout(st.t); m.remove(); host._gm = null; };
+    st.dispose = function () { st.mo.disconnect(); st.ro.disconnect(); sc.removeEventListener("scroll", st.onScroll); host.removeEventListener("wheel", st.onWheel); clearTimeout(st.t); clearTimeout(hideT); cancelAnimationFrame(raf);
+      st.on = false;
+      host.classList.remove("gv-hasmap", "gv-mapclear", "gv-mapfloat");
+      st.cv.width = st.cv.height = 0;
+      m.remove(); host._gm = null; };
     states.push(st);
-    update(st);
   }
   // 放不放、怎么放：设置的那一种、面板够不够宽（窄的不放：字更要紧）
   function update(st) {
@@ -193,18 +196,26 @@
     if (on && (md !== "scroll" || st.m.classList.contains("show"))) paint(st, true);
   }
   function sync(force) {
+    if (mode() === "hide") {
+      clearInterval(syncTimer);
+      syncTimer = 0;
+      states.forEach(st => st.dispose());
+      states = [];
+      return;
+    }
+    if (!syncTimer) syncTimer = setInterval(sync, 1000);
     if (document.hidden && force !== true) return; // 看不见的窗口不画（测试里 sync(true) 硬画）
     document.querySelectorAll(".gv:not(.xp-gsnap)").forEach(function (h) { if (!h._gm) setup(h); });
     states = states.filter(function (st) { if (st.host.isConnected) { update(st); return true; } st.dispose(); return false; });
   }
-  setInterval(sync, 1000);
+  var syncTimer = 0;
+  sync();
   // 设置变了（缩略图的档位、菜单里指着预览）、主题换了：马上跟上
   var quick = 0;
   var again = function () { clearTimeout(quick); quick = setTimeout(function () { themeC = null; states.forEach(function (st) { st.cache = new WeakMap(); st.laid = null; }); sync(); }, 30); }; // 颜色都记在形状里：换了主题全部重量
   document.addEventListener("st-settings-changed", again);
   new MutationObserver(again).observe(root, { attributes: true, attributeFilter: ["class", "style"] });
-  var lastMode = "";
-  setInterval(function () { var md = mode(); if (md !== lastMode) { lastMode = md; sync(); } }, 250); // 菜单里指着「缩略图」的几档时预览
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) sync(); });
   // ======== 终端界面（TUI）、文件页、真终端的缩略图：照屏幕上真实的样子（studio.js 的 paintMini 用；以前是按每行开头的字猜颜色——
   //   「- 列表」「2026-…」都被当成 diff 的删除行画成红的）。每一格字画成一小格，颜色就是它在屏幕上的颜色；空格不画；
   //   有底色的地方先铺底色（灰底的问、展开的工具详情、diff 那一行、真终端里有背景色的格子）。按块缓存，块变了才重读 ========

@@ -11,6 +11,16 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.1", items: { new: [
+      ["右键可固定标签页。固定标签在当前组最左侧只显示图标，重新打开布局时保留固定状态。", "Pin tabs from their context menu. Pinned tabs show only their icon on the left of their group and persist with the layout."]
+    ], improved: [
+      ["连接器会话结束后图标变灰；AGY 工作流创建的子会话按任务收进右栏，已结束项默认折叠。", "Idle connector tabs use muted icons. AGY workflow sessions are grouped by task in the sidebar, with completed items collapsed."],
+      ["从设置查看更新内容时自动关闭设置窗口。隐藏 GUI 缩略图时释放画布并停止轮询。", "Opening release notes from Settings closes Settings. Hiding the GUI minimap releases its canvas and stops its polling timer."],
+      ["默认深色背景调整为深灰色，对话代码块暂时隐藏行号。", "The default dark background is charcoal. Conversation code blocks now hide line numbers."]
+    ], fixed: [
+      ["AGY 收到首个正文片段时即可查看完整的思考内容，历史刷新时保留正在显示的思考。", "AGY shows the completed reasoning when the first answer chunk arrives and preserves it during history refreshes."],
+      ["AGY 回退后仅显示当前分支的消息，前台命令的运行状态与终端同步。", "After an AGY rewind, show messages from the current branch. Foreground command status follows the terminal."]
+    ] } },
     { date: "2026-11-25", ver: "0.2.2.3", items: { new: [
       ["悬停会话里的本地图片引用可预览图片，点击文件名可打开原图。", "Hover over a local image reference in a conversation to preview it, or click its filename to open the image."]
     ] } },

@@ -1607,7 +1607,7 @@
         if (can("fs.trash")) L0.push(Object.assign(mi(tr("移到废纸篓", "Move to Trash"), "⌘⌫", function () { trashIt(it); }, "close", "trash"), { disabled: lock }));
         L0.push({ sep: true });
         L0.push(mi(tr("显示简介", "Get Info"), "⌘I", function () { getInfo(it); }, "image", "info.circle"));
-        L0.push(Object.assign(mi(tr("重新命名", "Rename"), "", function () { renameIt(it); }, "rename", "pencil"), { disabled: lock || !!info.side || indexOf(it) < 0 })); // 不在这一页的列表里（分栏里前面几栏的）：没处改
+        L0.push(Object.assign(mi(tr("重新命名", "Rename"), "", function () { renameIt(it); }, "rename", "pencil"), { disabled: lock || !!info.side || (indexOf(it) < 0 && !fileColumnRow(it)) }));
         L0.push(Object.assign(mi(tr("压缩“", "Compress “") + nm + "”", "", function () { compress(it); }, "archive", "archivebox"), { disabled: !!it.fixed }));
         L0.push(Object.assign(mi(tr("复制", "Duplicate"), "⌘D", function () { duplicate(it); }, "tab", "plus.square.on.square"), { disabled: lock }));
         L0.push(Object.assign(mi(tr("制作替身", "Make Alias"), "⌃⌘A", function () { makeAlias(it); }, "open", "arrowshape.turn.up.right"), { disabled: !!it.fixed }));
@@ -1634,13 +1634,18 @@
       // 弹出这一项的菜单：先问好 App、标签，再交给系统的菜单（finderMenu）
       var showItemMenu = function (it, at, side) { if (!it) return; prefetch(it).then(function (info) { info.side = !!side; finderMenu(itemMenu(it, info, at), at); }); };
       // ---- 改名（同访达：名字那里变成输入框，选中不带扩展名的部分；回车 / 点别处定下，Esc 取消）----
+      var fileColumnRow = function (it) {
+        return XV.view === "columns" && it.path && host.querySelector('.xp-crow[data-cpath="' + CSS.escape(it.path) + '"]');
+      };
       var renameIt = function (it) {
         if (!it || it.kind === "session" || it.kind === "identity" || it.kind !== "agent" && !it.vf && locked(it)) return;
         var i = indexOf(it);
-        if (i < 0) return;
-        it = V.items[i];
-        if (V.sel !== i) { V.sel = i; V.redraw(); }
-        var main = host.querySelector(".xp-main"), row = XV.view === "columns" ? host.querySelector(".xp-col:last-child .xp-crow.on") : main.querySelector('[data-i="' + i + '"]');
+        if (i < 0 && !fileColumnRow(it)) return;
+        if (i >= 0) {
+          it = V.items[i];
+          if (V.sel !== i) { V.sel = i; V.redraw(); }
+        }
+        var main = host.querySelector(".xp-main"), row = fileColumnRow(it) || main.querySelector('[data-i="' + i + '"]');
         var slot = XV.view === "gallery" ? host.querySelector(".xp-gal-name") : row && (row.querySelector(".xp-name, .xp-cn") || row.querySelector(".xp-tn"));
         if (!slot) return;
         var old = it.name, be = it.kind === "agent" || it.vf ? [old, ""] : baseExt(it), inp = document.createElement("input");
@@ -1669,7 +1674,13 @@
           if (/\//.test(nm) || nm === "." || nm === "..") { back(); return fail(tr("名称不能包含“/”。", "The name can’t contain “/”.")); }
           if (namesIn(dir).indexOf(nm) >= 0) { back(); return fail(tr("名称“" + nm + "”已被使用。请选取另一个名称。", "The name “" + nm + "” is already taken. Please choose a different name.")); }
           V.renaming = false;
-          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { XV.undo = { from: dst, to: it.path }; host.dataset.h = ""; reload(dir, nm); var m2 = host.querySelector(".xp-main"); if (m2) m2.focus({ preventScroll: true }); }, function (e) { back(); fail(e); });
+          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { XV.undo = { from: dst, to: it.path }; host.dataset.h = "";
+            var current = where(V.arg);
+            if (current.fs && (current.path === it.path || current.path.startsWith(it.path + "/"))) {
+              delete cache[dir];
+              colGo(argOf(dst + current.path.slice(it.path.length)));
+            } else { reload(dir, current.path === dir ? nm : ""); }
+            var m2 = host.querySelector(".xp-main"); if (m2) m2.focus({ preventScroll: true }); }, function (e) { back(); fail(e); });
         };
         inp.addEventListener("keydown", function (e) { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); finish(false); } });
         inp.addEventListener("blur", function () { finish(true); });

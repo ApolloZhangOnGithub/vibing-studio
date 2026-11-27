@@ -50,7 +50,7 @@
   // ---- 标签页、编辑区、文件、内嵌的浏览器 ----
   words({
     "关闭标签页": "Close Tab", "新建终端": "New Terminal", "向右拆分 (⌘D)": "Split Right (⌘D)", "向右拆分": "Split Right", "向下拆分": "Split Down",
-    "关闭其他": "Close Others", "关闭此组": "Close Group", "新建标签页 (⌥⌘T)": "New Tab (⌥⌘T)", "＋ 新建面板": "＋ New Pane", "终端外观": "Terminal Appearance",
+    "固定标签页": "Pin Tab", "取消固定标签页": "Unpin Tab", "关闭其他": "Close Others", "关闭此组": "Close Group", "新建标签页 (⌥⌘T)": "New Tab (⌥⌘T)", "＋ 新建面板": "＋ New Pane", "终端外观": "Terminal Appearance",
     "终端输入": "Terminal input", "拖动以移动面板（或按住 ⌥⌘ 拖动面板任意位置）": "Drag the pane (or hold ⌥⌘ and drag anywhere in it)",
     "移到编辑区": "Move into Editor Area", "还原": "Restore", "放大": "Zoom In", "缩小": "Zoom Out", "实际大小": "Actual Size",
     "关闭 (Esc)": "Close (Esc)", "保存 (⌘S)": "Save (⌘S)", "保存 ⌘S": "Save ⌘S", "在访达中显示": "Reveal in Finder", "读取中…": "Loading…",
@@ -774,7 +774,7 @@
   words({ "风格": "Style", "对话宽度": "Conversation Width", "最大利用": "Maximum", "效率": "Efficient", "经典": "Classic", "经典是 Claude Desktop 的经典宽度；效率一行放得下更多代码；最大利用尽量铺满（两边留一点边）": "Classic is Claude Desktop's classic width; Efficient fits more code per line; Maximum fills the space (with a small margin)", "使用全部宽度显示对话？": "Fill the whole width?", "开启": "Turn On" }); // 不给「打开」配 Turn On：别处的「打开」是 Open
   words({ "一问（你说到它答完）": "A turn (your message → its answer)", "后台任务": "Background tasks", "闲着": "Idle", "次调用": "calls", "最后": "Last", "后台": "Background" });
   words({ "启用 Paimon": "Enable Paimon", "Studio 内置助手：不直接编写代码，负责监看正在运行的 Agent，并在需要时提醒和协助": "The assistant built into Studio: it doesn't write your code, it keeps an eye on the agents at work and lends a hand when needed", "内置助手：监看其他 Agent 的运行": "Built-in assistant that watches your other agents", "标题栏的地址": "Title bar address", "只显示站点": "Site only", "完整地址": "Full address", "窗口底部的状态栏": "The line at the bottom of the window", "快捷键": "Keyboard Shortcuts", "查看命令及其快捷键": "Shortcuts for every command" });
-  words({ "柔和深色": "Soft Dark", "柔和浅色": "Soft Light", "深灰": "Dark Gray", "浅灰": "Light Gray", "默认深色（纯黑）": "Default · pure black", "默认浅色（纯白）": "Default · pure white", "Solarized 深色": "Low-contrast teal (Solarized)", "Solarized 浅色": "Low-contrast cream (Solarized)" });
+  words({ "柔和深色": "Soft Dark", "柔和浅色": "Soft Light", "深灰": "Dark Gray", "浅灰": "Light Gray", "默认深色": "Default dark", "默认浅色（纯白）": "Default · pure white", "Solarized 深色": "Low-contrast teal (Solarized)", "Solarized 浅色": "Low-contrast cream (Solarized)" });
   words({ "只能在 App 里搜索文件": "File search is only available in the app", "「文件」视图中已打开文件夹内的文件（名称和内容）": "Files in the folder open in the Files view: names and contents" });
   words({ "当前没有可用的更新。": "There are currently no updates available.", "有可用的更新": "An update is available", "重新载入以更新：终端、会话都会接回去。": "Reload to update. Terminals and sessions reconnect.", "稍后": "Later", "重新载入": "Reload" });
   // Claude Code 没收到的那句（claude.js：送出去后在会话记录里确认）

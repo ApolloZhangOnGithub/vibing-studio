@@ -393,7 +393,7 @@
             changed = true;
             sessions = rows;
             sessionSignature = signature;
-            try { localStorage.setItem(hostKey("tsu-sidebar-agy-v1"), signature); } catch (_) {}
+            try { localStorage.setItem(hostKey("tsu-sidebar-agy-v2"), signature); } catch (_) {}
           }
           listError = "";
         } catch (e) { listError = e.message; }
@@ -451,7 +451,7 @@
     };
     if (local()) {
       try {
-        var cachedSessions = JSON.parse(localStorage.getItem(hostKey("tsu-sidebar-agy-v1")));
+        var cachedSessions = JSON.parse(localStorage.getItem(hostKey("tsu-sidebar-agy-v2")));
         if (Array.isArray(cachedSessions)) sessions = cachedSessions;
       } catch (_) {}
       setTimeout(function () { if (TSU_AGY.enabled() && !loadedAt) refreshAgy(); }, 0);
@@ -611,6 +611,7 @@
           else delete turn.stats;
         }
       }
+      var liveThoughts = new WeakMap(), activeThoughts = new WeakSet();
       var pendingTurn = null, optimisticTurns = [], workingSince = 0;
       var acknowledgedStart = 0, displayedStart = 0;
       var revision = "", followTimer, checking = false;
@@ -642,7 +643,7 @@
         var tasks = active ? screen.tasks || [] : rt.recordedTasks || [];
         var schedules = tasks.filter(task => task.kind === "cron"), shells = tasks.filter(task => task.kind === "shell");
         var children = sessions.filter(s => s.subagent && s.subagent.parent === id).map(s => ({
-          kind: "agent", id: s.sessionId, type: s.subagent.role || "Subagent", desc: s.title,
+          kind: "agent", id: s.sessionId, type: s.subagent.role || "Subagent", desc: s.title, workflow: s.subagent.workflow,
           status: s.subagent.status, t0: Date.parse(s.subagent.createdAt || s.updatedAt)
         }));
         if (active && typeof screen.working !== "boolean") {
@@ -656,11 +657,12 @@
           listeners.forEach(fn => fn("tasks"));
           ST.familyChanged();
         }
-        if (active && typeof screen.working !== "boolean") return;
-        var terminalWorking = active && screen.working === true;
+        if (active && typeof screen.working !== "boolean" && typeof screen.summaryWorking !== "boolean") return;
+        var terminalWorking = active && (screen.working ?? screen.summaryWorking) === true;
         if (terminalWorking) {
           if (Number(sessionStorage.getItem(workingKey)) < Date.now() - 15000) sessionStorage.setItem(workingKey, String(Date.now()));
         } else sessionStorage.removeItem(workingKey);
+        if (active && !terminalWorking) rt.historyToolWorking = false;
         if (rt.terminalWorking === terminalWorking && rt.liveStatus === status && rt.liveFooter === screen.footer) return;
         var activityChanged = rt.terminalWorking !== terminalWorking;
         rt.terminalWorking = terminalWorking;
@@ -705,7 +707,7 @@
       }
       async function load(observedRevision) {
         var changes = null, appended = [];
-        var scope = hostKey("agy-history:" + (window.TSU_UID || 0) + ":" + id);
+        var scope = hostKey("agy-history-branch-v1:" + (window.TSU_UID || 0) + ":" + id);
         function applyMessages(messages) {
           rt.contextTokens = messages.contextTokens;
           rt.contextLimit = messages.contextLimit;
@@ -749,10 +751,25 @@
               (t.wireAsk || t.ask) === (entry.turn.wireAsk || entry.turn.ask));
             if (index < 0) return true;
             matched.add(index);
+            if (liveThoughts.has(entry.turn)) liveThoughts.set(turns[index], liveThoughts.get(entry.turn));
             if (entry.turn === pendingTurn) pendingTurn = null;
             // Another identical prompt must match a later transcript entry, even on a later poll.
             optimisticTurns.forEach(other => { if (other !== entry && other.turn.ask === entry.turn.ask) other.start = Math.max(other.start, index + 1); });
             return false;
+          });
+          turns.forEach(function (turn, index) {
+            var prior = previous[index];
+            var thought = liveThoughts.get(turn) || (prior?.at === turn.at && prior?.ask === turn.ask && liveThoughts.get(prior));
+            if (!activeThoughts.has(thought) || turn.parts.includes(thought)) return;
+            var saved = turn.parts.findLast(p => p.kind === "agyThinking" && p.text &&
+              (thought.text.startsWith(p.text) || p.text.startsWith(thought.text)));
+            if (saved && saved.text.length >= thought.text.length) return;
+            liveThoughts.set(turn, thought);
+            if (saved) turn.parts[turn.parts.indexOf(saved)] = thought;
+            else {
+              var lastText = turn.parts.at(-1)?.kind === "text";
+              turn.parts.splice(turn.parts.length - (lastText ? 1 : 0), 0, thought);
+            }
           });
           optimisticTurns.forEach(entry => turns.push(entry.turn));
           if (turnHashes.length && hashes.length === turns.length && previous.length === turnHashes.length && turns.length >= previous.length &&
@@ -778,7 +795,7 @@
             historyProgress(-1);
             var cached = await TSU_LOCAL.cachedHistory(scope).catch(() => []);
             var head = cached.shift();
-            if (head && cached.length === head.turnHashes?.length) {
+            if (head && info.path && head.fileRevision === await fileRevision(info.path) && cached.length === head.turnHashes?.length) {
               applyMessages({...head, reuseTurns: 0, events: cached.flat()});
               listeners.forEach(f => f("reset"));
               historyProgress(null);
@@ -795,6 +812,7 @@
             args.push("--known-prefix", knownPrefix, "--known-turns", String(turnHashes.length - 1), "--known-last", turnHashes.at(-1));
           }
           var messages = await readAgy(args, null, rt.historyProgress != null ? historyProgress : null);
+          if (!messages.unchanged) rt.historyToolWorking = messages.foregroundToolWorking === true;
           if (messages.unchanged) {
             revision = before;
             changes = [];
@@ -808,6 +826,7 @@
             if (!pages.length || event.role === "user_message_chunk") pages.push([]);
             pages.at(-1).push(event);
           }
+          metadata.fileRevision = before;
           TSU_LOCAL.cacheHistory(scope, metadata, pages, messages.reuseTurns || 0, oldPrefix).catch(() => {});
           revision = before;
         } catch (e) { if (!session.turns.length) session.turns = [{ note: e.message, parts: [] }]; }
@@ -882,6 +901,7 @@
         state: function () {
           var child = findSession(id)?.subagent;
           if (child) return child.status === "running" ? "working" : "idle";
+          if (rt.historyToolWorking) return "working";
           if (!rt.headless()) return rt.sending || rt.terminalWorking ? "working" : "idle";
           var start = workingSince || findSession(id)?.workingSince;
           if (start && rt.finalAt >= start && !pendingTurn) return "idle";
@@ -940,7 +960,7 @@
           try {
             var outbound = await outboundMessage(message, images);
             if (localTurn) localTurn.wireAsk = outbound;
-            var chunks = new Map(), liveThought;
+            var chunks = new Map(), liveThought, latestThought;
             var args = ["--send", id, "--message=" + outbound];
             if (!images?.length && isAgyCommand(outbound)) args.push("--slash-command");
             if (preferred && rt.headless()) args.push("--model", preferred.id);
@@ -959,7 +979,10 @@
               }
               if (typeof event.thinking === "boolean") {
                 rt.thinkingAt = event.thinking ? rt.thinkingAt || Date.now() : 0;
-                if (!event.thinking) liveThought = null;
+                if (!event.thinking && liveThought) {
+                  liveThought.streaming = false;
+                  liveThought = null;
+                }
                 listeners.forEach(fn => fn("status"));
                 if (!event.delta) return;
               }
@@ -967,12 +990,19 @@
               var turn = session.turns.findLast(t => t.ask === message && (t === localTurn || !optimisticTurns.some(e => e.turn === t)));
               if (!turn || turn.ask !== message) return;
               if (event.thinking) {
-                if (!liveThought) liveThought = {kind:"agyThinking", text:"", streaming:true};
+                if (!liveThought) {
+                  activeThoughts.delete(latestThought);
+                  latestThought = liveThought = {kind:"agyThinking", text:"", streaming:true};
+                  activeThoughts.add(liveThought);
+                  chunks.delete(event.step);
+                }
+                liveThoughts.set(turn, liveThought);
                 var delta = event.delta;
                 liveThought.text = delta.startsWith(liveThought.text) ? delta : liveThought.text + delta;
                 var stored = turn.parts.find(p => p.kind === "agyThinking" && !p.streaming && p.text &&
                   (p.text.startsWith(liveThought.text) || liveThought.text.startsWith(p.text)));
-                if (!stored && !turn.parts.includes(liveThought)) turn.parts.push(liveThought);
+                if (stored && stored.text.length < liveThought.text.length) turn.parts[turn.parts.indexOf(stored)] = liveThought;
+                else if (!stored && !turn.parts.includes(liveThought)) turn.parts.push(liveThought);
                 listeners.forEach(fn => fn("turn", turn));
                 return;
               }
@@ -1006,6 +1036,7 @@
             }
             throw error;
           } finally {
+            activeThoughts.delete(latestThought);
             if (!followup) {
               // The connector can acknowledge a prompt before its worker finishes.
               acknowledgedStart = findSession(id)?.workingSince || 0;

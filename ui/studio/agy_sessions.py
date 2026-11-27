@@ -109,6 +109,53 @@ def subagent_metadata(root):
                     "FROM conversation_summaries WHERE parent_conversation_id != ''")}
 
 
+WORKFLOW_AGENT = re.compile(
+    rb"^- \[agent:([^]\r\n]+)\] (.+?): (done|running|failed|stopped) "
+    rb"\(([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\)(?=:|\s|$)"
+)
+
+
+def workflow_children(root):
+    # Task logs can also contain long shell output. Index each unchanged file only once.
+    cache_dir = Path.home() / ".cache" / "vibing-studio"
+    cache = cache_dir / (root.name + "-workflow-children-v1.json")
+    try:
+        previous = json.loads(cache.read_text())
+    except (OSError, ValueError):
+        previous = {}
+    current, children = {}, {}
+    for log in (root / "brain").glob("*/.system_generated/tasks/task-*.log"):
+        parent = log.parents[2].name
+        key = parent + "/" + log.name
+        try:
+            st = log.stat()
+            signature = [st.st_mtime_ns, st.st_size, st.st_ino]
+            entry = previous.get(key)
+            if not entry or entry[0] != signature:
+                records = {}
+                with log.open("rb") as stream:
+                    for line in stream:
+                        match = WORKFLOW_AGENT.match(line)
+                        if match:
+                            role, label, status, sid = (v.decode("utf-8", "replace") for v in match.groups())
+                            records[sid] = dict(role=role, label=label, status=status, parent=parent,
+                                                workflow=log.stem)
+                entry = [signature, records]
+            current[key] = entry
+            children.update(entry[1])
+        except OSError:
+            continue
+    if current != previous:
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", dir=cache_dir, delete=False) as tmp:
+                json.dump(current, tmp)
+            os.replace(tmp.name, cache)
+        except OSError:
+            pass
+    return children
+
+
 def rows(path):
     with path.open(encoding="utf-8") as stream:
         for line in stream:
@@ -137,16 +184,43 @@ def title(path, sid):
     return sid if path.stat().st_size else "新会话"
 
 
-def history_rows(path):
+def branch_rows(path, current):
+    # A rewind reuses indices; the JSONL files keep both versions, sometimes out of order.
+    # Keep offsets rather than a second copy of the entire conversation in memory.
+    positions = {}
+    with path.open("rb") as stream:
+        while True:
+            offset = stream.tell()
+            line = stream.readline()
+            if not line:
+                break
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                if line.endswith(b"\n"):
+                    raise
+                break
+            index = row["step_index"]
+            if index in current and (not current[index] or row.get("created_at", "")[:19] == current[index]):
+                positions[index] = offset
+        for index in sorted(positions):
+            stream.seek(positions[index])
+            yield json.loads(stream.readline())
+
+
+def history_rows(path, current=None):
+    read = rows if current is None else lambda file: branch_rows(file, current)
     full_path = path.with_name("transcript_full.jsonl")
     if not full_path.is_file():
-        yield from rows(path)
+        yield from read(path)
         return
 
     # Both logs are ordered by step_index and can be appended independently.
-    full_rows = rows(full_path)
+    full_rows = read(full_path)
     full = next(full_rows, None)
-    for summary in rows(path):
+    for summary in read(path):
         index = summary["step_index"]
         while full is not None and full["step_index"] < index:
             yield full
@@ -196,11 +270,25 @@ def wire_fields(data):
 
 def step_times(path):
     database = path.parents[4] / "conversations" / (path.parents[2].name + ".db")
+    current = None
     times = {}
     durations = {}
     context_limit = None
     try:
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as db:
+            db.execute("BEGIN")
+            branch = {}
+            for idx, metadata in db.execute("SELECT idx, substr(metadata, 1, 48) FROM steps"):
+                stamp = None
+                try:
+                    key, value = next(wire_fields(metadata or b""))
+                    if key == 1 and isinstance(value, bytes):
+                        seconds = dict(wire_fields(value))[1]
+                        stamp = datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+                except (StopIteration, ValueError, IndexError, KeyError, OverflowError, OSError):
+                    pass
+                branch[idx] = stamp
+            current = branch
             for idx, kind, blob, payload in db.execute("SELECT idx, step_type, metadata, step_payload FROM steps WHERE step_type IN (14,15) AND status=3"):
                 # Field 1 is creation. Field 8 on a completed planner response is its end.
                 wanted = 1 if kind == 14 else 8
@@ -233,7 +321,7 @@ def step_times(path):
                     context_limit = field
     except (sqlite3.Error, KeyError, TypeError, ValueError, IndexError):
         pass
-    return times, durations, context_limit
+    return times, durations, context_limit, current
 
 
 def log_revision(path):
@@ -245,7 +333,7 @@ def log_revision(path):
 
 
 def history(path, known_prefix=None, known_turns=None, known_last=None, known_source=None):
-    times, durations, context_limit = step_times(path)
+    times, durations, context_limit, current = step_times(path)
     events = []
     model = ""
     tools = deque()
@@ -262,14 +350,15 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
     # WAL writes unrelated to displayed steps need no transcript parsing or diff generation.
     logs = (path, path.with_name("transcript_full.jsonl"))
     revisions = [log_revision(p) for p in logs]
-    inputs = [revisions, times, durations, context_limit, owner_start, settings.get("model"), settings.get("mode")]
+    working = summary_working(path)
+    inputs = [current, working, revisions, times, durations, context_limit, owner_start, settings.get("model"), settings.get("mode")]
     source = hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
     if known_source == source:
         return {"unchanged": True, "source": source}
     owner_iso = datetime.fromtimestamp(owner_start / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     final_at = 0
     context_tokens = None
-    for row in history_rows(path):
+    for row in history_rows(path, current):
         if isinstance(row.get("input_tokens"), int):
             context_tokens = row["input_tokens"] + (row.get("cache_read_tokens") or 0)
         if row.get("model"):
@@ -415,7 +504,7 @@ def history(path, known_prefix=None, known_turns=None, known_last=None, known_so
                          and not e.get("error") and isinstance(e.get("steps"), list)), [])
     offset = starts[reused] if reused < len(starts) else len(events)
     return {"source": source if revisions == [log_revision(p) for p in logs] else None,
-            "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "notificationTasks": notification_tasks, "steps": latest_steps, "events": events[offset:], "prefix": prefix,
+            "foregroundToolWorking": bool(tools and working), "contextLimit": context_limit, "contextTokens": context_tokens, "finalAt": final_at, "background": list(background.values()), "notificationTasks": notification_tasks, "steps": latest_steps, "events": events[offset:], "prefix": prefix,
             "reuseTurns": reused, "turnHashes": digests, "model": model, "selectedModel": settings.get("model"),
             "mode": settings.get("mode") or "auto"}
 
@@ -640,7 +729,7 @@ def send_message(sid, message, model=None, configure=False, slash_command=False)
     if tty and re.fullmatch(r"ttys[0-9]+", tty):
         if configure:
             sys.exit("请在当前 AGY 终端切换模型")
-        return send_iterm(sid, message, slash_command=slash_command)
+        return send_terminal(sid, message, slash_command=slash_command)
     if tty:
         sys.exit("此会话由外部后台进程持有，Studio 没有它的输入通道")
     path = transcripts().get(sid)
@@ -679,39 +768,45 @@ def interrupt(sid):
             if re.match(r"^.*?/agy --conversation " + re.escape(sid) + r" (?:--input-format stream-json )?--output-format stream-json ", command):
                 os.kill(pid, signal.SIGINT)
                 return {"interrupted": True}
-    return send_iterm(sid, "", cancel=True)
+    return send_terminal(sid, "", cancel=True)
 
 
-def send_iterm(sid, message, cancel=False, slash_command=False):
+def send_terminal(sid, message, cancel=False, slash_command=False):
     target = terminal_sessions(foreground=True).get(sid)
     if not target or not re.fullmatch(r"ttys[0-9]+", target[0]):
         sys.exit("该会话没有在终端前台运行")
     if not cancel and (not message.strip() or any(ord(c) < 32 and c != "\n" for c in message)):
         sys.exit("消息为空或包含终端控制字符")
     tty, pid = target
-    script = """on run argv
+    script = """on checkOwner(targetPID, targetTTY)
+set procInfo to words of (do shell script "/bin/ps -p " & quoted form of targetPID & " -o pgid=,tpgid=,tty=,ucomm=")
+if (count of procInfo) is not 4 then error "AGY 已退出"
+if item 1 of procInfo is not item 2 of procInfo or item 4 of procInfo is not "agy" or ("/dev/" & item 3 of procInfo) is not targetTTY then error "AGY 已离开目标终端前台"
+end checkOwner
+
+on run argv
 set targetTTY to item 1 of argv
 set targetPID to item 2 of argv
 set msg to item 3 of argv
+set op to item 4 of argv
+if op is "send" then set msg to (ASCII character 27) & "[200~" & msg & (ASCII character 27) & "[201~"
 if application id "com.googlecode.iterm2" is running then
 tell application id "com.googlecode.iterm2"
 repeat with w in windows
 repeat with t in tabs of w
 repeat with s in sessions of t
 if tty of s is targetTTY then
-set procInfo to words of (do shell script "/bin/ps -p " & quoted form of targetPID & " -o pgid=,tpgid=,ucomm=")
-if (count of procInfo) is not 3 then error "agy 已退出"
-if item 1 of procInfo is not item 2 of procInfo or item 3 of procInfo is not "agy" then error "agy 已离开前台"
-if item 4 of argv is "interrupt" then
+my checkOwner(targetPID, targetTTY)
+if op is "interrupt" then
 write s text (ASCII character 27) newline no
-else if item 4 of argv is "command" then
+else
+if op is "command" then
 select w
 select t
 select s
 activate
+end if
 write s text msg newline yes
-else
-write s text ((ASCII character 27) & "[200~" & msg & (ASCII character 27) & "[201~") newline yes
 end if
 return "sent"
 end if
@@ -720,13 +815,41 @@ end repeat
 end repeat
 end tell
 end if
-error "找不到此会话的 iTerm2 分屏"
+if application id "com.apple.Terminal" is running then
+tell application id "com.apple.Terminal"
+repeat with w in windows
+repeat with i from 1 to count tabs of w
+if tty of tab i of w is targetTTY then
+my checkOwner(targetPID, targetTTY)
+if op is "interrupt" then
+set selected tab of w to tab i of w
+set index of w to 1
+activate
+if tty of selected tab of front window is not targetTTY then error "目标终端标签页未选中"
+my checkOwner(targetPID, targetTTY)
+tell application "System Events" to tell application process "Terminal"
+if not frontmost then error "终端未在前台"
+key code 53
+end tell
+else
+do script msg in tab i of w
+end if
+return "sent"
+end if
+end repeat
+end repeat
+end tell
+end if
+error "找不到该 AGY 会话所在的终端标签页"
 end run"""
     mode = "interrupt" if cancel else "command" if slash_command and "\n" not in message else "send"
     result = subprocess.run(["/usr/bin/osascript", "-", "/dev/" + tty, pid, message, mode],
                             input=script, capture_output=True, text=True, timeout=15)
     if result.returncode or result.stdout.strip() != "sent":
-        sys.exit(result.stderr.strip() or "iTerm2 未确认输入")
+        error = result.stderr.strip()
+        if cancel and ("1002" in error or "辅助访问" in error or "发送按键" in error):
+            sys.exit("macOS 未允许发送按键，请在已选中的终端标签页按 Esc 中断。")
+        sys.exit(re.sub(r"^.*?execution error: ", "", error) or "终端未确认输入")
     return {"sent": True}
 
 
@@ -734,14 +857,43 @@ def screen_status(sid):
     tty = terminal_sessions().get(sid)
     if not tty or not re.fullmatch(r"ttys[0-9]+", tty):
         return {}
+    try:
+        screen = terminal_screen(tty)
+    except (OSError, subprocess.TimeoutExpired):
+        screen = {}
+    if "working" in screen:
+        return screen
+    path = session_transcript(sid)
+    working = summary_working(path) if path else None
+    return {"summaryWorking": working} if working is not None else {}
+
+
+def summary_working(path):
+    db = path.parents[4] / "conversation_summaries.db"
+    try:
+        with closing(sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, timeout=0.2)) as conn:
+            row = conn.execute("SELECT status, killed FROM conversation_summaries WHERE conversation_id=?",
+                               (path.parents[2].name,)).fetchone()
+        if row and row[0] in ("CASCADE_RUN_STATUS_RUNNING", "CASCADE_RUN_STATUS_IDLE"):
+            return row[0] == "CASCADE_RUN_STATUS_RUNNING" and not row[1]
+    except sqlite3.Error:
+        pass
+    return None
+
+
+def terminal_screen(tty):
     device = '"/dev/' + tty + '"'
-    for app, collection, value in [
-        ("com.googlecode.iterm2", "sessions of t", "contents of itemRef"),
-        ("com.apple.Terminal", "", "contents of t"),
+    # AppleScript's "contents of t" dereferences a repeat variable to the
+    # tab object itself. Read the screen property on an indexed tab/session.
+    for app, body in [
+        ("com.googlecode.iterm2",
+         "repeat with j from 1 to count sessions of tab i of w\n"
+         f"if tty of session j of tab i of w is {device} then return contents of session j of tab i of w\n"
+         "end repeat"),
+        ("com.apple.Terminal", f"if tty of tab i of w is {device} then return contents of tab i of w"),
     ]:
-        body = "repeat with itemRef in " + collection + "\nif tty of itemRef is " + device + " then return " + value + "\nend repeat" if collection else "if tty of t is " + device + " then return " + value
-        script = ('if application id "' + app + '" is running then\ntell application id "' + app +
-                  '"\nrepeat with w in windows\nrepeat with t in tabs of w\n' + body +
+        script = (f'if application id "{app}" is running then\ntell application id "{app}"'
+                  '\nrepeat with w in windows\nrepeat with i from 1 to count tabs of w\n' + body +
                   '\nend repeat\nend repeat\nend tell\nend if')
         capture = subprocess.run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=4)
         lines = capture.stdout.rstrip().splitlines()
@@ -817,7 +969,7 @@ def main():
     if args.send:
         return send_message(str(args.send), args.message or "", args.model, slash_command=args.slash_command)
     if args.send_iterm:
-        return send_iterm(str(args.send_iterm), args.message or "", slash_command=args.slash_command)
+        return send_terminal(str(args.send_iterm), args.message or "", slash_command=args.slash_command)
     if args.screen:
         return screen_status(str(args.screen))
     if args.session:
@@ -831,7 +983,7 @@ def main():
     except (OSError, subprocess.TimeoutExpired):
         terminals = None
     sources = {root: workspace_dirs(root) for root in {path.parents[4] for path in files.values()}}
-    children = {root: subagent_metadata(root) for root in sources}
+    children = {root: {**workflow_children(root), **subagent_metadata(root)} for root in sources}
     sessions = []
     for sid, path in sorted(files.items(), key=lambda pair: pair[1].stat().st_mtime, reverse=True):
         dirs = sources[path.parents[4]].get(sid, [])
@@ -842,7 +994,7 @@ def main():
             first = next(rows(path), {})
             child["createdAt"] = first.get("created_at")
             assignment = re.search(r"sender=" + re.escape(child["parent"]) + r" [^\n]*?content=([^\n]+)", first.get("content", ""))
-            label = assignment[1][:120] if assignment else child["role"] or "Subagent"
+            label = child.get("label") or (assignment[1][:120] if assignment else child["role"] or "Subagent")
         else:
             label = title(path, sid)
         started = active_since(sid)

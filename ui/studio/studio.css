@@ -3,7 +3,7 @@
    · 命令面板 · 设置页 · 文件页。
    所有颜色都来自「配色方案」（设置里的一项，studio.js 把方案里的颜色写成下面这些变量）：工具栏、标签、侧栏、终端、页面同一套 */
 :root { --st-font: Monaco, Menlo, "PingFang SC", monospace; --st-fs: 12px;
-  --st-bg: #000; --st-bg2: #0c0c0c; --st-bg3: #161616; --st-line: #262626; --st-fg: #d6d6d6; --st-hi: #fff; --st-dim: #808080; --st-faint: #4a4a4a;
+  --st-bg: #1e1e1e; --st-bg2: #0c0c0c; --st-bg3: #161616; --st-line: #262626; --st-fg: #d6d6d6; --st-hi: #fff; --st-dim: #808080; --st-faint: #4a4a4a;
   --st-lav: rgb(177, 185, 249); --st-orange: rgb(215, 119, 87); --st-green: rgb(78, 186, 101); --st-red: rgb(255, 107, 128); --st-blue: rgb(110, 170, 255); --st-yellow: rgb(229, 192, 123);
   --st-sel: rgba(177, 185, 249, 0.14); --st-onacc: #000; --st-hover: #1f1f1f; --st-hover2: #333; --st-active: #303030; --st-ask: #373737; --st-canvas: #0a0a0a;
   --hl-k: #f92672; --hl-d: #66d9ef; --hl-f: #a6e22e; --hl-s: #e6db74; --hl-c: #75715e; --hl-n: #ae81ff; --hl-p: #fd971f; --hl-v: #f8f8f2; --hl-h: #66d9ef; --hl-a: #a6e22e; }
@@ -1084,6 +1084,11 @@ html.light .st-tg.st-tgdo { color: #b9542f; }
 .st-ico.st-i-cx { display: inline-flex; align-items: center; color: var(--st-dim); transition: color .25s ease; } /* Codex 的标签页：OpenAI 的结，平时淡、在跑时字色 */
 .st-ico.st-i-cx > .cx-logo-svg { width: 13px; height: 13px; }
 html.termapp .termwin .tab.busy > .st-ico.st-i-cx { color: var(--st-hi); } /* 在跑：OpenAI 的黑 / 白（同 Claude Code 的标签页在跑时是它的橙） */
+/* Completed connector sessions use the same muted logo color as Codex. */
+html.termapp .termwin .tab:not(.busy):not(.needs) > .st-ico :is(.agy-logo, .pi-logo-svg) path,
+.ts-cxl:not(.busy) :is(.agy-logo, .pi-logo-svg) path { fill: var(--st-dim); }
+html.termapp .termwin .tab.needs > .st-ico :is(.agy-logo, .pi-logo-svg) path { fill: #4c9bff; }
+html.termapp .termwin .tab:not(.busy):not(.needs) > .st-ico :is(.dsh-logo, .pm-av) { filter: grayscale(1); opacity: .65; }
 /* 标签页上 agent 在跑：图标那一格是 Claude Code 的转圈（字由 browser.js 每 120ms 换），闲着才是它自己的图标；占的宽同图标，字换来换去不挤动名字 */
 /* 在跑 / 闲着只看颜色，不动：Claude 的标志闲着是灰的，在跑是它的橙色（不跳——一直动太分神）
    （以前的「心跳」：html.termapp .termwin .tab.busy > .st-ico { animation: st-tabbeat 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }，关键帧在下面留着） */
@@ -1555,3 +1560,10 @@ html.light .st-toast { background: rgba(250, 250, 250, .96); color: #222; box-sh
 .ss-pop .ss-ddi.cur .ss-ddk { width: 6px; height: 12px; margin-right: 5px; border: solid var(--st-focus); border-width: 0 1.6px 1.6px 0; transform: rotate(40deg); }
 .ss[data-sty="vscode"] .ss-opts { padding: 3px; gap: 2px; border: 0; border-radius: 8px; }
 .ss[data-sty="vscode"] .ss-opts > .ss-opt { border-radius: 5px; }
+
+html.termapp .termwin .gtabs > .tab.st-pinned-tab {
+  flex: 0 0 32px; min-width: 32px; max-width: 32px; box-sizing: border-box;
+  padding-inline: 0; justify-content: center; gap: 0;
+}
+html.termapp .termwin .gtabs > .tab.st-pinned-tab > :not(.st-ico) { display: none; }
+html.termapp .termwin .gtabs > .tab.st-pinned-tab > .st-ico { margin-inline: 0; }
