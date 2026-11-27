@@ -12,7 +12,7 @@
   var KEY = "vs-clips";
   var all = (function () { try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { return {}; } })();
   function sourceKind(agent, fallback) {
-    var match = /^(cc|cx|agy|pi|ty):/.exec(agent || "");
+    var match = /^(cc|cx|agy|pi|ty|dsh):/.exec(agent || "");
     return match ? match[1] : fallback || "pm";
   }
   function normalize(rec) {
@@ -48,7 +48,9 @@
   function favOf(src) { return list().filter(function (r) { return r.type === "msg" && sameMsg(r.src, src); })[0] || null; }
   // 这段会话里的标记：对话里那一问左边画一道线
   function flagsFor(agentId) { return list().filter(function (r) { return r.type === "flag" && r.src && r.src.agent === agentId; }); }
-  var KIND = { cc: "Claude Code", cx: "Codex", agy: "Google Antigravity", pi: "pi", ty: "Teyvat", pm: "Paimon" };
+  var catalog = window.TSU_CONNECTORS.list();
+  var sourceKeys = { "claude-code": "cc", codex: "cx", teyvat: "ty", paimon: "pm" };
+  var KIND = Object.fromEntries(catalog.map(function (c) { return [sourceKeys[c.id] || c.id, c.name]; }));
   var when = function (ms) { if (!ms) return ""; var d = new Date(ms); return t((d.getMonth() + 1) + "月" + d.getDate() + "日 ", d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " ") + ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); };
   var srcLine = function (r) { var s = r.src || {}; return [KIND[s.kind] || "", s.title ? "「" + s.title + "」" : "", s.at ? when(s.at) : ""].filter(Boolean).join(" · "); };
   // 复制为引用：原文一行行 > 引起来，下面一行出处（连接器、会话、时间、会话 id）——贴到别的对话、笔记里也知道从哪来
@@ -108,8 +110,8 @@
     jump: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L7.8 8.2M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg>',
     back: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5L5.5 8l4.5 4.5"/></svg>',
   };
-  var KINDS = ["cc", "cx", "agy", "pi", "ty", "pm"];
-  var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : L[k] || ""; };
+  var KINDS = Object.keys(KIND);
+  var logoOf = function (k) { var L = window.TSU_LOGOS || {}; return k === "cc" ? L.claude || "" : k === "cx" ? L.codex || "" : k === "pm" ? L.paimon || "" : k === "ty" ? L.teyvat || "" : L[k] || ""; };
   var roleOf = function (r) { return r.type === "flag" ? "flag" : (r.src && r.src.role) === "user" ? "user" : "reply"; };
   // agent 的回答：同对话里那样画（终端的样子：代码块上色、折行对齐），用对话的 Markdown 渲染（同 live.js / dash.js），不自己糊一套 HTML
   var termLight = function () { try { return !!(window.TSU_TERM && TSU_TERM.termLight && TSU_TERM.termLight()); } catch (e) { return false; } };
@@ -122,7 +124,7 @@
   var termAsk = function (text) { // 你说的话：同对话里（灰底，字白）
     return '<div class="fv-term"><pre class="term terminal-style-ui"><span class="ask">' + esc(text) + "</span></pre></div>";
   };
-  var Q = { q: "", f: "", sel: "" }; // f：全部 "" / user / reply / flag / kind:cc …（来源）；sel：选中的那一条
+  var Q = { q: sessionStorage.getItem("vs-favorites-query") || "", f: "", sel: "" }; // f：全部 "" / user / reply / flag / kind:cc …（来源）；sel：选中的那一条
   var hosts = [];
   function filtered() {
     var q = Q.q.trim().toLowerCase();
@@ -135,8 +137,8 @@
   }
   function navHtml() {
     var L = list(), n = function (f) { return L.filter(f).length; };
-    var row = function (f, ic, label, c) { return c || !f || /^(user|reply|flag)$/.test(f) ? '<button type="button" class="fv-nv' + (Q.f === f ? " on" : "") + '" data-f="' + f + '"><i>' + ic + "</i><span>" + esc(label) + "</span><em>" + c + "</em></button>" : ""; };
-    var rows = KINDS.map(function (k) { var c = n(function (r) { return (r.src || {}).kind === k; }); return c ? row("kind:" + k, logoOf(k) || IC.reply, KIND[k], c) : ""; });
+    var row = function (f, ic, label, c) { return '<button type="button" class="fv-nv' + (Q.f === f ? " on" : "") + '" data-f="' + f + '"><i>' + ic + "</i><span>" + esc(label) + "</span><em>" + c + "</em></button>"; };
+    var rows = KINDS.map(function (k) { var c = n(function (r) { return (r.src || {}).kind === k; }); return row("kind:" + k, logoOf(k) || IC.reply, KIND[k], c); });
     var other = n(function (r) { var k = (r.src || {}).kind; return k && KINDS.indexOf(k) < 0; }); // 不认识的新连接器：归到「其他」
     if (other) rows.push(row("kind:other", IC.reply, t("其他", "Other"), other));
     var kinds = rows.join("");
@@ -155,7 +157,7 @@
       (r.note ? '<div class="fv-cnote">' + esc(r.note) + "</div>" : "") + "</article>";
   }
   function detailHtml(r) {
-    if (!r) return '<div class="fv-none">' + esc(t("选择一条", "Select an item")) + "</div>";
+    if (!r) return "";
     var s = r.src || {}, ro = roleOf(r);
     var row = function (k, v) { return v ? "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>" : ""; };
     var body = ro === "flag" ? '<div class="fv-flag big"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || "") + "</span></div>" :
@@ -233,6 +235,7 @@
         '</h1><button type="button" data-a="sidebar">' + S.menuIcons().sideL + '</button></header><nav class="fv-nvs"></nav></aside><section class="fv-list"><header class="fv-list-tools"><nav class="fv-path" aria-label="' + esc(t("面包屑", "Breadcrumb")) + '"></nav><input class="fv-q" type="search" placeholder="' +
         esc(t("搜索", "Search")) + '"></header><div class="fv-cards"></div></section><section class="fv-detail"></section></div>';
       view = host._favorites = { root: host.firstElementChild, list: host.querySelector(".fv-cards"), detail: host.querySelector(".fv-detail") };
+      host.querySelector(".fv-q").value = Q.q;
       view.resize = new ResizeObserver(function () { fitCards(view); fitReply(view); });
       view.resize.observe(view.detail); view.resize.observe(view.list);
       sidebar(host, localStorage.getItem("vs-favorites-sidebar") === "closed");
@@ -246,7 +249,6 @@
       crumbs.push(selected ? selected.textContent : t("全部", "All"));
       host.querySelector(".fv-path").innerHTML = '<button type="button" data-f="">' + esc(crumbs.shift()) +
         '</button>' + crumbs.map(function (name) { return '<i aria-hidden="true">›</i><span>' + esc(name) + '</span>'; }).join("");
-      host.querySelector(".fv-q").value = Q.q;
       view.list.innerHTML = items.length ? items.map(cardHtml).join("") : '<div class="fv-empty">' +
         (list().length ? esc(t("没有符合的", "Nothing matches")) : '<i>' + LOGO + '</i><b>' + esc(t("暂无收藏", "No favorites yet")) + '</b>') + '</div>';
       view.cardWidth = 0; fitCards(view);
@@ -279,7 +281,15 @@
     button.setAttribute("aria-label", button.title);
   }
   function wire(host, P) {
-    host.addEventListener("input", function (e) { if (e.target.classList && e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
+    function searchChanged(event) {
+      var input = event.target;
+      if (!input.matches(".fv-q") || event.isComposing || Q.q === input.value) return;
+      Q.q = input.value;
+      sessionStorage.setItem("vs-favorites-query", Q.q);
+      paint(host);
+    }
+    host.addEventListener("input", searchChanged);
+    host.addEventListener("compositionend", searchChanged);
     host.addEventListener("focusout", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n) { var r = all[n.dataset.note]; if (r && (r.note || "") !== n.textContent) window.TSU_CLIPS.setNote(r.id, n.textContent); setTimeout(function () { paint(host); }, 0); } });
     host.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest("[data-note]");
@@ -298,7 +308,7 @@
         return;
       }
       var nv = e.target.closest("[data-f]");
-      if (nv) { Q.f = nv.dataset.f; return paint(host); }
+      if (nv) { Q.f = nv.dataset.f; if (Q.sel && !filtered().some(function (item) { return item.id === Q.sel; })) Q.sel = ""; return paint(host); }
       var card = e.target.closest(".fv-card");
       if (card) { Q.sel = card.dataset.id; paint(host); host.focus({ preventScroll: true }); return; }
       var b = e.target.closest("[data-a]");
@@ -317,6 +327,7 @@
   S.pages.clips = {
     title: function () { return t("收藏", "Favorites"); },
     address: function () { return "favorites.local.paimon"; },
+    focus: function (host) { if (!host.contains(document.activeElement)) host.focus({ preventScroll: true }); },
     icon: function () { return LOGO; },
     render: function (host, P, arg, V) {
       host.classList.add("st-pg-clips");

@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.7", items: { fixed: [
+      ["收藏搜索在刷新后保留已输入的文字，中文选词期间不会重写输入框。搜索框边界更清晰，折叠按钮与分类路径居中对齐。", "Favorites keeps your search after a reload and preserves ongoing Chinese input. The search field is easier to see, and the sidebar toggle aligns with the category path."],
+      ["收藏来源显示全部连接器及其原色图标，数量为零也可筛选。未选中收藏时详情留空。", "All connectors appear in Favorites with their original icon colors, including sources with zero items. The detail pane stays blank when nothing is selected."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.6", items: { improved: [
       ["收起收藏边栏后，搜索移到列表顶部，并显示当前分类路径。再次展开时，搜索框带着原来的搜索词回到边栏。", "Collapse the Favorites sidebar to move search above the list and see the current category path. Expand it to return search to the sidebar with your query intact."],
       ["收藏备注改为无边框的行内编辑，点击即可输入。", "Favorite notes now use a borderless inline editor."]
