@@ -129,7 +129,7 @@
     function no() { return false; }
     function cwd() { return info.cwd || ""; }
     var rt = { agent: agent, sid: id, label: "DeepSeek Harness", readOnly: false, hideInputHint: true, tasks: [], stream: null,
-      session: function () { return session; }, ready: ready,
+      session: function () { return session; }, ready: ready, get tabLightReady() { return hasHistory; },
       on: function (fn) { listeners.add(fn); ready();
         if (!timer) timer = setInterval(ready, 2500);
         return function () { listeners.delete(fn); if (!listeners.size) { clearInterval(timer); timer = null; } }; },

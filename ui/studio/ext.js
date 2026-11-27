@@ -639,7 +639,7 @@
       var pendingTurn = null, optimisticTurns = [], workingSince = 0;
       var acknowledgedStart = 0, displayedStart = 0;
       var revision = "", followTimer, checking = false;
-      var screenBusy = false, nextScreen = 0;
+      var screenBusy = false, screenReceived = false, nextScreen = 0;
       var observedWorking = false, turnHashes = [], knownPrefix = "", knownSource = "";
       var waitingSince = 0;
       function backgroundWaitSince() {
@@ -683,6 +683,7 @@
           ST.familyChanged();
         }
         if (active && typeof screen.working !== "boolean" && typeof screen.summaryWorking !== "boolean") return;
+        screenReceived = true;
         var terminalWorking = active && (screen.working ?? screen.summaryWorking) === true;
         if (terminalWorking) {
           if (Number(sessionStorage.getItem(workingKey)) < Date.now() - 15000) sessionStorage.setItem(workingKey, String(Date.now()));
@@ -891,6 +892,7 @@
           if (!session.turns.length && !loading) loading = load();
           return function () { listeners.delete(fn); if (!listeners.size) { clearInterval(followTimer); followTimer = null; document.removeEventListener("tsu-agy-quota", quotaChanged); } };
         },
+        get tabLightReady() { return !!revision && (rt.headless() || screenReceived); },
         ready: function () { return loading || (revision && info.path ? Promise.resolve() : (loading = load())); },
         hideInputHint: true,
         more: no, historical: no,

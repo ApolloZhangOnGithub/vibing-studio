@@ -224,6 +224,7 @@
 
   function GuiView(P, agentId) {
     var V = this, rt = A.runtime(agentId), agent = rt.agent, cfg = A.cfg;
+    V.tabLightReady = () => rt.tabLightReady !== false;
     V.gui = true; V.agentId = agentId; V.claude = !!agent.claude;
     // 显示什么、怎么显示：同终端界面的设置（live.js 带着菜单里指着时的预览）——工具每类一个档位：full 完整 / preview 预览 / call 只看调用 / hidden 隐藏
     var TT = function () { return window.TSU_TERM || {}; };

@@ -552,6 +552,40 @@
     ], { duration: 1200, iterations: Infinity });
     pulse.startTime = -(performance.timeOrigin % 1200);
   }
+  // Keep the last confirmed indicator independently of expensive workspace snapshots.
+  // Only non-idle states need storage. Connector reads can finish after the first paint.
+  function tabLight(pane) {
+    var program = pane?.program;
+    var id = program?.agentId || pane?.lostSpec?.agent;
+    if (!id) return null;
+    var key = "tsu-tab-light:" + (window.TSU_UID || 0) + ":" + id;
+    key = window.TSU_LOCAL?.hostKey?.(key) || key;
+    var cache = pane.tabLightCache;
+    if (cache?.key !== key) {
+      cache = pane.tabLightCache = {key, value: null};
+      try { cache.value = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+    }
+    var ready = !!program?.agentId && !program.loadingSession && program.tabLightReady?.() !== false;
+    if (!ready && cache.value) return cache.value;
+    var wait = program?.waitingLabel?.() || "";
+    var working = !wait && !!program?.working?.(), needs = !!program?.needsYou?.();
+    var previous = cache.value;
+    if (previous && previous.wait === wait && previous.working === working && previous.needs === needs) return previous;
+    var current = {wait, working, needs};
+    if (!ready) return current;
+    if (working || wait || needs) {
+      cache.value = current;
+      try { localStorage.setItem(key, JSON.stringify(current)); } catch (_) {}
+    } else if (previous) {
+      cache.value = null;
+      try { localStorage.removeItem(key); } catch (_) {}
+    }
+    return current;
+  }
+  function tabActive(pane) {
+    var light = tabLight(pane);
+    return !!(light?.wait || light?.working || light?.needs);
+  }
   function fav(tabEl, P, panes) {
     var span = tabEl.querySelector("span");
     if (!span) return;
@@ -564,13 +598,14 @@
         }
         return true;
       });
-      var conversation = false, workingPane = null, waits = [];
+      var conversation = false, workingPane = null, waits = [], nyou = false;
       (panes || [P]).forEach(function (pane) {
-        var program = pane?.program;
-        if (!program?.agentId) return;
+        var light = tabLight(pane);
+        if (!light) return;
+        nyou ||= light.needs;
         conversation = true;
-        var wait = program.waitingLabel?.();
-        if (!wait && program.working?.()) {
+        var wait = light.wait;
+        if (light.working) {
           workingPane ??= pane;
         } else {
           if (wait) waits.push(wait);
@@ -594,7 +629,6 @@
       else if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
       else if (conversation) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
-      var nyou = false; try { nyou = !!(P && P.program && P.program.needsYou && P.program.needsYou()); } catch (e) { nyou = false; }
       tabEl.classList.toggle("needs", nyou); // 在等你回答 / 确认：图标变蓝（studio.css .tab.needs）
       if (workingPane || waits.length) tabEl.classList.add("busy");
       return;
@@ -803,7 +837,7 @@
   window.TSU_BROWSER = {
     page: function (P, kind, arg) { if (kind === "dash") kind = "history"; return window.STUDIO && STUDIO.pages[kind] && kind !== "dash" ? STUDIO.page(P, kind, arg) : new PageView(P, kind); }, // 仪表盘没有了：以前存着的仪表盘标签页打开是空白页（历史记录）
     suggest: suggest, recent: recent,
-    sync: sync, fav: fav, go: go, address: addressOf, history: function () { return hist.slice(); }, overview: overview,
+    sync: sync, fav: fav, tabLight: tabLight, tabActive: tabActive, go: go, address: addressOf, history: function () { return hist.slice(); }, overview: overview,
     wantsCC: function () { var tt = T(); return ccOn() && !!tt && tt.panes().some(function (p) { return p.program && p.program.page === "claude"; }) || !!document.querySelector(".ts-addr.editing"); },
   };
 })();

@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.9", items: { fixed: [
+      ["重新打开工作区时，对话标签沿用上次的状态灯。连接器确认当前状态后，标签、概览和侧栏一起更新。", "Conversation tabs restore their last status light when the workspace reopens. Tabs, the overview and the sidebar update when the connector confirms the current state."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.8", items: { improved: [
       ["向上翻长对话时，包含大量工具调用的旧消息按段排版，从正在阅读的位置向前补齐。", "Scrolling back through tool-heavy conversations now lays out older turns in batches, starting at the reading position."],
       ["等待回复、后台任务或定时唤醒时，后台标签保留连接器颜色，等待提示使用状态色。", "Background tabs retain their connector colors while awaiting a reply, background task, or scheduled wakeup. Waiting indicators use status colors."]

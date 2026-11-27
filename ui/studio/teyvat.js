@@ -461,6 +461,7 @@
     };
     rt.takeQueued = function () { var q = rt.queued; rt.queued = null; emit("status"); return q; };
     rt.todo = function () { return sess.todo.items; };
+    Object.defineProperty(rt, "tabLightReady", {get: () => !!info.state || !!cur});
     rt.state = function () { return info.state === "working" ? "working" : "idle"; };
     rt.busyNow = function () { return info.state === "working"; };
     rt.ctx = function () { var w = sess.window || 0; return { tokens: sess.ctx, window: w, pct: w ? sess.ctx / w * 100 : 0 }; };

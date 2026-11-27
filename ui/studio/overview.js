@@ -333,7 +333,7 @@
       fake.firstChild.textContent = titleOf(P);
       if (window.TSU_BROWSER && TSU_BROWSER.fav) try { TSU_BROWSER.fav(fake, P); } catch (e) { /* 没有图标 */ }
       pill.innerHTML = fake.innerHTML;
-      var wk = false; try { wk = !!(P.program?.working?.() || P.program?.waitingLabel?.()); } catch (e) { wk = false; }
+      var wk = false; try { wk = !!window.TSU_BROWSER?.tabActive(P); } catch (e) { wk = false; }
       c.el.classList.toggle("busy", wk); // 图标的颜色同标签页：在跑是它的颜色（Claude 的橙），闲着灰的
       var gs = M.groups(), gi = gs.length > 1 ? gs.indexOf(M.groupOf(P)) : -1;
       if (gi >= 0) pill.insertAdjacentHTML("beforeend", '<b class="tov-gi">' + (gi + 1) + "</b>");
@@ -429,7 +429,7 @@
       d.style.animationDuration = dur.toFixed(2) + "s";
       d.style.animationDelay = (-((Date.now() / 1000 + off) % dur)).toFixed(2) + "s";
     }
-    function dot(c) { var d = c.el.querySelector(".tov-dot"), busy = false, wk = false; try { busy = !!(c.P.busy && c.P.busy()); wk = !!(c.P.program?.working?.() || c.P.program?.waitingLabel?.()); } catch (e) { busy = false; } c.el.classList.toggle("busy", wk); d.hidden = !busy && !wk && !c.P.bell; d.classList.toggle("bell", !busy && !!c.P.bell); if (busy || wk) breath(d, String((c.P.program && c.P.program.agentId) || c.P.id || "")); }
+    function dot(c) { var d = c.el.querySelector(".tov-dot"), busy = false, wk = false; try { busy = !!(c.P.busy && c.P.busy()); wk = !!window.TSU_BROWSER?.tabActive(c.P); } catch (e) { busy = false; } c.el.classList.toggle("busy", wk); d.hidden = !busy && !wk && !c.P.bell; d.classList.toggle("bell", !busy && !!c.P.bell); if (busy || wk) breath(d, String((c.P.program && c.P.program.agentId) || c.P.id || "")); }
 
     // ---- 哪些格子、排在哪 ----
     function list() {

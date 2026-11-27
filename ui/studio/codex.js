@@ -543,6 +543,7 @@
   }
   function Runtime(aid, info, historyOnly) {
     var rt = this, sid = aid.slice(3), subs = [], turns = [], sess = { id: sid, title: info.title || sid.slice(0, 8), turns: turns, todo: { items: [] }, ctx: 0, window: 0, updated: info.mtime || 0 };
+    rt.tabLightReady = false;
     var agent = rt.agent = { id: aid, name: sess.title, effort: "", access: "rw", model: info.model || "", current: sid, goal: null, archived: false, claude: true, connector: "codex" };
     rt.info = info; rt.sid = sid; rt.label = "Codex";
     var emit = function (t, d) { subs.slice().forEach(function (f) { try { f(t, d); } catch (e) { console.error(e); } }); };
@@ -1090,7 +1091,7 @@
       rt.historyProgress = -1; emit("historyProgress");
       loading = withPath().then(async function (pth) {
         if (g !== gen) return;
-        if (!pth) { emit("reset"); emit("status"); return; }
+        if (!pth) { rt.tabLightReady = !!(info.fresh || info.live); emit("reset"); emit("status"); return; }
         if (pth.endsWith(".zst")) {
           var latest = await listTurns(null, 4, "full");
           if (g !== gen) return;
@@ -1099,7 +1100,7 @@
           turns.push(...rows);
           restorePromptOrder();
           historyStart = 0; parentCursor = latest.nextCursor; inherited = !!parentCursor;
-          offset = 0; cur = null; running = null; liveBusy();
+          offset = 0; cur = null; running = null; liveBusy(); rt.tabLightReady = true;
           emit("reset"); emit("status");
           return;
         }
@@ -1115,8 +1116,8 @@
           offset = page.end;
           sess.updated = st.mtime;
           turns.forEach(function (t) { if (t !== cur || !running) settle(t); });
+          liveBusy(); rt.tabLightReady = true;
           emit("reset"); emit("status");
-          liveBusy();
         });
       }).catch(function (e) { if (g !== gen) return; turns.length = 0; if (!info.fresh) turns.push({ note: tr("无法读取会话：" + e.message), at: 0 }); emit("reset"); })
         .then(function () { if (g === gen) { loadingNow = false; if (!readingHistory) { rt.historyProgress = null; emit("historyProgress"); } } });

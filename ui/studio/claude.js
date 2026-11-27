@@ -165,6 +165,7 @@
   }
   function Runtime(aid, info) {
     var rt = this, sid = aid.slice(3), subs = [], turns = [], t00 = info.title || nameMem[sid] || (TITLES[sid] && TITLES[sid].good ? TITLES[sid].t : ""), sess = { id: sid, title: t00 || sid.slice(0, 8), turns: turns, todo: { items: [] }, ctx: info.ctx || 0, updated: info.mtime || 0 };
+    rt.tabLightReady = false;
     var agent = rt.agent = { id: aid, name: sess.title, effort: "", access: "rw", model: info.model || "", current: sid, goal: null, archived: false, claude: true };
     (function () { var nm = agent.name; Object.defineProperty(agent, "name", { enumerable: true, configurable: true, get: function () { return nm; }, set: function (v) { nm = v; nameKeep(sid, v); } }); nameKeep(sid, nm); })(); // 名字一变就记下（各处直接赋值 agent.name 的都算上）
     rt.info = info;
@@ -1159,6 +1160,7 @@
       // 子 agent 的记录（cc:sub-<id>）：它没有自己的进程可查——在不在跑看主会话的任务单里它那一条（同右侧栏）；
       //   以前按「查不到进程」当成停了：转圈那一行一直是空的，在跑的那条命令也被画成跑完（用户：子 agent 的状态栏一直是空的）
       if (info.sub) {
+        rt.tabLightReady = true;
         var pr = rts["cc:" + info.parent], tk = pr && (pr.tasks || []).filter(function (x) { return x.id === String(sid).replace(/^sub-/, ""); })[0];
         var run0 = !!(tk && tk.status === "running"), root0 = rootOf(rt); // 会话还开着没有：看主会话（再往下一层的子 agent，它的上一级也没有自己的进程）
         setBusy(run0, tk && tk.t0);
@@ -1166,6 +1168,7 @@
         return;
       }
       ccFindL().then(function (x) {
+        rt.tabLightReady = true;
         if (!x) { settle(false); return; }
         var wasLive = !!info.live;
         info.live = x.live || null; info.job = x.job || ""; info.cwd = x.cwd || info.cwd;

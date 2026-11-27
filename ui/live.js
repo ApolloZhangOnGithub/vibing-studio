@@ -2839,6 +2839,7 @@
   }
   function AgentView(P, agentId, opt) {
     var V = this, rt = A.runtime(agentId), agent = rt.agent;
+    V.tabLightReady = () => rt.tabLightReady !== false;
     V.style = opt && opt.style || "claude-code"; // 外壳的样子：claude-code / teyvat（见上面登记的两种）
     var TY = agent.connector === "teyvat"; // Teyvat 的会话：它自己的一套（execute / wait / hibernate、底部的状态栏、右侧栏的意图）
     var DIM = function () { return P.DIM; };
@@ -8437,7 +8438,7 @@
           var status = busy ? "Working" : x.live?.status === "needs" ? "Needs you" : x.live ? "Ready" : "Inactive";
           if (isCur && UNRx[kx(x)]) { delete UNRx[kx(x)]; ccUnreadSave(UNRx); } // 正看着：已读
           var nm = EXTc.name[kx(x)] || x.title, unDot = UNRx[kx(x)] ? [[" ●", rgb("61;123;245")]] : [];
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '" title="' + status + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || pv?.program?.waitingLabel?.() || x.live?.status === "needs" || x.live?.status === "waiting") + "</span>\n";
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-cx="' + x.id + '" title="' + status + '">' + cxLogoIn(HR([[ind + "  ", ""], ["\uE035 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle && !EXTc.name[kx(x)] ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || window.TSU_BROWSER?.tabActive(pv) || x.live?.status === "needs" || x.live?.status === "waiting") + "</span>\n";
         };
         out += "\n" + row("ts-fold ts-head", foldAt("cx", false), [[chev("cx"), ""], ["Codex", BOLD]], headActs("cx"));
         if (!folded("cx")) {
@@ -8499,7 +8500,7 @@
           var when = g === "o" ? agoCN(x.mtime) : durCN(Date.now() - (x.live && x.live.since || x.mtime)), icC = busy || g !== "o" ? "" : DIMC;
           if (isCur && UNRp[kpi(x)]) { delete UNRp[kpi(x)]; ccUnreadSave(UNRp); }
           var nm = x.title, unDot = UNRp[kpi(x)] ? [[" ●", rgb("61;123;245")]] : [];
-          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-pi="' + escHtml(x.id) + '">' + piLogoIn(HR([[ind + "  ", ""], ["\uE038 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || pv?.program?.waitingLabel?.() || x.live?.status === "needs") + "</span>\n";
+          return '<span class="ts-it' + (isCur ? " cur" : "") + '" data-pi="' + escHtml(x.id) + '">' + piLogoIn(HR([[ind + "  ", ""], ["\uE038 ", icC]].concat(marks(nm, pv ? BOLD : x.dimTitle ? DIMC : ""), unDot), DIMC + when + RESET, true), busy || window.TSU_BROWSER?.tabActive(pv) || x.live?.status === "needs") + "</span>\n";
         };
         out += "\n" + row("ts-fold ts-head", foldAt("pi", false), [[chev("pi"), ""], ["pi", BOLD]], headActs("pi"));
         if (!folded("pi")) {
@@ -8593,7 +8594,7 @@
       if (agy && agy.enabled()) {
         out += "\n" + row("ts-fold ts-head", foldAt("agy", false), [[chev("agy"), ""], ["Google Antigravity", BOLD]], headActs("agy"));
         if (!folded("agy")) {
-          var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && (p.program.working?.() || p.program.waitingLabel?.())).map(p => p.program.agentId.slice(4)));
+          var busyAgy = new Set(allPanes().filter(p => p.program?.agentId?.startsWith("agy:") && window.TSU_BROWSER?.tabActive(p)).map(p => p.program.agentId.slice(4)));
           var agyActive = s => busyAgy.has(s.sessionId) || !!s.workingSince || (!!s.tty && s.tty !== "??");
           var agySessions = only("agy") ? agy.list().filter(s => agyActive(s) || openIds.has("agy:" + s.sessionId)) : agy.list();
           if (!agySessions.length) out += H("  " + DIMC + (only("agy") ? "无运行中或已打开的会话" : agy.status()) + RESET) + "\n";
@@ -10357,14 +10358,14 @@
       ws.show(p);
     };
     ws.serialize = function () {
-      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return p.tabPinned ? {...p.spec(), tabPinned: true, finishedAgent: p.finishedAgent || undefined} : p.spec(); }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
+      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return {...p.spec(), tabPinned: p.tabPinned || undefined, finishedAgent: p.finishedAgent || undefined}; }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
       if (ws.itabs) { if (ws.grid) ws.itabs[ws.ti] = ws.grid; return { v: 3, itabs: ws.itabs.map(ser), ti: ws.ti, g: Math.max(0, ws.groups().indexOf(ws.group)) }; } // Pure Terminal：每个标签页一个格子
       return { v: 2, grid: ws.grid ? ser(ws.grid) : null, g: Math.max(0, ws.groups().indexOf(ws.group)) };
     };
     ws.restore = function (saved) {
       var keep = function (sp) { return sp && sp.page !== "dash"; };
       var de = function (n) {
-        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { var pane = Pane(tw, sp); pane.tabPinned = sp.tabPinned === true; if (pane.tabPinned) pane.finishedAgent = sp.finishedAgent; return pane; }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
+        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { var pane = Pane(tw, sp); pane.tabPinned = sp.tabPinned === true; pane.finishedAgent = sp.finishedAgent; return pane; }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
         var a = de(n.a), b = de(n.b);
         return a && b ? { dir: n.dir, ratio: n.ratio, a: a, b: b } : a || b;
       };

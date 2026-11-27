@@ -250,6 +250,7 @@
   var rts = {};
   function Runtime(aid, info) {
     var rt = this, sid = aid.slice(3), subs = [], turns = [], sess = { id: sid, title: info.title || sid.slice(0, 8), turns: turns, todo: { items: [] }, ctx: 0, window: 0, updated: info.mtime || 0 };
+    rt.tabLightReady = false;
     var agent = rt.agent = { id: aid, name: sess.title, effort: "", access: "rw", model: info.model || "", current: sid, goal: null, archived: false, claude: true, connector: "pi" };
     rt.info = info; rt.sid = sid; rt.label = "pi";
     var emit = function (t, d) { subs.slice().forEach(function (f) { try { f(t, d); } catch (e) { console.error(e); } }); };
@@ -394,8 +395,8 @@
           offset = start0 + r.end;
           sess.updated = st.mtime;
           rebuild();
+          liveBusy(); rt.tabLightReady = true;
           emit("reset"); emit("status"); emit("config");
-          liveBusy();
         });
       }).catch(function (e) { if (g !== gen) return; turns.length = 0; if (e && e.message) turns.push({ note: tr("无法读取会话：" + e.message), at: 0 }); emit("reset"); })
         .then(function () { if (g === gen) loadingNow = false; });
