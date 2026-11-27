@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.5", items: { improved: [
+      ["收藏边栏支持折叠，按钮在展开和收起时保持原位，收起后图标居中。", "Collapse the Favorites sidebar with a button that stays in place and centers in the collapsed rail."],
+      ["收藏卡片和全文按各自的栏宽排版。卡片字号比正文小一级，移除了重复的来源副标题。", "Favorite previews and full messages wrap to their own column widths. Preview text is one size smaller, and cards omit the duplicate source line."],
+      ["收藏详情的操作与标题同排，移除了「插入到输入框」。长回复滚动时按需显示，切换收藏时复用已有列表。", "Favorite actions now share the title row. The Insert action was removed. Long replies render as you scroll, and switching favorites reuses the card list."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.4", items: { improved: [
       ["访达暂时隐藏底部的「文件 / Agent」切换器。打开访达会回到已有的文件标签，新标签从主目录开始。", "Finder now opens in Files with the Files / Agent switcher hidden. Reopening Finder returns to an existing file tab, and new tabs start in your home folder."]
     ] } },

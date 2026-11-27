@@ -20,9 +20,9 @@
     return rec;
   }
   Object.values(all).forEach(normalize);
-  var subs = [];
+  var subs = [], revision = 0;
   var save = function () { try { localStorage.setItem(KEY, JSON.stringify(all)); } catch (e) { /* 满了 */ } };
-  var fire = function () { subs.slice().forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); document.dispatchEvent(new Event("vs-clips")); };
+  var fire = function () { revision++; subs.slice().forEach(function (f) { try { f(); } catch (e) { console.error(e); } }); document.dispatchEvent(new Event("vs-clips")); };
   var rid = function () { var a = new Uint8Array(5); crypto.getRandomValues(a); return "c" + Date.now().toString(36) + Array.prototype.map.call(a, function (x) { return (x % 36).toString(36); }).join(""); };
   function push(id) {
     var SY = window.TSU_SYNC;
@@ -40,7 +40,7 @@
   // 收：type = "msg"（一整条消息）/ "flag"（一处标记）/ "clip"（以前摘录本里的一段字）；src = 出处（见上）；md = 按 Markdown 排（agent 的回答）
   function add(type, text, src, note, md) {
     var ty = type === "flag" ? "flag" : type === "msg" ? "msg" : "clip";
-    return put({ id: rid(), type: ty, text: String(text || "").replace(/\s+$/, "").slice(0, 200000), md: !!md, note: note || "", src: src || {}, created: Date.now(), dev: devName() });
+    return put({ id: rid(), type: ty, text: String(text || "").replace(/\s+$/, ""), md: !!md, note: note || "", src: src || {}, created: Date.now(), dev: devName() });
   }
   function list() { return Object.keys(all).map(function (k) { return all[k]; }).sort(function (a, b) { return (b.created || 0) - (a.created || 0); }); }
   var sameMsg = function (a, b) { return !!a && !!b && a.agent === b.agent && (a.uuid ? a.uuid === b.uuid : !!a.at && a.at === b.at) && (a.role || "") === (b.role || ""); };
@@ -113,12 +113,11 @@
   var roleOf = function (r) { return r.type === "flag" ? "flag" : (r.src && r.src.role) === "user" ? "user" : "reply"; };
   // agent 的回答：同对话里那样画（终端的样子：代码块上色、折行对齐），用对话的 Markdown 渲染（同 live.js / dash.js），不自己糊一套 HTML
   var termLight = function () { try { return !!(window.TSU_TERM && TSU_TERM.termLight && TSU_TERM.termLight()); } catch (e) { return false; } };
-  var termMd = function (md, width) {
+  var termLines = function (md, width) {
     var light = termLight(), theme = light ? "light" : "dark", w = width || 84, lines;
     try { lines = window.TSU_MD && TSU_MD.lines ? TSU_MD.lines(md, { width: w, theme: theme }) : (window.TTU && TTU.markdownLines ? TTU.markdownLines(md, { width: w, theme: theme }) : String(md || "").split("\n")); }
     catch (e) { lines = String(md || "").split("\n"); }
-    var h = window.TTU && TTU.ansiToHtml ? TTU.ansiToHtml(lines.join("\n"), theme, { widthOf: TTU.visibleWidth, links: true }) : esc(md);
-    return '<div class="fv-term' + (light ? " tl" : "") + '"><pre class="term terminal-style-ui">' + h + "</pre></div>";
+    return lines;
   };
   var termAsk = function (text) { // 你说的话：同对话里（灰底，字白）
     return '<div class="fv-term"><pre class="term terminal-style-ui"><span class="ask">' + esc(text) + "</span></pre></div>";
@@ -147,12 +146,12 @@
   }
   var kindName = function (s) { return KIND[s.kind] || (s.kind ? s.kind : t("其他", "Other")); };
   function cardHtml(r) {
-    var s = r.src || {}, ro = roleOf(r);
-    var body = ro === "flag" ? '<div class="fv-flag"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || t("一处标记", "A flag")) + "</span></div>" :
-      ro === "user" ? termAsk(r.text) : termMd(r.text, 40);
+    var s = r.src || {}, ro = roleOf(r), preview = (r.text || "").slice(0, 600);
+    var body = ro === "flag" ? '<div class="fv-flag"><i>' + FLAG + "</i><span>" + esc(preview || s.label || t("一处标记", "A flag")) + "</span></div>" :
+      ro === "user" ? termAsk(preview) : '<div class="fv-term" data-preview><pre class="term terminal-style-ui"></pre></div>' ;
     return '<article class="fv-card' + (Q.sel === r.id ? " on" : "") + '" data-id="' + esc(r.id) + '" tabindex="-1">' +
       '<header><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><b>' + esc(s.title || kindName(s)) + "</b><time>" + esc(when(r.created)) + "</time></header>" +
-      '<div class="fv-who">' + esc(ro === "user" ? t("你", "You") : ro === "flag" ? t("标记", "Flag") : t("回复", "Reply")) + " · " + esc(kindName(s)) + "</div>" + '<div class="fv-prev">' + body + "</div>" +
+      '<div class="fv-prev">' + body + "</div>" +
       (r.note ? '<div class="fv-cnote">' + esc(r.note) + "</div>" : "") + "</article>";
   }
   function detailHtml(r) {
@@ -160,55 +159,135 @@
     var s = r.src || {}, ro = roleOf(r);
     var row = function (k, v) { return v ? "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>" : ""; };
     var body = ro === "flag" ? '<div class="fv-flag big"><i>' + FLAG + "</i><span>" + esc(r.text || s.label || "") + "</span></div>" :
-      '<div class="fv-full">' + (ro === "user" ? termAsk(r.text) : termMd(r.text, 84)) + "</div>";
+      '<div class="fv-full">' + (ro === "user" ? termAsk(r.text) : '<div class="fv-term"><pre class="term terminal-style-ui"></pre></div>') + "</div>";
+    var mi = S.menuIcons();
+    function action(key, label, icon) {
+      return '<button type="button" data-a="' + key + '" title="' + esc(label) + '" aria-label="' + esc(label) + '">' + icon + '<span>' + esc(label) + '</span></button>';
+    }
     return '<div class="fv-dt"><button type="button" class="fv-back" data-a="back">' + IC.back + "<span>" + esc(t("收藏", "Favorites")) + "</span></button>" +
-      '<div class="fv-dh"><span class="fv-lg">' + (logoOf(s.kind) || "") + "</span><div><b>" + esc(s.title || kindName(s)) + "</b><span>" +
-      esc([kindName(s), s.at ? when(s.at) : ""].filter(Boolean).join(" · ")) + "</span></div></div>" +
-      '<div class="fv-acts"><button type="button" data-a="jump" class="fv-primary">' + IC.jump + "<span>" + esc(t("跳到原处", "Go to source")) + '</span></button><button type="button" data-a="ref">' + esc(t("复制为引用", "Copy as quote")) +
-      '</button><button type="button" data-a="copy">' + esc(t("复制", "Copy")) + '</button><button type="button" data-a="insert">' + esc(t("插入到输入框", "Insert")) + '</button><span class="fv-fill"></span><button type="button" data-a="del" class="fv-del">' +
-      esc(ro === "flag" ? t("取消标记", "Remove flag") : t("取消收藏", "Remove")) + "</button></div>" + body +
+      '<header class="fv-dh"><span class="fv-lg">' + (logoOf(s.kind) || "") + '</span><div class="fv-heading"><b>' + esc(s.title || kindName(s)) + "</b><span>" +
+      esc([kindName(s), s.at ? when(s.at) : ""].filter(Boolean).join(" · ")) + '</span></div><div class="fv-acts">' +
+      action("jump", t("跳到原处", "Go to source"), IC.jump) +
+      action("ref", t("复制为引用", "Copy as quote"), '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 4H3v5h3V7H4m9-3h-3v5h3V7h-2"/></svg>') +
+      action("copy", t("复制", "Copy"), '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5" y="5" width="8" height="9" rx="1.3"/><path d="M10.5 3.5v-1h-8v9H4"/></svg>') + action("del", ro === "flag" ? t("取消标记", "Remove flag") : t("取消收藏", "Remove"), mi.bookmark) +
+      "</div></header>" + body +
       '<div class="fv-note" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("备注", "Note")) + '">' + esc(r.note || "") + "</div>" +
       '<dl class="fv-meta">' + row(t("会话", "Session"), s.title) + row(t("目录", "Folder"), s.cwd) + row(t("时间", "Time"), s.at ? when(s.at) : "") + row(t("收藏于", "Saved"), when(r.created)) + "</dl></div>";
   }
+  function columnsOf(pre) {
+    var style = getComputedStyle(pre), cell = parseFloat(style.getPropertyValue("--ttu-cell")) || parseFloat(style.fontSize) * 0.6;
+    return Math.max(1, Math.floor((pre.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) / cell));
+  }
+  function fitCards(view) {
+    var cards = view.list.querySelectorAll("[data-preview]");
+    if (!cards.length || !cards[0].clientWidth) return;
+    var width = columnsOf(cards[0].firstElementChild);
+    if (view.cardWidth === width) return;
+    view.cardWidth = width;
+    cards.forEach(function (wrap) {
+      var record = all[wrap.closest(".fv-card").dataset.id];
+      var lines = termLines((record.text || "").slice(0, 600), width).slice(0, 12);
+      var light = termLight();
+      wrap.classList.toggle("tl", light);
+      wrap.firstElementChild.innerHTML = window.TTU ? TTU.ansiToHtml(lines.join("\n"), light ? "light" : "dark", { widthOf: TTU.visibleWidth, links: true }) : esc(lines.join("\n"));
+    });
+  }
+  function fitReply(view) {
+    var r = view.record;
+    if (!r || roleOf(r) !== "reply") return;
+    var pre = view.detail.querySelector(".fv-full pre");
+    if (!pre || !pre.clientWidth) return;
+    var style = getComputedStyle(pre), columns = columnsOf(pre);
+    if (view.columns === columns) return;
+    view.columns = columns;
+    if (view.observer) view.observer.disconnect();
+    var light = termLight(), theme = light ? "light" : "dark";
+    pre.parentNode.classList.toggle("tl", light);
+    var lines = termLines(r.text, columns);
+    var lineHeight = parseFloat(style.lineHeight);
+    pre.replaceChildren();
+    function draw(block) {
+      var start = Number(block.dataset.line);
+      var part = lines.slice(start, start + 16).join("\n");
+      block.innerHTML = window.TTU ? TTU.ansiToHtml(part, theme, { widthOf: TTU.visibleWidth, links: true }) : esc(part);
+    }
+    view.observer = new IntersectionObserver(function (entries, observer) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { draw(entry.target); observer.unobserve(entry.target); }
+      });
+    }, { root: view.detail, rootMargin: "160px 0px" });
+    for (var i = 0; i < lines.length; i += 16) {
+      var block = document.createElement("span");
+      block.className = "fv-lines";
+      block.dataset.line = i;
+      block.style.height = Math.min(16, lines.length - i) * lineHeight + "px";
+      pre.appendChild(block);
+      if (i === 0 && view.detail.scrollTop < view.detail.clientHeight) draw(block);
+      else view.observer.observe(block);
+    }
+  }
   function paint(host) {
-    var items = filtered();
-    if (Q.sel && !all[Q.sel]) Q.sel = "";
-    var sel = Q.sel ? all[Q.sel] : null;
-    var empty = !list().length;
-    var html = '<div class="fv' + (sel ? " has-sel" : "") + '"><aside class="fv-nav"><h1>' + esc(t("收藏", "Favorites")) + '</h1><input class="fv-q" type="search" placeholder="' + esc(t("搜索", "Search")) + '" value="' + esc(Q.q) + '">' +
-      '<nav class="fv-nvs">' + navHtml() + "</nav></aside>" +
-      '<section class="fv-list">' + (empty ? '<div class="fv-empty"><i>' + LOGO + "</i><b>" + esc(t("暂无收藏", "No favorites yet")) + "</b><span>" + esc(t("在对话里右键一条消息，选「收藏」", "Right-click a message → Favorite")) + "</span></div>" :
-        !items.length ? '<div class="fv-empty"><span>' + esc(t("没有符合的", "Nothing matches")) + "</span></div>" : items.map(cardHtml).join("")) + "</section>" +
-      '<section class="fv-detail">' + (empty ? "" : detailHtml(sel)) + "</section></div>";
-    if (host.dataset.h === html) return;
-    var focused = document.activeElement && host.contains(document.activeElement) ? document.activeElement : null;
-    if (focused && focused.matches("[data-note]")) return; // 正在写备注：不打断（失焦时存、再画）
-    var had = focused && focused.classList.contains("fv-q"), pos = had ? focused.selectionStart : 0;
-    var lst = host.querySelector(".fv-list"), top = lst ? lst.scrollTop : 0;
-    host.dataset.h = html; host.innerHTML = html;
-    var l2 = host.querySelector(".fv-list"); if (l2) l2.scrollTop = top;
-    if (had) { var qi = host.querySelector(".fv-q"); qi.focus(); qi.setSelectionRange(pos, pos); }
+    var view = host._favorites;
+    if (!view) {
+      host.innerHTML = '<div class="fv"><aside class="fv-nav"><header><h1>' + esc(t("收藏", "Favorites")) +
+        '</h1><button type="button" data-a="sidebar">' + S.menuIcons().sideL + '</button></header><input class="fv-q" type="search" placeholder="' +
+        esc(t("搜索", "Search")) + '"><nav class="fv-nvs"></nav></aside><section class="fv-list"></section><section class="fv-detail"></section></div>';
+      view = host._favorites = { root: host.firstElementChild, list: host.querySelector(".fv-list"), detail: host.querySelector(".fv-detail") };
+      view.resize = new ResizeObserver(function () { fitCards(view); fitReply(view); });
+      view.resize.observe(view.detail); view.resize.observe(view.list);
+      sidebar(host, localStorage.getItem("vs-favorites-sidebar") === "closed");
+    }
+    if (view.revision !== revision || view.filter !== Q.f || view.query !== Q.q) {
+      var items = filtered();
+      host.querySelector(".fv-nvs").innerHTML = navHtml();
+      host.querySelector(".fv-q").value = Q.q;
+      view.list.innerHTML = items.length ? items.map(cardHtml).join("") : '<div class="fv-empty">' +
+        (list().length ? esc(t("没有符合的", "Nothing matches")) : '<i>' + LOGO + '</i><b>' + esc(t("暂无收藏", "No favorites yet")) + '</b>') + '</div>';
+      view.cardWidth = 0; fitCards(view);
+      view.revision = revision; view.filter = Q.f; view.query = Q.q;
+    }
+    var r = all[Q.sel];
+    view.root.classList.toggle("has-sel", !!r);
+    if (view.selected !== Q.sel) {
+      var old = view.list.querySelector(".on"), next = r && view.list.querySelector('[data-id="' + CSS.escape(Q.sel) + '"]');
+      if (old) old.classList.remove("on");
+      if (next) next.classList.add("on");
+    }
+    if (view.record !== r || view.note !== (r && r.note) || view.selected !== Q.sel) {
+      if (view.detail.contains(document.activeElement) && document.activeElement.matches("[data-note]")) return;
+      if (view.observer) view.observer.disconnect();
+      view.detail.innerHTML = detailHtml(r);
+      if (view.selected !== Q.sel) view.detail.scrollTop = 0;
+      view.record = r; view.note = r && r.note; view.selected = Q.sel;
+      view.columns = 0; fitReply(view);
+    }
+  }
+  function sidebar(host, collapsed) {
+    host.firstElementChild.classList.toggle("nav-closed", collapsed);
+    var button = host.querySelector('[data-a="sidebar"]');
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.title = collapsed ? t("展开边栏", "Expand sidebar") : t("折叠边栏", "Collapse sidebar");
+    button.setAttribute("aria-label", button.title);
   }
   function wire(host, P) {
-    host.addEventListener("wheel", function (event) {
-      if (event.ctrlKey || event.metaKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-      var column = event.target.closest(".fv-detail, .fv-list, .fv-nav");
-      if (!column || column.scrollHeight <= column.clientHeight) return;
-      var unit = event.deltaMode === 1 ? parseFloat(getComputedStyle(column).lineHeight) || 16 : event.deltaMode === 2 ? column.clientHeight : 1;
-      event.preventDefault();
-      column.scrollTop += event.deltaY * unit;
-    }, { passive: false });
     host.addEventListener("input", function (e) { if (e.target.classList && e.target.classList.contains("fv-q")) { Q.q = e.target.value; paint(host); } });
     host.addEventListener("focusout", function (e) { var n = e.target.closest && e.target.closest("[data-note]"); if (n) { var r = all[n.dataset.note]; if (r && (r.note || "") !== n.textContent) window.TSU_CLIPS.setNote(r.id, n.textContent); setTimeout(function () { paint(host); }, 0); } });
     host.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest("[data-note]");
       if (n) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); n.blur(); } return; }
-      if (e.target.classList && e.target.classList.contains("fv-q")) return;
+      if (e.target.closest("button, input, a")) return;
       var items = filtered(), i = items.map(function (r) { return r.id; }).indexOf(Q.sel);
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); var j = Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1))); if (items[j]) { Q.sel = items[j].id; paint(host); var c = host.querySelector('.fv-card[data-id="' + Q.sel + '"]'); if (c) c.scrollIntoView({ block: "nearest" }); } }
       else if (e.key === "Enter" && Q.sel && all[Q.sel]) jump(all[Q.sel], P.win);
     });
     host.addEventListener("click", function (e) {
+      var toggle = e.target.closest('[data-a="sidebar"]');
+      if (toggle) {
+        var closed = toggle.getAttribute("aria-expanded") === "true";
+        sidebar(host, closed);
+        localStorage.setItem("vs-favorites-sidebar", closed ? "closed" : "open");
+        return;
+      }
       var nv = e.target.closest("[data-f]");
       if (nv) { Q.f = nv.dataset.f; return paint(host); }
       var card = e.target.closest(".fv-card");
@@ -220,7 +299,6 @@
       if (!r) return;
       var copy = function (s) { if (navigator.clipboard) navigator.clipboard.writeText(s).catch(function () { if (window.nadosNative) nadosNative.call("clipboard.write", { text: s }).catch(function () {}); }); b.classList.add("done"); setTimeout(function () { b.classList.remove("done"); }, 900); };
       if (a === "jump") return jump(r, P.win);
-      if (a === "insert") return insert(r, P.win);
       if (a === "ref") return copy(reference(r));
       if (a === "copy") return copy(r.text || "");
       if (a === "del") { remove(r.id); Q.sel = ""; return; }
