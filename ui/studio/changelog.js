@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.5", items: { fixed: [
+      ["悬停对话中的图片引用时直接显示预览，读取期间不再闪现路径。", "Hovering over an image reference shows the preview without flashing its path while it loads."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.4", items: { improved: [
       ["Context 和额度使用同款弹框。", "Context and credits share the same popover styling."],
       ["本机重载时可先显示上次画面。长对话先显示最近消息，再向前补读历史。", "Local reloads can show the previous view immediately. Long conversations open at recent messages and load earlier history incrementally."],

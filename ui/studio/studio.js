@@ -3267,8 +3267,9 @@
     var ext = extOf(path);
     return cancelled() ? null : URL.createObjectURL(new Blob(parts, {type: MIME[ext] || "image/" + ext}));
   }
+  function isImagePath(path) { return Object.hasOwn(IMG, extOf(path)); }
   async function referencedImageUrl(path, cancelled) {
-    if (!LOC() || !IMG[extOf(path)]) return null;
+    if (!LOC() || !isImagePath(path)) return null;
     var stat = await LOC().stat(path);
     if (!stat || stat.type === "dir" || cancelled()) return null;
     return readImageUrl(path, stat.size, cancelled);
@@ -6700,6 +6701,6 @@
     settings: function (tw, sec) { settings(tw, sec); }, // 打开设置的某一页（"connectors/claude-code"、"appearance:tabBar"） // 当主机的页面窗口常被挡住（不看的页面平时不查）：它自己按时来查
     about: function (tw) { tw = tw || allWins()[0]; if (tw) settings(tw, "about"); return !!tw; }, // App 菜单「关于 Vibing Studio」（新版原生先问这个）
     needsList: needsList, // 有新版本了（页面的脚本在服务器上变了）：重新载入就用上
-    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview, referencedImageUrl: referencedImageUrl,
+    crumbs: crumbs, crumbsInto: crumbsInto, mini: mini, miniModes: MINI_MODES, uiModes: UI_MODES, get osModes() { return osModesNow(); }, applySettings: function () { applySettings(); }, previewSet: previewSet, previewOf: function (k) { return SETP[k]; }, layoutPick: layoutPick, _activityHtml: function () { return activityHtml(); }, menuIcons: function () { return MI; }, toast: function (msg) { toast(msg); }, showView: showView, addView: addView, viewDef: function (id) { return VIEWS[id] || null; }, toolbarMenu: toolbarMenu, tbHidden: tbHidden, icons: ICO, preview: preview, referencedImageUrl: referencedImageUrl, isImagePath: isImagePath,
   };
 })();

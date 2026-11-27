@@ -1211,17 +1211,20 @@
     pathHint.className = "vs-path-hint";
     pathHint.dataset.target = value;
     pathHint.textContent = value;
-    document.body.append(pathHint);
     var hint = pathHint;
     function place() {
       var rect = hintAnchor.getBoundingClientRect(), height = hint.offsetHeight;
       hint.style.left = Math.max(4, Math.min(rect.left, innerWidth-hint.offsetWidth-4))+"px";
       hint.style.top = (rect.top >= height+6 ? rect.top-height-4 : Math.min(innerHeight-height-4, rect.bottom+4))+"px";
     }
-    place();
-    if (!webLink(a) && a.hash?.startsWith("#vs-file:") && window.STUDIO?.referencedImageUrl) {
+    function display() {
+      if (hint !== pathHint || !hintAnchor.isConnected) return;
+      document.body.append(hint);
+      place();
+    }
+    if (a.hash?.startsWith("#vs-file:") && window.STUDIO?.isImagePath?.(value)) {
       STUDIO.referencedImageUrl(value, () => hint !== pathHint).then(async url => {
-        if (!url) return;
+        if (!url) { display(); return; }
         if (hint !== pathHint) { URL.revokeObjectURL(url); return; }
         hint.dataset.blob = url;
         var img = new Image();
@@ -1231,9 +1234,9 @@
         if (hint !== pathHint) return;
         hint.className = "st-imgpeek on";
         hint.replaceChildren(img);
-        place();
-      }).catch(() => {}); // Keep the path visible when the referenced image cannot be read.
-    }
+        display();
+      }).catch(display);
+    } else display();
   }
   document.addEventListener("pointerover", fileLinkHint);
   document.addEventListener("focusin", fileLinkHint);
