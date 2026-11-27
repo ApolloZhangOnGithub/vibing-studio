@@ -68,6 +68,7 @@ html.termapp .tpane.agentfoot:not(.tl) .term, html.termapp .tpane.agentfoot:not(
 .tpane.tl .term a:hover, .tpane.tl .foot a:hover { filter: brightness(0.7); }
 .tpane .foot { flex: none; cursor: text; padding: 0 0 8px; z-index: 4; } /* 在对话区的上下遮挡条之上：输入栏上沿那一行的临时提示（flash）不被盖住 */
 .tpane .term .blk, .tpane .term .fig, .tpane .term .ask, .tpane .term .agl { display: block; } /* .agl：「n background agents launched」那一块 */
+.tpane .term .han-run { display: inline-block; letter-spacing: calc(2 * var(--ttu-cell, 1ch) - 1em); }
 .tpane .term .fig { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
 .tpane .term .thumbs img { display: inline-block; margin: 2px 10px 2px 2px; border-radius: 6px; vertical-align: top; box-shadow: var(--st-imgring, 0 0 0 1px rgba(0, 0, 0, .9), 0 0 0 2px rgba(255, 255, 255, .5)); }
 /* 用户的话：灰底画在最底层（z-index -2），选区（-1）在它之上、文字之下 */

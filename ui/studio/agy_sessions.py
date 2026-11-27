@@ -1043,14 +1043,22 @@ def main():
 
 if __name__ == "__main__":
     try:
-        result = json.dumps(main(), ensure_ascii=False)
+        payload = main()
+        paged = os.environ.get("VIBING_PACK_HISTORY") == "2" and bool(payload.get("events"))
+        result = "" if paged else json.dumps(payload, ensure_ascii=False)
         ticket = os.environ.get("VIBING_HISTORY_TOKEN", "")
         target = "/tmp/vibing-history-" + str(UUID(ticket)) + ".gz" if ticket else None
-        if target or (os.environ.get("VIBING_PACK_HISTORY") and len(result) > 128 * 1024):
+        if paged or target or (os.environ.get("VIBING_PACK_HISTORY") and len(result) > 128 * 1024):
             with tempfile.NamedTemporaryFile(dir="/tmp" if target else None, prefix="vibing-history-", suffix=".gz", delete=False) as snapshot:
                 try:
                     with gzip.GzipFile(fileobj=snapshot, mode="wb", compresslevel=1) as stream:
-                        stream.write(result.encode())
+                        if paged:
+                            events = payload.pop("events")
+                            stream.write((json.dumps(payload, ensure_ascii=False) + "\n").encode())
+                            for event in events:
+                                stream.write((json.dumps(event, ensure_ascii=False) + "\n").encode())
+                        else:
+                            stream.write(result.encode())
                     snapshot.flush()
                     if target:
                         os.replace(snapshot.name, target)

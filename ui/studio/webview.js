@@ -13,6 +13,18 @@
   if (N) N.call("info").then(function (i) { cmds = (i && i.commands) || []; }).catch(function () {});
   var views = {}; // id → V
   var seq = 0;
+  const ownerKey = "studio-native-web-panes";
+  if (N) {
+    try {
+      for (const id of JSON.parse(sessionStorage.getItem(ownerKey) || "[]")) {
+        N.call("web.close", {id}).catch(() => {});
+      }
+      sessionStorage.removeItem(ownerKey);
+    } catch (_) {}
+  }
+  function saveOwners() {
+    try { sessionStorage.setItem(ownerKey, JSON.stringify(Object.keys(views).filter(id => /^(wb|wo)/.test(id)))); } catch (_) {}
+  }
   // 网址：没写协议的补上（localhost、127.0.0.1 用 http，别的 https）
   function normalize(u) {
     u = String(u || "").trim();
@@ -33,8 +45,8 @@
   // 原生的那块跟着这一块走：位置、大小、看不看得见
   // 别的页面也用这一套（远程桌面 rdp.js：TSU_WEB.track）：V.frameCmd / V.closeCmd 换成它自己的命令，V.want() 为假时也藏（比如还没连上）
   function place(V) {
-    if (!native() || !V.host || !V.id) return;
-    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.shown() && (!V.want || V.want()) && !covered(r, V.box) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
+    if (!native() || !V.host || views[V.id] !== V) return;
+    var r = V.box ? V.box.getBoundingClientRect() : null, vis = !!(r && V.box.isConnected && r.width > 0 && r.height > 0 && V.shown() && (!V.want || V.want()) && !covered(r, V.box) && V.box.offsetParent && !(window.TSU_MACOS && TSU_MACOS.covers && TSU_MACOS.covers(V.box, r))); // macOS 风格：被别的窗口、程序坞盖住也藏
     var k = r ? [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), vis].join(",") : "";
     if (k === V.lastFrame) return;
     V.lastFrame = k;
@@ -72,8 +84,15 @@
     if (bk) bk.disabled = st.canBack === false; if (fw) fw.disabled = st.canForward === false;
   }
   var raf = 0;
-  function placeAll() { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; Object.keys(views).forEach(function (id) { paintIbar(views[id]); place(views[id]); }); }); }
+  function placeAll() { if (raf || !Object.keys(views).length) return; raf = requestAnimationFrame(function () { raf = 0; Object.keys(views).forEach(function (id) { paintIbar(views[id]); place(views[id]); }); }); }
   new MutationObserver(placeAll).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class", "style"] });
+  // A native view survives the JS document on older desktop builds.
+  window.addEventListener("pagehide", event => {
+    if (event.persisted) return;
+    for (const view of Object.values(views)) {
+      if (!view.closeCmd) N.call("web.close", {id:view.id}).catch(() => {});
+    }
+  });
   window.addEventListener("resize", placeAll);
   setInterval(placeAll, 500);
   if (N && N.on) N.on("web.state", function (d) {
@@ -116,6 +135,7 @@
         V.id = "wb" + (++seq) + "-" + Date.now().toString(36);
         V.P = P;
         views[V.id] = V;
+        saveOwners();
         V.gone = function () { return P.closed; };
         V.web = true; // 地址栏：这一页的地址就是网址，回车在这里开
         V.open = function (u) { open(V, u); };
@@ -164,7 +184,7 @@
     },
   };
   // 关了标签页：原生的那块也关掉
-  setInterval(function () { Object.keys(views).forEach(function (id) { var V = views[id]; if (V.gone()) { delete views[id]; if (native()) N.call(V.closeCmd || "web.close", { id: id }).catch(function () {}); } }); }, 2000);
+  setInterval(function () { Object.keys(views).forEach(function (id) { var V = views[id]; if (V.gone()) { delete views[id]; saveOwners(); if (native()) N.call(V.closeCmd || "web.close", { id: id }).catch(function () {}); } }); }, 2000);
   // 对外：开一个浏览器标签页（地址栏、命令面板、链接用）
   window.TSU_WEB = {
     // iPad App 里：网页交给 App 自己的 Safari 视图（这里的内嵌网页靠 Mac 版 App 的原生网页视图，iPad 上没有——什么都载不出来）
@@ -187,13 +207,14 @@
       V.shown = shown || function () { return box.isConnected && !!box.offsetParent; };
       V.gone = function () { return !box.isConnected; };
       views[id] = V;
+      saveOwners();
       N.call("web.open", { id: id, url: url }).then(function () { V.lastFrame = ""; place(V); }).catch(function () {});
       placeAll();
       return {
         id: id,
         state: function () { return V.state || {}; },
         place: function () { V.lastFrame = ""; place(V); },
-        close: function () { if (!views[id]) return; delete views[id]; N.call("web.close", { id: id }).catch(function () {}); },
+        close: function () { if (!views[id]) return; delete views[id]; saveOwners(); N.call("web.close", { id: id }).catch(function () {}); },
       };
     },
   };

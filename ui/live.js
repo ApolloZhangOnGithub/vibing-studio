@@ -3386,6 +3386,23 @@
       if (t.recap && TSU_TRANSLATE.reply(t.recap, agentId)) n++; // 回顾的译文到了：重画
       return n;
     }
+    // TTU fixes the advance of individual cells. Consecutive Han characters,
+    // table padding and straight rules can share that advance in a single box.
+    function compactTranscriptCells(html) {
+      const han = /(?:<span style="display:inline-block;width:calc\(var\(--ttu-cell,1ch\)\*2\)">[\u3400-\u4dbf\u4e00-\u9fff]<\/span>){2,}/g;
+      const spaces = /(?:<span style="display:inline-block;width:var\(--ttu-cell,1ch\)"> <\/span>){2,}/g;
+      const rules = /(<span class="ttu-box" style="[^"]+">─<\/span>)(?:\1)+/g;
+      return html.replace(han, run => {
+        const chars = run.replace(/<[^>]+>/g, "");
+        return '<span class="han-run" style="width:calc(var(--ttu-cell,1ch)*' + 2 * chars.length + ')">' + chars + '</span>';
+      }).replace(spaces, run => {
+        const chars = run.replace(/<[^>]+>/g, "");
+        return '<span style="display:inline-block;width:calc(var(--ttu-cell,1ch)*' + chars.length + ')">' + chars + '</span>';
+      }).replace(rules, (run, cell) => {
+        const count = run.length / cell.length;
+        return cell.replace('width:var(--ttu-cell,1ch)', 'width:calc(var(--ttu-cell,1ch)*' + count + ')').replace('>─<', '>' + '─'.repeat(count) + '<');
+      });
+    }
     function htmlOf(t, live, fresh) {
       var run = !live && (t.parts || []).some(function (x) { return x.status === "running"; });
       var ts0 = rt.session().turns, ix = idxOf && idxOf.has(t) ? idxOf.get(t) : ts0.indexOf(t), nx = ts0[ix + 1];
@@ -3395,7 +3412,7 @@
       var k = rcSig + (P.textFilter && isCurrentToolTurn(t, rt) ? "|current" : "") + "|" + (t.__rv || 0) + "|" + translated + "|" + ix + (nx && nx.recap !== undefined ? "r" : "") + (footDone(t) ? "f" : "") + (t.recap !== undefined && footDone(ts0[ix - 1]) ? "p" : "") + (rt.writtenAt && t.ask && rt.writtenAt(t.ask) ? "w" : "") + (t.stats && (t.stats.pendAgents || t.stats.pendWf || t === lastDone()) ? "|" + liveBg().sig : ""), c = rowCache.get(t);
       if (!fresh && !live && !run && c && c.k === k) { htmlN = c.n; return c.h; }
       visibleThoughtSources.delete(t);
-      var rows = turnRows(t, live), h = P.join(rows);
+      var rows = turnRows(t, live), h = compactTranscriptCells(P.join(rows));
       htmlN = rows.length;
       if (!live && !run) rowCache.set(t, { k: k, h: h, n: rows.length, version: ++rowsVersion }); else rowCache.delete(t);
       return h;
@@ -3591,9 +3608,9 @@
         }
         else if (ts.length < 2) ts.forEach(function (t) { appendTurn(t, true); });
         else {
-          var need = Math.ceil(P.screen.clientHeight / (P.rowH || 16)) * 3, got = 0, i = ts.length - 1;
+          var need = P.screen.clientHeight + 2 * (P.rowH || 16), got = 0, i = ts.length - 1;
           firstBlk = statusEl;
-          for (; i >= 0; i--) { firstBlk = placeTurn(ts[i], firstBlk); got += firstBlk._n || 1; if (got >= need) { i--; break; } }
+          for (; i >= 0; i--) { firstBlk = placeTurn(ts[i], firstBlk); got += firstBlk.offsetHeight; if (got >= need) { i--; break; } }
           if (i >= 0) { pendTurns = ts.slice(0, i + 1); setTimeout(function () { restTurns(gen); }, 0); }
         }
       }

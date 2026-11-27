@@ -53,6 +53,18 @@ final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
   }
 
+  func closeAll() {
+    kvo.removeAll()
+    errors.removeAll()
+    for view in views.values {
+      view.navigationDelegate = nil
+      view.uiDelegate = nil
+      view.stopLoading()
+      view.removeFromSuperview()
+    }
+    views.removeAll()
+  }
+
   private func num(_ x: Any?) -> CGFloat { CGFloat((x as? NSNumber)?.doubleValue ?? 0) }
 
   // 这一页现在的样子（标签页概览用）：{ id, width? } → JPEG 的 data URL；没有这一页返回 null

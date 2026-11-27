@@ -159,12 +159,26 @@
     });
     return historyDatabase;
   }
-  async function cachedHistory(scope) {
+  async function cachedHistory(scope, fileRevision) {
     var db = await historyDB();
     return new Promise((resolve, reject) => {
-      var req = db.transaction("pages").objectStore("pages").getAll(IDBKeyRange.bound([scope,-1], [scope,Infinity]));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const store = db.transaction("pages").objectStore("pages");
+      const head = store.get([scope,-1]);
+      head.onerror = () => reject(head.error);
+      head.onsuccess = () => {
+        if (!head.result || (fileRevision !== undefined && fileRevision !== head.result.fileRevision)) return resolve([]);
+        const pages = [head.result];
+        function readBatch(start) {
+          const req = store.getAll(IDBKeyRange.bound([scope,start], [scope,Infinity]), 8);
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            pages.push(...req.result);
+            if (req.result.length < 8) resolve(pages);
+            else readBatch(start + 8);
+          };
+        }
+        readBatch(0);
+      };
     });
   }
   async function cacheHistory(scope, metadata, pages, start, previousPrefix) {
@@ -178,7 +192,14 @@
         if (start && (head.result?.prefix !== previousPrefix || !metadata.turnHashes.slice(0,start).every((hash,i) => head.result.turnHashes[i] === hash))) return;
         store.delete(IDBKeyRange.bound([scope,start], [scope,Infinity]));
         store.put(metadata, [scope,-1]);
-        pages.forEach((page, i) => store.put(page, [scope,start+i]));
+        function writeBatch(i) {
+          const end = Math.min(i + 4, pages.length);
+          while (i < end) {
+            const request = store.put(pages[i], [scope,start+i]);
+            if (++i === end && i < pages.length) request.onsuccess = () => writeBatch(end);
+          }
+        }
+        writeBatch(0);
       };
     });
   }

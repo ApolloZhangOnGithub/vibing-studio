@@ -362,6 +362,7 @@ final class WebController: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownl
   private let started = Date()
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { window.diagramZoomRect = nil; trace("start " + (webView.url?.absoluteString ?? "")) }
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    bridge.web?.closeAll()
     trace("commit " + (webView.url?.absoluteString ?? ""))
     if webView.url?.scheme != "about" { committed = true; retries = 0 }
   }

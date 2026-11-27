@@ -1015,6 +1015,8 @@
   }
   // 画这一项：标题行 + 内容；慢的（读文件、缩略图）好了再 ready()
   function qlFill(o, ready) {
+    o.web?.close();
+    o.web = null;
     var it = o.it, key = o.key, g = gui(), el = o.el, name = esc(it.label || it.name), fin = false;
     var btns = '<span class="xp-qlbtns"><button data-act="ql-open">打开</button><button data-act="ql-close" title="关闭 (空格)">×</button></span>';
     el.className = "xp-ql " + (g ? "gv" : "tui");

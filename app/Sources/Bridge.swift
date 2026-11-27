@@ -141,6 +141,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       c.setRowGrid(row: row, chrome: chrome, viewport: viewport, column: a["column"] as? CGFloat, chromeWidth: a["chromeWidth"] as? CGFloat)
       return [:]
     case "window.diagramZoomRect":
+      controller?.window.imageWheelZoom = a["wheelZoom"] as? Bool ?? false
       if let x = a["x"] as? Double, let y = a["y"] as? Double,
          let w = a["width"] as? Double, let h = a["height"] as? Double {
         controller?.window.diagramZoomRect = NSRect(x: x, y: y, width: w, height: h)

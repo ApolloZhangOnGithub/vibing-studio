@@ -5,15 +5,19 @@ final class DesktopWindow: NSWindow {
   // 网页报上来的拖动区（CSS 像素，左上角为原点；页面不缩放时 = 窗口里的点）
   var dragRegions: [NSRect] = []
 
+  var imageWheelZoom = false
   var diagramZoomRect: NSRect?
   var onDiagramMagnify: ((CGFloat, NSPoint) -> Void)?
 
   override func sendEvent(_ event: NSEvent) {
-    if event.type == .magnify, let rect = diagramZoomRect, let cv = contentView {
+    let wheelZoom = event.type == .scrollWheel && imageWheelZoom &&
+      !event.hasPreciseScrollingDeltas && event.scrollingDeltaY != 0
+    if event.type == .magnify || wheelZoom, let rect = diagramZoomRect, let cv = contentView {
       let local = cv.convert(event.locationInWindow, from: nil)
       let top = NSPoint(x: local.x, y: cv.isFlipped ? local.y : cv.bounds.height - local.y)
       if rect.contains(top), let onDiagramMagnify {
-        onDiagramMagnify(event.magnification, top)
+        let delta = wheelZoom ? exp(max(-2, min(2, event.scrollingDeltaY * 0.096))) - 1 : event.magnification
+        onDiagramMagnify(delta, top)
         return
       }
     }

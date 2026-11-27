@@ -283,7 +283,7 @@
       async function readAgy(args, onDelta, onProgress) {
         if (!local() || !C.on("agy")) throw new Error("AGY 连接器未启用");
         var cmd = ["python3", await TSU_LOCAL.studioHelper("agy_sessions.py")].concat(args).map(quote).join(" ");
-        if (args[0] === "--session" && typeof DecompressionStream !== "undefined") cmd = "VIBING_PACK_HISTORY=1 " + cmd;
+        if (args[0] === "--session" && typeof DecompressionStream !== "undefined") cmd = "VIBING_PACK_HISTORY=2 " + cmd;
         var controller = new AbortController(), timer = args[0] === "--send" ? null : setTimeout(function () { controller.abort(); }, 45000);
         try {
           var carry = "";
@@ -342,7 +342,30 @@
               }
               chunks.push(...await Promise.all(batch));
             }
-            return await new Response(new Blob(chunks).stream().pipeThrough(new DecompressionStream("gzip"))).json();
+            const reader = new Blob(chunks).stream().pipeThrough(new DecompressionStream("gzip")).getReader();
+            const decoder = new TextDecoder();
+            let carry = "", header, deadline = performance.now() + 5;
+            for (;;) {
+              const {done, value} = await reader.read();
+              carry += decoder.decode(value, {stream: !done});
+              let start = 0, end;
+              while ((end = carry.indexOf("\n", start)) !== -1) {
+                const record = JSON.parse(carry.slice(start, end));
+                if (header) header.events.push(record);
+                else header = {...record, events: []};
+                start = end + 1;
+                if (performance.now() >= deadline) {
+                  await new Promise(resolve => setTimeout(resolve, 0));
+                  deadline = performance.now() + 5;
+                }
+              }
+              carry = carry.slice(start);
+              if (done) break;
+            }
+            // Older helpers write the entire snapshot on one line, without a newline.
+            if (!header) return JSON.parse(carry);
+            if (carry) throw new Error("AGY 历史记录传输不完整");
+            return header;
           } finally {
             TSU_LOCAL.exec({cmd: "rm -f -- " + quote(data.historyFile)}).catch(() => {});
           }
@@ -492,11 +515,12 @@
           return "[Image #" + turn.images.length + "]";
         });
       }
-      function addEvent(turn, event) {
+      function addEvent(turn, event, tools) {
         if (event.role === "tool") {
-          var tool = turn.parts.find(function (p) { return p.kind === "tool" && p.id === event.id; });
+          var tool = tools.get(event.id);
           if (!tool) {
             tool = { kind: "tool", id: event.id, name: event.action || "Tool", input: {}, status: "running", t0: Date.parse(event.created_at) || 0 };
+            tools.set(event.id, tool);
             turn.parts.push(tool);
           }
           if (event.file_path) {
@@ -709,7 +733,7 @@
       async function load(observedRevision) {
         var changes = null, appended = [];
         var scope = hostKey("agy-history-branch-v1:" + (window.TSU_UID || 0) + ":" + id);
-        function applyMessages(messages) {
+        async function applyMessages(messages) {
           rt.contextTokens = messages.contextTokens;
           rt.contextLimit = messages.contextLimit;
           rt.finalAt = messages.finalAt || 0;
@@ -731,21 +755,28 @@
           agent.effort = effort && effort[1];
           session.mode = messages.mode;
           session.statusLabel = [display, effort && effort[1]].filter(Boolean).join(" · ");
-          messages.events.forEach(function (message) {
+          let deadline = performance.now() + 5;
+          let tools;
+          for (const message of messages.events) {
             if (!turn || message.role === "user_message_chunk") {
               var index = turns.length;
               reuse = hashes[index] && hashes[index] === turnHashes[index] && previous[index] && previous[index] !== pendingTurn;
               turn = reuse ? previous[index] : { ask: "", parts: [] };
               turns.push(turn);
+              tools = new Map();
             }
-            if (reuse) return;
+            if (reuse) continue;
+            if (performance.now() >= deadline) {
+              await new Promise(resolve => setTimeout(resolve, 0));
+              deadline = performance.now() + 5;
+            }
             if (message.role === "user_message_chunk") {
               readPrompt(turn, message.text);
               var start = Number.isFinite(message.start_ms) ? message.start_ms : Date.parse(message.created_at);
               if (Number.isFinite(start)) turn.at = start;
             }
-            else addEvent(turn, message);
-          });
+            else addEvent(turn, message, tools);
+          }
           var matched = new Set();
           optimisticTurns = optimisticTurns.filter(function (entry) {
             var index = turns.findIndex((t, i) => i >= entry.start && !matched.has(i) &&
@@ -794,10 +825,10 @@
           if (!cacheChecked) {
             cacheChecked = true;
             historyProgress(-1);
-            var cached = await TSU_LOCAL.cachedHistory(scope).catch(() => []);
+            var cached = info.path ? await TSU_LOCAL.cachedHistory(scope, await fileRevision(info.path)).catch(() => []) : [];
             var head = cached.shift();
-            if (head && info.path && head.fileRevision === await fileRevision(info.path) && cached.length === head.turnHashes?.length) {
-              applyMessages({...head, reuseTurns: 0, events: cached.flat()});
+            if (head && cached.length === head.turnHashes?.length) {
+              await applyMessages({...head, reuseTurns: 0, events: cached.flat()});
               listeners.forEach(f => f("reset"));
               historyProgress(null);
             }
@@ -820,7 +851,7 @@
             return;
           }
           var oldPrefix = knownPrefix;
-          applyMessages(messages);
+          await applyMessages(messages);
           var {events, ...metadata} = messages;
           var pages = [];
           for (var event of events) {

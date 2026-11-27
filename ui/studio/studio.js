@@ -3629,27 +3629,43 @@
     img.alt = "";
     view.append(img);
     body.replaceChildren(view);
-    let gestureWidth = 0;
-    function resize(width, e) {
-      const before = img.getBoundingClientRect();
-      if (!before.width || !img.naturalWidth) return;
-      const x = (e.clientX - before.left) / before.width;
-      const y = (e.clientY - before.top) / before.height;
-      img.style.maxWidth = img.style.maxHeight = "none";
-      img.style.width = Math.max(Math.min(16, img.naturalWidth), Math.min(img.naturalWidth * 16, width)) + "px";
-      const after = img.getBoundingClientRect();
-      view.scrollLeft += after.left + after.width * x - e.clientX;
-      view.scrollTop += after.top + after.height * y - e.clientY;
+    let gestureWidth = 0, nextWidth = 0, frame = 0, anchor;
+    function width() { return nextWidth || img.getBoundingClientRect().width; }
+    function zoom(target, x, y) {
+      if (!img.naturalWidth || !(target > 0)) return;
+      nextWidth = Math.max(Math.min(16, img.naturalWidth), Math.min(img.naturalWidth * 16, target));
+      anchor = {x, y};
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const w = nextWidth;
+        nextWidth = 0;
+        if (!view.isConnected) return;
+        const before = img.getBoundingClientRect(), box = view.getBoundingClientRect();
+        if (!before.width) return;
+        const h = w * img.naturalHeight / img.naturalWidth;
+        const x = (anchor.x - before.left) * w / before.width;
+        const y = (anchor.y - before.top) * h / before.height;
+        img.style.maxWidth = img.style.maxHeight = "none";
+        img.style.width = w + "px";
+        view.scrollTo(Math.max(0, box.left + x - anchor.x), Math.max(0, box.top + y - anchor.y));
+      });
     }
-    view.magnify = e => resize(img.width * (1 + e.delta), {clientX:e.x, clientY:e.y});
+    view.magnify = e => zoom(width() * (1 + e.delta), e.x, e.y);
     view.addEventListener("pointerenter", () => window.TSU_FILE_ZOOM?.(view, true));
     view.addEventListener("pointerleave", () => window.TSU_FILE_ZOOM?.(view, false));
     view.addEventListener("wheel", e => {
+      if (!e.ctrlKey && !e.metaKey && e.deltaMode === 0) return;
       e.preventDefault();
-      if (!gestureWidth) resize(img.width * Math.exp(-Math.max(-200, Math.min(200, e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.clientHeight : 1))) * .006), e);
+      if (gestureWidth) return;
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.clientHeight : 1;
+      zoom(width() * Math.exp(-Math.max(-200, Math.min(200, e.deltaY * unit)) * .006), e.clientX, e.clientY);
     }, {passive:false});
-    view.addEventListener("gesturestart", e => { e.preventDefault(); gestureWidth = img.width; }, {passive:false});
-    view.addEventListener("gesturechange", e => { e.preventDefault(); if (gestureWidth) resize(gestureWidth * e.scale, e); }, {passive:false});
+    view.addEventListener("gesturestart", e => { e.preventDefault(); gestureWidth = width(); }, {passive:false});
+    view.addEventListener("gesturechange", e => {
+      e.preventDefault();
+      if (gestureWidth) zoom(gestureWidth * e.scale, e.clientX, e.clientY);
+    }, {passive:false});
     view.addEventListener("gestureend", e => { e.preventDefault(); gestureWidth = 0; }, {passive:false});
     img.src = url;
   }

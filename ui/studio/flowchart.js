@@ -5,7 +5,7 @@
   function publishZoomRect() {
     if (!window.nadosNative) return;
     const rect = (pinned ? panel : fileImage)?.getBoundingClientRect();
-    nadosNative.call("window.diagramZoomRect", rect ? rect.toJSON() : {}).catch(() => {});
+    nadosNative.call("window.diagramZoomRect", rect ? {...rect.toJSON(), wheelZoom: !pinned && !!fileImage} : {}).catch(() => {});
   }
   window.TSU_FILE_ZOOM = (view, enabled) => {
     if (!enabled && fileImage !== view) return;

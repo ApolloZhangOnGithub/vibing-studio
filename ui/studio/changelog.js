@@ -11,6 +11,11 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.7", items: { fixed: [
+      ["重载工作区或切换快速预览时，关闭上一页的原生网页视图，修复 TensorBoard 等网页盖住对话的问题。", "Reloading the workspace or switching Quick Look items closes the previous native web view so it cannot cover a conversation."],
+      ["图片查看器支持双指平移、捏合缩放和鼠标滚轮缩放。放大后可使用横向和纵向滚动条。", "Pan images with two fingers and zoom with a pinch or a mouse wheel. Scrollbars stay available on both axes when the image overflows."],
+      ["长对话优先绘制当前视口，AGY 历史记录分批解码并读取缓存。", "Long conversations render the viewport first. AGY history decoding and cache reads run in batches."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.6", items: { fixed: [
       ["长对话滚动时提前绘制即将露出的正文，回到底部时保留最近几轮。输入期间减少历史补绘、后台标签预热和截图对前台的干扰。", "Long conversations prepare text before it scrolls into view and keep recent turns ready at the bottom. Typing takes priority over background rendering and snapshots."],
       ["工具计时只刷新相应工具或工具组。额度与 Context 弹框的下边缘对齐输入框底线。", "Tool timers update in place. Credit and Context popovers align with the lower edge of the composer."]
