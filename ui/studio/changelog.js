@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.3", items: { new: [
+      ["固定的会话收到完成回复后，图标右上角会出现蓝点。点击该标签即可清除。", "A blue dot appears on a pinned conversation tab when a reply finishes. Click the tab to clear it."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.2", items: { fixed: [
       ["当前标签始终显示连接器原色，包括已结束的会话和固定标签。切到其他标签后，空闲会话的图标变灰。", "The selected tab keeps its connector’s original colors, including for idle sessions and pinned tabs. Idle tabs dim when you switch away."],
       ["补全 0.2.3.1 的中英文更新记录。", "Restore the missing changes in the Chinese and English notes for 0.2.3.1."]

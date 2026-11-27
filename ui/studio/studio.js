@@ -3816,7 +3816,7 @@
   function noteTick() {
     var mode = getv("agentNotify") || "off", T = window.TSU_TERM, A2 = window.TSU_AGENTS, N = window.nadosNative;
     if (!T || !T.panes || !A2 || !A2.runtime) return;
-    var dirtyWindows = new Set();
+    var dirtyWindows = new Set(), completions = new Map();
     var seen = new Set(), focused = !document.hidden && document.hasFocus(), front = T.front();
     T.panes().forEach(function (p) {
       var id = p.program && p.program.agentId;
@@ -3825,27 +3825,34 @@
         var waiting = p.program.waitingLabel?.() || "";
         if (p._tabWorking !== working || p._tabWaiting !== waiting) { p._tabWorking = working; p._tabWaiting = waiting; dirtyWindows.add(p.win); }
       }
-      if (!id || p.side || seen.has(id)) return;
+      if (!id || p.side) return;
+      var first = !seen.has(id);
       seen.add(id);
       var rt = A2.runtime(id);
       if (!rt || !rt.session) return;
-      var turns = rt.session().turns || [], completed = 0;
-      for (var i = turns.length - 1; i >= 0; i--) {
-        var turn = turns[i];
-        if (turn.stats && !turn.error) { completed = turn.stats.at || turn.at || 0; break; }
+      if (first) {
+        var turns = rt.session().turns || [];
+        if (turns.length) {
+          var completed = 0;
+          for (var i = turns.length - 1; i >= 0; i--) {
+            var turn = turns[i];
+            if (turn.stats && !turn.error) { completed = turn.stats.at || turn.at || 0; break; }
+          }
+          var prior = notePrev[id];
+          notePrev[id] = {completed: Math.max(completed, prior?.completed || 0)};
+          if (prior && completed > prior.completed && completed >= Date.now() - 60000) completions.set(id, completed);
+        }
       }
-      var prior = notePrev[id], visible = focused && front === p.win && front.ws.active === p;
-      if (visible && p.finishedAgent) { p.finishedAgent = ""; dirtyWindows.add(p.win); }
-      if (!turns.length) return;
-      notePrev[id] = {completed: Math.max(completed, prior ? prior.completed : 0)};
-      if (!prior || visible || !completed || completed <= prior.completed || completed < Date.now() - 60000) return;
+      var visible = focused && front === p.win && front.ws.active === p;
+      if (!p.tabPinned && visible && p.finishedAgent) { p.finishedAgent = ""; dirtyWindows.add(p.win); }
+      if (!completions.has(id) || (visible && !p.tabPinned)) return;
       p.finishedAgent = id;
       dirtyWindows.add(p.win);
-      if (focused || !N || !N.call) return;
+      if (focused || !first || !N || !N.call) return;
       N.call("attention").catch(function () {});
       if (mode === "off") return;
       var name = (rt.agent && rt.agent.name) || "Agent", tail = rt.tail ? String(rt.tail() || "") : "";
-      N.call("notify", { id: "agent:" + id + ":" + completed, title: name + " 做完了", body: tail.replace(/\s+/g, " ").slice(0, 160) }).catch(function () {});
+      N.call("notify", { id: "agent:" + id + ":" + completions.get(id), title: name + " 做完了", body: tail.replace(/\s+/g, " ").slice(0, 160) }).catch(function () {});
     });
     dirtyWindows.forEach(function (win) { win.syncTitles(); });
     Object.keys(notePrev).forEach(function (id) { if (!seen.has(id)) delete notePrev[id]; });

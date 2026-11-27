@@ -9661,7 +9661,14 @@
           e.preventDefault();
           if (e.target.closest(".tx")) askClose([p], "标签页", function () { ws.closePane(p); });
         });
-        b.addEventListener("click", function (e) { if (!e.target.closest(".tx")) ws.show(p); });
+        b.addEventListener("click", function (e) {
+          if (e.target.closest(".tx")) return;
+          if (p.tabPinned && p.finishedAgent) {
+            p.finishedAgent = "";
+            b.querySelector(".st-pin-unread")?.remove();
+          }
+          ws.show(p);
+        });
         b.addEventListener("auxclick", function (e) { if (e.button === 1) { e.preventDefault(); askClose([p], "标签页", function () { ws.closePane(p); }); } });
         draggable(b, function (e) { return e.target.closest(".tx") ? null : { kind: "tab", pane: p, ws: ws }; }, "↳ " + p.title());
         el.insertBefore(b, el.children[index] || null);
@@ -10051,14 +10058,14 @@
       ws.show(p);
     };
     ws.serialize = function () {
-      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return p.tabPinned ? {...p.spec(), tabPinned: true} : p.spec(); }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
+      var ser = function (n) { return n.g ? { e: n.g.editors.map(function (p) { return p.tabPinned ? {...p.spec(), tabPinned: true, finishedAgent: p.finishedAgent || undefined} : p.spec(); }), i: Math.max(0, n.g.editors.indexOf(n.g.active)) } : { dir: n.dir, ratio: n.ratio, a: ser(n.a), b: ser(n.b) }; };
       if (ws.itabs) { if (ws.grid) ws.itabs[ws.ti] = ws.grid; return { v: 3, itabs: ws.itabs.map(ser), ti: ws.ti, g: Math.max(0, ws.groups().indexOf(ws.group)) }; } // Pure Terminal：每个标签页一个格子
       return { v: 2, grid: ws.grid ? ser(ws.grid) : null, g: Math.max(0, ws.groups().indexOf(ws.group)) };
     };
     ws.restore = function (saved) {
       var keep = function (sp) { return sp && sp.page !== "dash"; };
       var de = function (n) {
-        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { var pane = Pane(tw, sp); pane.tabPinned = sp.tabPinned === true; return pane; }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
+        if (n.e) { var eds = n.e.filter(keep).map(function (sp) { var pane = Pane(tw, sp); pane.tabPinned = sp.tabPinned === true; if (pane.tabPinned) pane.finishedAgent = sp.finishedAgent; return pane; }); return eds.length ? { g: Group(eds, eds[Math.min(n.i || 0, eds.length - 1)]) } : null; }
         var a = de(n.a), b = de(n.b);
         return a && b ? { dir: n.dir, ratio: n.ratio, a: a, b: b } : a || b;
       };

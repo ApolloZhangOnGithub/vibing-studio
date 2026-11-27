@@ -558,7 +558,7 @@
     if (root.classList.contains("termapp")) {
       var unread = (panes || [P]).some(function (pane) {
         if (!pane || !pane.finishedAgent || pane.finishedAgent !== pane.program.agentId) return false;
-        if (document.hasFocus() && !document.hidden && TSU_TERM.front() === pane.win && pane.win.ws.active === pane) {
+        if (!pane.tabPinned && document.hasFocus() && !document.hidden && TSU_TERM.front() === pane.win && pane.win.ws.active === pane) {
           pane.finishedAgent = "";
           return false;
         }
@@ -576,6 +576,7 @@
           if (wait) waits.push(wait);
         }
       });
+      if (P.tabPinned && unread) span.insertAdjacentHTML("afterend", '<b class="st-pin-unread" aria-label="已完成，有未读消息"></b>');
       if (workingPane) {
         var indicator = document.createElement("b");
         indicator.className = "tab-finished-dot tab-working-dot";

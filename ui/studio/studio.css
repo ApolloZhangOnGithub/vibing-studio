@@ -1565,5 +1565,8 @@ html.termapp .termwin .gtabs > .tab.st-pinned-tab {
   flex: 0 0 32px; min-width: 32px; max-width: 32px; box-sizing: border-box;
   padding-inline: 0; justify-content: center; gap: 0;
 }
-html.termapp .termwin .gtabs > .tab.st-pinned-tab > :not(.st-ico) { display: none; }
+html.termapp .termwin .gtabs > .tab.st-pinned-tab > :not(.st-ico):not(.st-pin-unread) { display: none; }
 html.termapp .termwin .gtabs > .tab.st-pinned-tab > .st-ico { margin-inline: 0; }
+
+html.termapp .termwin .gtabs > .tab.st-pinned-tab { position: relative; }
+html.termapp .termwin .gtabs > .tab.st-pinned-tab > .st-pin-unread { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: #388cff; pointer-events: none; }
