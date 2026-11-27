@@ -27,4 +27,5 @@
 - 界面：`tools/deploy.sh`（语法检查、冒烟测试、版本号 +1、装成 App 的本地界面、从 `web/` 上线网站）。改了用户看得到的东西，在 `ui/studio/changelog.js` 最前面加一条。
 - 网页端在 `web/`（Worker、中转、登录页；界面就是 `ui/`）。**`teyvat-mac-simulator` 已经开源，Vibing Studio 的代码一行都不要放进去，也不要从那里部署。**
 - 原生（macOS）：见上面「待更新」。iPhone / iPad：`ios/build.sh`。
+- 每次发布维护两份按版本对应的日志。先回看上次发布以来的工作会话、实际操作和验证结果。开发日志写入 docs/CHANGELOG.dev.md，记录实现原因、涉及模块、实测证据和验证缺口。公开说明写入 ui/studio/changelog.js，使用中英文，从用户视角说明哪里变了、如何使用、哪些问题得到修复。
 - 发版前跑一遍回归测试：`python3 tools/e2e/run.py`（改了 `app/` 的原生代码加 `--build`）；全过了再发。发版脚本自己收拾旧的安装包、旧的构建（`tools/prune-releases.sh`）。
