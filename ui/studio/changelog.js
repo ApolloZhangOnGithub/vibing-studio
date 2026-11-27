@@ -11,15 +11,30 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.2", items: { fixed: [
+      ["当前标签始终显示连接器原色，包括已结束的会话和固定标签。切到其他标签后，空闲会话的图标变灰。", "The selected tab keeps its connector’s original colors, including for idle sessions and pinned tabs. Idle tabs dim when you switch away."],
+      ["补全 0.2.3.1 的中英文更新记录。", "Restore the missing changes in the Chinese and English notes for 0.2.3.1."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.1", items: { new: [
-      ["右键可固定标签页。固定标签在当前组最左侧只显示图标，重新打开布局时保留固定状态。", "Pin tabs from their context menu. Pinned tabs show only their icon on the left of their group and persist with the layout."]
+      ["右键选择「固定标签页」，标签缩为 32 像素，只显示图标，移到当前组最左侧。固定和取消固定有各自的图钉图标；重新打开布局后保留固定状态。", "Pin a tab from its context menu to show just its icon in 32 pixels at the left of its group. Pin and Unpin have distinct icons. The layout remembers pinned tabs."],
+      ["AGY 会话右键菜单支持归档。归档后会话移入「已归档」，从该组取消归档即可回到原目录。", "Archive an AGY session from its context menu. Find it under Archived and choose Unarchive to return it to its original folder."],
+      ["AGY 根据工作流日志里的会话 ID 识别子会话，收进父会话右栏。手动打开或来源未确认的会话仍在公共列表可见。", "AGY identifies workflow-created sessions by their logged IDs and lists them in the parent session’s sidebar. Manually opened sessions and sessions of unknown origin stay in the main list."]
     ], improved: [
-      ["连接器会话结束后图标变灰；AGY 工作流创建的子会话按任务收进右栏，已结束项默认折叠。", "Idle connector tabs use muted icons. AGY workflow sessions are grouped by task in the sidebar, with completed items collapsed."],
-      ["从设置查看更新内容时自动关闭设置窗口。隐藏 GUI 缩略图时释放画布并停止轮询。", "Opening release notes from Settings closes Settings. Hiding the GUI minimap releases its canvas and stops its polling timer."],
-      ["默认深色背景调整为深灰色，对话代码块暂时隐藏行号。", "The default dark background is charcoal. Conversation code blocks now hide line numbers."]
+      ["右栏按「工作流 → task → 子会话」排列。工作流标题统计任务数，每个 task 分别统计运行中和已结束的子会话。", "The sidebar nests sessions under their workflow and task. The workflow header counts tasks, and each task counts running and finished sessions."],
+      ["task 默认展开，运行中的子会话直接可见。已结束的子会话折叠为一行，点击数量可展开或收起。每个子会话的名称与角色在同一行左右对齐。", "Tasks open expanded with running sessions visible. Click the finished count to show or hide completed sessions. Each session’s name and role share a single row."],
+      ["固定和普通标签都用图标区分连接器的运行与空闲状态。", "Connector icons indicate running and idle sessions on both regular and pinned tabs."],
+      ["默认深色主题的主背景改为取样得到的炭灰色 `#1E1E1E`。", "The default dark theme uses the sampled charcoal background `#1E1E1E`."],
+      ["Markdown 预览暂时隐藏代码块行号并收回左侧空栏，正文中的步骤编号照常显示。", "Markdown previews hide code-block line numbers and reclaim the gutter. Numbered steps in the text retain their numbering."],
+      ["GUI 会话隐藏缩略图后释放画布、移除监听并停止轮询。重新开启后，缩略图随滚动恢复绘制。", "Hiding the GUI conversation minimap releases its canvas, removes its listeners and stops polling. Showing it again restores rendering as you scroll."],
+      ["启动时用于恢复终端面板的定时器在恢复完成后停止，减少空闲时的唤醒。", "The terminal panel’s startup timer stops after restoration, reducing idle wake-ups."],
+      ["从设置点击「查看更新内容」会关闭设置，并切到发行说明。", "Opening release notes from Settings closes Settings and brings the notes to the front."],
+      ["日常版跨日时递增第三段，第四段从 .1 开始；同一天继续递增第四段。", "The first daily release on a new date increments the third component and starts at .1. Further releases that day increment the fourth component."]
     ], fixed: [
-      ["AGY 收到首个正文片段时即可查看完整的思考内容，历史刷新时保留正在显示的思考。", "AGY shows the completed reasoning when the first answer chunk arrives and preserves it during history refreshes."],
-      ["AGY 回退后仅显示当前分支的消息，前台命令的运行状态与终端同步。", "After an AGY rewind, show messages from the current branch. Foreground command status follows the terminal."]
+      ["文件分栏中可右键重命名前面任一栏的文件夹。重命名上级目录后，当前打开的子目录随新路径更新。", "Rename folders in preceding columns from their context menu. When a parent folder is renamed, the open subfolder follows its new path."],
+      ["从 Studio 给 macOS「终端」或 iTerm2 中的 AGY 发消息时，按 TTY 定位标签或分屏，并确认 AGY 仍在前台。系统阻止代按 Esc 时，提示在对应终端手动中断。", "When sending to AGY in Terminal or iTerm2, Studio locates its tab or split by TTY and checks the foreground process. If macOS blocks the Escape keystroke, Studio prompts you to interrupt in the target terminal."],
+      ["AGY 前台命令运行期间，底栏持续显示 Working 并计时，右栏同步运行中的命令数。命令明细尚未到达时先显示 Running command…。", "While an AGY foreground command runs, the footer keeps timing the turn and the sidebar shows the running count. It displays Running command… until the command details arrive."],
+      ["执行 `/rewind` 后只读取当前分支的消息，重新打开时也会跳过旧分支缓存。回退后复用步骤编号不会让已撤回消息重新出现。", "After `/rewind`, AGY reads only the current branch and skips stale history caches on reopen, including when a new step reuses an earlier number."],
+      ["AGY 收到首个正文片段时即可展开完整思考，并开始整段翻译。刷新历史时保留已经显示的思考，后续正文持续流入。", "As soon as AGY receives the first answer chunk, the complete reasoning is available to expand and translate. History refreshes preserve it while the answer continues streaming."]
     ] } },
     { date: "2026-11-25", ver: "0.2.2.3", items: { new: [
       ["悬停会话里的本地图片引用可预览图片，点击文件名可打开原图。", "Hover over a local image reference in a conversation to preview it, or click its filename to open the image."]

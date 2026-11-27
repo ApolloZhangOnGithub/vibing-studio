@@ -1083,25 +1083,25 @@ html.light .st-tg.st-tgdo { color: #b9542f; }
 .st-ico.st-i-cc > .cc-logo-svg { width: 13px; height: 13px; }
 .st-ico.st-i-cx { display: inline-flex; align-items: center; color: var(--st-dim); transition: color .25s ease; } /* Codex 的标签页：OpenAI 的结，平时淡、在跑时字色 */
 .st-ico.st-i-cx > .cx-logo-svg { width: 13px; height: 13px; }
-html.termapp .termwin .tab.busy > .st-ico.st-i-cx { color: var(--st-hi); } /* 在跑：OpenAI 的黑 / 白（同 Claude Code 的标签页在跑时是它的橙） */
+html.termapp .termwin .tab:is(.on, .busy) > .st-ico.st-i-cx { color: var(--st-hi); } /* 在跑：OpenAI 的黑 / 白（同 Claude Code 的标签页在跑时是它的橙） */
 /* Completed connector sessions use the same muted logo color as Codex. */
-html.termapp .termwin .tab:not(.busy):not(.needs) > .st-ico :is(.agy-logo, .pi-logo-svg) path,
+html.termapp .termwin .tab:not(.on):not(.busy):not(.needs) > .st-ico :is(.agy-logo, .pi-logo-svg) path,
 .ts-cxl:not(.busy) :is(.agy-logo, .pi-logo-svg) path { fill: var(--st-dim); }
-html.termapp .termwin .tab.needs > .st-ico :is(.agy-logo, .pi-logo-svg) path { fill: #4c9bff; }
-html.termapp .termwin .tab:not(.busy):not(.needs) > .st-ico :is(.dsh-logo, .pm-av) { filter: grayscale(1); opacity: .65; }
+html.termapp .termwin .tab.needs:not(.on) > .st-ico :is(.agy-logo, .pi-logo-svg) path { fill: #4c9bff; }
+html.termapp .termwin .tab:not(.on):not(.busy):not(.needs) > .st-ico :is(.dsh-logo, .pm-av) { filter: grayscale(1); opacity: .65; }
 /* 标签页上 agent 在跑：图标那一格是 Claude Code 的转圈（字由 browser.js 每 120ms 换），闲着才是它自己的图标；占的宽同图标，字换来换去不挤动名字 */
 /* 在跑 / 闲着只看颜色，不动：Claude 的标志闲着是灰的，在跑是它的橙色（不跳——一直动太分神）
    （以前的「心跳」：html.termapp .termwin .tab.busy > .st-ico { animation: st-tabbeat 1.3s cubic-bezier(.4, 0, .2, 1) infinite; }，关键帧在下面留着） */
 html.termapp .termwin .tab > .st-ico.st-i-cc { color: var(--st-dim); transition: color .25s ease; }
-html.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #d97757; }
+html.termapp .termwin .tab:is(.on, .busy) > .st-ico.st-i-cc { color: #d97757; }
 /* 在等你（问你问题、等你确认）：图标变蓝，名字后面一个蓝点——比「在跑」的橙更要紧（同 Claude Code 的 needs you） */
-html.termapp .termwin .tab.needs > .st-ico, html.termapp .termwin .tab.needs.busy > .st-ico.st-i-cc { color: #4c9bff; }
+html.termapp .termwin .tab.needs:not(.on) > .st-ico, html.termapp .termwin .tab.needs.busy:not(.on) > .st-ico.st-i-cc { color: #4c9bff; }
 html.termapp .termwin .tab.needs > span::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: #4c9bff; vertical-align: middle; }
 /* 底部在跑那一行右边：别的会话在等你（live.js renderInput） */
 .tpane .foot .input { position: relative; }
 .tpane .vs-needs { color: #6eaaff; cursor: pointer; white-space: pre; } /* 排在那一行的字里、靠右（live.js 用空格补齐）：不绝对定位——以前有时跑到一行中间 */
 .tpane .vs-needs:hover { text-decoration: underline dashed; text-underline-offset: 0.2em; }
-html.light.termapp .termwin .tab.busy > .st-ico.st-i-cc { color: #c96442; }
+html.light.termapp .termwin .tab:is(.on, .busy) > .st-ico.st-i-cc { color: #c96442; }
 @keyframes st-tabbeat { 0%, 100% { transform: scale(1); } 18% { transform: scale(1.28); } 34% { transform: scale(.94); } 50% { transform: scale(1.08); } 66% { transform: scale(1); } }
 .st-cclogo { display: inline-flex; align-items: center; color: #d97757; }
 .st-cclogo > .cc-logo-svg { width: 12px; height: 12px; }
