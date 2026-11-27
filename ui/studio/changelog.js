@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-27", ver: "0.2.3.6", items: { improved: [
+      ["收起收藏边栏后，搜索移到列表顶部，并显示当前分类路径。再次展开时，搜索框带着原来的搜索词回到边栏。", "Collapse the Favorites sidebar to move search above the list and see the current category path. Expand it to return search to the sidebar with your query intact."],
+      ["收藏备注改为无边框的行内编辑，点击即可输入。", "Favorite notes now use a borderless inline editor."]
+    ] } },
     { date: "2026-11-27", ver: "0.2.3.5", items: { improved: [
       ["收藏边栏支持折叠，按钮在展开和收起时保持原位，收起后图标居中。", "Collapse the Favorites sidebar with a button that stays in place and centers in the collapsed rail."],
       ["收藏卡片和全文按各自的栏宽排版。卡片字号比正文小一级，移除了重复的来源副标题。", "Favorite previews and full messages wrap to their own column widths. Preview text is one size smaller, and cards omit the duplicate source line."],

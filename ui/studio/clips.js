@@ -171,7 +171,7 @@
       action("ref", t("复制为引用", "Copy as quote"), '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 4H3v5h3V7H4m9-3h-3v5h3V7h-2"/></svg>') +
       action("copy", t("复制", "Copy"), '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5" y="5" width="8" height="9" rx="1.3"/><path d="M10.5 3.5v-1h-8v9H4"/></svg>') + action("del", ro === "flag" ? t("取消标记", "Remove flag") : t("取消收藏", "Remove"), mi.bookmark) +
       "</div></header>" + body +
-      '<div class="fv-note" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("备注", "Note")) + '">' + esc(r.note || "") + "</div>" +
+      '<div class="fv-note" role="textbox" aria-multiline="true" aria-label="' + esc(t("备注", "Note")) + '" contenteditable="plaintext-only" data-note="' + esc(r.id) + '" data-ph="' + esc(t("备注", "Note")) + '">' + esc(r.note || "") + "</div>" +
       '<dl class="fv-meta">' + row(t("会话", "Session"), s.title) + row(t("目录", "Folder"), s.cwd) + row(t("时间", "Time"), s.at ? when(s.at) : "") + row(t("收藏于", "Saved"), when(r.created)) + "</dl></div>";
   }
   function columnsOf(pre) {
@@ -230,9 +230,9 @@
     var view = host._favorites;
     if (!view) {
       host.innerHTML = '<div class="fv"><aside class="fv-nav"><header><h1>' + esc(t("收藏", "Favorites")) +
-        '</h1><button type="button" data-a="sidebar">' + S.menuIcons().sideL + '</button></header><input class="fv-q" type="search" placeholder="' +
-        esc(t("搜索", "Search")) + '"><nav class="fv-nvs"></nav></aside><section class="fv-list"></section><section class="fv-detail"></section></div>';
-      view = host._favorites = { root: host.firstElementChild, list: host.querySelector(".fv-list"), detail: host.querySelector(".fv-detail") };
+        '</h1><button type="button" data-a="sidebar">' + S.menuIcons().sideL + '</button></header><nav class="fv-nvs"></nav></aside><section class="fv-list"><header class="fv-list-tools"><nav class="fv-path" aria-label="' + esc(t("面包屑", "Breadcrumb")) + '"></nav><input class="fv-q" type="search" placeholder="' +
+        esc(t("搜索", "Search")) + '"></header><div class="fv-cards"></div></section><section class="fv-detail"></section></div>';
+      view = host._favorites = { root: host.firstElementChild, list: host.querySelector(".fv-cards"), detail: host.querySelector(".fv-detail") };
       view.resize = new ResizeObserver(function () { fitCards(view); fitReply(view); });
       view.resize.observe(view.detail); view.resize.observe(view.list);
       sidebar(host, localStorage.getItem("vs-favorites-sidebar") === "closed");
@@ -240,6 +240,12 @@
     if (view.revision !== revision || view.filter !== Q.f || view.query !== Q.q) {
       var items = filtered();
       host.querySelector(".fv-nvs").innerHTML = navHtml();
+      var selected = host.querySelector(".fv-nvs .on span");
+      var crumbs = [t("收藏", "Favorites")];
+      if (Q.f.startsWith("kind:")) crumbs.push(t("来源", "Sources"));
+      crumbs.push(selected ? selected.textContent : t("全部", "All"));
+      host.querySelector(".fv-path").innerHTML = '<button type="button" data-f="">' + esc(crumbs.shift()) +
+        '</button>' + crumbs.map(function (name) { return '<i aria-hidden="true">›</i><span>' + esc(name) + '</span>'; }).join("");
       host.querySelector(".fv-q").value = Q.q;
       view.list.innerHTML = items.length ? items.map(cardHtml).join("") : '<div class="fv-empty">' +
         (list().length ? esc(t("没有符合的", "Nothing matches")) : '<i>' + LOGO + '</i><b>' + esc(t("暂无收藏", "No favorites yet")) + '</b>') + '</div>';
@@ -264,6 +270,9 @@
   }
   function sidebar(host, collapsed) {
     host.firstElementChild.classList.toggle("nav-closed", collapsed);
+    var search = host.querySelector(".fv-q");
+    if (collapsed) host.querySelector(".fv-list-tools").appendChild(search);
+    else host.querySelector(".fv-nav").insertBefore(search, host.querySelector(".fv-nvs"));
     var button = host.querySelector('[data-a="sidebar"]');
     button.setAttribute("aria-expanded", String(!collapsed));
     button.title = collapsed ? t("展开边栏", "Expand sidebar") : t("折叠边栏", "Collapse sidebar");
