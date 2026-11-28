@@ -883,11 +883,11 @@
       if (p && window.TSU_CTX) TSU_CTX.bind(p);
     }
     // 一列可选的（模型、权限）：名字、下面一行说明，当前的有 ✓
-    function listPop(el, items, cls) {
-      var p = pop(el, items.map(function (x, i) { return '<div class="gv-opt' + (x.on ? " on" : "") + '" data-i="' + i + '" tabindex="-1"><span class="gv-ck">' + (x.on ? "✓" : "") + '</span><span class="gv-om"><span class="gv-on">' + esc(x.label) + "</span>" + (x.desc ? '<span class="gv-od">' + esc(x.desc) + "</span>" : "") + "</span></div>"; }).join(""), "gv-pop-list " + (cls || ""));
+    function listPop(el, items, cls, title) {
+      var p = pop(el, (title ? '<div class="gv-rewind-title">' + esc(title) + "</div>" : "") + items.map(function (x, i) { return '<div class="gv-opt' + (x.on ? " on" : "") + '" data-i="' + i + '" tabindex="-1"><span class="gv-ck">' + (x.on ? "✓" : "") + '</span><span class="gv-om"><span class="gv-on">' + esc(x.label) + "</span>" + (x.desc ? '<span class="gv-od">' + esc(x.desc) + "</span>" : "") + "</span></div>"; }).join(""), "gv-pop-list " + (cls || ""));
       if (!p) return;
       var sel = Math.max(0, items.findIndex(function (x) { return x.on; }));
-      var hi = function () { p.querySelectorAll(".gv-opt").forEach(function (o, i) { o.classList.toggle("kf", i === sel); }); var o2 = p.querySelectorAll(".gv-opt")[sel]; if (o2) o2.focus({ preventScroll: true }); };
+      var hi = function () { p.querySelectorAll(".gv-opt").forEach(function (o, i) { o.classList.toggle("kf", i === sel); }); var o2 = p.querySelectorAll(".gv-opt")[sel]; if (o2) { o2.focus({ preventScroll: true }); if (title) o2.scrollIntoView({block:"nearest"}); } };
       p.addEventListener("click", function (e) { var o = e.target.closest(".gv-opt"); if (o) { items[+o.dataset.i].run(); closePop(); ta.focus(); } });
       p.addEventListener("keydown", function (e) { if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(0, Math.min(items.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1))); hi(); } else if (e.key === "Enter") { e.preventDefault(); items[sel].run(); closePop(); ta.focus(); } });
       hi();
@@ -1145,12 +1145,21 @@
       }
       if (rt.sendTerminal) {
         if (!v.trim() && !imgs.length) return;
-        var cmd = !imgs.length && rt.headless() && TSU_AGY.localAction(v);
+        var cmd = !imgs.length && (rt.headless() || v.trim() === "/rewind") && TSU_AGY.localAction(v);
         if (cmd) {
           var local = CMDS.find(c => c.name === cmd && ["/model", "/context"].includes(cmd));
           if (cmd === "/model") rt.prepareChoices().then(() => local.run()).catch(e => P.flash(e.message, 3000));
           else if (local) local.run();
-          else if (cmd === "/rewind") rt.rewind(P).catch(e => P.flash(e.message, 4000));
+          else if (cmd === "/rewind") {
+            var report = msg => P.flash(msg, 5000);
+            rt.rewind((title, options, onPick) => {
+              if (!P.closed && P.program === V) listPop(ta, options.map(o => ({
+                label:o.label, run:() => queueMicrotask(() => onPick(o.value))
+              })), "gv-pop-rewind", title);
+            }, text => {
+              if (!P.closed && P.program === V && !ta.value) { ta.value = text; draftSave(); grow(); }
+            }, report).catch(e => report(e.message));
+          }
           else if (cmd === "/usage") STUDIO.settings(P.win, "usage");
           else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
           else if (cmd === "/tasks") STUDIO.revealFamily(agentId, "bg", P);

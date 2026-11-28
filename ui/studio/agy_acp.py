@@ -182,6 +182,9 @@ async def serve(marker, cwd, transcript, has_background):
                             resumed = await rpc("session/resume", {"sessionId":sid, "cwd":cwd, "mcpServers":[]})
                             config.update({o["id"]: o for o in resumed.get("configOptions", [])})
                             loaded = True
+                        if request.get("open"):
+                            emit(writer, {"result":{"opened":True}})
+                            return
                         if request.get("model"):
                             model = request["model"]
                             choices = config.get("model", {}).get("options", [])

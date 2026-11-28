@@ -267,6 +267,8 @@ html.st-reduced .gv-spin > .gv-logo { animation: none; }
 .gv-psep { height: 1px; background: var(--st-line); margin: 14px -16px 10px; }
 .gv-prow { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
 .gv-pop-list { padding: 6px; min-width: 250px; }
+.gv-pop-rewind { max-height:min(52vh, 420px); overflow-y:auto; }
+.gv-rewind-title { padding:5px 10px; color:var(--st-dim); }
 .gv-pop-model { width: auto; max-width: 560px; padding: 6px; outline: 0; }
 .gv-casc { display: flex; min-height: 80px; }
 .gv-provs { flex: none; width: 150px; padding-right: 6px; border-right: 1px solid var(--st-line); margin-right: 6px; }

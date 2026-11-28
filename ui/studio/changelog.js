@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.13", items: { fixed: [
+      ["Google Antigravity 的 `/rewind` 直接在当前对话里选择历史消息，可仅回退对话，或同时恢复文件。选中的文字回到输入框。", "Use Antigravity’s `/rewind` in the current chat to restore a conversation, optionally including file changes. The selected message returns to the composer."],
+      ["文件引用的悬停提示保持单行，长目录自动省略，文件名和行号优先显示。", "File reference tooltips stay on one line and shorten long directories to keep the filename and line number visible."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.12", items: { added: [
       ["在 Google Antigravity 对话中输入 `/rewind` 可打开原生回退列表。用方向键选择历史消息，回车回退，Esc 取消。", "Type `/rewind` in a Google Antigravity conversation to open its native rewind picker. Choose a message with the arrow keys, press Enter to rewind, or Esc to cancel."]
     ] } },

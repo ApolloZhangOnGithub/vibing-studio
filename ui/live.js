@@ -1224,7 +1224,17 @@
     pathHint = document.createElement("div");
     pathHint.className = "vs-path-hint";
     pathHint.dataset.target = value;
-    pathHint.textContent = value;
+    var cut = value.lastIndexOf("/") + 1;
+    var directory = document.createElement("span"), filename = document.createElement("span");
+    directory.className = "vs-hint-directory";
+    var prefix = value.slice(0, cut), home = window.TSU_LOCAL?.info()?.home;
+    directory.textContent = home && prefix.startsWith(home + "/") ? "~" + prefix.slice(home.length) : prefix;
+    pathHint.setAttribute("aria-label", value);
+    filename.className = "vs-hint-filename";
+    var name = document.createElement("bdi");
+    name.textContent = value.slice(cut);
+    filename.append(name);
+    pathHint.append(directory, filename);
     var hint = pathHint;
     function place() {
       var rect = hintAnchor.getBoundingClientRect(), height = hint.offsetHeight;
@@ -5829,10 +5839,19 @@
       }, function () {});
     }
     function agyLocalCommand(text) {
-      var cmd = rt.headless() && TSU_AGY.localAction(text);
+      var cmd = (rt.headless() || text.trim() === "/rewind") && TSU_AGY.localAction(text);
       if (!cmd) return false;
       if (cmd === "/tasks") STUDIO.revealFamily(agentId,"bg",P);
-      else if (cmd === "/rewind") rt.rewind(P).catch(e => P.flash(e.message, 4000));
+      else if (cmd === "/rewind") {
+        var report = msg => P.flash(msg, 5000);
+        rt.rewind((title, options, onPick) => {
+          if (!P.closed && P.program === V) picker({title, options, onPick, wide:true});
+        }, text => {
+          if (!P.closed && P.program === V && !P.ta.value) {
+            P.ta.value = text; draftSet(agentId, text); renderInput();
+          }
+        }, report).catch(e => report(e.message));
+      }
       else if (cmd === "/usage") toggleAgentQuota(P.input.querySelector("[data-quota]") || P.ta);
       else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
       else if (cmd === "/context") TSU_CTX.open(rt, P.ta, {tui:true});
@@ -6449,7 +6468,7 @@
         var on = i === panel.sel, checked = panel.multi ? ((cfg[o.key] || []).indexOf(o.value) >= 0) : o.current;
         var mark = panel.multi ? (checked ? "[✔] " : "[ ] ") : String(i + 1).padStart(digits) + ". ";
         map[rows.length] = { opt: i };
-        var labelWidth = Math.max(1, Math.min(panel.multi ? 40 : 26, fcols - W(indent + mark) - 3));
+        var labelWidth = Math.max(1, Math.min(panel.wide ? fcols : panel.multi ? 40 : 26, fcols - W(indent + mark) - 3));
         var line = indent + (on ? LAV + "❯ " : "  ") + mark + pad(clip(uiT(o.label) + (checked && !panel.multi ? " ✔" : ""), labelWidth), labelWidth) + RESET;
         if (o.desc && fcols - W(line) > 5) line += "  " + (on ? "" : D) + clip(uiT(o.desc), fcols - W(line) - 2) + RESET;
         rows.push(line);

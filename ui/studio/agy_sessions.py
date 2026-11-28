@@ -24,6 +24,8 @@ import uuid
 import sqlite3
 import subprocess
 import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid5
 
@@ -702,65 +704,79 @@ def submit_running(sid, message):
         return False
 
 
-def rewind_terminal(sid):
-    """Resume the actual CLI and open its picker through interactive input."""
-    if not os.isatty(0):
-        sys.exit("回退会话需要交互终端")
+def rewind_messages(sid, target=None):
+    path = session_transcript(sid)
+    if not path:
+        sys.exit("找不到会话记录")
+    database = path.parents[4] / "conversations" / (sid + ".db")
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+        query = "SELECT idx, metadata, step_payload FROM steps WHERE step_type=14"
+        found = []
+        for idx, meta, payload in db.execute(query + (" AND idx=?" if target is not None else " ORDER BY idx DESC"),
+                                             (target,) if target is not None else ()):
+            body = next((v for k, v in wire_fields(payload) if k == 19), b"")
+            text = next((v.decode("utf-8") for k, v in wire_fields(body) if k == 2), "")
+            stamp = hashlib.sha256(meta or b"").hexdigest()
+            found.append(dict(index=idx, key=stamp, text=text if target is not None else text[:160]))
+        return found
+
+
+def rewind_owner(sid):
     marker = activity_file(sid)
-    marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with marker.open("a+") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            sys.exit("AGY 正在使用此会话，请在当前任务结束后再回退")
-        if terminal_sessions().get(sid):
-            sys.exit("此会话已在另一终端打开，请在那里执行 /rewind")
-        lock.seek(0)
-        lock.truncate()
-        lock.write("0\nrewind")
-        lock.flush()
-        master = None
-        stage = "prompt"
-        tail = b""
 
-        def resize(*_):
-            if master is not None:
-                size = fcntl.ioctl(0, termios.TIOCGWINSZ, bytes(8))
-                fcntl.ioctl(master, termios.TIOCSWINSZ, size)
+    def pid():
+        owners = subprocess.run(["/usr/sbin/lsof", "-t", str(marker)], capture_output=True, text=True).stdout.split() if marker.exists() else []
+        for owner in owners:
+            children = subprocess.run(["/usr/bin/pgrep", "-P", owner, "-x", "agy"], capture_output=True, text=True).stdout.split()
+            if len(children) == 1:
+                return children[0]
+        return None
 
-        def output(fd):
-            nonlocal master, stage, tail
-            if master is None:
-                master = fd
-                resize()
-            data = os.read(fd, 16384)
-            if stage:
-                tail = (tail + data)[-4096:]
-                if stage == "prompt" and (b"shift+tab to cycle" in tail or b"? for shortcuts" in tail):
-                    os.write(fd, b"/rewind")
-                    stage, tail = "completion", b""
-                elif stage == "completion" and re.search(
-                    rb"> +/rewind +Rewind conversation to a previous message",
-                    re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", tail)
-                ):
-                    os.write(fd, b"\r")
-                    stage, tail = "", b""
-            return data
+    current = pid()
+    if current:
+        return current
+    external = terminal_sessions(foreground=True).get(sid)
+    if external:
+        return external[1]
+    # Start the normal persistent Studio connection and resume without sending a prompt.
+    start_owner(sid, marker, {"open": True})
+    current = pid()
+    if not current:
+        sys.exit("未找到此会话的 AGY 服务")
+    return current
 
-        def keyboard(fd):
-            nonlocal stage
-            data = os.read(fd, 1024)
-            if stage == "completion" and not data.startswith((b"\x1b[", b"\x1b]", b"\x1bP")):
-                stage = ""
-            return data
 
-        previous = signal.signal(signal.SIGWINCH, resize)
-        try:
-            pty.spawn(["agy", "--conversation", sid], output, keyboard)
-        finally:
-            signal.signal(signal.SIGWINCH, previous)
-            lock.seek(0)
-            lock.truncate()
+def apply_rewind(sid, index, key, conversation_only):
+    pid = rewind_owner(sid)
+    files = subprocess.check_output(["/usr/sbin/lsof", "-nP", "-p", pid, "-Fn"], text=True)
+    logdir = Path.home() / ".gemini/antigravity-cli/log"
+    port = None
+    for line in files.splitlines():
+        path = Path(line[1:])
+        if not line.startswith("n") or path.parent != logdir or path.suffix != ".log":
+            continue
+        with path.open("rb") as stream:
+            boot = stream.read(128 * 1024)
+        if not re.search(rb"Starting language server process with pid " + pid.encode() + rb"\b", boot):
+            continue
+        match = re.search(rb"listening on random port at (\d+) for HTTP\b", boot)
+        if match:
+            port = int(match[1])
+            break
+    if not port:
+        sys.exit("无法定位此会话的 AGY 服务端口")
+    rows = rewind_messages(sid, index)
+    if not rows or rows[0]["key"] != key:
+        sys.exit("历史消息已变化，请重新选择回退位置")
+    url = f"http://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/RevertToCascadeStep"
+    body = dict(cascadeId=sid, stepIndex=index - 1, conversationOnly=conversation_only)
+    request = Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(request, timeout=30) as response:
+            json.load(response)
+    except HTTPError as error:
+        sys.exit(json.loads(error.read()).get("message") or str(error))
+    return {"text": rows[0]["text"]}
 
 
 def send_message(sid, message, model=None, configure=False, slash_command=False):
@@ -772,12 +788,6 @@ def send_message(sid, message, model=None, configure=False, slash_command=False)
     request = {"message": message, "model": model, "configure": configure}
     if slash_command and message.strip() == "/rewind":
         return send_terminal(sid, "/rewind", slash_command=True)
-    if marker_path.exists() and marker_path.read_text().splitlines()[1:] == ["rewind"]:
-        try:
-            with marker_path.open() as guard:
-                fcntl.flock(guard, fcntl.LOCK_SH | fcntl.LOCK_NB)
-        except BlockingIOError:
-            sys.exit("请在已打开的回退终端继续操作，或关闭该终端后发送")
     result = agy_acp.exchange(marker_path, request)
     if result is not None:
         return result
@@ -808,6 +818,10 @@ def send_message(sid, message, model=None, configure=False, slash_command=False)
         return send_terminal(sid, message, slash_command=slash_command)
     if tty:
         sys.exit("此会话由外部后台进程持有，Studio 没有它的输入通道")
+    return start_owner(sid, marker_path, request)
+
+
+def start_owner(sid, marker_path, request):
     path = transcripts().get(sid)
     if not path:
         sys.exit("找不到本机会话文件")
@@ -1028,7 +1042,10 @@ def terminal_screen(tty):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rewind-terminal", type=UUID)
+    parser.add_argument("--rewind", type=UUID)
+    parser.add_argument("--step", type=int)
+    parser.add_argument("--step-key")
+    parser.add_argument("--with-files", action="store_true")
     parser.add_argument("--acp-owner", type=UUID)
     parser.add_argument("--session", type=UUID)
     parser.add_argument("--interrupt", type=UUID)
@@ -1050,9 +1067,10 @@ def main():
     args = parser.parse_args()
     if args.create:
         return create_session(args.verification)
-    if args.rewind_terminal:
-        rewind_terminal(str(args.rewind_terminal))
-        sys.exit(0)
+    if args.rewind:
+        if args.step is None:
+            return rewind_messages(str(args.rewind))
+        return apply_rewind(str(args.rewind), args.step, args.step_key, not args.with_files)
     if args.acp_owner:
         asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner)), owner_has_background))
         return {}

@@ -943,12 +943,26 @@
         },
         detachBash: no, takeQueued: function () { return null; },
         ctx: function () { var tokens = rt.contextTokens || 0, window = rt.contextLimit || 0; return {tokens, window, pct:window ? tokens/window*100 : 0}; },
-        rewind: async function (pane) {
-          if (rt.state() === "working") throw new Error("请在当前任务结束后回退会话");
-          var helper = await TSU_LOCAL.studioHelper("agy_sessions.py");
-          if (pane.closed) return;
-          var terminal = pane.win.ws.newTab({ sh: { cwd: rt.cwd(), pty: true } });
-          terminal.shell.type(["python3", helper, "--rewind-terminal", id].map(quote).join(" ") + "\r");
+        rewind: async function (choose, restore, report) {
+          var rows = await readAgy(["--rewind", id]);
+          if (!rows.length) throw new Error("没有可回退的消息");
+          choose("回退到哪条消息之前？", rows.map(row => ({
+            label: row.text.replace(/\s+/g, " ").trim() || "附件消息",
+            value: row
+          })), row => choose("回退范围", [
+            {label:"仅回退对话", value:false},
+            {label:"回退对话和文件更改", value:true}
+          ], async files => {
+            try {
+              var args = ["--rewind", id, "--step", String(row.index), "--step-key", row.key];
+              if (files) args.push("--with-files");
+              var result = await readAgy(args);
+              restore(result.text);
+              if (loading) await loading;
+              loading = load();
+              await loading;
+            } catch (e) { report(e.message); }
+          }));
         },
         cwd: function () { return info && info.cwd || ""; },
         todo: function () { return session.todo.items; },
