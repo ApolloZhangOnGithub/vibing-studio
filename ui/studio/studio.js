@@ -3092,6 +3092,7 @@
   // ---- 文件：默认只看（Markdown 排好、代码高亮、图片、PDF；别处改了跟着刷新），「编辑」才改，⌘S 存 ----
   var FILES = {}; // 路径 → { text, saved, kind, url, mtime, size, mode, dirty }
   var IMG = { png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, bmp: 1, ico: 1, svg: 1, heic: 1, tiff: 1, tif: 1 }, MIME = { svg: "image/svg+xml", pdf: "application/pdf", jpg: "image/jpeg" };
+  const VIDEO_MIME = {mp4:"video/mp4", m4v:"video/mp4", mov:"video/quicktime", webm:"video/webm", ogv:"video/ogg", mkv:"video/x-matroska", avi:"video/x-msvideo", mpg:"video/mpeg", mpeg:"video/mpeg"};
   // Office 这些：用 macOS 的「快速查看」生成预览（同访达里按空格看到的），放进原生的网页视图里看；要改就用默认 App 打开
   var OFFICE = { docx: 1, doc: 1, dotx: 1, xlsx: 1, xlsm: 1, xls: 1, pptx: 1, ppt: 1, pages: 1, numbers: 1, key: 1, rtf: 1, rtfd: 1, odt: 1, ods: 1, odp: 1 };
   var extOf = function (p) { var n = String(p).split("/").pop(), i = n.lastIndexOf("."); return i > 0 ? n.slice(i + 1).toLowerCase() : ""; };
@@ -3164,7 +3165,7 @@
         } else out.push({ icon: ICO.edit, title: "编辑", run: function () { f.mode = "edit"; again(); } });
       }
       if (LOC() && extOf(path) === "ipynb" && !f.dirty) out.push({ icon: ICO.open, title: "在 JupyterLab 中打开", run: function () { T().run("jupyter lab " + shq(path), path.slice(0, path.lastIndexOf("/"))); } });
-      if (LOC() && (f.kind === "office" || f.kind === "pdf")) out.push({ icon: ICO.open, title: "用默认应用打开", run: function () { LOC().exec({ cmd: "open " + T().shellEscape(path) }).catch(function () {}); } }); // 要改就在 Word / Pages / 预览 里改
+      if (LOC() && (f.kind === "office" || f.kind === "pdf" || f.kind === "video")) out.push({ icon: ICO.open, title: "用默认应用打开", run: function () { LOC().exec({ cmd: "open " + T().shellEscape(path) }).catch(function () {}); } }); // 要改就在 Word / Pages / 预览 里改
       if (LOC()) out.push({ icon: ICO.reveal, title: "在访达中显示", run: function () { LOC().exec({ cmd: "open -R " + T().shellEscape(path) }).catch(function () {}); } });
       return out;
     },
@@ -3205,6 +3206,7 @@
       if (f.kind === "jsonl-pages") return jsonlPages(body, path, f.size);
       if (f.kind === "big" || f.kind === "binary") { body.innerHTML = '<div class="st-dim st-pad">' + (f.kind === "big" ? "文件太大（" + kfmt(f.size) + "B），无法预览" : "二进制文件，无法预览") + '　<span class="st-k" data-fa="reveal">在访达中显示</span></div>'; return; }
       if (f.native) return nativeFile(body, path, f, V);
+      if (f.kind === "video") return showFileVideo(body, path, f);
       if (f.kind === "image") return showFileImage(body, f.url);
       if (f.kind === "pdf") { body.innerHTML = '<iframe class="st-pdf" src="' + f.url + '"></iframe>'; return; }
       if (notebook) {
@@ -3233,6 +3235,7 @@
     if (!body) return;
     const image = body.querySelector(".st-img");
     if (image) { image.disposeImage?.(); window.TSU_FILE_ZOOM?.(image, false); }
+    body.disposeVideo?.();
     if (body.ro) body.ro.disconnect();
     if (body.nv?.stop) body.nv.stop();
     if (body.nv?.h) body.nv.h.close();
@@ -3405,6 +3408,11 @@ else:
       // App 里：PDF（多大都行）、Office 文稿不读进页面——原生的网页视图直接读文件（见 nativeFile）
       if (nat && ext === "pdf") { f.kind = "pdf"; f.native = true; return fin(); }
       if (nat && OFFICE[ext]) { f.kind = "office"; f.native = true; return fin(); }
+      if (Object.hasOwn(VIDEO_MIME, ext)) {
+        f.kind = "video";
+        f.native = false;
+        return fin();
+      }
       if (IMG[ext]) {
         return (async () => {
           var url = await readImageUrl(path, st.size, () => over);
@@ -3432,6 +3440,75 @@ else:
   // PDF、Office：原生的网页视图直接读文件（file://；WebKit 自己的 PDF 显示，几百 MB 也只画看得见的那几页），叠在这一块上；
   //   Office 先用「快速查看」（qlmanage）生成一份预览（HTML + 附件）放在缓存里，同一个文件没改过就不再生成。标签页关了原生那块跟着关（webview.js）
   function fileUrl(p) { return "file://" + String(p).split("/").map(encodeURIComponent).join("/"); }
+  // Browser-connected files arrive through the file bridge in bounded reads.
+  async function showFileVideo(body, path, file) {
+    if (body.videoFile === file && body.videoTime === file.mtime) return;
+    body.disposeVideo?.();
+    const video = document.createElement("video"), message = document.createElement("div");
+    video.controls = true;
+    video.playsInline = true;
+    video.style.cssText = "width:100%;height:100%;object-fit:contain;background:black";
+    message.className = "st-dim st-pad";
+    message.textContent = "正在读取视频…";
+    video.hidden = true;
+    body.replaceChildren(message, video);
+    let url, stream, disposed = false;
+    body.videoFile = file;
+    body.videoTime = file.mtime;
+    const dispose = body.disposeVideo = () => {
+      if (disposed) return;
+      disposed = true;
+      window.removeEventListener("pagehide", dispose);
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      stream?.close();
+      if (url) URL.revokeObjectURL(url);
+    };
+    window.addEventListener("pagehide", dispose);
+    video.onerror = () => {
+      if (disposed) return;
+      video.hidden = true;
+      message.hidden = false;
+      message.textContent = video.error?.code === 2 ? "视频读取中断" : "当前播放器无法解码此视频";
+    };
+    const localDir = !window.nadosNative?.remote && window.TSU_UI_LOCAL?.dir;
+    if (localDir && LOC().proc) {
+      let output = "";
+      function failed() {
+        if (disposed) return;
+        video.hidden = true;
+        message.hidden = false;
+        message.textContent = "无法读取本地视频";
+      }
+      stream = LOC().proc({argv: ["python3", localDir + "/studio/video_stream.py", path, VIDEO_MIME[extOf(path)]]}, (chunk, stderr) => {
+        if (disposed || stderr || video.src) return;
+        output += chunk;
+        if (!output.includes("\n")) return;
+        const src = output.trim();
+        if (!/^http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+$/.test(src)) return failed();
+        video.src = src;
+        video.hidden = false;
+        message.hidden = true;
+      }, failed);
+      stream.started.catch(failed);
+      return;
+    }
+    try {
+      const parts = [];
+      for (let offset = 0; offset < file.size;) {
+        const chunk = await LOC().read(path, {offset, max: Math.min(4 * 1024 * 1024, file.size - offset)});
+        if (disposed || !body.isConnected) return;
+        if (!chunk.byteLength) throw new Error("视频读取不完整");
+        parts.push(chunk);
+        offset += chunk.byteLength;
+      }
+      url = URL.createObjectURL(new Blob(parts, {type: VIDEO_MIME[extOf(path)]}));
+      video.src = url;
+      video.hidden = false;
+      message.hidden = true;
+    } catch (err) { if (!disposed) message.textContent = "无法读取视频：" + err.message; }
+  }
   function nativeFile(body, path, f, V) {
     var key = f.kind + ":" + f.mtime + ":" + f.size, nv = body.nv;
     if (nv && nv.key === key && nv.box.parentNode === body) { if (nv.h) nv.h.place(); return; }
