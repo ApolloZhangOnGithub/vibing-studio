@@ -201,14 +201,15 @@
     covered: covered,
     // 别的页面也在一块地方叠一个原生的网页视图（文件：PDF、Office 的快速查看预览、很大的图片——原生直接读文件，不经过页面，几百 MB 也不卡）：
     //   位置跟着那一块、被菜单 / 浮层盖住时藏起来、那一块没了（标签页关了）就关掉释放，都同上。shown()：现在该不该露出来。没有原生 → null
-    overlay: function (box, url, shown) {
+    localVideo: () => !N?.remote && cmds.includes("video.open"),
+    overlay: function (box, url, shown, videoPath) {
       if (!native()) return null;
       var id = "wo" + (++seq).toString(36) + Date.now().toString(36), V = { id: id, host: box, box: box, lastFrame: "", arg: url };
       V.shown = shown || function () { return box.isConnected && !!box.offsetParent; };
       V.gone = function () { return !box.isConnected; };
       views[id] = V;
       saveOwners();
-      N.call("web.open", { id: id, url: url }).then(function () { V.lastFrame = ""; place(V); }).catch(function () {});
+      N.call(videoPath ? "video.open" : "web.open", videoPath ? {id, path:videoPath} : {id, url}).then(function () { V.lastFrame = ""; place(V); }).catch(function () {});
       placeAll();
       return {
         id: id,

@@ -3206,7 +3206,36 @@
       if (f.kind === "jsonl-pages") return jsonlPages(body, path, f.size);
       if (f.kind === "big" || f.kind === "binary") { body.innerHTML = '<div class="st-dim st-pad">' + (f.kind === "big" ? "文件太大（" + kfmt(f.size) + "B），无法预览" : "二进制文件，无法预览") + '　<span class="st-k" data-fa="reveal">在访达中显示</span></div>'; return; }
       if (f.native) return nativeFile(body, path, f, V);
-      if (f.kind === "video") return showFileVideo(body, path, f);
+      if (f.kind === "video") {
+        if (!body.videoNativeFailed && window.TSU_WEB?.localVideo?.() && /^(mp4|m4v|mov)$/i.test(extOf(path))) {
+          if (!body.nv) {
+            const box = document.createElement("div");
+            box.className = "st-nv";
+            body.replaceChildren(box);
+            const h = TSU_WEB.overlay(box, fileUrl(path), V.shown, path);
+            const off = window.nadosNative.on("video.error", event => {
+              if (event.id !== h.id || !box.isConnected) return;
+              off();
+              h.close();
+              body.nv = null;
+              body.videoNativeFailed = true;
+              showFileVideo(body, path, f);
+            });
+            body.nv = {box, h, stop:off};
+            box.tabIndex = 0;
+            box.onkeydown = async e => {
+              if (![" ", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+              e.preventDefault();
+              const transport = (action, seconds) => window.nadosNative.call("video.transport", {id:h.id, action, seconds});
+              if (e.key === " ") { if (!e.repeat) await transport("toggle"); return; }
+              const state = await transport("state");
+              if (state) await transport("seek", Math.min(state.duration, Math.max(0, state.time + (e.key === "ArrowLeft" ? -5 : 5))));
+            };
+          }
+          return;
+        }
+        return showFileVideo(body, path, f);
+      }
       if (f.kind === "image") return showFileImage(body, f.url);
       if (f.kind === "pdf") { body.innerHTML = '<iframe class="st-pdf" src="' + f.url + '"></iframe>'; return; }
       if (notebook) {
@@ -3447,6 +3476,7 @@ else:
     const video = document.createElement("video"), message = document.createElement("div");
     video.controls = true;
     video.playsInline = true;
+    video.preload = "auto";
     video.style.cssText = "width:100%;height:100%;object-fit:contain;background:black";
     message.className = "st-dim st-pad";
     message.textContent = "正在读取视频…";
@@ -3481,7 +3511,7 @@ else:
         message.hidden = false;
         message.textContent = "无法读取本地视频";
       }
-      stream = LOC().proc({argv: ["python3", localDir + "/studio/video_stream.py", path, VIDEO_MIME[extOf(path)]]}, (chunk, stderr) => {
+      stream = LOC().proc({argv: ["python3", "-I", "-S", localDir + "/studio/video_stream.py", path, VIDEO_MIME[extOf(path)]]}, (chunk, stderr) => {
         if (disposed || stderr || video.src) return;
         output += chunk;
         if (!output.includes("\n")) return;
@@ -3914,6 +3944,14 @@ else:
     var f = FILES[path];
     if (f && o && o.line) { f.line = o.line; f.scrolled = false; }
     if (!f) FILES[path] = { kind: "", mode: "view", dirty: false, line: (o && o.line) || 0 };
+    if (!FILES[path].loaded && st?.type === "file" && Object.hasOwn(VIDEO_MIME, extOf(path))) {
+      const video = FILES[path];
+      video.kind = "video";
+      video.loaded = true;
+      video.mtime = st.mtime;
+      video.size = st.size;
+      if (!video.capture) rememberFile(path, video);
+    }
     const pane = openPage(tw, "file", path);
     if (f && o?.line) pane?.program?.redraw?.();
   }

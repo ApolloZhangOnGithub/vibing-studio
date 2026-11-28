@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.26", items: { improved: [
+      ["更新 Mac App 后，本地 MP4 和 MOV 使用系统播放器直接读取文件，缩短打开和连续拖动进度后的等待。", "The updated Mac app plays local MP4 and MOV files directly with the system player, reducing startup time and delays after scrubbing."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.25", items: { fixed: [
       ["视频文件可直接在标签页中播放、暂停和拖动进度。Mac 本地视频按需读取，大文件也能跳转播放。", "Play, pause, and seek videos in file tabs. Local videos on Mac stream on demand, including when seeking in large files."]
     ] } },

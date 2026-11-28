@@ -3,21 +3,63 @@
 // 页面管地址栏、前进后退、放在哪；这边把状态（地址、标题、加载中、能不能前进后退、进度、出错）告诉页面（事件 web.state）
 import AppKit
 import WebKit
+import AVKit
 
 @MainActor
 final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
   // 网页里存起来的密钥（WebCrypto）用的主密钥：App 自己给（WebCryptoKey.swift）——不让 WebKit 放进钥匙串（那一项每次更新都要输开机密码）
   @objc(_webCryptoMasterKeyForWebView:completionHandler:)
   func webCryptoMasterKey(_ webView: WKWebView, completionHandler: @escaping (Data?) -> Void) { WebCryptoKey.get(completionHandler) }
-  static let commands = ["web.open", "web.frame", "web.nav", "web.close", "web.snapshot"]
+  static let commands = ["web.open", "web.frame", "web.nav", "web.close", "web.snapshot", "video.open", "video.transport"]
   weak var controller: WebController?
   private var views: [String: WKWebView] = [:]
+  private var players: [String: AVPlayerView] = [:]
   private var kvo: [String: [NSKeyValueObservation]] = [:]
   private var errors: [String: String] = [:]
 
-  func run(_ cmd: String, _ a: [String: Any]) throws -> Any? {
+  func run(_ cmd: String, _ a: [String: Any]) async throws -> Any? {
     guard let id = a["id"] as? String, !id.isEmpty else { throw BridgeError.args("\(cmd) { id, … }") }
     switch cmd {
+    case "video.open":
+      guard let path = a["path"] as? String, path.hasPrefix("/"),
+            let host = controller?.webView else { throw BridgeError.args("video.open { id, path }") }
+      let view = AVPlayerView()
+      let player = AVPlayer(url: URL(fileURLWithPath: path))
+      player.automaticallyWaitsToMinimizeStalling = false
+      view.player = player
+      view.controlsStyle = .floating
+      view.showsFullScreenToggleButton = true
+      view.isHidden = true
+      if let item = player.currentItem {
+        kvo[id] = [item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+          if item.status == .failed {
+            Task { @MainActor in self?.controller?.emit("video.error", ["id": id]) }
+          }
+        }]
+      }
+      players[id] = view
+      host.addSubview(view)
+      return nil
+    case "video.transport":
+      guard let view = players[id], let player = view.player else { return nil }
+      switch a["action"] as? String {
+      case "play": player.play()
+      case "pause": player.pause()
+      case "toggle": if player.rate == 0 { player.play() } else { player.pause() }
+      case "seek":
+        guard let seconds = a["seconds"] as? Double, seconds.isFinite else { throw BridgeError.args("video.seek time") }
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        _ = await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+      case "state": break
+      default: throw BridgeError.args("Unknown video action")
+      }
+      let t = player.currentTime().seconds, duration = player.currentItem?.duration.seconds ?? 0
+      let item = player.currentItem
+      let fps = item?.tracks.map { $0.currentVideoFrameRate }.max() ?? 0
+      let drops = item?.accessLog()?.events.last?.numberOfDroppedVideoFrames ?? -1
+      return ["fps": fps, "droppedFrames": drops, "ready": view.isReadyForDisplay, "time": t.isFinite ? t : 0,
+              "duration": duration.isFinite ? duration : 0, "rate": player.rate,
+              "error": player.currentItem?.error?.localizedDescription ?? ""] as [String: Any]
     case "web.open":
       // 开一个（有了就复用）；给了地址就去那里
       let v = views[id] ?? make(id)
@@ -28,7 +70,7 @@ final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
       return nil
     case "web.frame":
       // 放在页面的哪一块（CSS 像素，相对窗口里的网页）；visible: false 或太小就藏起来
-      guard let v = views[id], let host = controller?.webView else { return nil }
+      guard let v: NSView = (players[id] as NSView?) ?? views[id], let host = controller?.webView else { return nil }
       let x = num(a["x"]), y = num(a["y"]), w = max(0, num(a["w"])), h = max(0, num(a["h"]))
       v.frame = NSRect(x: x, y: host.isFlipped ? y : host.bounds.height - y - h, width: w, height: h)
       v.isHidden = !((a["visible"] as? Bool) ?? true) || w < 4 || h < 4
@@ -44,6 +86,11 @@ final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
       }
       return nil
     case "web.close":
+      if let view = players.removeValue(forKey: id) {
+        view.player?.pause()
+        view.player = nil
+        view.removeFromSuperview()
+      }
       kvo[id] = nil
       errors[id] = nil
       if let v = views.removeValue(forKey: id) { v.stopLoading(); v.removeFromSuperview() }
@@ -54,6 +101,12 @@ final class WebPanes: NSObject, WKNavigationDelegate, WKUIDelegate {
   }
 
   func closeAll() {
+    for view in players.values {
+      view.player?.pause()
+      view.player = nil
+      view.removeFromSuperview()
+    }
+    players.removeAll()
     kvo.removeAll()
     errors.removeAll()
     for view in views.values {

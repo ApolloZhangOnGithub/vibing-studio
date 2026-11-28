@@ -234,7 +234,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply {
       if local != nil, RemoteHost.commands.contains(cmd) { return RemoteHost.shared.handle(cmd, a) } // iPad 使用这台 Mac（RemoteHost.swift）：设置页的开关、设备列表
       if SystemInfo.commands.contains(cmd) { return try await SystemInfo.run(cmd, a) }
       if let web, cmd == "web.snapshot" { return try await web.snapshot(a) }
-      if let web, WebPanes.commands.contains(cmd) { return try web.run(cmd, a) }
+      if let web, WebPanes.commands.contains(cmd) { return try await web.run(cmd, a) }
       if let rdp, RdpPanes.commands.contains(cmd) { return try await rdp.run(cmd, a) }
       if let scr, ScreenPanes.commands.contains(cmd) { return try await scr.run(cmd, a) }
       throw BridgeError(code: "E_UNKNOWN_CMD", message: "unknown command \"\(cmd)\" (known: \(Bridge.commands.joined(separator: ", ")))")
