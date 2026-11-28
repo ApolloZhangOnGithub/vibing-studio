@@ -11,6 +11,13 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.16", items: { improved: [
+      ["底栏四项读数依次标为 CPU、GPU、Mem 和 Disk，容量单位紧贴数值。", "The four status bar readings are labeled CPU, GPU, Mem and Disk, with compact capacity units."]
+    ] } },
+    { date: "2026-11-28", ver: "0.2.4.15", items: { improved: [
+      ["窗口底栏以紧凑的英文读数显示系统资源，与对话状态行右对齐。", "The status bar shows compact, read-only system metrics aligned with the conversation footer."],
+      ["Mac 上的活动监视器在打开前就开始记录资源曲线。资源分类位于图表下方，在列表和时间线之间切换时都可使用。", "On Mac, Activity Monitor records resource history before you open it. The resource selector sits below the charts in both list and timeline views."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.14", items: { improved: [
       ["底栏的 CPU、GPU、内存和磁盘读数对齐显示。展开时立即刷新，点击读数打开活动监视器时会先显示最近的采样。", "CPU, GPU, memory and free disk space now align in the status bar. Opening the bar refreshes its readings immediately, and Activity Monitor shows recent readings while sampling."]
     ] } },

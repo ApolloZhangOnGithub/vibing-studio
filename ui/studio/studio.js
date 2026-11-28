@@ -719,7 +719,6 @@
     if (item && P && P.els && P.els[item.dataset.el]) { var el0 = P.els[item.dataset.el]; if (el0.click) { el0.click(); return renderSoon(tw); } return pop(tw, el0, item); }
   }
   function action(tw, what, el) {
-    if (what === "activity-monitor") return openPage(tw, "activity", "");
     famPress = false; // 点完了（click 在 pointerup 之后）：这一下要的重画马上做——以前按着的标记要等 pointerup 的下一拍才清，这一下的重画被跳过，等下一秒的定时重画才展开（「n 个已结束」点了要等一两秒）
     if (what === "reload") return location.reload();
     if (what === "app-update") return appUpdateNow();
@@ -1151,7 +1150,7 @@
   }
   // ---- 状态栏最右边：整机的 CPU、GPU、内存、磁盘剩余（同菜单栏上的系统状态小工具；用户 2026-10-13）——右键状态栏选显示哪几个，点一下打开活动监视器。
   //   App 里两秒问一次原生（system.load：不起进程）；老版本的 App、Linux 版用一条很轻的命令兜底。窗口看不见、状态栏关着时不读 ----
-  var STATS = [["cpu", "CPU", "CPU"], ["gpu", "GPU", "GPU"], ["mem", "内存", "Memory"], ["disk", "磁盘剩余", "Disk Free"]];
+  var STATS = [["cpu", "处理器", "CPU"], ["gpu", "图形处理器", "GPU"], ["mem", "内存", "Memory"], ["disk", "磁盘剩余", "Disk Free"]];
   // ---- 状态栏左边：当前标签页的 agent 的 5 小时 / 7 天用量和上下文（输入框下面那行「状态信息」关着时，放到这里；用户 2026-10-28）——右键状态栏选显示哪几样 ----
   var showAgentUsageInStatusBar = false;
   var AGU = [["five", "5 小时用量", "5-Hour Usage"], ["week", "7 天用量", "7-Day Usage"], ["ctx", "上下文", "Context"]];
@@ -1214,20 +1213,21 @@
       return v;
     });
   }
-  function statsHtml() {
+  function statsHtml(pane) {
     var v = LOAD.v, on = statsOn(), en = enUI();
     if (!v || !on.length) return "";
-    var gb = function (b) { var g = b / 1073741824; return (g >= 100 ? Math.round(g) : g.toFixed(1)) + " GB"; };
-    var name = function (k) { var x = STATS.filter(function (y) { return y[0] === k; })[0]; return x ? (en ? x[2] : x[1]) : k; };
-    var item = function (k, txt, tip) { return '<span class="st-item st-stat" data-st="activity-monitor" data-stat="' + k + '" title="' + esc(tip) + '"><span>' + esc(name(k)) + '</span><span class="st-stat-value">' + esc(txt) + "</span></span>"; };
+    var gb = function (b) { var g = b / 1073741824; return (g >= 100 ? Math.round(g) : g.toFixed(1)) + "GB"; };
+    var name = { cpu: "CPU", gpu: "GPU", mem: "Mem", disk: "Disk" };
+    var item = function (k, txt, tip) { return '<span data-stat="' + k + '" title="' + esc(tip) + '"><span>' + esc(name[k]) + '</span><span class="st-stat-value">' + esc(txt) + "</span></span>"; };
     var out = [];
     on.forEach(function (k) {
-      if (k === "cpu") out.push(item(k, v.cpu == null ? "—" : Math.round(v.cpu) + "%", en ? "CPU usage (all cores) — click for Activity Monitor" : "CPU 使用率（所有核心）——点一下打开活动监视器"));
-      if (k === "gpu" && v.gpu != null) out.push(item(k, Math.round(v.gpu) + "%", en ? "GPU usage — click for Activity Monitor" : "GPU 使用率——点一下打开活动监视器"));
+      if (k === "cpu") out.push(item(k, v.cpu == null ? "—" : Math.round(v.cpu) + "%", en ? "CPU usage (all cores)" : "处理器使用率（所有核心）"));
+      if (k === "gpu" && v.gpu != null) out.push(item(k, Math.round(v.gpu) + "%", en ? "GPU usage" : "图形处理器使用率"));
       if (k === "mem" && v.memUsed != null) out.push(item(k, gb(v.memUsed), (en ? "Memory used " : "已使用内存 ") + gb(v.memUsed) + (v.memTotal ? (en ? " of " : " / 共 ") + gb(v.memTotal) : "")));
       if (k === "disk" && v.diskFree != null) out.push(item(k, gb(v.diskFree), (en ? "Free on the startup disk: " : "启动盘剩余 ") + gb(v.diskFree) + (v.diskTotal ? (en ? " of " : " / 共 ") + gb(v.diskTotal) : "")));
     });
-    return out.length ? '<span class="st-stat-group">' + out.join("") + "</span>" : "";
+    var size = pane && pane.foot && parseFloat(pane.foot.style.getPropertyValue("--ttu-font-size"));
+    return out.length ? '<span class="st-stat-group"' + (size > 0 ? ' style="--st-reading-size:' + size + 'px"' : "") + '>' + out.join("") + "</span>" : "";
   }
   // 状态栏（窗口最下面一整行，同 VS Code）：左边在哪、在做什么；右边状态、上下文、模型、文件的语言。
   //   转圈、「几秒」在走的时候每 240ms 只重画这一行（以前整个窗口的东西——面板、右侧栏、标题栏——都跟着重画一遍，菜单开着指一下都卡）
@@ -1275,7 +1275,7 @@
       if (prog && prog.page === "macdesk" && window.TSU_MACDESK) { var mdl = TSU_MACDESK.statusLine(prog); if (mdl) rightI.push('<span class="st-item st-stat" data-st="rdp-opts" title="' + esc(enUI() ? "Connection options" : "连接选项") + '">' + esc(mdl) + "</span>"); }
       var agP = agentPaneFor(tw), agu = agentUsage(agP && agP.program); tw._aguTxt = agu; if (agu) left.unshift(agu);
       rightI.push(...updates);
-      var stx = statsHtml();
+      var stx = statsHtml(tw.ws && tw.ws.active);
       if (stx) rightI.push(stx); // 最右边：整机的 CPU、GPU、内存、磁盘
       var sh = left.join('<span class="st-gap"></span>') + '<span class="st-fill"></span>' + rightI.join('<span class="st-gap"></span>');
       if (S.statusHtml !== sh) { S.statusHtml = sh; S.status.innerHTML = sh; }

@@ -1199,10 +1199,8 @@ html.light.termapp .termwin .tab:is(.on, .busy) > .st-ico.st-i-cc { color: #c964
 .st-pg-activity.tr-host { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; padding: 6px 0 0; box-sizing: border-box; }
 /* 状态栏最右边的系统状态（CPU、GPU、内存、磁盘剩余）：数字等宽，跳动时不左右晃 */
 .st-stat { font-variant-numeric: tabular-nums; cursor: pointer; }
-.st-stat-group { display:inline-flex; align-items:baseline; column-gap:8px; padding-inline:4px; }
-.st-stat-group .st-stat { display:inline-flex; align-items:baseline; gap:4px; line-height:16px; }
-.st-stat-value { min-width:4.5ch; text-align:right; }
-.st-stat[data-stat="mem"] .st-stat-value, .st-stat[data-stat="disk"] .st-stat-value { min-width:7ch; }
+.st-stat-group { display: inline-flex; align-items: center; gap: 1.5ch; padding-inline-end: 14px; color: var(--st-dim); font: var(--st-reading-size, var(--tsu-fs, 12px))/1.3 var(--st-mono, monospace); font-variant-numeric: tabular-nums; cursor: default; }
+.st-stat-group [data-stat] { display: inline-flex; align-items: baseline; gap: .5ch; }
 .st-agu { font-variant-numeric: tabular-nums; } /* 左边当前 agent 的用量：同右边的系统状态的写法；只是看的，指着不高亮 */
 .am-fres { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 .am-table { display: flex; flex-direction: column; font-size: 12px; }
