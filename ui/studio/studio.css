@@ -270,6 +270,8 @@ html:not(.termapp) .st-crumbs { display: none; }
 .st-img::-webkit-scrollbar-thumb { background: color-mix(in srgb, currentColor 46%, transparent); border: 2px solid transparent; background-clip: padding-box; border-radius: 6px; }
 .st-img::-webkit-scrollbar-track, .st-img::-webkit-scrollbar-corner { background: transparent; }
 .st-img img { display: block; flex: none; margin: auto; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: repeating-conic-gradient(rgba(127, 127, 127, 0.15) 0% 25%, transparent 0% 50%) 50% / 16px 16px; }
+.st-img-surface { position: relative; flex: none; margin: auto; overflow: clip; contain: layout paint; }
+.st-img-surface img { position: absolute; inset: 0 auto auto 0; margin: 0; max-width: none; max-height: none; transform-origin: top left; will-change: transform; }
 .st-pdf { display: block; width: 100%; height: 100%; min-height: 400px; border: 0; background: #fff; }
 .st-nv { position: absolute; inset: 0; } /* PDF、Office 预览、很大的图片：原生的网页视图叠在这一块上（webview.js 的 overlay） */
 /* 编辑：左边行号，右边透明 textarea 叠在高亮好的 <pre> 上（同 ide.js）*/

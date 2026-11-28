@@ -3232,7 +3232,7 @@
   function releaseFileBody(body) {
     if (!body) return;
     const image = body.querySelector(".st-img");
-    if (image) window.TSU_FILE_ZOOM?.(image, false);
+    if (image) { image.disposeImage?.(); window.TSU_FILE_ZOOM?.(image, false); }
     if (body.ro) body.ro.disconnect();
     if (body.nv?.stop) body.nv.stop();
     if (body.nv?.h) body.nv.h.close();
@@ -3632,38 +3632,70 @@
   }
   function showFileImage(body, url) {
     if (body.querySelector(".st-img img")?.src === url) return;
+    body.querySelector(".st-img")?.disposeImage?.();
     const view = document.createElement("div"), img = new Image();
     view.className = "st-img";
     img.alt = "";
-    view.append(img);
+    const surface = document.createElement("div");
+    surface.className = "st-img-surface";
+    surface.append(img);
+    view.append(surface);
     body.replaceChildren(view);
-    let gestureWidth = 0, nextWidth = 0, frame = 0, anchor;
-    function width() { return nextWidth || img.getBoundingClientRect().width; }
+    let gestureWidth = 0, targetWidth = 0, renderedWidth = 0;
+    let frame = 0, previousTime = 0, anchor;
+    function fit() {
+      if (targetWidth || !img.naturalWidth || !view.clientWidth || !view.clientHeight) return;
+      const scale = Math.min(1, view.clientWidth / img.naturalWidth, view.clientHeight / img.naturalHeight);
+      renderedWidth = img.naturalWidth * scale;
+      surface.style.width = renderedWidth + "px";
+      surface.style.height = img.naturalHeight * scale + "px";
+      img.style.transform = "scale(" + scale + ")";
+    }
+    const resize = new ResizeObserver(fit);
+    resize.observe(view);
+    img.addEventListener("load", fit, {once:true});
+    view.disposeImage = () => { resize.disconnect(); cancelAnimationFrame(frame); };
+    function width() { return targetWidth || img.getBoundingClientRect().width; }
+    function draw(time) {
+      frame = 0;
+      if (!view.isConnected) return;
+      const elapsed = previousTime ? Math.min(50, time - previousTime) : 16;
+      previousTime = time;
+      // Smooth sparse wheel ticks while tracking continuous pinch updates.
+      const fraction = 1 - Math.exp(-elapsed / 28);
+      renderedWidth += (targetWidth - renderedWidth) * fraction;
+      if (Math.abs(targetWidth - renderedWidth) < 0.35) renderedWidth = targetWidth;
+      const scale = renderedWidth / img.naturalWidth;
+      const height = img.naturalHeight * scale;
+      surface.style.width = renderedWidth + "px";
+      surface.style.height = height + "px";
+      img.style.transform = "scale(" + scale + ")";
+      view.scrollTo(anchor.u * renderedWidth - anchor.x, anchor.v * height - anchor.y);
+      if (renderedWidth !== targetWidth) frame = requestAnimationFrame(draw);
+      else previousTime = 0;
+    }
     function zoom(target, x, y) {
-      if (!img.naturalWidth || !(target > 0)) return;
-      nextWidth = Math.max(Math.min(16, img.naturalWidth), Math.min(img.naturalWidth * 16, target));
-      anchor = {x, y};
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        const w = nextWidth;
-        nextWidth = 0;
-        if (!view.isConnected) return;
-        const before = img.getBoundingClientRect(), box = view.getBoundingClientRect();
-        if (!before.width) return;
-        const h = w * img.naturalHeight / img.naturalWidth;
-        const x = (anchor.x - before.left) * w / before.width;
-        const y = (anchor.y - before.top) * h / before.height;
-        img.style.maxWidth = img.style.maxHeight = "none";
-        img.style.width = w + "px";
-        view.scrollTo(Math.max(0, box.left + x - anchor.x), Math.max(0, box.top + y - anchor.y));
-      });
+      if (!img.naturalWidth || !Number.isFinite(target) || !(target > 0)) return;
+      const rect = img.getBoundingClientRect(), box = view.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      resize.disconnect();
+      targetWidth = Math.max(Math.min(16, img.naturalWidth), Math.min(img.naturalWidth * 16, target));
+      anchor = { u: (x - rect.left) / rect.width, v: (y - rect.top) / rect.height,
+        x: x - box.left, y: y - box.top };
+      if (!frame) frame = requestAnimationFrame(draw);
     }
     view.magnify = e => zoom(width() * (1 + e.delta), e.x, e.y);
     view.addEventListener("pointerenter", () => window.TSU_FILE_ZOOM?.(view, true));
     view.addEventListener("pointerleave", () => window.TSU_FILE_ZOOM?.(view, false));
     view.addEventListener("wheel", e => {
-      if (!e.ctrlKey && !e.metaKey && e.deltaMode === 0) return;
+      if (!e.ctrlKey && !e.metaKey && e.deltaMode === 0) {
+        if (frame) {
+          cancelAnimationFrame(frame);
+          frame = previousTime = 0;
+          targetWidth = renderedWidth;
+        }
+        return;
+      }
       e.preventDefault();
       if (gestureWidth) return;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.clientHeight : 1;

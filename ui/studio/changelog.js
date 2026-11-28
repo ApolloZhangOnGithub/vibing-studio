@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.22", items: { improved: [
+      ["图片标签页现在连续缩放，放大后可以双向平移并使用滚动条。", "Zoom smoothly in image tabs and pan enlarged images on either axis using the trackpad or scrollbars."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.21", items: { improved: [
       ["活动监视器按连接器分组。采样刷新时会话保持原位，已打开的空会话也会保留在列表和时间线中。", "Activity Monitor groups sessions by connector. Sessions stay in place across samples, and open empty sessions remain visible in both views."]
     ] } },
