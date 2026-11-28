@@ -484,7 +484,7 @@
     if (!M) return out;
     var st = roots.slice(), seen = {};
     while (st.length) { var p = st.pop(); if (seen[p]) continue; seen[p] = 1; var x = M.info[p]; if (x) out.push({ pid: p, name: x.name || "", cpu: x.cpu, mem: x.rss * 1024 }); (M.kids[p] || []).forEach(function (c) { st.push(c); }); }
-    return out.sort(function (a, b) { return b.cpu - a.cpu || b.mem - a.mem; });
+    return out.sort(function (a, b) { return Number(roots.includes(b.pid)) - Number(roots.includes(a.pid)) || a.pid - b.pid; });
   }
   var mb = function (b) { return b == null ? "—" : b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : (b / 1048576).toFixed(1) + " MB"; }; // 这张表一律一位小数（同 CPU 那一列）
   // 一行：这个会话现在的样子
@@ -568,35 +568,39 @@
     // 状态：工作中（思考）/ 工作中（输出）/ 工作中（python3）——括号里是正在跑的程序（命令的程序名、工具名），不写会变来变去的说明（说明在悬停的提示里）
     var stCell = function (r) { return r.status === "service" ? "" : r.status === "run" ? paren(stTxt("run"), r.detail) : stTxt(r.status); };
     var cell = function (r, k) {
-      if (k === "name") return (r.procs ? DIS : '') + '<span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut">' + esc(r.name) + "</span>";
+      if (k === "name") return ('<span class="am-dis-slot">' + (r.procs ? DIS : '') + '</span>') + '<span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut">' + esc(r.name) + "</span>";
       if (k === "status") return '<span class="am-cut am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>";
-      if (k === "ms") return r.since ? elapsed(r.ms) : "—";
-      if (k === "cpu") return r.cpu == null ? "—" : lvWrap(r, k, r.cpu.toFixed(1) + "%");
-      if (k === "mem") return lvWrap(r, k, mb(r.mem));
-      if (k === "procs") return r.procs == null ? "—" : String(r.procs);
-      if (k === "ctx") return r.ctx == null ? "—" : lvWrap(r, k, r.ctx.toFixed(1) + "%");
+      if (k === "ms") return r.since ? elapsed(r.ms) : "";
+      if (k === "cpu") return r.cpu == null ? "" : lvWrap(r, k, r.cpu.toFixed(1) + "%");
+      if (k === "mem") return r.mem == null ? "" : lvWrap(r, k, mb(r.mem));
+      if (k === "procs") return r.procs == null ? "" : String(r.procs);
+      if (k === "ctx") return r.ctx == null ? "" : lvWrap(r, k, r.ctx.toFixed(1) + "%");
       return "";
     };
     // 点开一行：下面列出它的进程（同活动监视器「分层显示」）——名字、命令行、跑了多久、CPU、内存、PID
-    var subs = function (r, cmp) {
-      var pr = procsOf(r.processRoots).slice(0, 40);
-      if (!pr.length) return "";
-      return pr.map(function (p) {
-        var a = PS.args[p.pid] || {};
-        if (cmp) return '<div class="am-csub"><span class="am-cut">' + esc(p.name || "—") + '</span><span class="am-num">' + p.cpu.toFixed(1) + "% · " + mb(p.mem) + "</span></div>";
-        return '<div class="am-tr am-sub"><span class="am-c am-name"><span class="am-cut" title="' + esc(p.name) + '">' + esc(p.name || "—") + '</span></span><span class="am-c am-status"><span class="am-cut am-dim" title="' + esc(a.args || "") + '">' + esc(a.args || "") + '</span></span><span class="am-c am-ms">' + (a.ms != null ? elapsed(a.ms) : "") + '</span><span class="am-c am-cpu">' + p.cpu.toFixed(1) + '%</span><span class="am-c am-mem">' + mb(p.mem) + '</span><span class="am-c am-procs am-dim">' + p.pid + '</span><span class="am-c am-ctx"></span></div>';
+    function subs(r) {
+      var processes = procsOf(r.processRoots);
+      if (!processes.length) return "";
+      var headings = [EN() ? "Process" : "进程名称", "PID", tr("用时"), "CPU", tr("内存")];
+      var head = headings.map(label => '<th scope="col">' + esc(label) + "</th>").join("");
+      var body = processes.map(function (p) {
+        var args = PS.args[p.pid] || {};
+        return '<tr><td title="' + esc(args.args || p.name) + '">' + esc(p.name) + "</td><td>" + p.pid +
+          "</td><td>" + (args.ms != null ? elapsed(args.ms) : "") + "</td><td>" + p.cpu.toFixed(1) +
+          "%</td><td>" + mb(p.mem) + "</td></tr>";
       }).join("");
-    };
+      return '<div class="am-process-detail"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
     var list = sorted(rows).concat(services), body;
     if (!rows.length) body = '<div class="st-dim tr-empty">' + esc(tr("没有打开的会话")) + "</div>";
     else if (compact) body = '<div class="am-list">' + list.map(function (r) {
       // 一个会话两行，按格子对齐：第一行 标志 | 名字 | CPU；第二行（从名字那一列起）状态 · 用时
       return '<div class="am-crow' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
-        '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.since ? " · " + elapsed(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r, true) : "");
+        '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.since ? " · " + elapsed(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r) : "");
     }).join("") + "</div>";
     else {
       body = '<div class="am-table' + (any ? '' : ' am-no-process-data') + '"><div class="am-tr am-th">' + COLS.map(function (c) { return '<button type="button" class="am-c am-' + c[0] + (SORT.k === c[0] ? " on" : "") + '" data-ams="' + c[0] + '">' + esc(tr(c[1])) + (SORT.k === c[0] ? '<i class="am-sort">' + SORT_ICO(SORT.d) + "</i>" : "") + "</button>"; }).join("") + "</div>" +
-        list.map(function (r) { return '<div class="am-tr' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r, false) : ""); }).join("") +
+        list.map(function (r) { return '<div class="am-tr' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r) : ""); }).join("") +
         "</div>";
     }
     var sumH = '<span class="am-sum">' + esc(stTxt("run")) + " <b>" + run + "</b> · " + esc(stTxt("wait")) + " <b>" + wait + "</b> · " + esc(stTxt("idle")) + " <b>" + idleN + "</b>" +

@@ -1437,11 +1437,16 @@ html.light .am-chart.am-boxed { background: rgba(0, 0, 0, .03); }
 .tr-host .am-table.am-no-process-data { grid-template-columns: repeat(4, minmax(0, auto)); }
 .tr-host .am-table .am-tr { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: inherit; }
 .am-table .am-tr[data-tra]:not(.am-expandable) { cursor: default; }
-.tr-host .am-no-process-data .am-th .am-name { padding-left: 20px; }
+.am-dis-slot { display: inline-flex; flex: 0 0 10px; }
 .am-logo.am-k-claude-code { color: #d97757; }
 .am-logo.am-k-codex { color: var(--st-hi); }
 .am-table .am-tr .am-c { justify-content: flex-start; text-align: left; }
 .am-no-process-data :is(.am-cpu,.am-mem,.am-procs) { display: none; }
+.am-process-detail { grid-column: 1 / -1; min-width: 0; overflow-x: auto; padding: 5px var(--am-in) 9px calc(var(--am-in) + 14px); background: color-mix(in srgb, var(--st-fg) 3%, transparent); }
+.am-process-detail table { border-collapse: collapse; border-inline-start: 2px solid var(--am-ln); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.am-process-detail :is(th,td) { text-align: start; font-weight: 400; padding: 3px 12px; white-space: nowrap; }
+.am-process-detail th { color: var(--st-dim); }
+.am-tr[data-tra^="service:"] { border-top: 1px solid var(--am-ln); }
 .am-tr .am-c.am-name { gap: 4px; }
 .am-tr .am-c.am-name > .am-logo { margin-right: 2px; }
 .am-dis { flex: none; color: var(--st-dim); transition: transform .12s ease; }
