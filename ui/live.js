@@ -866,8 +866,8 @@
     var maxY = function () { return screen.scrollHeight - screen.clientHeight; };
     var atBottom = function () { return maxY() - screen.scrollTop < 2; };
     P.toBottom = function () { following = true; if (P.off) return; screen.scrollTop = screen.scrollHeight; ownTop = screen.scrollTop; if (P.program && P.program.afterScroll) P.program.afterScroll(); }; // 藏在同一组后面的：不量（一量就要排版），露出来时 reshow 贴底；回到底了外壳跟着改（吸顶那一行收起）
-    P.stick = function () { if (P.off) return; if (following && cfg.autoscroll !== false) P.toBottom(); if (P.program && P.program.afterScroll) P.program.afterScroll(); };
-    P.following = function () { return following; };
+    P.stick = function () { if (P.off) return; if (following && cfg.autoscroll !== false && !selActive()) P.toBottom(); if (P.program && P.program.afterScroll) P.program.afterScroll(); };
+    P.following = function () { return following && !selActive(); };
     P.scrollByRows = function (n) {
       var target = Math.max(0, Math.min(maxY(), Math.round(screen.scrollTop / P.rowH + n) * P.rowH));
       if (target !== screen.scrollTop) P.revealNear(target);
@@ -886,7 +886,7 @@
       }
       if (P.revealNear) P.revealNear();
       if (Math.abs(screen.scrollTop - ownTop) > 1) {
-        if (following && intent !== true && performance.now() - USER_AT > 400 && !atBottom() && !P.off) { screen.scrollTop = screen.scrollHeight; }
+        if (following && !selActive() && intent !== true && performance.now() - USER_AT > 400 && !atBottom() && !P.off) { screen.scrollTop = screen.scrollHeight; }
         else following = atBottom();
         ownTop = screen.scrollTop;
       }
@@ -987,10 +987,18 @@
     screen.addEventListener("contextmenu", function (e) { transcriptCtx(e, P); }); // 对话上右键：对话里显示什么（agent 的对话才有）
 
     // ---- 选区：自己画（同博客页：浅蓝底、黑字），与选中文字同帧 ----
-    var marked = [], lastSelHtml = "";
+    var marked = new Set(), lastSelHtml = "", selectionInTerm = false;
     function paintSelection() {
       var blocks = [], sel = document.getSelection();
-      if (sel && !sel.isCollapsed && sel.rangeCount && term.contains(sel.anchorNode)) {
+      const active = !!(sel && !sel.isCollapsed && sel.rangeCount && term.contains(sel.anchorNode));
+      if (active !== selectionInTerm) {
+        selectionInTerm = active;
+        // Short conversations are bottom-aligned. Keep their first row at the
+        // same height when streamed lines arrive beneath a selection.
+        if (active && screen.classList.contains("transcript-at-end")) P.page.style.marginTop = getComputedStyle(P.page).marginTop;
+        else P.page.style.removeProperty("margin-top");
+      }
+      if (active) {
         var bx = term.getBoundingClientRect(), rows = new Map();
         var put = function (row, c0, c1) { var cur = rows.get(row); rows.set(row, cur ? [Math.min(cur[0], c0), Math.max(cur[1], c1)] : [c0, c1]); };
         Array.prototype.forEach.call(sel.getRangeAt(0).getClientRects(), function (r) {
@@ -1017,25 +1025,28 @@
         }
       }
       var html = blocks.join("");
-      if (html === lastSelHtml && !blocks.length && !marked.length) return;
+      if (html === lastSelHtml && !blocks.length && !marked.size) return;
+      if (lastSelHtml !== html) selLayer.innerHTML = html;
       lastSelHtml = html;
-      if (selLayer.innerHTML !== html) selLayer.innerHTML = html;
-      marked.forEach(function (x) { x.classList.remove("tsb", "tsd"); });
-      marked = [];
+      const nextMarks = new Set();
       if (blocks.length) {
         var range = sel.getRangeAt(0), scope = range.commonAncestorContainer;
         if (scope.nodeType !== 1) scope = scope.parentElement;
-        Array.prototype.forEach.call(scope.querySelectorAll(".ttu-box"), function (x) { if (range.intersectsNode(x)) { x.classList.add("tsb"); marked.push(x); } });
+        Array.prototype.forEach.call(scope.querySelectorAll(".ttu-box"), function (x) { if (range.intersectsNode(x)) { nextMarks.add(x); } });
         // diff 的红绿行整行都选中了：底色拿掉，露出下面的选区（同 iTerm：选中的格子是选区的颜色，不再是红绿）；只选了一半的那行由浏览器在选中的字后面画（panes.css）
         var whole = function (x) { var er = document.createRange(); er.selectNodeContents(x); return range.compareBoundaryPoints(Range.START_TO_START, er) <= 0 && range.compareBoundaryPoints(Range.END_TO_END, er) >= 0; };
         var drs = scope.classList && scope.classList.contains("drow") ? [scope] : scope.querySelectorAll(".drow");
-        Array.prototype.forEach.call(drs, function (x) { if (range.intersectsNode(x) && whole(x)) { x.classList.add("tsd"); marked.push(x); } });
+        Array.prototype.forEach.call(drs, function (x) { if (range.intersectsNode(x) && whole(x)) { nextMarks.add(x); } });
       }
+      for (const x of marked) if (!nextMarks.has(x)) x.classList.remove("tsb", "tsd");
+      for (const x of nextMarks) if (!marked.has(x)) x.classList.add(x.classList.contains("drow") ? "tsd" : "tsb");
+      marked = nextMarks;
     }
     document.addEventListener("selectionchange", paintSelection, {signal: paneEvents.signal});
     var paintRaf = 0;
     function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(function () { paintRaf = 0; paintSelection(); }); }
-    screen.addEventListener("scroll", function () { if (marked.length || lastSelHtml) paintSoon(); }, { passive: true }); // 选着字时滚动（拖到边上自动滚）：跟着重画
+    P.refreshSelection = function () { if (lastSelHtml) paintSoon(); };
+    screen.addEventListener("scroll", function () { if (marked.size || lastSelHtml) paintSoon(); }, { passive: true }); // 选着字时滚动（拖到边上自动滚）：跟着重画
 
     // ---- 输入：透明 textarea；按键交给程序 ----
     P.focus = function () {
@@ -3012,9 +3023,33 @@
       if (agyTurns.size) agyFrame = requestAnimationFrame(paintAgyTurns);
       P.stick();
     }
+    const heldTurns = new Set();
+    let heldHistory = false;
+    function transcriptRange() {
+      const selection = document.getSelection();
+      return selection && !selection.isCollapsed && P.out.contains(selection.anchorNode) ? selection.getRangeAt(0) : null;
+    }
+    function releaseSelection() {
+      if ((!heldHistory && !heldTurns.size) || transcriptRange()) return;
+      const turns = Array.from(heldTurns);
+      heldTurns.clear();
+      if (heldHistory) {
+        heldHistory = false;
+        P.renderNow();
+        fillN = 0; fill();
+      } else {
+        turns.forEach(t => { if (blocks.has(t)) drawTurn(t); });
+        P.stick();
+      }
+    }
+    document.addEventListener("selectionchange", releaseSelection);
     var off1 = rt.on(function (type, data) {
       if (P.closed) return;
       if (type === "historyProgress") return;
+      if (!P.off && (type === "reset" || type === "prepend") && transcriptRange()) {
+        heldHistory = true;
+        return;
+      }
       if (P.off && (type === "reset" || type === "prepend")) {
         rowCache = new WeakMap();
         P.dirty = true;
@@ -3239,6 +3274,8 @@
       P.screen.classList.remove("transcript-at-end");
       P.el.removeEventListener("pointermove", footerHover);
       document.removeEventListener("st-settings-closed", resumeHistory);
+      document.removeEventListener("selectionchange", releaseSelection);
+      heldTurns.clear();
       document.removeEventListener("tsu-draft-image", onDraftImage);
       P.el.removeEventListener("pointerleave", footerHover);
       P.screen.removeEventListener("scroll", stickySoon);
@@ -3359,7 +3396,7 @@
               const next = wrapper.firstElementChild;
               if (next) {
                 if (groupEl.className !== next.className) groupEl.className = next.className;
-                patchNodes(groupEl, next);
+                patchNodes(groupEl, next, transcriptRange());
               }
             }
           }
@@ -3732,21 +3769,33 @@
     }
     // 重画一问：只换真的变了的那几个节点（在跑的工具每秒刷新用时，整块 innerHTML 一换，鼠标指着的那一行的高亮每秒闪一下、选中的字也丢了）
     var sameAttrs = function (x, y) { if (x.attributes.length !== y.attributes.length) return false; for (var i = 0; i < x.attributes.length; i++) { var a = x.attributes[i]; if (y.getAttribute(a.name) !== a.value) return false; } return true; };
-    function patchNodes(el, src) {
+    function patchNodes(el, src, range) {
+      // Replacing a selected DOM node collapses WebKit's live Range. Keep it
+      // until deselection, while still applying updates to neighbouring nodes.
+      function held(node) {
+        if (!range || !range.intersectsNode(node)) return false;
+        const turn = el.closest(".blk")?._t;
+        if (!turn) return false;
+        heldTurns.add(turn);
+        return true;
+      }
       var an = Array.prototype.slice.call(el.childNodes), bn = Array.prototype.slice.call(src.childNodes);
       for (var k = 0; k < bn.length; k++) {
         var x = an[k], y = bn[k];
         if (!x) { el.appendChild(y); continue; }
-        if (x.nodeType === 3 && y.nodeType === 3) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
-        if (x.nodeType === 1 && y.nodeType === 1 && x.tagName === y.tagName && sameAttrs(x, y)) { if (!x.isEqualNode(y)) patchNodes(x, y); continue; }
-        el.replaceChild(y, x);
+        if (x.nodeType === 3 && y.nodeType === 3) { if (x.data !== y.data) {
+          if (y.data.startsWith(x.data)) x.appendData(y.data.slice(x.length));
+          else if (!held(x)) x.data = y.data;
+        } continue; }
+        if (x.nodeType === 1 && y.nodeType === 1 && x.tagName === y.tagName && sameAttrs(x, y)) { if (!x.isEqualNode(y)) patchNodes(x, y, range); continue; }
+        if (!held(x)) el.replaceChild(y, x);
       }
-      for (var r = an.length - 1; r >= bn.length; r--) el.removeChild(an[r]);
+      for (var r = an.length - 1; r >= bn.length; r--) if (!held(an[r])) el.removeChild(an[r]);
     }
     function setBlockHtml(b, h) {
       if (!b.firstChild) { b.innerHTML = h; return; }
       var tmp = b.cloneNode(false); tmp.innerHTML = h;
-      patchNodes(b, tmp);
+      patchNodes(b, tmp, transcriptRange());
     }
     function drawTurn(t) {
       if (P.off) { rowCache.delete(t); hiddenTurns.add(t); return; }
@@ -3768,6 +3817,7 @@
       setBlockHtml(b, htmlOf(t, liveOf(t), true));
       b._rowsVersion = rowCache.get(t)?.version;
       markOpened(b);
+      P.refreshSelection();
       if (was1 && was1 !== t && blocks.has(was1) && !(rt.stream && rt.stream.turn === was1)) { if (liveT === was1) liveT = null; drawTurn(was1); }
     }
     // 你点开的（不是按设置本来就展开的）：整块灰底包起来（同你说的话那种灰），块里任何地方再点一下就收起——很长的内容不用回去找标题
