@@ -1388,7 +1388,7 @@ html.light .am-chart.am-boxed { background: rgba(0, 0, 0, .03); }
 .tr-host { --am-in: 19px; --am-ln: color-mix(in srgb, var(--st-fg) 20%, transparent); --am-ln2: color-mix(in srgb, var(--st-fg) 10%, transparent); }
 .am-amv { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .am-amv > .am-body { flex: 1 1 auto; min-height: 56px; overflow: auto; }
-.am-segw { flex: none; display: flex; justify-content: center; padding: 4px var(--am-in) 8px; }
+.am-segw { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 16px; padding: 4px var(--am-in) 8px; }
 .am-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: color-mix(in srgb, var(--st-fg) 7%, transparent); }
 .am-segb { border: 0; background: none; font: inherit; font-size: 12px; line-height: 1; color: var(--st-dim); padding: 5px 13px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 .am-segb:hover { color: var(--st-hi); }
@@ -1433,6 +1433,14 @@ html.light .am-chart.am-boxed { background: rgba(0, 0, 0, .03); }
 .tr-host .am-total .am-c { color: var(--st-hi); }
 .tr-host .am-total .am-c.am-status { color: var(--st-dim); }
 .am-sort { display: inline-flex; align-items: center; margin-left: 4px; font-style: normal; }
+.tr-host .am-table { display: grid; grid-template-columns: repeat(7, minmax(0, auto)); column-gap: 1em; }
+.tr-host .am-table.am-no-process-data { grid-template-columns: repeat(4, minmax(0, auto)); }
+.tr-host .am-table .am-tr { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; column-gap: inherit; }
+.am-table .am-tr[data-tra]:not(.am-expandable) { cursor: default; }
+.tr-host .am-no-process-data .am-th .am-name { padding-left: 20px; }
+.am-logo.am-k-claude-code { color: #d97757; }
+.am-logo.am-k-codex { color: var(--st-hi); }
+.am-no-process-data :is(.am-cpu,.am-mem,.am-procs) { display: none; }
 .am-tr .am-c.am-name { gap: 4px; }
 .am-tr .am-c.am-name > .am-logo { margin-right: 2px; }
 .am-dis { flex: none; color: var(--st-dim); transition: transform .12s ease; }

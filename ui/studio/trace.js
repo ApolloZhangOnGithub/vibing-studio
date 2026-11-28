@@ -11,7 +11,7 @@
 //   指着看详情，点一组切到那个会话。数据都是已经读进来的记录（claude.js / codex.js / agents.js 的 turns、tasks），不另外读文件
 (function () {
   "use strict";
-  var SPANS = [[10, "10m"], [60, "1h"], [360, "6h"], [1440, "24h"]];
+  var SPANS = [[1, "1m"], [10, "10m"], [60, "1h"], [360, "6h"], [1440, "24h"]];
   var LBL = 204, ROW = 15, LGAP = 2, PAD = 8, BGH = 12, AXIS = 18;
   // 颜色收着用：同一套灰蓝里分深浅，只靠明暗区分种类（不再红绿蓝紫粉一屏花花绿绿）
   var KIND = {
@@ -74,7 +74,7 @@
     if (/^mcp__/.test(n)) return "mcp";
     return "other";
   }
-  var spanMin = function () { var v = +(localStorage.getItem("tsu-trace-span") || 60); return SPANS.some(function (x) { return x[0] === v; }) ? v : 60; };
+  var spanMin = function () { var v = +(localStorage.getItem("tsu-trace-span") || 1); return SPANS.some(function (x) { return x[0] === v; }) ? v : 60; };
   // 打开着的会话的运行时：自己的 agent（liveRuntimes）+ 标签页里开着的 Claude Code、Codex 会话
   function runtimes() {
     var A = window.TSU_AGENTS, out = [], seen = new Set();
@@ -211,9 +211,16 @@
   // receive the same frames, including the recent history when they first open.
   var continuous = !!(window.TSU_LOCAL && window.nadosNative?.local && !window.nadosNative.remote && /Mac/.test(navigator.platform));
   var owner = false, channel = null;
+  var minutes = [];
+  function addMinute(frame) {
+    var previous = minutes.at(-1);
+    if (!previous || Math.floor(frame.t / 60000) > Math.floor(previous.t / 60000)) minutes.push(frame);
+    while (minutes.length && minutes[0].t < frame.t - 86400000) minutes.shift();
+  }
   function rememberFrame(frame) {
     if (frame.t <= SYS.at) return;
     SYS.prev = SYS.cur; SYS.cur = frame; SYS.at = frame.t;
+    addMinute(frame);
     SYS.hist.push(frame);
     if (SYS.hist.length > 600) SYS.hist.shift();
   }
@@ -239,6 +246,8 @@
   }
   if (continuous) {
     try {
+      var archive = JSON.parse(localStorage.getItem(historyKey + "-minutes") || "[]");
+      if (Array.isArray(archive)) archive.filter(f => f.t > Date.now() - 86400000).forEach(addMinute);
       var saved = JSON.parse(localStorage.getItem(historyKey) || "[]");
       if (Array.isArray(saved) && saved.at(-1)?.t > Date.now() - 15000) saved.forEach(rememberFrame);
     } catch (_) {}
@@ -298,10 +307,14 @@
     var ac0 = (function () { try { return JSON.parse(localStorage.getItem("tsu-ac-since") || "null"); } catch (e) { return null; } })();
     if (!ac0 || ac0.ac !== x.ac) { ac0 = { ac: x.ac, since: x.t }; try { localStorage.setItem("tsu-ac-since", JSON.stringify(ac0)); } catch (e) { /* 满了 */ } }
     x.powerSince = ac0.since;
+    var lastMinute = minutes.at(-1);
     rememberFrame(x);
+    if (owner && minutes.at(-1) !== lastMinute) {
+      try { localStorage.setItem(historyKey + "-minutes", JSON.stringify(minutes)); } catch (_) {}
+    }
     if (owner && channel) channel.postMessage([x]);
     if (owner && x.t - savedAt >= 10000) saveHistory();
-    if (x.battery != null) { var bh = BAT_HIST(); if (!bh.length || x.t - bh[bh.length - 1].t > 300000) { bh.push({ t: x.t, v: x.battery }); while (bh.length && x.t - bh[0].t > 12 * 3600000) bh.shift(); try { localStorage.setItem("tsu-bat-hist", JSON.stringify(bh)); } catch (e) { /* 满了 */ } } }
+    if (x.battery != null) { var bh = BAT_HIST(); if (!bh.length || x.t - bh[bh.length - 1].t > 300000) { bh.push({ t: x.t, v: x.battery }); while (bh.length && x.t - bh[0].t > 24 * 3600000) bh.shift(); try { localStorage.setItem("tsu-bat-hist", JSON.stringify(bh)); } catch (e) { /* 满了 */ } } }
   }
   var batH = null;
   var BAT_HIST = function () { if (!batH) { try { batH = JSON.parse(localStorage.getItem("tsu-bat-hist") || "[]") || []; } catch (e) { batH = []; } } return batH; };
@@ -314,7 +327,7 @@
     if (!L || !L.exec || BAT.busy || Date.now() - BAT.at < 60000) return;
     BAT.busy = true; BAT.at = Date.now();
     var T = "PLBatteryAgent_EventBackward_Battery";
-    var q = "select cast(timestamp as int), Level, ExternalConnected from " + T + " where timestamp > strftime('%s','now') - 45000 order by timestamp;" +
+    var q = "select cast(timestamp as int), Level, ExternalConnected from " + T + " where timestamp > strftime('%s','now') - 86400 order by timestamp;" +
       " select '__AC', cast(max(timestamp) as int) from " + T + " where ExternalConnected <> (select ExternalConnected from " + T + " order by timestamp desc limit 1);" +
       " select '__MIN', cast(min(timestamp) as int) from " + T + ";";
     L.exec({ cmd: "/usr/bin/sqlite3 -readonly -separator ' ' '" + BATDB + "' \"" + q + "\" 2>/dev/null" }).then(function (r) {
@@ -335,8 +348,11 @@
   // 走势图（不加框）：每秒一个点、3px 一格，从右边往左长；几条叠成面积；上下对称的（读 / 写、收 / 发）上半第一条、下半第二条，两半同一个比例
   function sysChart(w, h, series, mirror) {
     w = Math.max(20, Math.round(w)); h = Math.max(20, Math.round(h));
-    var STEP = 3, hs = SYS.hist.slice(-(Math.floor(w / STEP) + 1)), n = hs.length, out = [], top = 1, bot = h - 1, mid = Math.round(h / 2);
-    var xOf = function (i) { return (w - (n - 1 - i) * STEP).toFixed(1); }, val = function (sr, x) { var v = +(sr.v(x)) || 0; return v < 0 ? 0 : v; };
+    var until = Date.now(), duration = spanMin() * 60000, from = until - duration;
+    var recentStart = SYS.hist[0]?.t ?? until;
+    var hs = minutes.filter(f => f.t >= from && f.t < recentStart).concat(SYS.hist.filter(f => f.t >= from));
+    var n = hs.length, out = [], top = 1, bot = h - 1, mid = Math.round(h / 2);
+    var xOf = function (i) { return (w * (hs[i].t - from) / duration).toFixed(2); }, val = function (sr, x) { var v = +(sr.v(x)) || 0; return v < 0 ? 0 : v; };
     if (mirror) out.push('<line class="am-mid" x1="0" x2="' + w + '" y1="' + (mid + 0.5) + '" y2="' + (mid + 0.5) + '"/>');
     if (n >= 2) {
       var shared = Math.max.apply(null, hs.map(function (x) { return Math.max.apply(null, series.map(function (sr) { return val(sr, x); })); }));
@@ -351,9 +367,9 @@
   // 电池（过去 12 小时）：每 10 分钟一根，这 10 分钟里最后记下的电量；关机、睡着没记的那段空着
   function batChart(w, h) {
     w = Math.max(20, Math.round(w)); h = Math.max(20, Math.round(h));
-    var now = Date.now(), from = now - 12 * 3600000, pts = BAT.pts.length ? BAT.pts : BAT_HIST(), N = 72, bw = w / N, out = [], j = 0, last = null;
+    var now = Date.now(), duration = spanMin() * 60000, from = now - duration, pts = BAT.pts.length ? BAT.pts : BAT_HIST(), N = 72, bw = w / N, out = [], j = 0, last = null;
     for (var i = 0; i < N; i++) {
-      var s = from + i * 600000, e = s + 600000, v = null;
+      var s = from + i * duration / N, e = s + duration / N, v = null;
       while (j < pts.length && pts[j].t < e) { if (pts[j].t >= s - 1800000) v = pts[j].v; last = pts[j]; j++; }
       if (v == null && last && e - last.t < 2400000) v = last.v; // 系统大约每隔一会儿记一条：40 分钟以内的照上一条
       if (v == null) continue;
@@ -370,7 +386,8 @@
   var C_USER = "#5aa9e6", C_SYS = "#e5534b", C_IN = "#5aa9e6", C_OUT = "#e5534b", C_MEM = "#c8a24a", C_GPU = "#8f86c9", C_BAT = "#4f9a63";
   var UPDN = '<svg class="am-updn" viewBox="0 0 8 12" width="7" height="11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5"/></svg>';
   // 页签：胶囊（同 macOS 26 活动监视器顶上那一排），和面板标题栏的标签（下划线）不是一个样子
-  function sysTabsHtml(t) { return '<div class="am-segw"><div class="am-seg" role="tablist">' + SYS_TABS.map(function (z) { return '<button type="button" role="tab" class="am-segb' + (z[0] === t ? " on" : "") + '" data-amsys="' + z[0] + '">' + esc(tr(z[1])) + "</button>"; }).join("") + "</div></div>"; }
+  function rangeButtons(span) { return '<div class="tr-seg">' + SPANS.map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === span ? " on" : "") + '" data-trs="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>"; }
+  function sysTabsHtml(t) { return '<div class="am-segw"><div class="am-seg" role="tablist">' + SYS_TABS.map(function (z) { return '<button type="button" role="tab" class="am-segb' + (z[0] === t ? " on" : "") + '" data-amsys="' + z[0] + '">' + esc(tr(z[1])) + "</button>"; }).join("") + "</div>" + rangeButtons(spanMin()) + "</div>"; }
   // 每一页底下那一条（同活动监视器）：表格 | 图 | 表格 连成一个框，高度固定（表格四行），不跟着面板拉长
   function stripSecs(t, x) {
     var memC = (x.pressure || 0) > 70 ? C_SYS : (x.pressure || 0) > 45 ? C_MEM : C_BAT;
@@ -395,7 +412,7 @@
       var since = BAT.since || x.powerSince || 0;
       var r2 = x.ac ? ["充满电需要的时间：", x.charged || x.battery >= 100 ? tr("电池已充满电") : x.charging ? (x.remain && x.remain !== "0:00" ? x.remain : tr("正在计算…")) : tr("电池没有在充电")] : ["剩余时间：", x.remain || tr("正在计算…")];
       secs.push(kvs([["剩余电量：", pct(x.battery)], r2, [x.ac ? "使用交流电时间：" : "使用电池时间：", since ? hm(Date.now() - since) : "—"]]));
-      secs.push(g("电池（过去12小时）", batChart));
+      secs.push(g("电池", batChart));
     }
     return secs;
   }
@@ -454,7 +471,7 @@
     var detail = s ? (runP ? progOf(runP) : tr(thinking ? "思考" : "输出")) : "", tip = runP ? String(runP.name || "") + (what(runP) ? " · " + trT(what(runP), id) : "") : "";
     var since = s ? s.t0 : (lt && (lt.last || (lt.stats && lt.stats.at) || lt.at)) || 0, c = null, u = useOf(rt);
     try { c = rt.ctx ? rt.ctx() : null; } catch (e) { c = null; }
-    return { id: id, name: a.name || id, conn: /^cc:/.test(id) ? "cc" : /^cx:/.test(id) ? "cx" : "pm", status: st, doing: doing, detail: detail, tip: tip, doingNow: !!runP, since: since, ms: since ? Math.max(0, now - since) : 0,
+    return { id: id, name: a.name || id, conn: a.connector || ({ cc: "claude-code", cx: "codex" }[id.split(":")[0]] || id.split(":")[0]), status: st, doing: doing, detail: detail, tip: tip, doingNow: !!runP, since: since, ms: since ? Math.max(0, now - since) : 0,
       calls: parts.filter(function (x) { return x.kind === "tool"; }).length, ctx: c && c.window ? Math.round(c.pct * 10) / 10 : null, bg: (rt.tasks || []).filter(function (x) { return x.status === "running"; }).length,
       cpu: u ? u.cpu : null, mem: u ? u.mem : null, procs: u ? u.procs : null };
   }
@@ -472,7 +489,7 @@
       return (r || (ST_ORD[a.status] - ST_ORD[b.status]) || ((b.cpu || 0) - (a.cpu || 0))) * (k === "status" || typeof x === "string" ? d : -d);
     });
   }
-  var LOGO = function (c) { var L = window.TSU_LOGOS || {}; return c === "cc" ? L.claude || "" : c === "cx" ? L.codex || "" : L.paimon || ""; };
+  var LOGO = function (c) { return window.TSU_CONNECTORS?.get(c)?.logo || window.TSU_LOGOS?.[c] || ""; };
   // 底下的「CPU 负载」：最近这段的总 CPU（所有会话加起来），同活动监视器底下那张
   function chart(w, h) {
     var hs = PS.hist.slice(-Math.max(20, Math.floor(w / 3))), max = Math.max(10, hs.reduce(function (m, x) { return Math.max(m, x.cpu); }, 0) * 1.25); // 按这段里最高的放大（同活动监视器：几个百分点也看得出起伏）
@@ -516,7 +533,7 @@
     // 状态：工作中（思考）/ 工作中（输出）/ 工作中（python3）——括号里是正在跑的程序（命令的程序名、工具名），不写会变来变去的说明（说明在悬停的提示里）
     var stCell = function (r) { return r.status === "run" ? paren(stTxt("run"), r.detail) : stTxt(r.status); };
     var cell = function (r, k) {
-      if (k === "name") return DIS + '<span class="am-logo am-k-' + r.conn + '">' + LOGO(r.conn) + '</span><span class="am-cut">' + esc(r.name) + "</span>";
+      if (k === "name") return (r.procs ? DIS : '') + '<span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut">' + esc(r.name) + "</span>";
       if (k === "status") return '<span class="am-cut am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>";
       if (k === "ms") return r.ms ? dur(r.ms) : "—";
       if (k === "cpu") return r.cpu == null ? "—" : lvWrap(r, k, r.cpu.toFixed(1) + "%");
@@ -526,10 +543,9 @@
       return "";
     };
     // 点开一行：下面列出它的进程（同活动监视器「分层显示」）——名字、命令行、跑了多久、CPU、内存、PID
-    var NOPS = tr("量不到这个会话的进程（只有 Claude Code 的会话量得出）");
     var subs = function (r, cmp) {
       var rt = rtOf(r.id), pr = rt ? procsOf(rt).slice(0, 40) : [];
-      if (!pr.length) return cmp ? '<div class="am-csub am-dim">' + esc(NOPS) + "</div>" : '<div class="am-tr am-sub"><span class="am-c am-name am-span am-dim">' + esc(NOPS) + "</span></div>";
+      if (!pr.length) return "";
       return pr.map(function (p) {
         var a = PS.args[p.pid] || {};
         if (cmp) return '<div class="am-csub"><span class="am-cut">' + esc(p.name || "—") + '</span><span class="am-num">' + p.cpu.toFixed(1) + "% · " + mb(p.mem) + "</span></div>";
@@ -540,16 +556,13 @@
     if (!rows.length) body = '<div class="st-dim tr-empty">' + esc(tr("没有打开的会话")) + "</div>";
     else if (compact) body = '<div class="am-list">' + list.map(function (r) {
       // 一个会话两行，按格子对齐：第一行 标志 | 名字 | CPU；第二行（从名字那一列起）状态 · 用时
-      return '<div class="am-crow' + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + r.conn + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
+      return '<div class="am-crow' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
         '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.ms ? " · " + dur(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r, true) : "");
     }).join("") + "</div>";
     else {
-      // 合计：用时写最长的那个、上下文写平均（加起来没有意义）；状态只写有的
-      var maxMs = rows.reduce(function (m, r) { return Math.max(m, r.ms || 0); }, 0), cx = rows.filter(function (r) { return r.ctx != null; }), avgCtx = cx.length ? cx.reduce(function (n, r) { return n + r.ctx; }, 0) / cx.length : null;
-      var cnt = [["run", run], ["wait", wait], ["idle", idleN]].filter(function (z) { return z[1]; }).map(function (z) { return stTxt(z[0]) + " " + z[1]; }).join(EN() ? ", " : "，");
-      body = '<div class="am-table"><div class="am-tr am-th">' + COLS.map(function (c) { return '<button type="button" class="am-c am-' + c[0] + (SORT.k === c[0] ? " on" : "") + '" data-ams="' + c[0] + '">' + esc(tr(c[1])) + (SORT.k === c[0] ? '<i class="am-sort">' + SORT_ICO(SORT.d) + "</i>" : "") + "</button>"; }).join("") + "</div>" +
-        list.map(function (r) { return '<div class="am-tr' + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r, false) : ""); }).join("") +
-        '<div class="am-tr am-total"><span class="am-c am-name">' + esc(tr("合计")) + '</span><span class="am-c am-status">' + esc(cnt) + '</span><span class="am-c am-ms">' + (maxMs ? esc(tr("最长")) + " " + dur(maxMs) : "—") + '</span><span class="am-c am-cpu">' + (any ? tc.toFixed(1) + "%" : "—") + '</span><span class="am-c am-mem">' + (any ? mb(tm) : "—") + '</span><span class="am-c am-procs">' + (any ? tp : "—") + '</span><span class="am-c am-ctx">' + (avgCtx != null ? esc(tr("平均")) + " " + avgCtx.toFixed(1) + "%" : "—") + "</span></div></div>";
+      body = '<div class="am-table' + (any ? '' : ' am-no-process-data') + '"><div class="am-tr am-th">' + COLS.map(function (c) { return '<button type="button" class="am-c am-' + c[0] + (SORT.k === c[0] ? " on" : "") + '" data-ams="' + c[0] + '">' + esc(tr(c[1])) + (SORT.k === c[0] ? '<i class="am-sort">' + SORT_ICO(SORT.d) + "</i>" : "") + "</button>"; }).join("") + "</div>" +
+        list.map(function (r) { return '<div class="am-tr' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r, false) : ""); }).join("") +
+        "</div>";
     }
     var sumH = '<span class="am-sum">' + esc(stTxt("run")) + " <b>" + run + "</b> · " + esc(stTxt("wait")) + " <b>" + wait + "</b> · " + esc(stTxt("idle")) + " <b>" + idleN + "</b>" +
       (any ? ' <span class="am-dim">·</span> ' + esc(tr("会话合计")) + " CPU <b>" + tc.toFixed(1) + "%</b> · " + esc(tr("内存")) + " <b>" + mb(tm) + "</b> · " + esc(tr("进程")) + " <b>" + tp + "</b>" : "") + "</span>";
@@ -619,7 +632,7 @@
     }
     var X = function (t) { return LBL + (t - from) / (now - from) * (W - LBL - PAD); };
     var sw = function (c) { return '<span><i style="background:' + c + '"></i>'; };
-    var bar = topBar(host, '<div class="tr-seg">' + SPANS.map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === span ? " on" : "") + '" data-trs="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>") + '<div class="tr-bar">' +
+    var bar = topBar(host, amv ? "" : rangeButtons(span)) + '<div class="tr-bar">' +
       '<div class="tr-legend">' + Object.keys(KIND).filter(function (k) { return k !== "other"; }).map(function (k) { return '<span><i style="background:' + KIND[k].c + '"></i>' + esc(tr(KIND[k].n)) + "</span>"; }).join("") + '<span><i class="tr-lask">▼</i>' + esc(tr("用户消息")) + '</span><span><i class="tr-lcmp">◆</i>' + esc(tr("上下文压缩")) + '</span><span><i class="tr-lturn"></i>' + esc(tr("回合")) + '</span><span><i class="tr-lbgi"></i>' + esc(tr("后台任务")) + "</span></div></div>";
     if (!groups.length) { draw(bar, '<div class="st-dim tr-empty">' + esc(tr(rts.length ? "这段时间里没有会话在工作" : "没有打开的会话")) + "</div>"); return; }
     // 纵向：每组 = 名字那一行的高度和「工具几行 + 后台一行」取大的
@@ -696,7 +709,7 @@
     var sp = e.target.closest && e.target.closest("[data-trs]");
     if (sp) { localStorage.setItem("tsu-trace-span", sp.dataset.trs); rerenderAll(); return; }
     var g = e.target.closest && e.target.closest(".tr-grp[data-tra], .am-tr[data-tra], .am-crow[data-tra]");
-    if (g) { var hh = g.closest(".tr-host"); if (hh && !g.classList.contains("tr-grp")) { var o = hh._open || (hh._open = {}); if (o[g.dataset.tra]) delete o[g.dataset.tra]; else o[g.dataset.tra] = 1; hh._amLast = null; render(hh); } else if (window.TSU_TERM && TSU_TERM.agent) TSU_TERM.agent(g.dataset.tra); } // 列表里点一个会话：就地展开它的进程（再点收起）；右键打开它；时间线里点：打开它
+    if (g) { var hh = g.closest(".tr-host"); if (hh && !g.classList.contains("tr-grp")) { if (!g.classList.contains("am-expandable")) return; var o = hh._open || (hh._open = {}); if (o[g.dataset.tra]) delete o[g.dataset.tra]; else o[g.dataset.tra] = 1; hh._amLast = null; render(hh); } else if (window.TSU_TERM && TSU_TERM.agent) TSU_TERM.agent(g.dataset.tra); } // 列表里点一个会话：就地展开它的进程（再点收起）；右键打开它；时间线里点：打开它
   });
   // 右键一个会话：打开它（打开会话）——左键是看它的资源
   document.addEventListener("contextmenu", function (e) {
