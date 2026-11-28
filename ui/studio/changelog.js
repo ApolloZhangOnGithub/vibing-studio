@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-29", ver: "0.2.5.2", items: { fixed: [
+      ["修复连续打开命令面板或切换选择器后，关闭面板可能导致整个窗口点不动的问题。", "Fixed clicks being blocked across the window after reopening the command palette or switching pickers and dismissing them."]
+    ] } },
     { date: "2026-11-29", ver: "0.2.5.1", items: { fixed: [
       ["修复对话末行的文件链接有时看不到虚线下划线的问题。", "File links on the last line of a conversation now keep their dashed underline."]
     ] } },

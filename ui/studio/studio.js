@@ -2926,6 +2926,16 @@
   //   页面上的原生网页（内嵌浏览器）被它盖住就藏起来（webview.js 的 OVER 里有 .st-modal）----
   var MODALS = [], MODAL_TOP = ".st-menu, .ss-ddlist, .st-palette, .st-pop, .ca-dlgdim, .st-modal";
   var modalBackground = new WeakMap();
+  function recordModal(action, layer) {
+    // Keep the last panel transitions across reloads without recording user content.
+    try {
+      const key = "st-modal-history";
+      const history = JSON.parse(localStorage.getItem(key) || "[]").slice(-15);
+      history.push({at:Date.now(), window:performance.timeOrigin, action, layer:layer.className,
+        depth:MODALS.length, blocked:!!document.getElementById("win")?.closest("[inert]")});
+      localStorage.setItem(key, JSON.stringify(history));
+    } catch (_) { /* Storage may be unavailable. */ }
+  }
   var focusables = function (el) { return Array.prototype.slice.call(el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(function (x) { return !x.disabled && x.offsetParent; }); };
   function modalOpen(win, o) {
     o = o || {};
@@ -2960,6 +2970,7 @@
       if (e.shiftKey && i <= 0) { e.preventDefault(); fs[fs.length - 1].focus(); } else if (!e.shiftKey && i === fs.length - 1) { e.preventDefault(); fs[0].focus(); }
     });
     MODALS.push(M);
+    recordModal("open", layer);
     return M;
   }
   function settingsModalOpen() { return MODALS.some(m => m.o.settings); }
@@ -2976,6 +2987,7 @@
       else if (mark.previous !== "true") el.setAttribute("aria-hidden", mark.previous);
     });
     M.layer.remove();
+    recordModal("close", M.layer);
     if (M.back && M.back.isConnected && !M.back.closest("[inert]")) try { M.back.focus({ preventScroll: true }); } catch (e) { /* 焦点回不去就算了 */ }
     if (M.o.onClose) M.o.onClose();
     if (M.o.settings) document.dispatchEvent(new Event("st-settings-closed"));
@@ -3963,7 +3975,7 @@ else:
   //   页面上的原生网页被它盖住就藏起来（webview.js 的 OVER 里有 .st-modal）。macOS、Pure Terminal 照旧放在窗口里
   var PAL = null; // 现在开着的那一个：{ box, close, M }
   function palHost(tw, box, close) {
-    if (PAL && PAL.box !== box) { var p0 = PAL; PAL = null; try { p0.close(); } catch (e) { /* 已经关了 */ } }
+    if (PAL && PAL.box !== box) PAL.close();
     if (root.classList.contains("st-os-vscode") || root.classList.contains("st-os-claude")) { PAL = { box: box, close: close, M: modalOpen(box, { cls: "st-modal-pal", onBackdrop: function () { close(); } }) }; palPlace(box); Promise.resolve().then(function () { palPlace(box); }); return; } // 调用的那边这一轮里才填列表：填完（画之前）再按真的高度摆一次
     tw.el.appendChild(box);
     PAL = { box: box, close: close, M: null };
@@ -3984,9 +3996,6 @@ else:
   function palette(tw, mode) {
     tw = tw || (T() && T().front());
     if (!tw) return;
-    if (PAL) { var p1 = PAL; PAL = null; try { p1.close(); } catch (e) { /* 已经关了 */ } }
-    var old = document.querySelector(".st-palette");
-    if (old) old.remove();
     var box = document.createElement("div"), q0 = mode === "cmd" ? ">" : "", sel = 0, items = [];
     box.className = "st-palette terminal-style-ui";
     box.innerHTML = '<div class="st-pin"><span class="st-lav">❯</span><input spellcheck="false" autocomplete="off" placeholder="' + (mode === "cmd" ? "输入命令" : "搜索会话、Agent、文件或输入网址（输入 > 以运行命令）") + '"></div><div class="st-plist"></div>';
@@ -4681,9 +4690,6 @@ else:
   // 分组（item.group）：组和组之间一条线，组名在这组第一行的最右边；每项 title + 淡色的 desc，现在用的那个打 ✔。
   // 键盘 ↑↓ 移动（有 preview 就先换上看看）、回车定下、Esc 不换；鼠标只高亮（悬停不移动、不预览），点一下才选
   function quickPick(tw, o) {
-    if (PAL) { var p1 = PAL; PAL = null; try { p1.close(); } catch (e) { /* 已经关了 */ } }
-    var old = document.querySelector(".st-palette");
-    if (old) old.remove();
     var box = document.createElement("div"), sel = Math.max(0, o.items.findIndex(function (x) { return x.on; })), shown = o.items;
     box.className = "st-palette";
     box.innerHTML = '<div class="st-pin"><span class="st-lav">❯</span><input spellcheck="false" autocomplete="off" placeholder="' + esc(o.placeholder || "") + '"></div><div class="st-plist"></div>' + (o.sample ? '<pre class="st-psample">' + sampleCode() + "</pre>" : "");
@@ -6188,9 +6194,6 @@ else:
   function layoutPick(tw) {
     tw = tw || (T() && T().front());
     if (!tw) return;
-    if (PAL) { var p1 = PAL; PAL = null; try { p1.close(); } catch (e) { /* 已经关了 */ } }
-    var old = document.querySelector(".st-lpick");
-    if (old) old.remove();
     var box = document.createElement("div"), sel = 0;
     box.className = "st-palette st-lpick";
     box.tabIndex = -1;
@@ -6248,7 +6251,7 @@ else:
     });
     var close = function () { palDone(box); box.remove(); document.removeEventListener("pointerdown", out, true); var P = tw.ws.active; if (P) P.focus(); };
     var out = function (e) { if (!box.contains(e.target) && !(e.target.closest && e.target.closest(".st-menu"))) close(); };
-    setTimeout(function () { document.addEventListener("pointerdown", out, true); }, 0);
+    setTimeout(function () { if (box.isConnected) document.addEventListener("pointerdown", out, true); }, 0);
     box.addEventListener("keydown", function (e) {
       var n = items().length;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); sel = (sel + (e.key === "ArrowDown" ? 1 : -1) + n) % n; paint(); }
