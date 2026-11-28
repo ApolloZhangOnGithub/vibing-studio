@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-29", ver: "0.2.5.1", items: { fixed: [
+      ["修复对话末行的文件链接有时看不到虚线下划线的问题。", "File links on the last line of a conversation now keep their dashed underline."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.27", items: { fixed: [
       ["生成回复时，选中的文字和高亮留在原处，可以继续阅读和复制。", "Selected text stays in place while the conversation streams, so you can keep reading or copy it."]
     ] } },

@@ -206,7 +206,9 @@ html.light .about-card { background: rgba(246, 246, 246, 0.97); color: #1d1d1f; 
 .tpane .term .grp.uopen .grp.trsw { margin: 0; padding: 0; } /* 嵌在点开的灰块里：外面那层已经伸到两边了 */
 /* 文件路径（同 Claude Code 的 FilePathLink，照 iTerm2 截图取的）：只有一条虚线，和字同色（正文 199 灰），4px 实、3px 空——不是白的，也不再叠一条点线 */
 .tpane .term a[href*="#vs-file:"], .tpane.tl .term a[href*="#vs-file:"] {
-  padding-bottom: 0.16em;
+  /* Keep the rule inside the last terminal row, including at fractional font sizes. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   background-image: linear-gradient(to right, currentColor 4px, transparent 4px);
   background-size: 7px 1px;
   background-repeat: repeat-x;
