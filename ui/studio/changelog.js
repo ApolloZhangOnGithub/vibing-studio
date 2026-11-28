@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.21", items: { improved: [
+      ["活动监视器按连接器分组。采样刷新时会话保持原位，已打开的空会话也会保留在列表和时间线中。", "Activity Monitor groups sessions by connector. Sessions stay in place across samples, and open empty sessions remain visible in both views."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.20", items: { improved: [
       ["活动监视器的时间线和底部资源图可以分别选择时间范围，切换视图时各自保留选择。", "Choose separate time ranges for the activity timeline and resource charts. Both selections persist when switching views."]
     ] } },

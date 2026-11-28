@@ -87,11 +87,18 @@
     localStorage.setItem(resourceKey, String(storedRange(timelineKey)));
   }
   // 打开着的会话的运行时：自己的 agent（liveRuntimes）+ 标签页里开着的 Claude Code、Codex 会话
-  function runtimes() {
+  function openSessionIds() {
+    var ids = new Set();
+    (window.TSU_TERM?.panes?.() || []).forEach(function (pane) {
+      if (pane.program?.agentId) ids.add(pane.program.agentId);
+    });
+    return ids;
+  }
+  function runtimes(openIds) {
     var A = window.TSU_AGENTS, out = [], seen = new Set();
     var add = function (r) { if (r && r.agent && !r.agent.deleted && !seen.has(r)) { seen.add(r); out.push(r); } };
     if (A && A.liveRuntimes) A.liveRuntimes().forEach(add);
-    if (A && A.runtime && window.TSU_TERM && TSU_TERM.panes) TSU_TERM.panes().forEach(function (p) { var id = p && p.program && p.program.agentId; if (!id) return; try { add(A.runtime(id)); } catch (e) { /* 没有就算了 */ } });
+    if (A && A.runtime) (openIds || openSessionIds()).forEach(function (id) { try { add(A.runtime(id)); } catch (e) { /* 没有就算了 */ } });
     return out;
   }
   // 一个会话在这段时间里的：一问一问（底色）、工具调用（条）、后台任务（细条）、记号
@@ -495,6 +502,11 @@
   }
   var mb = function (b) { return b == null ? "—" : b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : (b / 1048576).toFixed(1) + " MB"; }; // 这张表一律一位小数（同 CPU 那一列）
   // 一行：这个会话现在的样子
+  function connectorOf(agent) {
+    var prefix = String(agent.id || "").split(":")[0];
+    return agent.connector || ({ cc: "claude-code", cx: "codex" }[prefix]) || (String(agent.id).includes(":") ? prefix : "paimon");
+  }
+  function categoryName(id) { return window.TSU_CONNECTORS?.get(id)?.name || (id === "paimon" ? "Paimon" : id); }
   function rowOf(rt, now) {
     var a = rt.agent || {}, id = a.id || "", s = rt.stream, q = null;
     try { q = rt.question ? rt.question() : null; } catch (e) { q = null; }
@@ -508,23 +520,36 @@
     var detail = s ? (runP ? progOf(runP) : tr(thinking ? "思考" : "输出")) : "", tip = runP ? String(runP.name || "") + (what(runP) ? " · " + trT(what(runP), id) : "") : "";
     var since = s ? s.t0 : (lt && (lt.last || (lt.stats && lt.stats.at) || lt.at)) || 0, c = null, roots = rootsOf(rt), procs = procsOf(roots), u = procs.length ? usage(procs) : null;
     try { c = rt.ctx ? rt.ctx() : null; } catch (e) { c = null; }
-    return { id: id, name: a.name || id, conn: a.connector || ({ cc: "claude-code", cx: "codex" }[id.split(":")[0]] || id.split(":")[0]), status: st, doing: doing, detail: detail, tip: tip, doingNow: !!runP, since: since, ms: since ? Math.max(0, now - since) : 0,
+    return { id: id, name: a.name || id, conn: connectorOf(a), status: st, doing: doing, detail: detail, tip: tip, doingNow: !!runP, since: since, ms: since ? Math.max(0, now - since) : 0,
       calls: parts.filter(function (x) { return x.kind === "tool"; }).length, ctx: c && c.window ? Math.round(c.pct * 10) / 10 : null, bg: (rt.tasks || []).filter(function (x) { return x.status === "running"; }).length,
       processRoots: roots, servicePid: PS.map?.codex.get(rt.info?.path), cpu: u ? u.cpu : null, mem: u ? u.mem : null, procs: u ? u.procs : null };
   }
   var EN = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
   var ST_TXT = { run: "工作中", wait: "等待处理", idle: "空闲" }, ST_EN = { run: "Working", wait: "Needs input", idle: "Idle" }, ST_ORD = { run: 0, wait: 1, idle: 2 };
   var stTxt = function (k) { return EN() ? ST_EN[k] : ST_TXT[k]; }; // 状态自己给英文（不拿全局的「在跑」——别处它是小写的 running）
-  var SORT = (function () { try { return JSON.parse(localStorage.getItem("tsu-act-sort")) || null; } catch (e) { return null; } })() || { k: "status", d: 1 };
+  var SORT = (function () { try { return JSON.parse(localStorage.getItem("tsu-act-sort")) || null; } catch (e) { return null; } })() || { k: "", d: 1 };
   var COLS = [["name", "Agent"], ["status", "状态"], ["ms", "用时"], ["cpu", "CPU"], ["mem", "内存"], ["procs", "进程"], ["ctx", "上下文"]];
-  function sorted(rows) {
+  function sorted(rows, host) {
     var k = SORT.k, d = SORT.d;
-    return rows.slice().sort(function (a, b) {
+    var order = host._sessionOrder || (host._sessionOrder = new Map());
+    var present = new Set(rows.map(r => r.id));
+    for (var id of order.keys()) if (!present.has(id)) order.delete(id);
+    var list = rows.slice().sort(function (a, b) {
+      var category = a.conn.localeCompare(b.conn);
+      if (category) return category;
+      if (a.status === "service" || b.status === "service") {
+        if (a.status !== b.status) return a.status === "service" ? 1 : -1;
+      }
+      var oldA = order.get(a.id), oldB = order.get(b.id);
+      if (oldA !== undefined || oldB !== undefined) return (oldA ?? Infinity) - (oldB ?? Infinity);
+      if (!k) return a.id.localeCompare(b.id);
       var x = k === "status" ? ST_ORD[a.status] : a[k], y = k === "status" ? ST_ORD[b.status] : b[k];
-      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      if (x == null && y == null) return a.id.localeCompare(b.id); if (x == null) return 1; if (y == null) return -1;
       var r = typeof x === "string" ? x.localeCompare(y) : x - y;
-      return (r || (ST_ORD[a.status] - ST_ORD[b.status]) || ((b.cpu || 0) - (a.cpu || 0))) * (k === "status" || typeof x === "string" ? d : -d);
+      return r * (k === "status" || typeof x === "string" ? d : -d) || a.id.localeCompare(b.id);
     });
+    list.forEach((row, i) => order.set(row.id, i));
+    return list;
   }
   var LOGO = function (c) { return window.TSU_LOGOS?.[c] || window.TSU_CONNECTORS?.get(c)?.logo || ""; };
   // 底下的「CPU 负载」：最近这段的总 CPU（所有会话加起来），同活动监视器底下那张
@@ -547,8 +572,8 @@
     sample();
     var now = Date.now(), L0 = host._amLast || { key: "", at: 0 };
     // 列哪些：开在标签页里的会话，和没开着但在跑 / 等你的（闲着、又没开着的 Paimon agent 不列——一长串空行没意义）
-    var openIds = {}; try { (window.TSU_TERM && TSU_TERM.panes ? TSU_TERM.panes() : []).forEach(function (p) { var i = p && p.program && p.program.agentId; if (i) openIds[i] = 1; }); } catch (e) { /* 没有就算了 */ }
-    var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; }), W = host.clientWidth, compact = W < 560;
+    var openIds = openSessionIds();
+    var rows = runtimes(openIds).map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds.has(r.id) || r.status !== "idle"; }), W = host.clientWidth, compact = W < 560;
     // 同 macOS 的活动监视器：上面页签（概览、CPU、GPU、内存、磁盘、网络、能耗）、中间会话、底下整机的图（用户 2026-10-14：资源那些要留着）；窄的（右侧栏）只列会话
     var open = host._open || (host._open = {});
     var services = [...new Set(rows.map(r => r.servicePid).filter(Boolean))].map(pid => ({
@@ -598,16 +623,20 @@
       }).join("");
       return '<div class="am-process-detail"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
-    var list = sorted(rows).concat(services), body;
+    var list = sorted(rows.concat(services), host), body;
+    function heading(row, index) {
+      if (index && list[index - 1].conn === row.conn) return "";
+      return '<div class="am-category" style="grid-column:1/-1;padding:4px var(--am-in);font-weight:600">' + esc(categoryName(row.conn)) + "</div>";
+    }
     if (!rows.length) body = '<div class="st-dim tr-empty">' + esc(tr("没有打开的会话")) + "</div>";
-    else if (compact) body = '<div class="am-list">' + list.map(function (r) {
+    else if (compact) body = '<div class="am-list">' + list.map(function (r, index) {
       // 一个会话两行，按格子对齐：第一行 标志 | 名字 | CPU；第二行（从名字那一列起）状态 · 用时
-      return '<div class="am-crow' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
+      return heading(r, index) + '<div class="am-crow' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
         '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.since ? " · " + elapsed(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r) : "");
     }).join("") + "</div>";
     else {
       body = '<div class="am-table' + (any ? '' : ' am-no-process-data') + '"><div class="am-tr am-th">' + COLS.map(function (c) { return '<button type="button" class="am-c am-' + c[0] + (SORT.k === c[0] ? " on" : "") + '" data-ams="' + c[0] + '">' + esc(tr(c[1])) + (SORT.k === c[0] ? '<i class="am-sort">' + SORT_ICO(SORT.d) + "</i>" : "") + "</button>"; }).join("") + "</div>" +
-        list.map(function (r) { return '<div class="am-tr' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r) : ""); }).join("") +
+        list.map(function (r, index) { return heading(r, index) + '<div class="am-tr' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '">' + COLS.map(function (c) { return '<span class="am-c am-' + c[0] + '">' + cell(r, c[0]) + "</span>"; }).join("") + "</div>" + (open[r.id] ? subs(r) : ""); }).join("") +
         "</div>";
     }
     var sumH = '<span class="am-sum">' + esc(stTxt("run")) + " <b>" + run + "</b> · " + esc(stTxt("wait")) + " <b>" + wait + "</b> · " + esc(stTxt("idle")) + " <b>" + idleN + "</b>" +
@@ -664,10 +693,10 @@
   }
   function renderTimeline(host, amv) {
     var W = Math.max(360, host.clientWidth), span = storedRange(timelineKey), now = Date.now(), from = now - span * 60000;
-    // 只画这段时间里真的干过活的（有调用、有一问、有后台任务，或者现在正在跑）；在跑的在上面，其余按最近一次动静排
-    var rts = runtimes(), groups = rts.map(function (rt) { var d = collect(rt, from, now); d.rt = rt; d.lastAt = Math.max(0, d.bars.length ? d.bars[d.bars.length - 1].t1 : 0, d.turns.length ? d.turns[d.turns.length - 1].e : 0); return d; })
-      .filter(function (d) { return d.rt.stream || d.bars.length || d.turns.length || d.bg.some(function (b) { return b.run || b.t1 >= from; }); })
-      .sort(function (a, b) { return (b.rt.stream ? 1 : 0) - (a.rt.stream ? 1 : 0) || b.lastAt - a.lastAt; });
+    // 列出已打开的会话，以及这段时间里有活动的会话（有调用、有一问、有后台任务，或者现在正在跑）；在跑的在上面，其余按最近一次动静排
+    var openIds = openSessionIds(), rts = runtimes(openIds), groups = rts.map(function (rt) { var d = collect(rt, from, now); d.rt = rt; d.lastAt = Math.max(0, d.bars.length ? d.bars[d.bars.length - 1].t1 : 0, d.turns.length ? d.turns[d.turns.length - 1].e : 0); return d; })
+      .filter(function (d) { return openIds.has(d.rt.agent.id) || d.rt.stream || d.bars.length || d.turns.length || d.bg.some(function (b) { return b.run || b.t1 >= from; }); })
+      .sort(function (a, b) { return connectorOf(a.rt.agent).localeCompare(connectorOf(b.rt.agent)) || a.rt.agent.id.localeCompare(b.rt.agent.id); });
     // 没东西就不必每秒重画；在跑的有条在长，按时间段决定多久重画一次（10 分钟 1 秒，别的 2 秒）
     var key = W + "|" + span + "|" + groups.map(function (g) { return g.rt.agent.id + ":" + g.bars.length + ":" + g.bg.length + ":" + g.marks.length; }).join(",");
     if (amv) key += "|" + SYS.at + "|" + sysTab() + diskMode() + netMode();
@@ -689,6 +718,11 @@
     for (var tt = t0; tt < now; tt += step) { var gx = X(tt); grid.push('<line class="tr-grid" x1="' + gx + '" x2="' + gx + '" y1="' + AXIS + '" y2="100%"/>' + (X(now) - gx > 34 ? '<text class="tr-tick" x="' + gx + '" y="12">' + hhmm(tt) + "</text>" : "")); }
     groups.forEach(function (g, gi) {
       var a = g.rt.agent, id = a.id, cn = /^cc:/.test(id) ? "cc" : /^cx:/.test(id) ? "cx" : "pm", nL = laneOut(g.bars, 4), bgL = g.bg.length ? laneOut(g.bg, 4) : 0;
+      var category = connectorOf(a);
+      if (!gi || category !== connectorOf(groups[gi - 1].rt.agent)) {
+        parts.push('<text class="tr-name" x="8" y="' + (y + 14) + '">' + esc(categoryName(category)) + "</text>");
+        y += 20;
+      }
       var h = Math.max(50, nL * (ROW + LGAP) + (bgL ? bgL * (BGH + 2) + 4 : 0) + 8), top = y;
       var name = String(a.name || id).slice(0, 40), st = g.rt.stream ? "busy" : "idle";
       // 左边两行小字（放在名字那一栏里，不压到右边的条）——以前是「100% 忙 · 24 次调用 · 最长 Bash 3m」，看了也不知道它在干嘛：
@@ -749,7 +783,7 @@
     var mm = e.target.closest && e.target.closest("[data-amm]");
     if (mm) { localStorage.setItem("tsu-act-mode", mm.dataset.amm); rerenderAll(); return; }
     var so = e.target.closest && e.target.closest("[data-ams]");
-    if (so) { var k = so.dataset.ams; SORT = SORT.k === k ? { k: k, d: -SORT.d } : { k: k, d: 1 }; localStorage.setItem("tsu-act-sort", JSON.stringify(SORT)); var h1 = so.closest(".tr-host"); if (h1) { h1._amLast = null; render(h1); } return; }
+    if (so) { var k = so.dataset.ams; SORT = SORT.k === k ? { k: k, d: -SORT.d } : { k: k, d: 1 }; localStorage.setItem("tsu-act-sort", JSON.stringify(SORT)); var h1 = so.closest(".tr-host"); if (h1) { h1._sessionOrder = null; h1._amLast = null; render(h1); } return; }
     var mv = e.target.closest && e.target.closest("[data-am-move]");
     if (mv) { if (window.STUDIO && STUDIO.moveActivity) STUDIO.moveActivity(mv.dataset.amMove); return; }
     var resource = e.target.closest && e.target.closest("[data-am-range]");
@@ -771,9 +805,8 @@
   // 给 Paimon（全局助手的 AgentActivity 工具）、别的地方读：现在每个打开着的会话的样子 + 最近的 CPU 负载
   function snapshot() {
     sample(true);
-    var now = Date.now(), openIds = {};
-    try { (window.TSU_TERM && TSU_TERM.panes ? TSU_TERM.panes() : []).forEach(function (p) { var i = p && p.program && p.program.agentId; if (i) openIds[i] = 1; }); } catch (e) { /* 没有就算了 */ }
-    var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; });
+    var now = Date.now(), openIds = openSessionIds();
+    var rows = runtimes(openIds).map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds.has(r.id) || r.status !== "idle"; });
     return {
       at: new Date(now).toISOString(),
       agents: rows.map(function (r) { return { id: r.id, name: r.name, connector: r.conn, sharedServicePid: r.servicePid || null, status: { run: "running", wait: "waiting-for-you", idle: "idle" }[r.status], doing: r.doing || null,
