@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.23", items: { improved: [
+      ["文件标签不再显示空闲绿点。", "File tabs no longer show a green idle indicator."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.22", items: { improved: [
       ["图片标签页现在连续缩放，放大后可以双向平移并使用滚动条。", "Zoom smoothly in image tabs and pan enlarged images on either axis using the trackpad or scrollbars."]
     ] } },
