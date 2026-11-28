@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.24", items: { fixed: [
+      ["本地文件改名后，已打开的标签会跟随新路径。撤销改名时，标签也会恢复原名。", "Open file tabs follow local renames and return to the original path when you undo a rename in Studio."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.23", items: { improved: [
       ["文件标签不再显示空闲绿点。", "File tabs no longer show a green idle indicator."]
     ] } },

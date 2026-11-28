@@ -1471,7 +1471,7 @@
         var u = XV.undo;
         if (!u) return;
         XV.undo = null;
-        sh("test ! -e " + shq(u.to) + " && /bin/mv -n " + shq(u.from) + " " + shq(u.to)).then(function () { delete cache[parentOf(u.from)]; reload(parentOf(u.to), u.to.split("/").pop()); }, fail);
+        sh("test ! -e " + shq(u.to) + " && /bin/mv -n " + shq(u.from) + " " + shq(u.to)).then(function () { S.fileRenamed(u.from, u.to); delete cache[parentOf(u.from)]; reload(parentOf(u.to), u.to.split("/").pop()); }, fail);
       };
       var duplicate = function (it) {
         if (!it || locked(it)) return;
@@ -1709,7 +1709,7 @@
           if (/\//.test(nm) || nm === "." || nm === "..") { back(); return fail(tr("名称不能包含“/”。", "The name can’t contain “/”.")); }
           if (namesIn(dir).indexOf(nm) >= 0) { back(); return fail(tr("名称“" + nm + "”已被使用。请选取另一个名称。", "The name “" + nm + "” is already taken. Please choose a different name.")); }
           V.renaming = false;
-          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { XV.undo = { from: dst, to: it.path }; host.finderMarkup = "";
+          sh("test ! -e " + shq(dst) + " && /bin/mv -n " + shq(it.path) + " " + shq(dst)).then(function () { S.fileRenamed(it.path, dst); XV.undo = { from: dst, to: it.path }; host.finderMarkup = "";
             var current = where(V.arg);
             if (current.fs && (current.path === it.path || current.path.startsWith(it.path + "/"))) {
               delete cache[dir];

@@ -3188,7 +3188,7 @@
           host.addEventListener("click", function (e) {
             var a = e.target.closest("[data-fa]");
             if (!a) return;
-            var ff = FILES[path];
+            var path = V.arg, ff = FILES[path];
             if (a.dataset.fa === "edit") { ff.mode = "edit"; V.redraw(); }
             if (a.dataset.fa === "view") leaveEdit(path, function () { V.redraw(); P.win.syncTitles(); });
             if (a.dataset.fa === "save") saveFile(path, function () { V.redraw(); P.win.syncTitles(); });
@@ -3316,14 +3316,90 @@
     prev.onclick = () => show(page - 1); next.onclick = () => show(page + 1);
     show(0);
   }
+  // Retain the filesystem identity across reloads so an externally renamed tab can be recovered.
+  const fileRefsKey = "st-local-file-refs";
+  function fileRefs() {
+    try { return JSON.parse(localStorage.getItem(fileRefsKey)) || {}; } catch (_) { return {}; }
+  }
+  function rememberFile(path, f) {
+    if (!LOC()?.exec) return;
+    const capture = LOC().exec({cmd: "if [ \"$(uname -s)\" = Darwin ]; then stat -f '%d:%i:%B' " + shq(path) + "; else stat -c '%d:%i:%W' -- " + shq(path) + "; fi"});
+    f.capture = capture.then(result => {
+      const id = result.out?.trim();
+      if (FILES[path] !== f || !/^\d+:\d+:\d+$/.test(id)) return;
+      f.ref = id;
+      const refs = fileRefs();
+      if (refs[path] === id) return;
+      delete refs[path];
+      refs[path] = id;
+      try { localStorage.setItem(fileRefsKey, JSON.stringify(Object.fromEntries(Object.entries(refs).slice(-256)))); } catch (_) {}
+    }).catch(() => {});
+  }
+  async function renamedPath(path, f) {
+    await f.capture;
+    const ref = f.ref || fileRefs()[path];
+    if (!ref || !/^\d+:\d+:\d+$/.test(ref)) return null;
+    // macOS resolves the original vnode even when a parent directory was renamed.
+    const script = `import os, sys, json
+path, ref = sys.argv[1:]
+dev, ino, birth = map(int, ref.split(':'))
+if sys.platform == 'darwin':
+ import fcntl
+ fd = os.open('/.vol/%d/%d' % (dev, ino), os.O_EVTONLY)
+ name = os.fsdecode(fcntl.fcntl(fd, 50, bytes(1024)).split(bytes(1))[0])
+ st = os.fstat(fd)
+ if int(st.st_birthtime) == birth and st.st_nlink == 1 and '.Trash' not in name.split('/') and '.Trashes' not in name.split('/'):
+  print(json.dumps(name))
+else:
+ with os.scandir(os.path.dirname(path)) as entries:
+  for entry in entries:
+   if entry.inode() == ino:
+    st = entry.stat(follow_symlinks=False)
+    if st.st_dev == dev and st.st_nlink == 1: print(json.dumps(entry.path))
+    break`;
+    try {
+      const result = await LOC().exec({cmd: "python3 -c " + shq(script) + " " + shq(path) + " " + shq(ref)});
+      return result.code ? null : JSON.parse(result.out || "null");
+    } catch (_) { return null; }
+  }
+  function fileRenamed(from, to) {
+    if (!from || !to || from === to) return;
+    const panes = allPanes().filter(p => p.program?.page === "file" &&
+      (p.program.arg === from || p.program.arg.startsWith(from + "/")));
+    const paths = new Set(panes.map(p => p.program.arg));
+    for (const old of paths) {
+      const next = to + old.slice(from.length), cached = FILES[old];
+      flushEd(old);
+      const group = panes.filter(p => p.program.arg === old);
+      for (const p of group) {
+        const host = p.program.host;
+        releaseFileBody(host.querySelector(".st-fbody"));
+        host.replaceChildren();
+        delete host.dataset.mode;
+      }
+      delete FILES[old];
+      if (cached?.dirty) FILES[next] = {...cached, checkPending: false, retryRenameAt: 0};
+      else if (!FILES[next]?.dirty) delete FILES[next];
+      for (const p of group) p.program.go(next);
+      if (cached?.dirty) rememberFile(next, FILES[next]);
+    }
+  }
   function loadFile(path, done) {
     var f = FILES[path], over = false, t0 = Date.now();
     var fin = function () { if (over) return; over = true; clearTimeout(tm); f.loadMs = Date.now() - t0; done(); scheduleFileTrim(); };
     var tm = setTimeout(function () { if (over) return; f.kind = "error"; f.error = "读取超时（20 秒没有读完）"; f.loaded = false; fin(); }, 20000);
     LOC().stat(path).then(function (st) {
       if (over) return;
-      if (!st) { f.kind = "missing"; return fin(); }
+      if (!st) {
+        return renamedPath(path, f).then(next => {
+          if (over || FILES[path] !== f) return fin();
+          if (next && next !== path) fileRenamed(path, next);
+          else f.kind = "missing";
+          fin();
+        });
+      }
       if (st.type === "dir") { f.kind = "missing"; return fin(); }
+      rememberFile(path, f);
       f.mtime = st.mtime; f.size = st.size;
       var ext = extOf(path), nat = !!(window.TSU_WEB && TSU_WEB.native && TSU_WEB.native());
       // App 里：PDF（多大都行）、Office 文稿不读进页面——原生的网页视图直接读文件（见 nativeFile）
@@ -3527,10 +3603,19 @@
     if (!f || f.kind !== "text") { if (fail) fail(); return; }
     flushEd(path);
     var text = f.text;
-    LOC().stat(path).then(function (st) {
+    LOC().stat(path).then(async function (st) {
+      if (!st) {
+        const next = await renamedPath(path, f);
+        if (next && next !== path && FILES[path] === f) {
+          fileRenamed(path, next);
+          return saveFile(next, then, fail);
+        }
+        if (FILES[path] !== f) { if (fail) fail(); return; }
+      }
       var go = function () {
         return LOC().write(path, text).then(function () {
           f.saved = text; f.dirty = f.text !== text;
+          rememberFile(path, f);
           return LOC().stat(path).then(function (s2) { f.mtime = s2 ? s2.mtime : Date.now(); if (then) then(); });
         }, function (e) { if (window.TSU_DESK && TSU_DESK.alert) TSU_DESK.alert({ title: "无法保存", message: e.message, icon: "caution" }); if (fail) fail(); });
       };
@@ -3606,8 +3691,26 @@
       var pr = p.program;
       if (!pr || pr.page !== "file" || p.win.ws.active !== p) return;
       var f = FILES[pr.arg];
-      if (!f || f.mode !== "view" || f.kind === "") return;
-      LOC().stat(pr.arg).then(function (st) { if (st && st.mtime !== f.mtime) { f.scrolled = true; loadFile(pr.arg, function () { pr.redraw(); }); } }).catch(function () {});
+      if (!f || !f.kind || f.checkPending) return;
+      const path = pr.arg;
+      f.checkPending = true;
+      LOC().stat(path).then(async st => {
+        if (FILES[path] !== f || pr.arg !== path) return;
+        if (!st) {
+          if (Date.now() < (f.retryRenameAt || 0)) return;
+          f.retryRenameAt = Date.now() + 5000;
+          const next = await renamedPath(path, f);
+          if (FILES[path] !== f || pr.arg !== path) return;
+          if (next && next !== path) fileRenamed(path, next);
+          else if (f.mode === "view" && !f.dirty && f.kind !== "missing") {
+            f.kind = "missing";
+            pr.redraw();
+          }
+        } else if (f.mode === "view" && (st.mtime !== f.mtime || f.kind === "missing")) {
+          f.scrolled = true;
+          loadFile(path, () => pr.redraw());
+        }
+      }).catch(() => {}).finally(() => { f.checkPending = false; });
     });
   }, 1500);
   // ---- 在访达里用这个 App 打开的（「打开方式 › Vibing Studio」、拖到 Dock 图标上；原生 AppDelegate 记着）：文件在编辑区打开，文件夹在访达页里打开 ----
@@ -6747,7 +6850,7 @@
     toggle: toggleSide, isOpen: function () { return !!L.side; },
     // 这一页的目标（/goal）现在看得见吗：右侧栏开着（VS Code 风格）、或者在卡片 / 抽屉里（另两种风格）——看不见时 live.js 把它画在输入框上面
     goalShown: function (P) { var h = familyHost(); if (h !== "side") return true; var tw = P && (P.win || (P.side && P.side.win)); return !!(tw ? sideVis(tw) : L.side) && L.sideLevel !== "global"; }, togglePanel: panelOrStatus, panelOpen: function () { return !noPanel() && !!L.panel; }, panelView: panelView, toggleStatus: toggleStatus, newTerm: newTerm,
-    openFile: openFile, openPaths: openPaths, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
+    openFile: openFile, fileRenamed: fileRenamed, openPaths: openPaths, fileLinks: fileLinks, fromOSC: fromOSC, fgChanged: fgChanged, osc: osc,
     askUnsaved: askUnsaved, // 关标签页 / 窗格 / 窗口之前：里面有改了没存的文件就问保存 / 不保存 / 取消（live.js 的 askClose 先走这里）
     renderPanelAll: function () { allWins().forEach(function (w) { try { renderPanel(w); } catch (e) { /* 下一次再画 */ } }); },
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
