@@ -5832,6 +5832,7 @@
       var cmd = rt.headless() && TSU_AGY.localAction(text);
       if (!cmd) return false;
       if (cmd === "/tasks") STUDIO.revealFamily(agentId,"bg",P);
+      else if (cmd === "/rewind") rt.rewind(P).catch(e => P.flash(e.message, 4000));
       else if (cmd === "/usage") toggleAgentQuota(P.input.querySelector("[data-quota]") || P.ta);
       else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
       else if (cmd === "/context") TSU_CTX.open(rt, P.ta, {tui:true});

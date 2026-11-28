@@ -1150,6 +1150,7 @@
           var local = CMDS.find(c => c.name === cmd && ["/model", "/context"].includes(cmd));
           if (cmd === "/model") rt.prepareChoices().then(() => local.run()).catch(e => P.flash(e.message, 3000));
           else if (local) local.run();
+          else if (cmd === "/rewind") rt.rewind(P).catch(e => P.flash(e.message, 4000));
           else if (cmd === "/usage") STUDIO.settings(P.win, "usage");
           else if (cmd === "/config") STUDIO.openFile(P.win, "~/.gemini/antigravity-cli/settings.json");
           else if (cmd === "/tasks") STUDIO.revealFamily(agentId, "bg", P);

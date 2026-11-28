@@ -455,7 +455,7 @@
       if (!isAgyCommand(cmd) || /^\/goal\s+/.test(cmd)) return "";
       if (cmd === "/quota") return "/usage";
       if (cmd === "/settings") return "/config";
-      return ["/tasks", "/usage", "/config", "/context", "/model", "/help", "/goal"].includes(cmd) ? cmd : "unsupported";
+      return ["/tasks", "/usage", "/config", "/context", "/model", "/help", "/goal", "/rewind"].includes(cmd) ? cmd : "unsupported";
     }
     window.TSU_AGY = {
       commands: agyCommands, localAction: agyLocalAction,
@@ -943,6 +943,13 @@
         },
         detachBash: no, takeQueued: function () { return null; },
         ctx: function () { var tokens = rt.contextTokens || 0, window = rt.contextLimit || 0; return {tokens, window, pct:window ? tokens/window*100 : 0}; },
+        rewind: async function (pane) {
+          if (rt.state() === "working") throw new Error("请在当前任务结束后回退会话");
+          var helper = await TSU_LOCAL.studioHelper("agy_sessions.py");
+          if (pane.closed) return;
+          var terminal = pane.win.ws.newTab({ sh: { cwd: rt.cwd(), pty: true } });
+          terminal.shell.type(["python3", helper, "--rewind-terminal", id].map(quote).join(" ") + "\r");
+        },
         cwd: function () { return info && info.cwd || ""; },
         todo: function () { return session.todo.items; },
         pendingMsgs: function () {

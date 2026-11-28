@@ -702,6 +702,67 @@ def submit_running(sid, message):
         return False
 
 
+def rewind_terminal(sid):
+    """Resume the actual CLI and open its picker through interactive input."""
+    if not os.isatty(0):
+        sys.exit("回退会话需要交互终端")
+    marker = activity_file(sid)
+    marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with marker.open("a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            sys.exit("AGY 正在使用此会话，请在当前任务结束后再回退")
+        if terminal_sessions().get(sid):
+            sys.exit("此会话已在另一终端打开，请在那里执行 /rewind")
+        lock.seek(0)
+        lock.truncate()
+        lock.write("0\nrewind")
+        lock.flush()
+        master = None
+        stage = "prompt"
+        tail = b""
+
+        def resize(*_):
+            if master is not None:
+                size = fcntl.ioctl(0, termios.TIOCGWINSZ, bytes(8))
+                fcntl.ioctl(master, termios.TIOCSWINSZ, size)
+
+        def output(fd):
+            nonlocal master, stage, tail
+            if master is None:
+                master = fd
+                resize()
+            data = os.read(fd, 16384)
+            if stage:
+                tail = (tail + data)[-4096:]
+                if stage == "prompt" and (b"shift+tab to cycle" in tail or b"? for shortcuts" in tail):
+                    os.write(fd, b"/rewind")
+                    stage, tail = "completion", b""
+                elif stage == "completion" and re.search(
+                    rb"> +/rewind +Rewind conversation to a previous message",
+                    re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", tail)
+                ):
+                    os.write(fd, b"\r")
+                    stage, tail = "", b""
+            return data
+
+        def keyboard(fd):
+            nonlocal stage
+            data = os.read(fd, 1024)
+            if stage == "completion" and not data.startswith((b"\x1b[", b"\x1b]", b"\x1bP")):
+                stage = ""
+            return data
+
+        previous = signal.signal(signal.SIGWINCH, resize)
+        try:
+            pty.spawn(["agy", "--conversation", sid], output, keyboard)
+        finally:
+            signal.signal(signal.SIGWINCH, previous)
+            lock.seek(0)
+            lock.truncate()
+
+
 def send_message(sid, message, model=None, configure=False, slash_command=False):
     if not message.strip() and not (configure and model):
         sys.exit("消息为空")
@@ -709,6 +770,14 @@ def send_message(sid, message, model=None, configure=False, slash_command=False)
     if configure and active_since(sid) and marker_path.read_text().splitlines()[1:] != ["acp", agy_acp.OWNER_VERSION]:
         sys.exit("当前回合使用旧版连接，结束后可切换模型")
     request = {"message": message, "model": model, "configure": configure}
+    if slash_command and message.strip() == "/rewind":
+        return send_terminal(sid, "/rewind", slash_command=True)
+    if marker_path.exists() and marker_path.read_text().splitlines()[1:] == ["rewind"]:
+        try:
+            with marker_path.open() as guard:
+                fcntl.flock(guard, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            sys.exit("请在已打开的回退终端继续操作，或关闭该终端后发送")
     result = agy_acp.exchange(marker_path, request)
     if result is not None:
         return result
@@ -839,6 +908,11 @@ if not frontmost then error "终端未在前台"
 key code 53
 end tell
 else
+if op is "command" then
+set selected tab of w to tab i of w
+set index of w to 1
+activate
+end if
 do script msg in tab i of w
 end if
 return "sent"
@@ -954,6 +1028,7 @@ def terminal_screen(tty):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rewind-terminal", type=UUID)
     parser.add_argument("--acp-owner", type=UUID)
     parser.add_argument("--session", type=UUID)
     parser.add_argument("--interrupt", type=UUID)
@@ -975,6 +1050,9 @@ def main():
     args = parser.parse_args()
     if args.create:
         return create_session(args.verification)
+    if args.rewind_terminal:
+        rewind_terminal(str(args.rewind_terminal))
+        sys.exit(0)
     if args.acp_owner:
         asyncio.run(agy_acp.serve(activity_file(str(args.acp_owner)), os.getcwd(), transcripts().get(str(args.acp_owner)), owner_has_background))
         return {}
