@@ -25,10 +25,10 @@ enum AppUpdate {
     let b = build(ofApp: dir + "/Vibing Studio.app")
     return b > currentBuild ? b : 0
   }
-  // 换到哪：「应用程序」里那一份；没有的话（装在别处）才用正在跑的这一份——但备份里、废纸篓里的不算
+  // 正常启动的 App 在当前位置更新。备份、废纸篓里的副本沿用恢复路径。
   static var target: String {
     let me = Bundle.main.bundlePath
-    if FileManager.default.fileExists(atPath: canonical) || stray(me) { return canonical }
+    if stray(me) { return canonical }
     return me
   }
   // 备份里（previous/、待更新）、废纸篓里的那一份

@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-29", ver: "0.2.5.3", items: { fixed: [
+      ["修复 Mac 点更新并退出时窗口可能一直无法点击的问题。", "Fixed a Mac window becoming unresponsive while quitting for an update."],
+      ["Codex 服务重启时会等待恢复。未送达的消息在原处保留重试操作。", "Codex waits for its service to recover during a restart. Undelivered messages keep a retry action in place."]
+    ] } },
     { date: "2026-11-29", ver: "0.2.5.2", items: { fixed: [
       ["修复连续打开命令面板或切换选择器后，关闭面板可能导致整个窗口点不动的问题。", "Fixed clicks being blocked across the window after reopening the command palette or switching pickers and dismissing them."]
     ] } },

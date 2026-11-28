@@ -101,15 +101,16 @@
   }
   var daemonStart;
   async function sendRpc(request) {
+    var deadline = Date.now() + 180000, starts = 0;
     for (var attempt = 0; ; attempt++) {
       var reply = await request();
       // Only retry explicit rejections, never an ambiguous timeout after submission.
-      if (attempt >= 4) return reply;
+      if (Date.now() >= deadline) return reply;
       if (/server is draining/i.test(reply?.error?.message || "")) {
-        await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
+        await new Promise(resolve => setTimeout(resolve, Math.min(5000, 500 * 2 ** attempt)));
         continue;
       }
-      if (reply.error !== "noconn") return reply;
+      if (reply.error !== "noconn" || ++starts > 4) return reply;
       if (!daemonStart) daemonStart = LOC.exec({cmd: "codex app-server daemon start", timeout: 20000})
         .finally(function () { daemonStart = null; });
       var start = await daemonStart;
@@ -588,7 +589,7 @@
         return entry.previewImages;
       }
       var pending = local.map(x => ({key:x.key, text:x.text, at:x.at, first:x.at, ours:true, delivery:x.q ? "queue" : x.waitingDispatch ? "local" : x.steerTurn ? "steer" : "current",
-        sending:!x.q && !x.err, images:images(x), err:x.err, local:!!x.err, li:sentWait.indexOf(x)}));
+        sending:!x.q && !x.err, images:images(x), err:x.err === "Codex 服务正在重启，请重试" ? "Codex 在重启期间未接收此消息" : x.err, local:!!x.err, li:sentWait.indexOf(x)}));
       var matched = new Set(), external = [];
       for (var q of serverQueue) {
         var i = local.findIndex(x => x.key === q.key);
@@ -1424,7 +1425,7 @@
         }
       }).catch(function (err) {
         sentAt = 0;
-        storeFailure(entry, /server is draining/i.test(err.message) ? "Codex 服务正在重启，请重试" : err.message);
+        storeFailure(entry, /server is draining/i.test(err.message) ? "Codex 在重启期间未接收此消息" : err.message);
       }).finally(function () { sendingCount--; liveBusy(); });
       return true;
     };

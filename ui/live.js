@@ -7449,7 +7449,7 @@
     function unsentRows(r, here, D) {
       var en = enLang();
       var failures = here.filter(h => h.q.err);
-      if (failures.length) {
+      if (failures.length && agent.connector !== "codex") {
         r.text([""]);
         r.block('<span class="blk vs-unsent-ind">' + P.toHtml(["  " + RED + (en ? failures.length + (failures.length === 1 ? " message" : " messages") + " not sent" : failures.length + " 条消息未送达") + RESET + D + " · " + RESET]).replace(/\n?$/, "") +
           '<span class="vs-unsent-jump">' + (en ? "show" : "查看") + "</span></span>");
@@ -7506,20 +7506,24 @@
           var facts = [];
           if (q.fails > 1) facts.push(en ? "failed " + q.fails + " times" : "失败 " + q.fails + " 次");
           if (q.manual) facts.push(en ? "retried " + q.manual + (q.manual === 1 ? " time" : " times") : "手动重试 " + q.manual + " 次");
-          if (q.first) facts.push(en ? "sent " + hm(q.first) : hm(q.first) + " 发出");
+          if (q.first && agent.connector !== "codex") facts.push(en ? "sent " + hm(q.first) : hm(q.first) + " 发出");
           if (q.last && q.first && q.last - q.first > 1000) facts.push(en ? "last tried " + hm(q.last) : "最近一次 " + hm(q.last));
           var link = function (cls, label, title) { return '<span class="' + cls + '" data-li="' + q.li + '" data-at="' + (q.at || 0) + '"' + (title ? ' title="' + title + '"' : "") + ">" + label + "</span>"; };
           var labels = [en ? "retry" : "重试"].concat(canE ? [en ? "edit" : "编辑"] : [], canC ? [en ? "cancel" : "取消"] : []);
           var acts = [link("vs-retry", labels[0])].concat(canE ? [link("vs-unsent-edit", en ? "edit" : "编辑", en ? "Put it back in the input to edit" : "放回输入框修改")] : [], canC ? [link("vs-unsent-cancel", en ? "cancel" : "取消", en ? "Don’t send this message" : "这一条不发了")] : []);
           var sep = P.toHtml([D + " · " + RESET]).replace(/\n?$/, ""), ft = facts.join(" · ");
           var oneLine = W(ft) + W(labels.join(" · ")) + 8 <= P.cols; // 放得下：经过和几个按钮一行；放不下：按钮另起一行
+          if (agent.connector === "codex" && el.length === 1 && W(el[0]) + W(labels.join(" · ")) + 9 <= P.cols) {
+            r.block('<span class="blk vs-unsent">' + P.toHtml(["  " + RED + "⎿  " + el[0] + RESET]).trimEnd() + sep + acts.join(sep) + "</span>");
+            return;
+          }
           r.block('<span class="blk vs-unsent">' + P.toHtml(el.map(function (l, i) { return "  " + (i ? "   " : RED + "⎿  ") + RED + l + RESET; })).replace(/\n?$/, "\n") +
             (ft ? P.toHtml(wrap(ft, Math.max(20, P.cols - 6)).map(function (l) { return "     " + D + l + RESET; })).replace(/\n?$/, oneLine ? "" : "\n") + (oneLine ? sep : "") : "") +
             (ft && oneLine ? "" : P.toHtml(["     "]).replace(/\n?$/, "")) + acts.join(sep) + "</span>");
         }
       });
-      if (inPlace) return;
-      var st = rt.sendNowState ? rt.sendNowState() : list.some(function (q) { return !q.sending && !q.from && !q.sys; }) ? "ready" : null;
+      if (inPlace || agent.connector === "codex") return;
+      var st = rt.sendNowState ? rt.sendNowState() : list.some(function (q) { return !q.err && !q.sending && !q.from && !q.sys; }) ? "ready" : null;
       var canEd = !!rt.editQueued && list.some(function (q) { return !q.from && !q.err && !q.sys; });
       if (rt.editingQueued && rt.editingQueued()) r.text(["  " + D + "editing…" + RESET]);
       else if (st === "ready") r.block(sendNowRow(D, canEd ? "edit" : ""));

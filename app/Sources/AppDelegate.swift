@@ -88,7 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     for v in views {
       v.webView.callAsyncJavaScript("await window.TSU_FLUSH?.(); return 1", arguments: [:], in: nil, in: .page) { _ in left -= 1; if left == 0 { finish() } }
     }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { finish() }
+    // AppKit waits for terminateLater in a modal run loop, sometimes inside a main-queue callback.
+    // A second main-queue block cannot run until that callback returns.
+    let timeout = Timer(timeInterval: 0.6, repeats: false) { _ in finish() }
+    RunLoop.main.add(timeout, forMode: .modalPanel)
+    RunLoop.main.add(timeout, forMode: .common)
     return .terminateLater
   }
 
