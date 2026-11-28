@@ -1177,11 +1177,17 @@
   function loadTick() {
     if (document.hidden || LOAD.busy || !termapp() || !getv("statusBar") || !statsOn().length) return;
     var N = window.nadosNative, cmds = (appInfo && appInfo.commands) || [];
-    if (N && N.call && !appInfo) { nativeInfo(); return; }
+    if (N && N.call && !appInfo) { LOAD.busy = true; nativeInfo().then(function () { LOAD.busy = false; loadTick(); }); return; }
     var p = N && N.call && cmds.indexOf("system.load") >= 0 ? N.call("system.load") : LOC() && LOC().exec ? loadByShell() : null;
     if (!p) return;
     LOAD.busy = true;
-    p.then(function (v) { if (v) { LOAD.v = v; allWins().forEach(function (w) { statusSoon(w); }); } }, function () {}).then(function () { LOAD.busy = false; });
+    p.then(function (v) {
+      if (!v) return;
+      if (!LOAD.v && v.cpu == null && cmds.includes("system.load")) setTimeout(loadTick, 160);
+      if (v.cpu == null && LOAD.v?.cpu != null) v.cpu = LOAD.v.cpu;
+      LOAD.v = v;
+      allWins().forEach(function (w) { statusSoon(w); });
+    }, function () {}).finally(function () { LOAD.busy = false; });
   }
   setInterval(loadTick, 2000);
   // 兜底：一条命令读全（macOS：ps 的 CPU 加起来、vm_stat、df、ioreg 的 GPU；Linux：/proc/stat 两次之间的差、/proc/meminfo、df、有 nvidia-smi 就读 GPU）
@@ -1213,21 +1219,24 @@
     if (!v || !on.length) return "";
     var gb = function (b) { var g = b / 1073741824; return (g >= 100 ? Math.round(g) : g.toFixed(1)) + " GB"; };
     var name = function (k) { var x = STATS.filter(function (y) { return y[0] === k; })[0]; return x ? (en ? x[2] : x[1]) : k; };
-    var item = function (k, txt, tip) { return '<span class="st-item st-stat" data-st="activity-monitor" data-stat="' + k + '" title="' + esc(tip) + '">' + esc(name(k) + " " + txt) + "</span>"; };
+    var item = function (k, txt, tip) { return '<span class="st-item st-stat" data-st="activity-monitor" data-stat="' + k + '" title="' + esc(tip) + '"><span>' + esc(name(k)) + '</span><span class="st-stat-value">' + esc(txt) + "</span></span>"; };
     var out = [];
     on.forEach(function (k) {
-      if (k === "cpu" && v.cpu != null) out.push(item(k, Math.round(v.cpu) + "%", en ? "CPU usage (all cores) — click for Activity Monitor" : "CPU 使用率（所有核心）——点一下打开活动监视器"));
+      if (k === "cpu") out.push(item(k, v.cpu == null ? "—" : Math.round(v.cpu) + "%", en ? "CPU usage (all cores) — click for Activity Monitor" : "CPU 使用率（所有核心）——点一下打开活动监视器"));
       if (k === "gpu" && v.gpu != null) out.push(item(k, Math.round(v.gpu) + "%", en ? "GPU usage — click for Activity Monitor" : "GPU 使用率——点一下打开活动监视器"));
       if (k === "mem" && v.memUsed != null) out.push(item(k, gb(v.memUsed), (en ? "Memory used " : "已使用内存 ") + gb(v.memUsed) + (v.memTotal ? (en ? " of " : " / 共 ") + gb(v.memTotal) : "")));
       if (k === "disk" && v.diskFree != null) out.push(item(k, gb(v.diskFree), (en ? "Free on the startup disk: " : "启动盘剩余 ") + gb(v.diskFree) + (v.diskTotal ? (en ? " of " : " / 共 ") + gb(v.diskTotal) : "")));
     });
-    return out.join('<span class="st-gap"></span>');
+    return out.length ? '<span class="st-stat-group">' + out.join("") + "</span>" : "";
   }
   // 状态栏（窗口最下面一整行，同 VS Code）：左边在哪、在做什么；右边状态、上下文、模型、文件的语言。
   //   转圈、「几秒」在走的时候每 240ms 只重画这一行（以前整个窗口的东西——面板、右侧栏、标题栏——都跟着重画一遍，菜单开着指一下都卡）
   function statusBar(tw, S, P, els) {
     S = S || parts(tw); P = P || tw.ws.active; els = els || list(P);
     S.status.hidden = !getv("statusBar");
+    var showStats = !S.status.hidden && statsOn().length > 0;
+    if (showStats && !S.statsVisible) queueMicrotask(loadTick);
+    S.statsVisible = showStats;
     var updates = [];
       if (updateReady && !appUpd) updates.push('<span class="st-item st-update" data-st="reload" title="重新载入以使用新版本">新版本</span>');
       if (nagUpd()) updates.push('<span class="st-item st-update" data-st="app-update" title="' + esc("换上 Vibing Studio " + appUpd.ver + " 并重新打开：标签页、会话都会接回去；旧版留在 Application Support/Vibing Studio/previous") + '">' + esc(appUpd.deb ? "Linux 版有新版本 · 下载" : updFetch ? (remoteDl ? "正在下载最新的 App，下好就重启" : "正在准备重启…") : updWait === "idle" ? "会话停下来以后自动重启以更新" : updWait ? "按 ⌘Q 退出后自动换上新版本并重新打开" : "App 有新版本 · 重启以更新") + "</span>");
@@ -4092,7 +4101,9 @@
     if (WIN_KEYS[k]) { try { sessionStorage.setItem(winK(k), String(v)); } catch (e) { /* 存不了：照全局的 */ } }
     SET[k] = v;
     keep("st-settings", SET);
-    applySettings();
+    if (k === "statusBar" || k === "statusStats") {
+      allWins().forEach(function (w) { if (w.st && w.open) { statusBar(w); layBar(w); } });
+    } else applySettings();
     if (k === "appLauncher") { allWins().forEach(function (w) { syncAct(w); }); if (STUDIO.apps && STUDIO.apps.dock) STUDIO.apps.dock(); }
     if (k === "claudeTheme" || k === "colorScheme" || k === "os") document.dispatchEvent(new Event("st-theme-mode")); // 深浅色跟不跟系统变了：窗口那边（native.js）跟上
     if (FLOC()) writeKey(k);
@@ -6710,6 +6721,7 @@
     page: page, pages: PAGES, openPage: openPage, openBrowser: openBrowser, addSettings: addSettings, layoutPick: function (tw) { layoutPick(tw); }, menuOpen: function () { return menus.length > 0; }, firstRun: function () { firstRun(true); }, moveActivity: function (to) { moveActivity(to); }, settings: function (tw, sec) { settings(tw, sec || (tw ? sectionFor(tw) : "")); }, sectionFor: sectionFor,
     modal: { open: modalOpen, close: modalClose, top: function () { return MODALS[MODALS.length - 1] || null; } }, // 模态层：open(窗口元素, { cls, onBackdrop, onClose }) → M；close(M)
     avatarHtml: avatarHtml, avatarNext: avatarNext, // 自己的头像：avatarHtml(边长 px, 再加的 class)；avatarNext() 是点一下换成的那个值（setv("avatar", …)）
+    systemLoad: function () { return LOAD.v; },
     command: command, palette: palette, quickPick: quickPick, menu: menu, pickFiles: pickFiles, ask: ask, pickMac: function (tw) { pickMac(tw); }, openMac: openMac, revealFamily: revealFamily, familyChanged: function () { familyChanged(); }, showPage: showPage, floatPage: floatPage, pickScheme: pickScheme, pickHighlight: pickHighlight, hlHtml: hlHtml, get: getv, setv: setv, settingsReady: function () { return setReady; }, xtermTheme: function (sc, where) { return xtermTheme(sc, where); }, scheme: function () { return schemeOf(); },
     keycaps: function (k) { return keycaps(k); },
     updateReady: function () { return updateReady; }, checkVersion: function () { checkVersion(true); },

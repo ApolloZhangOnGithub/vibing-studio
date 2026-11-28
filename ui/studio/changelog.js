@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.14", items: { improved: [
+      ["底栏的 CPU、GPU、内存和磁盘读数对齐显示。展开时立即刷新，点击读数打开活动监视器时会先显示最近的采样。", "CPU, GPU, memory and free disk space now align in the status bar. Opening the bar refreshes its readings immediately, and Activity Monitor shows recent readings while sampling."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.13", items: { fixed: [
       ["Google Antigravity 的 `/rewind` 直接在当前对话里选择历史消息，可仅回退对话，或同时恢复文件。选中的文字回到输入框。", "Use Antigravity’s `/rewind` in the current chat to restore a conversation, optionally including file changes. The selected message returns to the composer."],
       ["文件引用的悬停提示保持单行，长目录自动省略，文件名和行号优先显示。", "File reference tooltips stay on one line and shorten long directories to keep the filename and line number visible."]

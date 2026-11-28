@@ -369,10 +369,11 @@
     var c = (W - 2) / 6 >= 120 ? 6 : (W - 2) / 3 >= 120 ? 3 : 2, rowsN = 6 / c, cw = Math.max(110, Math.min(230, Math.floor((W - 2) / c))), ch = 120;
     var memC = (x.pressure || 0) > 70 ? C_SYS : (x.pressure || 0) > 45 ? C_MEM : C_BAT;
     var mir = function (a, b) { return function (w, h) { return sysChart(w, h, [{ v: function (s) { return s[a]; }, c: C_IN }, { v: function (s) { return s[b]; }, c: C_OUT }], true); }; };
+    var recent = STUDIO.systemLoad() || {};
     var items = [
-      ["cpu", "CPU", x.user != null ? pct(x.user + x.sys) : "—", function (w, h) { return sysChart(w, h, [{ v: function (s) { return (s.sys || 0) + (s.user || 0); }, c: C_USER, max: 100 }, { v: function (s) { return s.sys; }, c: C_SYS, max: 100 }]); }],
-      ["gpu", "GPU", pct(x.gpu), function (w, h) { return sysChart(w, h, [{ v: function (s) { return s.gpu; }, c: C_GPU, max: 100 }]); }],
-      ["mem", "内存", x.used != null && x.phys ? szM(x.used).replace(/ GB$/, "") + " / " + szM(x.phys) : szM(x.used), function (w, h) { return sysChart(w, h, [{ v: function (s) { return s.pressure; }, c: memC, max: 100 }]); }],
+      ["cpu", "CPU", x.user != null ? pct(x.user + x.sys) : pct(recent.cpu), function (w, h) { return sysChart(w, h, [{ v: function (s) { return (s.sys || 0) + (s.user || 0); }, c: C_USER, max: 100 }, { v: function (s) { return s.sys; }, c: C_SYS, max: 100 }]); }],
+      ["gpu", "GPU", pct(x.gpu ?? recent.gpu), function (w, h) { return sysChart(w, h, [{ v: function (s) { return s.gpu; }, c: C_GPU, max: 100 }]); }],
+      ["mem", "内存", x.used != null && x.phys ? szM(x.used).replace(/ GB$/, "") + " / " + szM(x.phys) : szM(x.used ?? recent.memUsed), function (w, h) { return sysChart(w, h, [{ v: function (s) { return s.pressure; }, c: memC, max: 100 }]); }],
       ["disk", "磁盘", x.rdBS != null ? perS(szD(x.rdBS + x.wrBS)) : "—", mir("rdBS", "wrBS")],
       ["net", "网络", x.inBS != null ? bits(x.inBS + x.outBS) : "—", mir("inBS", "outBS")],
       x.battery != null ? ["energy", "电池", pct(x.battery), batChart] : ["energy", "能耗", x.energy != null ? (+x.energy).toFixed(2) : "—", function (w, h) { return sysChart(w, h, [{ v: function (s) { return s.energy; }, c: C_USER }]); }],
@@ -686,6 +687,7 @@
       host.classList.add("tr-host", "st-pg-activity");
       host._amLast = null;
       render(host);
+      if (!host._amLast) requestAnimationFrame(() => { if (!host._amLast) render(host); });
     },
     detach: function () {},
   };
