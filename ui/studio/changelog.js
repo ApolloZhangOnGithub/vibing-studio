@@ -11,6 +11,9 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.20", items: { improved: [
+      ["活动监视器的时间线和底部资源图可以分别选择时间范围，切换视图时各自保留选择。", "Choose separate time ranges for the activity timeline and resource charts. Both selections persist when switching views."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.19", items: { improved: [
       ["活动监视器的会话名称对齐显示。展开会话或共享服务，可在独立明细表查看进程名称、PID、用时、CPU 和内存；悬停进程名称可查看命令。", "Session names align in Activity Monitor. Expand a session or shared service to view its process names, PIDs, elapsed times, CPU and memory in a separate table. Hover over a process name to see its command."]
     ] } },

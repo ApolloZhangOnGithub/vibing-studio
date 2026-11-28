@@ -78,7 +78,14 @@
     if (/^mcp__/.test(n)) return "mcp";
     return "other";
   }
-  var spanMin = function () { var v = +(localStorage.getItem("tsu-trace-span") || 1); return SPANS.some(function (x) { return x[0] === v; }) ? v : 60; };
+  function storedRange(key) {
+    var value = Number(localStorage.getItem(key));
+    return SPANS.some(function (span) { return span[0] === value; }) ? value : 1;
+  }
+  var timelineKey = "tsu-trace-span", resourceKey = "tsu-act-resource-span";
+  if (localStorage.getItem(resourceKey) === null) {
+    localStorage.setItem(resourceKey, String(storedRange(timelineKey)));
+  }
   // 打开着的会话的运行时：自己的 agent（liveRuntimes）+ 标签页里开着的 Claude Code、Codex 会话
   function runtimes() {
     var A = window.TSU_AGENTS, out = [], seen = new Set();
@@ -378,7 +385,7 @@
   // 走势图（不加框）：每秒一个点、3px 一格，从右边往左长；几条叠成面积；上下对称的（读 / 写、收 / 发）上半第一条、下半第二条，两半同一个比例
   function sysChart(w, h, series, mirror) {
     w = Math.max(20, Math.round(w)); h = Math.max(20, Math.round(h));
-    var until = Date.now(), duration = spanMin() * 60000, from = until - duration;
+    var until = Date.now(), duration = storedRange(resourceKey) * 60000, from = until - duration;
     var recentStart = SYS.hist[0]?.t ?? until;
     var hs = minutes.filter(f => f.t >= from && f.t < recentStart).concat(SYS.hist.filter(f => f.t >= from));
     var n = hs.length, out = [], top = 1, bot = h - 1, mid = Math.round(h / 2);
@@ -397,7 +404,7 @@
   // 电池（过去 12 小时）：每 10 分钟一根，这 10 分钟里最后记下的电量；关机、睡着没记的那段空着
   function batChart(w, h) {
     w = Math.max(20, Math.round(w)); h = Math.max(20, Math.round(h));
-    var now = Date.now(), duration = spanMin() * 60000, from = now - duration, pts = BAT.pts.length ? BAT.pts : BAT_HIST(), N = 72, bw = w / N, out = [], j = 0, last = null;
+    var now = Date.now(), duration = storedRange(resourceKey) * 60000, from = now - duration, pts = BAT.pts.length ? BAT.pts : BAT_HIST(), N = 72, bw = w / N, out = [], j = 0, last = null;
     for (var i = 0; i < N; i++) {
       var s = from + i * duration / N, e = s + duration / N, v = null;
       while (j < pts.length && pts[j].t < e) { if (pts[j].t >= s - 1800000) v = pts[j].v; last = pts[j]; j++; }
@@ -416,8 +423,8 @@
   var C_USER = "#5aa9e6", C_SYS = "#e5534b", C_IN = "#5aa9e6", C_OUT = "#e5534b", C_MEM = "#c8a24a", C_GPU = "#8f86c9", C_BAT = "#4f9a63";
   var UPDN = '<svg class="am-updn" viewBox="0 0 8 12" width="7" height="11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5"/></svg>';
   // 页签：胶囊（同 macOS 26 活动监视器顶上那一排），和面板标题栏的标签（下划线）不是一个样子
-  function rangeButtons(span) { return '<div class="tr-seg">' + SPANS.map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === span ? " on" : "") + '" data-trs="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>"; }
-  function sysTabsHtml(t) { return '<div class="am-segw"><div class="am-seg" role="tablist">' + SYS_TABS.map(function (z) { return '<button type="button" role="tab" class="am-segb' + (z[0] === t ? " on" : "") + '" data-amsys="' + z[0] + '">' + esc(tr(z[1])) + "</button>"; }).join("") + "</div>" + rangeButtons(spanMin()) + "</div>"; }
+  function rangeButtons(span, attribute) { return '<div class="tr-seg">' + SPANS.map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === span ? " on" : "") + '" ' + attribute + '="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</div>"; }
+  function sysTabsHtml(t) { return '<div class="am-segw"><div class="am-seg" role="tablist">' + SYS_TABS.map(function (z) { return '<button type="button" role="tab" class="am-segb' + (z[0] === t ? " on" : "") + '" data-amsys="' + z[0] + '">' + esc(tr(z[1])) + "</button>"; }).join("") + "</div>" + rangeButtons(storedRange(resourceKey), "data-am-range") + "</div>"; }
   // 每一页底下那一条（同活动监视器）：表格 | 图 | 表格 连成一个框，高度固定（表格四行），不跟着面板拉长
   function stripSecs(t, x) {
     var memC = (x.pressure || 0) > 70 ? C_SYS : (x.pressure || 0) > 45 ? C_MEM : C_BAT;
@@ -656,7 +663,7 @@
     if (S && S.openPage && tw) return S.openPage(tw, "activity", "");
   }
   function renderTimeline(host, amv) {
-    var W = Math.max(360, host.clientWidth), span = spanMin(), now = Date.now(), from = now - span * 60000;
+    var W = Math.max(360, host.clientWidth), span = storedRange(timelineKey), now = Date.now(), from = now - span * 60000;
     // 只画这段时间里真的干过活的（有调用、有一问、有后台任务，或者现在正在跑）；在跑的在上面，其余按最近一次动静排
     var rts = runtimes(), groups = rts.map(function (rt) { var d = collect(rt, from, now); d.rt = rt; d.lastAt = Math.max(0, d.bars.length ? d.bars[d.bars.length - 1].t1 : 0, d.turns.length ? d.turns[d.turns.length - 1].e : 0); return d; })
       .filter(function (d) { return d.rt.stream || d.bars.length || d.turns.length || d.bg.some(function (b) { return b.run || b.t1 >= from; }); })
@@ -671,7 +678,7 @@
     }
     var X = function (t) { return LBL + (t - from) / (now - from) * (W - LBL - PAD); };
     var sw = function (c) { return '<span><i style="background:' + c + '"></i>'; };
-    var bar = topBar(host, amv ? "" : rangeButtons(span)) + '<div class="tr-bar">' +
+    var bar = topBar(host, rangeButtons(span, "data-trs")) + '<div class="tr-bar">' +
       '<div class="tr-legend">' + Object.keys(KIND).filter(function (k) { return k !== "other"; }).map(function (k) { return '<span><i style="background:' + KIND[k].c + '"></i>' + esc(tr(KIND[k].n)) + "</span>"; }).join("") + '<span><i class="tr-lask">▼</i>' + esc(tr("用户消息")) + '</span><span><i class="tr-lcmp">◆</i>' + esc(tr("上下文压缩")) + '</span><span><i class="tr-lturn"></i>' + esc(tr("回合")) + '</span><span><i class="tr-lbgi"></i>' + esc(tr("后台任务")) + "</span></div></div>";
     if (!groups.length) { draw(bar, '<div class="st-dim tr-empty">' + esc(tr(rts.length ? "这段时间里没有会话在工作" : "没有打开的会话")) + "</div>"); return; }
     // 纵向：每组 = 名字那一行的高度和「工具几行 + 后台一行」取大的
@@ -745,8 +752,10 @@
     if (so) { var k = so.dataset.ams; SORT = SORT.k === k ? { k: k, d: -SORT.d } : { k: k, d: 1 }; localStorage.setItem("tsu-act-sort", JSON.stringify(SORT)); var h1 = so.closest(".tr-host"); if (h1) { h1._amLast = null; render(h1); } return; }
     var mv = e.target.closest && e.target.closest("[data-am-move]");
     if (mv) { if (window.STUDIO && STUDIO.moveActivity) STUDIO.moveActivity(mv.dataset.amMove); return; }
+    var resource = e.target.closest && e.target.closest("[data-am-range]");
+    if (resource) { localStorage.setItem(resourceKey, resource.dataset.amRange); rerenderSys(); return; }
     var sp = e.target.closest && e.target.closest("[data-trs]");
-    if (sp) { localStorage.setItem("tsu-trace-span", sp.dataset.trs); rerenderAll(); return; }
+    if (sp) { localStorage.setItem(timelineKey, sp.dataset.trs); rerenderAll(); return; }
     var g = e.target.closest && e.target.closest(".tr-grp[data-tra], .am-tr[data-tra], .am-crow[data-tra]");
     if (g) { var hh = g.closest(".tr-host"); if (hh && !g.classList.contains("tr-grp")) { if (!g.classList.contains("am-expandable")) return; var o = hh._open || (hh._open = {}); if (o[g.dataset.tra]) delete o[g.dataset.tra]; else o[g.dataset.tra] = 1; hh._amLast = null; render(hh); } else if (window.TSU_TERM && TSU_TERM.agent) TSU_TERM.agent(g.dataset.tra); } // 列表里点一个会话：就地展开它的进程（再点收起）；右键打开它；时间线里点：打开它
   });
@@ -779,7 +788,7 @@
   function rerenderSys() { document.querySelectorAll(".tr-host").forEach(function (h) { h._amLast = null; render(h); }); }
   // 面板标题栏右边的按钮：列表 / 时间线、时间线的时间段、浮动、挪到右侧栏
   function headActs() {
-    var m = modeOf(), sp = spanMin();
+    var m = modeOf(), sp = storedRange(timelineKey);
     return '<span class="am-hacts"><span class="tr-seg">' + [["table", "列表"], ["timeline", "时间线"]].map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === m ? " on" : "") + '" data-amm="' + x[0] + '">' + esc(tr(x[1])) + "</button>"; }).join("") + "</span>" +
       (m === "timeline" ? '<span class="tr-seg">' + SPANS.map(function (x) { return '<button type="button" class="tr-sp' + (x[0] === sp ? " on" : "") + '" data-trs="' + x[0] + '">' + x[1] + "</button>"; }).join("") + "</span>" : "") +
       '<button type="button" class="st-hbtn am-move" data-am-float="1" title="' + esc(tr("浮动显示（在所有标签页上面，可拖动、缩放）")) + '">' + FLOAT_ICO + '</button><button type="button" class="st-hbtn am-move" data-am-move="side" title="' + esc(tr("挪到右侧栏")) + '">' + MOVE_RIGHT + "</button></span>";
