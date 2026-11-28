@@ -1440,6 +1440,7 @@ html.light .am-chart.am-boxed { background: rgba(0, 0, 0, .03); }
 .tr-host .am-no-process-data .am-th .am-name { padding-left: 20px; }
 .am-logo.am-k-claude-code { color: #d97757; }
 .am-logo.am-k-codex { color: var(--st-hi); }
+.am-table .am-tr .am-c { justify-content: flex-start; text-align: left; }
 .am-no-process-data :is(.am-cpu,.am-mem,.am-procs) { display: none; }
 .am-tr .am-c.am-name { gap: 4px; }
 .am-tr .am-c.am-name > .am-logo { margin-right: 2px; }

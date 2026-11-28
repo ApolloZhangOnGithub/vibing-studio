@@ -11,6 +11,10 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   // 日期按真的发布日期写（tools/deploy.sh 每次部署把版本号和时间记进 builds.json）；同一天发的几版并成一段，版本号写那天最后一版
   var LOG = [
+    { date: "2026-11-28", ver: "0.2.4.18", items: { improved: [
+      ["活动监视器可展开 Antigravity 会话的进程。多个 Codex 会话共用的服务单列显示一次，可查看 CPU、内存及子进程。", "Expand Antigravity sessions to inspect their processes. Each shared Codex service appears once, with CPU, memory and child processes."],
+      ["监视器各列左对齐，用时补齐分秒，Codex 使用无框图标。工作台页面标签显示绿色状态灯。", "Monitor columns are left-aligned, elapsed times include padded minutes and seconds, and Codex uses its unframed icon. Workspace page tabs show a green indicator."]
+    ] } },
     { date: "2026-11-28", ver: "0.2.4.17", items: { improved: [
       ["活动监视器的列表和时间线均可在底部切换 1 分钟至 24 小时的资源曲线。", "Choose a resource history range from one minute to 24 hours at the bottom of either Activity Monitor view."],
       ["会话列表使用连接器自己的图标，按内容排列各列。仅有进程数据的会话可以展开，移除了合计行。", "Session rows use their connector icons and size columns to their contents. Rows expand when process data is available. The totals row has been removed."]

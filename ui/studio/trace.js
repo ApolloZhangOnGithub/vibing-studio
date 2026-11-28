@@ -63,6 +63,10 @@
   };
   var etMs = function (s) { var m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(String(s || "").trim()); return m ? ((+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3]) * 60 + (+m[4])) * 1000 : null; };
   var dur = function (ms) { var s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60), h = Math.floor(m / 60); return s < 60 ? s + "s" : m < 60 ? m + "m " + (s % 60) + "s" : h + "h " + (m % 60) + "m"; };
+  function elapsed(ms) {
+    var seconds = Math.max(0, Math.floor(ms / 1000));
+    return String(Math.floor(seconds / 60)).padStart(2, "0") + "m " + String(seconds % 60).padStart(2, "0") + "s";
+  }
   var hhmm = function (t) { var d = new Date(t); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); };
   function kindOf(p) {
     var n = String(p.name || "");
@@ -164,25 +168,51 @@
     var L = window.TSU_LOCAL;
     if (!L || !L.exec || PS.busy || (!force && Date.now() - PS.at < 2800)) return;
     PS.busy = true;
-    L.exec({ cmd: "ps -Ao pid=,ppid=,pcpu=,rss=,comm=; echo __GPU; ioreg -r -d 1 -w 0 -c IOAccelerator 2>/dev/null | grep -o '\"Device Utilization %\"=[0-9]*' | head -1" }).then(function (r) {
+    var hasCodex = runtimes().some(rt => rt.agent?.connector === "codex" || rt.agent?.id?.startsWith("cx:"));
+    // Only emit writable rollout file names and their owners, not all open files.
+    var writers = hasCodex ? "; echo __CODEX; /usr/sbin/lsof -nP -a -u \"$(id -un)\" -c '/^codex$/' -Fpfan 2>/dev/null | awk '/^p/{p=substr($0,2)} /^f/{a=\"\"} /^a/{a=substr($0,2)} /^n.*\\/rollout-.*\\.jsonl$/{if(a==\"u\" || a==\"w\") print p,substr($0,2)}'" : "";
+    var agyFiles = runtimes().some(rt => rt.agent?.connector === "agy") ? `; echo __AGY
+      ids=$(ps -Ao pid=,ppid=,comm= | awk '$3=="agy" || $3~/\\/agy$/ {print $1; if ($2>1) print $2}' | sort -un | paste -sd, -)
+      if [ -n "$ids" ]; then /usr/sbin/lsof -nP -p "$ids" -Fpn 2>/dev/null | awk '/^p/{p=substr($0,2)} /^n/ && ($0 ~ /\\/Vibing Studio\\/agy-runs\\// || $0 ~ /\\/antigravity(-cli)?\\/(presence|conversations)\\//) {print p,substr($0,2)}'; fi` : "";
+    L.exec({ cmd: "ps -Ao pid=,ppid=,pcpu=,rss=,comm=; echo __GPU; ioreg -r -d 1 -w 0 -c IOAccelerator 2>/dev/null | grep -o '\"Device Utilization %\"=[0-9]*' | head -1" + writers + agyFiles }).then(function (r) {
       var kids = {}, info = {}, rawAll = String((r && (r.out || r.stdout)) || ""), gm = /Device Utilization %"=(\d+)/.exec(rawAll.split("__GPU")[1] || "");
       PS.gpu = gm ? +gm[1] : null;
       String((r && (r.out || r.stdout)) || "").split("\n").forEach(function (l) { var m = /^\s*(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s*(.*)$/.exec(l); if (!m) return; info[+m[1]] = { cpu: +m[3], rss: +m[4], name: String(m[5] || "").split("/").pop() }; (kids[+m[2]] || (kids[+m[2]] = [])).push(+m[1]); });
-      PS.map = { kids: kids, info: info }; PS.at = Date.now();
-      var tot = 0, mem = 0; runtimes().forEach(function (rt) { var u = useOf(rt); if (u) { tot += u.cpu; mem += u.mem; var id0 = rt.agent && rt.agent.id; if (id0) { var hs = PS.per[id0] || (PS.per[id0] = []); hs.push({ t: PS.at, cpu: u.cpu, mem: u.mem, procs: u.procs }); if (hs.length > 240) hs.shift(); } } });
+      var codex = new Map();
+      for (const line of (rawAll.split("__CODEX\n")[1] || "").split("__AGY\n")[0].split("\n")) {
+        const match = /^(\d+) (.*)$/.exec(line);
+        if (match && info[match[1]]?.name === "codex") codex.set(match[2], +match[1]);
+      }
+      var agy = new Map();
+      for (const line of (rawAll.split("__AGY\n")[1] || "").split("\n")) {
+        const match = /^(\d+) (.*)\/([0-9a-f-]{36})(\.lock|\.db)?$/i.exec(line);
+        if (!match) continue;
+        const owner = Number(match[1]), sid = match[3];
+        const roots = match[2].includes("/Vibing Studio/agy-runs") ? (kids[owner] || []) : [owner];
+        for (const pid of roots) if (info[pid]?.name === "agy") {
+          if (!agy.has(sid)) agy.set(sid, new Set());
+          agy.get(sid).add(pid);
+        }
+      }
+      PS.map = { kids, info, codex, agy }; PS.at = Date.now();
+      var processes = new Map();
+      for (const rt of runtimes()) {
+        const pid = codex.get(rt.info?.path);
+        for (const p of procsOf(pid ? [pid] : rootsOf(rt))) processes.set(p.pid, p);
+      }
+      const {cpu: tot, mem} = usage([...processes.values()]);
       PS.hist.push({ t: PS.at, cpu: tot, mem: mem, gpu: PS.gpu }); if (PS.hist.length > 240) PS.hist.shift();
     }, function () {}).then(function () { PS.busy = false; });
   }
-  var pidOf = function (rt) { var i = rt && rt.info; return (i && i.live && +i.live.pid) || 0; };
-  function useOf(rt) {
-    var pid = pidOf(rt), M = PS.map;
-    if (!pid || !M || !M.info[pid]) return null;
-    var cpu = 0, mem = 0, n = 0, st = [pid], seen = {};
-    while (st.length) { var p = st.pop(); if (seen[p]) continue; seen[p] = 1; var x = M.info[p]; if (x) { cpu += x.cpu; mem += x.rss * 1024; n++; } (M.kids[p] || []).forEach(function (c) { st.push(c); }); }
-    return { cpu: cpu, mem: mem, procs: n };
+  function rootsOf(rt) {
+    if (rt.agent?.connector === "agy") return [...(PS.map?.agy.get(rt.agent.id.slice(4)) || [])];
+    const pid = Number(rt.info?.live?.pid);
+    return pid ? [pid] : [];
+  }
+  function usage(processes) {
+    return {cpu: processes.reduce((v,p) => v + p.cpu, 0), mem: processes.reduce((v,p) => v + p.mem, 0), procs: processes.length};
   }
 
-  var rtOf = function (id) { return runtimes().filter(function (x) { return x.agent && x.agent.id === id; })[0]; };
   // 点开的会话：它那几个进程的命令行、跑了多久（ps 只问这几个，3 秒最多一次）
   function argsPoll(pids) {
     var L = window.TSU_LOCAL;
@@ -449,10 +479,10 @@
       return '<div class="am-ovc' + (i % c === c - 1 ? " lc" : "") + (Math.floor(i / c) === rowsN - 1 ? " lr" : "") + '" data-amsys="' + it[0] + '" style="height:' + ch + 'px"><div class="am-ovh"><span>' + esc(tr(it[1])) + "</span><b>" + esc(it[2]) + "</b></div>" + it[3](cw - 25, ch - 16 - 18 - 5) + "</div>";
     }).join("") + "</div>";
   }
-  function procsOf(rt) {
-    var pid = pidOf(rt), M = PS.map, out = [];
-    if (!pid || !M || !M.info[pid]) return out;
-    var st = [pid], seen = {};
+  function procsOf(roots) {
+    var M = PS.map, out = [];
+    if (!M) return out;
+    var st = roots.slice(), seen = {};
     while (st.length) { var p = st.pop(); if (seen[p]) continue; seen[p] = 1; var x = M.info[p]; if (x) out.push({ pid: p, name: x.name || "", cpu: x.cpu, mem: x.rss * 1024 }); (M.kids[p] || []).forEach(function (c) { st.push(c); }); }
     return out.sort(function (a, b) { return b.cpu - a.cpu || b.mem - a.mem; });
   }
@@ -469,11 +499,11 @@
     var nat = rt.native && Date.now() - (rt.native.at || 0) < 6000 ? rt.native : null, thinking = !!(s && (s.thinking || (nat && /thinking|thought|deep in thought/i.test(nat.extra || ""))));
     var doing = runP ? trT(what(runP), id) : s ? tr(thinking ? "思考中" : "输出中") : q ? tr("等待你的回答") : lastP ? trT(what(lastP), id) : "";
     var detail = s ? (runP ? progOf(runP) : tr(thinking ? "思考" : "输出")) : "", tip = runP ? String(runP.name || "") + (what(runP) ? " · " + trT(what(runP), id) : "") : "";
-    var since = s ? s.t0 : (lt && (lt.last || (lt.stats && lt.stats.at) || lt.at)) || 0, c = null, u = useOf(rt);
+    var since = s ? s.t0 : (lt && (lt.last || (lt.stats && lt.stats.at) || lt.at)) || 0, c = null, roots = rootsOf(rt), procs = procsOf(roots), u = procs.length ? usage(procs) : null;
     try { c = rt.ctx ? rt.ctx() : null; } catch (e) { c = null; }
     return { id: id, name: a.name || id, conn: a.connector || ({ cc: "claude-code", cx: "codex" }[id.split(":")[0]] || id.split(":")[0]), status: st, doing: doing, detail: detail, tip: tip, doingNow: !!runP, since: since, ms: since ? Math.max(0, now - since) : 0,
       calls: parts.filter(function (x) { return x.kind === "tool"; }).length, ctx: c && c.window ? Math.round(c.pct * 10) / 10 : null, bg: (rt.tasks || []).filter(function (x) { return x.status === "running"; }).length,
-      cpu: u ? u.cpu : null, mem: u ? u.mem : null, procs: u ? u.procs : null };
+      processRoots: roots, servicePid: PS.map?.codex.get(rt.info?.path), cpu: u ? u.cpu : null, mem: u ? u.mem : null, procs: u ? u.procs : null };
   }
   var EN = function () { return !!(window.TSU_I18N && TSU_I18N.lang && TSU_I18N.lang() === "en"); };
   var ST_TXT = { run: "工作中", wait: "等待处理", idle: "空闲" }, ST_EN = { run: "Working", wait: "Needs input", idle: "Idle" }, ST_ORD = { run: 0, wait: 1, idle: 2 };
@@ -489,7 +519,7 @@
       return (r || (ST_ORD[a.status] - ST_ORD[b.status]) || ((b.cpu || 0) - (a.cpu || 0))) * (k === "status" || typeof x === "string" ? d : -d);
     });
   }
-  var LOGO = function (c) { return window.TSU_CONNECTORS?.get(c)?.logo || window.TSU_LOGOS?.[c] || ""; };
+  var LOGO = function (c) { return window.TSU_LOGOS?.[c] || window.TSU_CONNECTORS?.get(c)?.logo || ""; };
   // 底下的「CPU 负载」：最近这段的总 CPU（所有会话加起来），同活动监视器底下那张
   function chart(w, h) {
     var hs = PS.hist.slice(-Math.max(20, Math.floor(w / 3))), max = Math.max(10, hs.reduce(function (m, x) { return Math.max(m, x.cpu); }, 0) * 1.25); // 按这段里最高的放大（同活动监视器：几个百分点也看得出起伏）
@@ -514,14 +544,19 @@
     var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; }), W = host.clientWidth, compact = W < 560;
     // 同 macOS 的活动监视器：上面页签（概览、CPU、GPU、内存、磁盘、网络、能耗）、中间会话、底下整机的图（用户 2026-10-14：资源那些要留着）；窄的（右侧栏）只列会话
     var open = host._open || (host._open = {});
+    var services = [...new Set(rows.map(r => r.servicePid).filter(Boolean))].map(pid => ({
+      id: "service:" + pid, name: EN() ? "Codex shared service" : "Codex 共享服务", conn: "codex",
+      status: "service", processRoots: [pid], ...usage(procsOf([pid]))
+    }));
     var opids = [];
-    rows.forEach(function (r) { if (!open[r.id]) return; var rt = rtOf(r.id); if (rt) procsOf(rt).forEach(function (p) { opids.push(p.pid); }); });
+    rows.concat(services).forEach(function (r) { if (!open[r.id]) return; procsOf(r.processRoots).forEach(function (p) { opids.push(p.pid); }); });
     if (opids.length) argsPoll(opids);
     var key = W + "|" + host.clientHeight + "|" + JSON.stringify(SORT) + "|" + PS.at + "|" + PS.aat + "|" + (amv ? SYS.at + "|" + BAT.at + "|" + sysTab() + diskMode() + netMode() : "") + "|" + Object.keys(open).join(",") + "|" + rows.map(function (r) { return r.id + r.status + r.detail + r.calls + r.bg + r.ctx; }).join(",");
     if (key === L0.key && now - L0.at < 950) return;
     host._amLast = { key: key, at: now };
     var run = rows.filter(function (r) { return r.status === "run"; }).length, wait = rows.filter(function (r) { return r.status === "wait"; }).length, idleN = rows.length - run - wait;
-    var tc = rows.reduce(function (n, r) { return n + (r.cpu || 0); }, 0), tm = rows.reduce(function (n, r) { return n + (r.mem || 0); }, 0), tp = rows.reduce(function (n, r) { return n + (r.procs || 0); }, 0), any = rows.some(function (r) { return r.cpu != null; });
+    var measured = rows.concat(services).filter(r => r.procs);
+    var tc = measured.reduce((v,r) => v+r.cpu,0), tm = measured.reduce((v,r) => v+r.mem,0), tp = measured.reduce((v,r) => v+r.procs,0), any = measured.length > 0;
     var X0 = SYS.cur || {}, cap = (X0.ncpu || navigator.hardwareConcurrency || 8) * 100, ram = X0.phys || 0;
     var lvOf = function (r, k) {
       if (k === "cpu" && r.cpu != null) return r.cpu >= cap * 0.5 ? "crit" : r.cpu >= cap * 0.25 ? "warn" : ""; // 占了这台电脑一半的算力：红；四分之一：黄
@@ -531,11 +566,11 @@
     };
     var lvWrap = function (r, k, html) { var l = lvOf(r, k); return l ? '<span class="am-' + l + '">' + html + "</span>" : html; };
     // 状态：工作中（思考）/ 工作中（输出）/ 工作中（python3）——括号里是正在跑的程序（命令的程序名、工具名），不写会变来变去的说明（说明在悬停的提示里）
-    var stCell = function (r) { return r.status === "run" ? paren(stTxt("run"), r.detail) : stTxt(r.status); };
+    var stCell = function (r) { return r.status === "service" ? "" : r.status === "run" ? paren(stTxt("run"), r.detail) : stTxt(r.status); };
     var cell = function (r, k) {
       if (k === "name") return (r.procs ? DIS : '') + '<span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut">' + esc(r.name) + "</span>";
       if (k === "status") return '<span class="am-cut am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>";
-      if (k === "ms") return r.ms ? dur(r.ms) : "—";
+      if (k === "ms") return r.since ? elapsed(r.ms) : "—";
       if (k === "cpu") return r.cpu == null ? "—" : lvWrap(r, k, r.cpu.toFixed(1) + "%");
       if (k === "mem") return lvWrap(r, k, mb(r.mem));
       if (k === "procs") return r.procs == null ? "—" : String(r.procs);
@@ -544,20 +579,20 @@
     };
     // 点开一行：下面列出它的进程（同活动监视器「分层显示」）——名字、命令行、跑了多久、CPU、内存、PID
     var subs = function (r, cmp) {
-      var rt = rtOf(r.id), pr = rt ? procsOf(rt).slice(0, 40) : [];
+      var pr = procsOf(r.processRoots).slice(0, 40);
       if (!pr.length) return "";
       return pr.map(function (p) {
         var a = PS.args[p.pid] || {};
         if (cmp) return '<div class="am-csub"><span class="am-cut">' + esc(p.name || "—") + '</span><span class="am-num">' + p.cpu.toFixed(1) + "% · " + mb(p.mem) + "</span></div>";
-        return '<div class="am-tr am-sub"><span class="am-c am-name"><span class="am-cut" title="' + esc(p.name) + '">' + esc(p.name || "—") + '</span></span><span class="am-c am-status"><span class="am-cut am-dim" title="' + esc(a.args || "") + '">' + esc(a.args || "") + '</span></span><span class="am-c am-ms">' + (a.ms != null ? dur(a.ms) : "") + '</span><span class="am-c am-cpu">' + p.cpu.toFixed(1) + '%</span><span class="am-c am-mem">' + mb(p.mem) + '</span><span class="am-c am-procs am-dim">' + p.pid + '</span><span class="am-c am-ctx"></span></div>';
+        return '<div class="am-tr am-sub"><span class="am-c am-name"><span class="am-cut" title="' + esc(p.name) + '">' + esc(p.name || "—") + '</span></span><span class="am-c am-status"><span class="am-cut am-dim" title="' + esc(a.args || "") + '">' + esc(a.args || "") + '</span></span><span class="am-c am-ms">' + (a.ms != null ? elapsed(a.ms) : "") + '</span><span class="am-c am-cpu">' + p.cpu.toFixed(1) + '%</span><span class="am-c am-mem">' + mb(p.mem) + '</span><span class="am-c am-procs am-dim">' + p.pid + '</span><span class="am-c am-ctx"></span></div>';
       }).join("");
     };
-    var list = sorted(rows), body;
+    var list = sorted(rows).concat(services), body;
     if (!rows.length) body = '<div class="st-dim tr-empty">' + esc(tr("没有打开的会话")) + "</div>";
     else if (compact) body = '<div class="am-list">' + list.map(function (r) {
       // 一个会话两行，按格子对齐：第一行 标志 | 名字 | CPU；第二行（从名字那一列起）状态 · 用时
       return '<div class="am-crow' + (r.procs ? " am-expandable" : "") + (open[r.id] ? " open" : "") + '" data-tra="' + esc(r.id) + '"><span class="am-logo am-k-' + esc(r.conn) + '">' + LOGO(r.conn) + '</span><span class="am-cut am-name">' + esc(r.name) + '</span><span class="am-num">' + (r.cpu == null ? "" : lvWrap(r, "cpu", r.cpu.toFixed(1) + "%")) + "</span>" +
-        '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.ms ? " · " + dur(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r, true) : "");
+        '<span class="am-cut am-l2"><span class="am-st am-st-' + r.status + '"' + (r.tip ? ' title="' + esc(r.tip) + '"' : "") + ">" + esc(stCell(r)) + "</span>" + '<span class="am-dim">' + esc(r.since ? " · " + elapsed(r.ms) : "") + "</span></span></div>" + (open[r.id] ? subs(r, true) : "");
     }).join("") + "</div>";
     else {
       body = '<div class="am-table' + (any ? '' : ' am-no-process-data') + '"><div class="am-tr am-th">' + COLS.map(function (c) { return '<button type="button" class="am-c am-' + c[0] + (SORT.k === c[0] ? " on" : "") + '" data-ams="' + c[0] + '">' + esc(tr(c[1])) + (SORT.k === c[0] ? '<i class="am-sort">' + SORT_ICO(SORT.d) + "</i>" : "") + "</button>"; }).join("") + "</div>" +
@@ -716,7 +751,7 @@
     var g = e.target.closest && e.target.closest(".am-tr[data-tra], .am-crow[data-tra]");
     if (!g) return;
     var id = g.dataset.tra;
-    if (!id || !window.STUDIO || !STUDIO.menu) return;
+    if (!id || id.startsWith("service:") || !window.STUDIO || !STUDIO.menu) return;
     e.preventDefault(); e.stopPropagation();
     STUDIO.menu([{ label: tr("打开会话"), run: function () { if (window.TSU_TERM && TSU_TERM.agent) TSU_TERM.agent(id); } }], { x: e.clientX, y: e.clientY });
   }, true);
@@ -728,11 +763,11 @@
     var rows = runtimes().map(function (rt) { return rowOf(rt, now); }).filter(function (r) { return openIds[r.id] || r.status !== "idle"; });
     return {
       at: new Date(now).toISOString(),
-      agents: rows.map(function (r) { return { id: r.id, name: r.name, connector: { cc: "claude-code", cx: "codex", pm: "paimon" }[r.conn], status: { run: "running", wait: "waiting-for-you", idle: "idle" }[r.status], doing: r.doing || null,
+      agents: rows.map(function (r) { return { id: r.id, name: r.name, connector: r.conn, sharedServicePid: r.servicePid || null, status: { run: "running", wait: "waiting-for-you", idle: "idle" }[r.status], doing: r.doing || null,
         runningForSec: r.status !== "idle" && r.ms ? Math.round(r.ms / 1000) : null, idleForSec: r.status === "idle" && r.ms ? Math.round(r.ms / 1000) : null, toolCallsThisTurn: r.calls, contextPct: r.ctx, backgroundTasksRunning: r.bg,
         cpuPct: r.cpu == null ? null : Math.round(r.cpu * 10) / 10, memMB: r.mem == null ? null : Math.round(r.mem / 1048576), processes: r.procs }; }),
       cpuHistory: PS.hist.slice(-40).map(function (x) { return { at: new Date(x.t).toISOString(), cpuPct: Math.round(x.cpu * 10) / 10, memMB: Math.round(x.mem / 1048576), gpuPct: x.gpu == null ? null : x.gpu }; }),
-      note: "cpuPct / memMB / processes add up each Claude Code session's own process and everything it started (commands, dev servers). Codex sessions share one background service, so they show null.",
+      note: "cpuPct / memMB / processes add up each Claude Code session's own process and everything it started (commands, dev servers). sharedServicePid identifies the Codex service holding a session’s rollout open. Shared roots are counted once in cpuHistory.",
     };
   }
   // 以前单独的「系统资源」视图：现在并进 Agent 活动（同活动监视器：页签、会话、底下一条）；留着这个入口，画的是同一个

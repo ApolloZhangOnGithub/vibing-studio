@@ -627,7 +627,7 @@
         span.after(dot);
       }
       else if (unread) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot" aria-label="有未读消息"></b>');
-      else if (conversation) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
+      else if (conversation || P.program?.page) span.insertAdjacentHTML("afterend", '<b class="tab-finished-dot tab-idle-dot" aria-label="空闲"></b>');
       span.insertAdjacentHTML("beforebegin", icon(addressOf(P)));
       tabEl.classList.toggle("needs", nyou); // 在等你回答 / 确认：图标变蓝（studio.css .tab.needs）
       if (workingPane || waits.length) tabEl.classList.add("busy");
